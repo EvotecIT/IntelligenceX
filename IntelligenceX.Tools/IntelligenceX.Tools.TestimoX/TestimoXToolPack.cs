@@ -24,7 +24,8 @@ public sealed class TestimoXToolPack : IToolPack {
         Name = "IX.TestimoX",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
-        Description = "TestimoX rule discovery and targeted rule execution (read-oriented diagnostics)."
+        Description = "TestimoX rule discovery and targeted rule execution (read-oriented diagnostics).",
+        SourceKind = "closed_source"
     };
 
     /// <inheritdoc />

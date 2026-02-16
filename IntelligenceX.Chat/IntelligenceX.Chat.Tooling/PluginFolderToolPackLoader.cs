@@ -199,7 +199,11 @@ internal static class PluginFolderToolPackLoader {
                 continue;
             }
 
-            var sourceKind = ResolvePluginSourceKind(manifest, descriptorId);
+            if (!TryResolvePluginSourceKind(manifest, pack, out var sourceKind, out var sourceKindError)) {
+                onWarning?.Invoke($"[plugin] source_kind_missing plugin='{pluginId}' descriptor='{descriptorId}' error='{sourceKindError}'");
+                continue;
+            }
+
             pack = ToolPackBootstrap.WithSourceKind(pack, sourceKind);
             existingPackIds.Add(descriptorId);
             packs.Add(pack);
@@ -534,7 +538,20 @@ internal static class PluginFolderToolPackLoader {
         };
     }
 
-    private static string ResolvePluginSourceKind(PluginManifest? manifest, string descriptorId) {
+    private static bool TryResolvePluginSourceKind(PluginManifest? manifest, IToolPack pack, out string sourceKind, out string error) {
+        sourceKind = string.Empty;
+        error = string.Empty;
+
+        var descriptorValue = pack.Descriptor.SourceKind;
+        if (!string.IsNullOrWhiteSpace(descriptorValue)) {
+            if (ToolPackBootstrap.TryNormalizeSourceKind(descriptorValue, out sourceKind)) {
+                return true;
+            }
+
+            error = $"invalid descriptor SourceKind '{descriptorValue}'.";
+            return false;
+        }
+
         var configured = manifest?.SourceKind;
         if (string.IsNullOrWhiteSpace(configured)) {
             configured = manifest?.Source;
@@ -543,7 +560,17 @@ internal static class PluginFolderToolPackLoader {
             configured = manifest?.Visibility;
         }
 
-        return ToolPackBootstrap.NormalizeSourceKind(configured, descriptorId);
+        if (string.IsNullOrWhiteSpace(configured)) {
+            error = "missing SourceKind in descriptor and manifest (sourceKind/source/visibility).";
+            return false;
+        }
+
+        if (ToolPackBootstrap.TryNormalizeSourceKind(configured, out sourceKind)) {
+            return true;
+        }
+
+        error = $"invalid manifest source kind '{configured}'.";
+        return false;
     }
 
     internal readonly record struct PluginSearchRoot(string Path, bool IsExplicit);

@@ -37,6 +37,7 @@ internal sealed partial class ChatServiceSession {
     private string[] _startupWarnings;
     private string[] _pluginSearchPaths;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingStatsLock = new();
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();
@@ -84,23 +85,33 @@ internal sealed partial class ChatServiceSession {
         _startupWarnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
         _registry = new ToolRegistry();
         ToolPackBootstrap.RegisterAll(_registry, _packs);
-        foreach (var descriptor in ToolPackBootstrap.GetDescriptors(_packs)) {
-            var normalizedPackId = NormalizePackId(descriptor.Id);
-            if (normalizedPackId.Length == 0) {
-                continue;
-            }
-
-            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
-        }
+        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
 
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default
         };
     }
 
+    private void UpdatePackMetadataIndexes(IReadOnlyList<ToolPackDescriptor> descriptors) {
+        _packDisplayNamesById.Clear();
+        _packSourceKindsById.Clear();
+
+        for (var i = 0; i < descriptors.Count; i++) {
+            var descriptor = descriptors[i];
+            var normalizedPackId = NormalizePackId(descriptor.Id);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
+            _packSourceKindsById[normalizedPackId] = MapSourceKind(descriptor.SourceKind, descriptor.Id);
+        }
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken) {
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
+        await PrimeStartupToolHealthWarningsAsync(cancellationToken).ConfigureAwait(false);
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
@@ -164,6 +175,10 @@ internal sealed partial class ChatServiceSession {
 
                     case ListToolsRequest:
                         await HandleListToolsAsync(writer, request.RequestId, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case CheckToolHealthRequest checkToolHealth:
+                        await HandleToolHealthAsync(writer, checkToolHealth, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case ListProfilesRequest listProfiles:

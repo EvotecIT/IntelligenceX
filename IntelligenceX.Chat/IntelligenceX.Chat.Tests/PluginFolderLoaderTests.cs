@@ -63,7 +63,7 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
-    public void CreateDefaultReadOnlyPacks_UsesManifestSourceKindForPluginPack() {
+    public void CreateDefaultReadOnlyPacks_PrefersDescriptorSourceKindOverManifestSourceKind() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
@@ -103,7 +103,7 @@ public sealed class PluginFolderLoaderTests {
             });
 
             var pluginPack = Assert.Single(packs, static p => string.Equals(p.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
-            Assert.Equal("closed_source", pluginPack.Descriptor.SourceKind);
+            Assert.Equal("open_source", pluginPack.Descriptor.SourceKind);
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);
@@ -159,7 +159,8 @@ public sealed class PluginFolderLoaderTests {
             Id = "plugin-loader-test",
             Name = "Plugin Loader Test",
             Tier = ToolCapabilityTier.ReadOnly,
-            IsDangerous = false
+            IsDangerous = false,
+            SourceKind = "open_source"
         };
 
         public void Register(ToolRegistry registry) {

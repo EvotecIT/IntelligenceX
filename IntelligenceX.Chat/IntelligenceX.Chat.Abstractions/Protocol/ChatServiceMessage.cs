@@ -17,6 +17,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptMessage), "chatgpt_login_prompt")]
 [JsonDerivedType(typeof(ChatGptLoginCompletedMessage), "chatgpt_login_completed")]
 [JsonDerivedType(typeof(ToolListMessage), "tool_list")]
+[JsonDerivedType(typeof(ToolHealthMessage), "tool_health")]
 [JsonDerivedType(typeof(ProfileListMessage), "profile_list")]
 [JsonDerivedType(typeof(ModelListMessage), "model_list")]
 [JsonDerivedType(typeof(ModelFavoritesMessage), "model_favorites")]

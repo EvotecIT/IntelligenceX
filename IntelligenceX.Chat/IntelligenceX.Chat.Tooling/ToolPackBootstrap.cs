@@ -161,7 +161,7 @@ public static class ToolPackBootstrap {
         }
 
         var packs = new List<IToolPack> {
-            WithSourceKind(new EventLogToolPack(evxOptions), PackSourceBuiltin)
+            RequireDeclaredSourceKind(new EventLogToolPack(evxOptions), "Event Log")
         };
 
         if (options.EnableFileSystemPack) {
@@ -173,7 +173,6 @@ public static class ToolPackBootstrap {
                 configureOptions: fsOptions => {
                     AddStringListValuesIfPresent(fsOptions, "AllowedRoots", allowedRoots);
                 },
-                sourceKind: PackSourceBuiltin,
                 warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
         }
@@ -185,8 +184,7 @@ public static class ToolPackBootstrap {
                 packTypeName: SystemPackTypeName,
                 optionsTypeName: SystemOptionsTypeName,
                 configureOptions: null,
-                sourceKind: PackSourceClosedSource,
-                warnWhenUnavailable: false,
+                warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
         }
 
@@ -201,8 +199,7 @@ public static class ToolPackBootstrap {
                     SetPropertyIfPresent(adOptions, "DefaultSearchBaseDn", options.AdDefaultSearchBaseDn);
                     SetPropertyIfPresent(adOptions, "MaxResults", options.AdMaxResults > 0 ? options.AdMaxResults : 1000);
                 },
-                sourceKind: PackSourceClosedSource,
-                warnWhenUnavailable: false,
+                warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
         }
 
@@ -220,7 +217,6 @@ public static class ToolPackBootstrap {
                     SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
                     SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
                 },
-                sourceKind: PackSourceBuiltin,
                 warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
         }
@@ -234,17 +230,14 @@ public static class ToolPackBootstrap {
                 configureOptions: testimoOptions => {
                     SetPropertyIfPresent(testimoOptions, "Enabled", true);
                 },
-                sourceKind: PackSourceClosedSource,
-                warnWhenUnavailable: false,
+                warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
         }
 
         if (options.EnableReviewerSetupPack) {
-            packs.Add(WithSourceKind(
-                new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
-                    IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
-                }),
-                PackSourceBuiltin));
+            packs.Add(RequireDeclaredSourceKind(new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
+                IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
+            }), "Reviewer Setup"));
         }
 
         if (options.EnableEmailPack) {
@@ -254,7 +247,6 @@ public static class ToolPackBootstrap {
                 packTypeName: EmailPackTypeName,
                 optionsTypeName: EmailOptionsTypeName,
                 configureOptions: null,
-                sourceKind: PackSourceBuiltin,
                 warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
         }
@@ -326,40 +318,66 @@ public static class ToolPackBootstrap {
         return list;
     }
 
-    internal static string NormalizeSourceKind(string? sourceKind, string descriptorId) {
-        if (!string.IsNullOrWhiteSpace(sourceKind)) {
-            var normalized = sourceKind.Trim().ToLowerInvariant();
-            if (normalized is PackSourceBuiltin or PackSourceOpenSource or PackSourceClosedSource) {
-                return normalized;
-            }
-
-            if (normalized is "open" or "opensource" or "public") {
-                return PackSourceOpenSource;
-            }
-
-            if (normalized is "closed" or "private" or "internal") {
-                return PackSourceClosedSource;
-            }
+    /// <summary>
+    /// Normalizes a source-kind label to one of:
+    /// <c>builtin</c>, <c>open_source</c>, or <c>closed_source</c>.
+    /// Missing or unknown values are invalid.
+    /// </summary>
+    /// <param name="sourceKind">Raw source-kind value.</param>
+    /// <param name="descriptorId">
+    /// Optional descriptor id (accepted for compatibility; not used for inference).
+    /// </param>
+    /// <returns>Normalized source-kind label.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sourceKind"/> is missing or invalid.</exception>
+    public static string NormalizeSourceKind(string? sourceKind, string? descriptorId = null) {
+        _ = descriptorId;
+        if (TryNormalizeSourceKind(sourceKind, out var normalized)) {
+            return normalized;
         }
 
-        if (string.IsNullOrWhiteSpace(descriptorId)) {
-            return PackSourceOpenSource;
-        }
-
-        return NormalizeDescriptorId(descriptorId) switch {
-            "eventlog" => PackSourceBuiltin,
-            "fs" => PackSourceBuiltin,
-            "powershell" => PackSourceBuiltin,
-            "reviewersetup" => PackSourceBuiltin,
-            "email" => PackSourceBuiltin,
-            "system" => PackSourceClosedSource,
-            "ad" => PackSourceClosedSource,
-            "testimox" => PackSourceClosedSource,
-            _ => PackSourceOpenSource
-        };
+        throw new ArgumentException(
+            $"SourceKind must be one of '{PackSourceBuiltin}', '{PackSourceOpenSource}', or '{PackSourceClosedSource}' (aliases: open/public, closed/private/internal).",
+            nameof(sourceKind));
     }
 
-    private static string NormalizeDescriptorId(string descriptorId) {
+    /// <summary>
+    /// Attempts to normalize a source-kind label to one of:
+    /// <c>builtin</c>, <c>open_source</c>, or <c>closed_source</c>.
+    /// </summary>
+    /// <param name="sourceKind">Raw source-kind value.</param>
+    /// <param name="normalized">Normalized source-kind when parsing succeeds.</param>
+    /// <returns><see langword="true"/> when normalization succeeds; otherwise <see langword="false"/>.</returns>
+    public static bool TryNormalizeSourceKind(string? sourceKind, out string normalized) {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(sourceKind)) {
+            return false;
+        }
+
+        var raw = sourceKind.Trim().ToLowerInvariant();
+        if (raw is PackSourceBuiltin or PackSourceOpenSource or PackSourceClosedSource) {
+            normalized = raw;
+            return true;
+        }
+
+        if (raw is "open" or "opensource" or "public") {
+            normalized = PackSourceOpenSource;
+            return true;
+        }
+
+        if (raw is "closed" or "private" or "internal") {
+            normalized = PackSourceClosedSource;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Normalizes descriptor/alias ids into canonical pack ids used across policy and filtering.
+    /// </summary>
+    /// <param name="descriptorId">Descriptor id or alias.</param>
+    /// <returns>Canonical pack id, or empty string when input is empty.</returns>
+    public static string NormalizePackId(string? descriptorId) {
         var normalized = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
         if (normalized.Length == 0) {
             return string.Empty;
@@ -380,6 +398,7 @@ public static class ToolPackBootstrap {
             "adplayground" => "ad",
             "activedirectory" => "ad",
             "filesystem" => "fs",
+            "reviewersetuppack" => "reviewersetup",
             _ => normalized
         };
     }
@@ -404,7 +423,6 @@ public static class ToolPackBootstrap {
         string packTypeName,
         string? optionsTypeName,
         Action<object>? configureOptions,
-        string sourceKind,
         bool warnWhenUnavailable,
         Action<string>? onWarning) {
         try {
@@ -439,12 +457,21 @@ public static class ToolPackBootstrap {
                 return false;
             }
 
-            packs.Add(WithSourceKind(pack, sourceKind));
+            packs.Add(RequireDeclaredSourceKind(pack, packLabel));
             return true;
         } catch (Exception ex) {
             Warn(onWarning, $"{packLabel} pack skipped: {ex.Message}", warnWhenUnavailable);
             return false;
         }
+    }
+
+    private static IToolPack RequireDeclaredSourceKind(IToolPack pack, string packLabel) {
+        var descriptorSourceKind = (pack.Descriptor.SourceKind ?? string.Empty).Trim();
+        if (descriptorSourceKind.Length == 0) {
+            throw new InvalidOperationException($"{packLabel} pack is missing descriptor SourceKind.");
+        }
+
+        return WithSourceKind(pack, descriptorSourceKind);
     }
 
     private static Type? ResolveType(string assemblyQualifiedTypeName) {

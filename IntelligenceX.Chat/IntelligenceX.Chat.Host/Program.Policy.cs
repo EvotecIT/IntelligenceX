@@ -20,21 +20,32 @@ namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
 
-    private static IReadOnlyList<IToolPack> BuildPacks(ReplOptions options) {
-        var bootstrapOptions = new ToolPackBootstrapOptions {
+    private static IReadOnlyList<IToolPack> BuildPacks(ReplOptions options, Action<string>? onBootstrapWarning = null) {
+        return ToolPackBootstrap.CreateDefaultReadOnlyPacks(BuildBootstrapOptions(options, onBootstrapWarning));
+    }
+
+    private static IReadOnlyList<string> GetPluginSearchPaths(ReplOptions options) {
+        return ToolPackBootstrap.GetPluginSearchPaths(BuildBootstrapOptions(options));
+    }
+
+    private static ToolPackBootstrapOptions BuildBootstrapOptions(ReplOptions options, Action<string>? onBootstrapWarning = null) {
+        return new ToolPackBootstrapOptions {
             AllowedRoots = options.AllowedRoots.ToArray(),
             AdDomainController = options.AdDomainController,
             AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
             AdMaxResults = options.AdMaxResults,
             EnablePowerShellPack = options.EnablePowerShellPack,
-            EnableTestimoXPack = options.EnableTestimoXPack
+            EnableTestimoXPack = options.EnableTestimoXPack,
+            EnableDefaultPluginPaths = options.EnableDefaultPluginPaths,
+            PluginPaths = options.PluginPaths.ToArray(),
+            OnBootstrapWarning = onBootstrapWarning
         };
-        return ToolPackBootstrap.CreateDefaultReadOnlyPacks(bootstrapOptions);
     }
 
-    private static void WritePolicyBanner(ReplOptions options, IReadOnlyList<IToolPack> packs) {
+    private static void WritePolicyBanner(ReplOptions options, IReadOnlyList<IToolPack> packs, IReadOnlyList<string>? bootstrapWarnings = null) {
         var descriptors = ToolPackBootstrap.GetDescriptors(packs);
         var dangerousEnabled = descriptors.Any(static p => p.IsDangerous || p.Tier == ToolCapabilityTier.DangerousWrite);
+        var pluginPaths = GetPluginSearchPaths(options);
 
         Console.WriteLine("Policy:");
         Console.WriteLine($"  Mode: {(dangerousEnabled ? "mixed (dangerous pack enabled)" : "read-only (no writes implied)")}");
@@ -42,10 +53,21 @@ internal static partial class Program {
         var maxSample = options.MaxSample <= 0 ? "(none)" : options.MaxSample.ToString();
         Console.WriteLine($"  Response shaping: max_table_rows={maxTable}, max_sample={maxSample}, redact={(options.Redact ? "on" : "off")}");
         Console.WriteLine($"  Allowed roots: {(options.AllowedRoots.Count == 0 ? "(none)" : string.Join("; ", options.AllowedRoots))}");
+        Console.WriteLine($"  Plugin search paths: {(pluginPaths.Count == 0 ? "(none)" : string.Join("; ", pluginPaths))}");
         Console.WriteLine("  Packs:");
 
         foreach (var p in descriptors) {
             Console.WriteLine($"    - {p.Id} ({p.Tier})");
+        }
+
+        if (bootstrapWarnings is { Count: > 0 }) {
+            Console.WriteLine("  Pack warnings:");
+            foreach (var warning in bootstrapWarnings) {
+                if (string.IsNullOrWhiteSpace(warning)) {
+                    continue;
+                }
+                Console.WriteLine($"    - {warning.Trim()}");
+            }
         }
 
         Console.WriteLine($"  Dangerous tools: {(dangerousEnabled ? "enabled (explicit opt-in)" : "disabled")}");

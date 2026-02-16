@@ -774,24 +774,20 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildExecutionContractBlockerText(string userRequest, string assistantDraft, string reason) {
-        var requestText = TrimForPrompt(userRequest, 1200);
-        var draftText = TrimForPrompt(assistantDraft, 1200);
+        var requestText = TrimForPrompt(userRequest, 280);
         var reasonCode = string.IsNullOrWhiteSpace(reason) ? "no_tool_calls_after_retries" : reason.Trim();
         var replayActionBlock = BuildExecutionContractReplayActionBlock(userRequest, assistantDraft);
         return $$"""
             [Execution blocked]
             {{ExecutionContractMarker}}
-            I did not execute tools for this selected action in the current turn, so I cannot report it as completed.
+            I do not have confirmed tool output for this selected action yet.
 
             Selected action request:
             {{requestText}}
 
-            Latest non-executed draft:
-            {{draftText}}
-
             Reason code: {{reasonCode}}
 
-            Please retry this action, or provide the minimal missing input if you already know it.
+            Please retry this action. Reply `continue` to retry in this context, or use the action command below.
             {{replayActionBlock}}
             """;
     }
@@ -800,6 +796,9 @@ internal sealed partial class ChatServiceSession {
         if (!TryResolveReplayActionForExecutionContract(userRequest, assistantDraft, out var actionId, out var actionTitle, out var actionRequest)) {
             return string.Empty;
         }
+
+        actionTitle = NormalizeReplayActionText(actionTitle, maxChars: 120);
+        actionRequest = NormalizeReplayActionText(actionRequest, maxChars: 220);
 
         return $$"""
 

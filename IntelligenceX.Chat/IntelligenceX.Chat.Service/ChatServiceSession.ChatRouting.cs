@@ -267,7 +267,8 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                if (executionContractApplies) {
+                var hasToolActivity = toolCalls.Count > 0 || toolOutputs.Count > 0;
+                if (executionContractApplies && !hasToolActivity) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
                         : $"execution_contract_unmet_{watchdogReason}";
@@ -276,6 +277,8 @@ internal sealed partial class ChatServiceSession {
                         assistantDraft: text,
                         reason: blockerReason);
                 }
+
+                text = AppendTurnCompletionNotice(text, turn);
 
                 // Capture pending actions from the finalized assistant text so confirmation routing stays aligned
                 // with what the user actually sees (including contract fallback substitutions).
@@ -469,6 +472,49 @@ internal sealed partial class ChatServiceSession {
         }
 
         return string.Empty;
+    }
+
+    private static string AppendTurnCompletionNotice(string text, TurnInfo turn) {
+        var status = (turn.Status ?? string.Empty).Trim();
+        if (status.Length == 0 || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase)) {
+            return text;
+        }
+
+        var reason = ResolveTurnCompletionReason(turn);
+        var details = reason.Length == 0
+            ? $"status '{status}'"
+            : $"status '{status}' (reason: {reason})";
+        var notice = $"Partial response: model returned {details}. Reply 'continue' to resume.";
+
+        var body = (text ?? string.Empty).TrimEnd();
+        if (body.Length == 0) {
+            return notice;
+        }
+
+        if (body.IndexOf("Partial response:", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return body;
+        }
+
+        return body + Environment.NewLine + Environment.NewLine + notice;
+    }
+
+    private static string ResolveTurnCompletionReason(TurnInfo turn) {
+        try {
+            var response = turn.Raw.GetObject("response");
+            if (response is null) {
+                return string.Empty;
+            }
+
+            var incompleteDetails = response.GetObject("incomplete_details");
+            var reason = (incompleteDetails?.GetString("reason") ?? string.Empty).Trim();
+            if (reason.Length > 0) {
+                return reason;
+            }
+
+            return (response.GetString("status_details") ?? string.Empty).Trim();
+        } catch {
+            return string.Empty;
+        }
     }
 
     private static IReadOnlyList<ToolDefinition> SanitizeToolDefinitions(IReadOnlyList<ToolDefinition> definitions) {

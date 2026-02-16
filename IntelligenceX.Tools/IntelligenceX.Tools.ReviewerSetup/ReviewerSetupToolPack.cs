@@ -23,7 +23,8 @@ public sealed class ReviewerSetupToolPack : IToolPack {
         Name = "Reviewer Setup",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
-        Description = "Path contract and execution guidance for IntelligenceX reviewer onboarding."
+        Description = "Path contract and execution guidance for IntelligenceX reviewer onboarding.",
+        SourceKind = "builtin"
     };
 
     /// <inheritdoc />

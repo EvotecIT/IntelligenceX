@@ -24,7 +24,8 @@ public sealed class FileSystemToolPack : IToolPack {
         Name = "File System",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
-        Description = "Safe-by-default file system reads (restricted to AllowedRoots)."
+        Description = "Safe-by-default file system reads (restricted to AllowedRoots).",
+        SourceKind = "builtin"
     };
 
     /// <inheritdoc />

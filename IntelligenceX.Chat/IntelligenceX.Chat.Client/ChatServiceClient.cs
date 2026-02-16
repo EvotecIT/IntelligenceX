@@ -5,6 +5,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
 
@@ -224,6 +225,43 @@ public sealed class ChatServiceClient : IAsyncDisposable {
     /// </summary>
     public Task<ProfileListMessage> ListProfilesAsync(CancellationToken cancellationToken = default) {
         return RequestAsync<ProfileListMessage>(new ListProfilesRequest { RequestId = NewRequestId() }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs service-side <c>*_pack_info</c> health probes and returns per-pack status.
+    /// </summary>
+    public Task<ToolHealthMessage> CheckToolHealthAsync(int? toolTimeoutSeconds = null, IReadOnlyList<string>? packIds = null,
+        IReadOnlyList<ToolPackSourceKind>? sourceKinds = null, CancellationToken cancellationToken = default) {
+        if (toolTimeoutSeconds is < 0 or > 3600) {
+            throw new ArgumentOutOfRangeException(nameof(toolTimeoutSeconds), "toolTimeoutSeconds must be between 0 and 3600.");
+        }
+
+        return RequestAsync<ToolHealthMessage>(new CheckToolHealthRequest {
+            RequestId = NewRequestId(),
+            ToolTimeoutSeconds = toolTimeoutSeconds,
+            PackIds = packIds is { Count: > 0 } ? packIds.ToArray() : null,
+            SourceKinds = sourceKinds is { Count: > 0 } ? sourceKinds.ToArray() : null
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs health probes only for packs classified as open-source.
+    /// </summary>
+    public Task<ToolHealthMessage> CheckOpenSourceToolHealthAsync(int? toolTimeoutSeconds = null, CancellationToken cancellationToken = default) {
+        return CheckToolHealthAsync(
+            toolTimeoutSeconds: toolTimeoutSeconds,
+            sourceKinds: new[] { ToolPackSourceKind.OpenSource },
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs health probes only for packs classified as closed-source.
+    /// </summary>
+    public Task<ToolHealthMessage> CheckClosedSourceToolHealthAsync(int? toolTimeoutSeconds = null, CancellationToken cancellationToken = default) {
+        return CheckToolHealthAsync(
+            toolTimeoutSeconds: toolTimeoutSeconds,
+            sourceKinds: new[] { ToolPackSourceKind.ClosedSource },
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
