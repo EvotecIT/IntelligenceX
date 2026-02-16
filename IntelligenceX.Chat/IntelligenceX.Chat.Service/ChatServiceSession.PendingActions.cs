@@ -668,6 +668,7 @@ internal sealed partial class ChatServiceSession {
             if (char.IsLetter(ch)) {
                 hasLetter = true;
             }
+            // Heuristic only: this is not full script detection; it keeps short non-Latin intent tokens eligible.
             if (ch > 127) {
                 hasNonAscii = true;
             }

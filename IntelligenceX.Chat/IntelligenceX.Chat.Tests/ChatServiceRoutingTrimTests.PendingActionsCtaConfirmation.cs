@@ -250,6 +250,27 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesContiguousNonLatinIntentToken() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_cn_compact
+            title: 失败登录报告
+            request: 运行失败登录报告并汇总
+            mutating: false
+            reply: /act act_cn_compact
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "失败登录报告" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_cn_compact", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenUserUsesOnlyShortAsciiTokens() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
