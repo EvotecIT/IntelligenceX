@@ -391,12 +391,12 @@ internal sealed partial class ChatServiceSession {
         // Mutating verbs anywhere in the action intent must win over leading read-only verbs
         // (for example: "check and disable user").
         for (var i = 0; i < tokens.Count; i++) {
-            if (MutatingActionTokens.Contains(tokens[i])) {
+            if (TokenMatchesActionVerb(tokens[i], MutatingActionTokens)) {
                 return true;
             }
         }
 
-        if (firstToken.Length > 0 && ReadOnlyActionTokens.Contains(firstToken)) {
+        if (firstToken.Length > 0 && TokenMatchesActionVerb(firstToken, ReadOnlyActionTokens)) {
             return false;
         }
 
@@ -421,32 +421,64 @@ internal sealed partial class ChatServiceSession {
             return tokens;
         }
 
-        Span<char> tokenBuffer = stackalloc char[48];
-        var tokenLength = 0;
+        var tokenStart = -1;
         for (var i = 0; i < text.Length; i++) {
             var ch = text[i];
             if (char.IsLetterOrDigit(ch) || ch == '_') {
-                if (tokenLength < tokenBuffer.Length) {
-                    tokenBuffer[tokenLength] = char.ToLowerInvariant(ch);
-                    tokenLength++;
+                if (tokenStart < 0) {
+                    tokenStart = i;
                 }
                 continue;
             }
 
-            if (tokenLength > 0) {
-                tokens.Add(new string(tokenBuffer[..tokenLength]));
-                tokenLength = 0;
+            if (tokenStart >= 0) {
+                tokens.Add(text.Substring(tokenStart, i - tokenStart).ToLowerInvariant());
+                tokenStart = -1;
                 if (tokens.Count >= maxTokens) {
                     return tokens;
                 }
             }
         }
 
-        if (tokenLength > 0 && tokens.Count < maxTokens) {
-            tokens.Add(new string(tokenBuffer[..tokenLength]));
+        if (tokenStart >= 0 && tokens.Count < maxTokens) {
+            tokens.Add(text.Substring(tokenStart, text.Length - tokenStart).ToLowerInvariant());
         }
 
         return tokens;
+    }
+
+    private static bool TokenMatchesActionVerb(string token, HashSet<string> verbs) {
+        if (string.IsNullOrWhiteSpace(token) || verbs.Count == 0) {
+            return false;
+        }
+
+        if (verbs.Contains(token)) {
+            return true;
+        }
+
+        if (token.IndexOf('_', StringComparison.Ordinal) < 0) {
+            return false;
+        }
+
+        var start = 0;
+        while (start < token.Length) {
+            var end = token.IndexOf('_', start);
+            if (end < 0) {
+                end = token.Length;
+            }
+
+            var length = end - start;
+            if (length > 0) {
+                var segment = token.Substring(start, length);
+                if (verbs.Contains(segment)) {
+                    return true;
+                }
+            }
+
+            start = end + 1;
+        }
+
+        return false;
     }
 
     private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft, bool onlyBulletContext = false) {

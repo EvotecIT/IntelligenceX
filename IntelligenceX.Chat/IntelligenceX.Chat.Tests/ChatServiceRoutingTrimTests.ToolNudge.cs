@@ -134,6 +134,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersWhenMutatingVerbAppearsAfterLongUnderscoreToken() {
+        var longToken = new string('x', 64) + "_disable_account";
+        var userRequest = $"{{\"ix_action_selection\":{{\"id\":\"act_001\",\"title\":\"check {longToken}\",\"request\":\"Inspect current state only.\"}}}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldEnforceExecuteOrExplainContract_DoesNotTriggerForPlainTextRequest() {
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { "run now" });
 
