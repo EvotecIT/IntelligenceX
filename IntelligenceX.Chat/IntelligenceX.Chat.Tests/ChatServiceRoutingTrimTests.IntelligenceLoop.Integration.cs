@@ -19,30 +19,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public async Task PhaseProgressLoop_EmitsPlanExecuteReviewInOrder() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
-        using var memory = new MemoryStream();
-        using var writer = new StreamWriter(memory, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
 
         await InvokePhaseProgressLoopAsync(session, writer, "phase_plan", "Planning...", "Planning", 0, Task.CompletedTask);
         await InvokePhaseProgressLoopAsync(session, writer, "phase_execute", "Executing...", "Executing", 0, Task.CompletedTask);
         await InvokePhaseProgressLoopAsync(session, writer, "phase_review", "Reviewing...", "Reviewing", 0, Task.CompletedTask);
 
-        var statuses = ParseStatuses(memory);
+        var statuses = ParseStatuses(capture.Snapshot());
         Assert.Equal(new[] { "phase_plan", "phase_execute", "phase_review" }, statuses);
     }
 
     [Fact]
     public async Task PhaseProgressLoop_EmitsHeartbeatForLongRunningPhase() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
-        using var memory = new MemoryStream();
-        using var writer = new StreamWriter(memory, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var invokeTask = InvokePhaseProgressLoopAsync(session, writer, "phase_review", "Reviewing...", "Reviewing response", 1, completion.Task);
-        await WaitForStatusAsync(memory, "phase_heartbeat", TimeSpan.FromSeconds(5));
+        await WaitForStatusAsync(capture, "phase_heartbeat", TimeSpan.FromSeconds(5));
         completion.TrySetResult(null);
         await invokeTask;
 
-        var statuses = ParseStatuses(memory);
+        var statuses = ParseStatuses(capture.Snapshot());
         Assert.Contains("phase_review", statuses);
         Assert.Contains("phase_heartbeat", statuses);
         var reviewIndex = statuses.IndexOf("phase_review");
@@ -69,9 +69,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
         await task;
     }
 
-    private static List<string> ParseStatuses(MemoryStream stream) {
-        stream.Position = 0;
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+    private static List<string> ParseStatuses(byte[] snapshotBytes) {
+        using var snapshot = new MemoryStream(snapshotBytes, writable: false);
+        using var reader = new StreamReader(snapshot, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         var statuses = new List<string>();
         while (!reader.EndOfStream) {
             var line = reader.ReadLine();
@@ -97,10 +97,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         return statuses;
     }
 
-    private static async Task WaitForStatusAsync(MemoryStream stream, string status, TimeSpan timeout) {
+    private static async Task WaitForStatusAsync(SynchronizedCaptureStream stream, string status, TimeSpan timeout) {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (sw.Elapsed < timeout) {
-            var statuses = ParseStatuses(stream);
+            var statuses = ParseStatuses(stream.Snapshot());
             if (statuses.Contains(status, StringComparer.OrdinalIgnoreCase)) {
                 return;
             }
@@ -108,7 +108,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
 
-        var finalStatuses = ParseStatuses(stream);
+        var finalStatuses = ParseStatuses(stream.Snapshot());
         if (finalStatuses.Contains(status, StringComparer.OrdinalIgnoreCase)) {
             return;
         }
@@ -126,5 +126,94 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         value = default;
         return false;
+    }
+
+    private sealed class SynchronizedCaptureStream : Stream {
+        private readonly MemoryStream _inner = new();
+        private readonly object _sync = new();
+
+        public byte[] Snapshot() {
+            lock (_sync) {
+                return _inner.ToArray();
+            }
+        }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+
+        public override long Length {
+            get {
+                lock (_sync) {
+                    return _inner.Length;
+                }
+            }
+        }
+
+        public override long Position {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() {
+            lock (_sync) {
+                _inner.Flush();
+            }
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken) {
+            lock (_sync) {
+                _inner.Flush();
+            }
+            return Task.CompletedTask;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) {
+            lock (_sync) {
+                _inner.SetLength(value);
+            }
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) {
+            lock (_sync) {
+                _inner.Write(buffer, offset, count);
+            }
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) {
+            lock (_sync) {
+                _inner.Write(buffer, offset, count);
+            }
+            return Task.CompletedTask;
+        }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+        public override void Write(ReadOnlySpan<byte> buffer) {
+            lock (_sync) {
+                _inner.Write(buffer);
+            }
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) {
+            lock (_sync) {
+                _inner.Write(buffer.Span);
+            }
+            return ValueTask.CompletedTask;
+        }
+#endif
+
+        protected override void Dispose(bool disposing) {
+            if (disposing) {
+                lock (_sync) {
+                    _inner.Dispose();
+                }
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }
