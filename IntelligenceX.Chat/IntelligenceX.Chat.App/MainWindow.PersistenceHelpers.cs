@@ -131,6 +131,16 @@ public sealed partial class MainWindow : Window {
                     }
                 }
             }
+
+            var persistRequestedDuringSave = false;
+            lock (_persistDebounceSync) {
+                persistRequestedDuringSave = _persistDebounceRequested && !_shutdownRequested;
+            }
+
+            // If new state arrived while persisting, loop immediately and keep the worker alive.
+            if (persistRequestedDuringSave) {
+                continue;
+            }
         }
     }
 
