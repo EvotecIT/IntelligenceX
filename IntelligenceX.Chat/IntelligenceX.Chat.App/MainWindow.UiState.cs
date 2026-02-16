@@ -387,19 +387,45 @@ public sealed partial class MainWindow : Window {
                     _pendingOptionsStatePublishTcs = null;
                 }
 
+                var coalesceDelayApplied = false;
                 if (!publishSession && !publishOptions) {
-                    // Defensive shutdown/race guard: do not leave handed-out awaiters unresolved.
-                    TryCancelUiPublishAwaiter(sessionTcs);
-                    TryCancelUiPublishAwaiter(optionsTcs);
-                    break;
+                    // Re-check after one coalesce window so requests arriving during idle transition are not dropped.
+                    try {
+                        await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                        coalesceDelayApplied = true;
+                    } catch (OperationCanceledException) {
+                        TryCancelUiPublishAwaiter(sessionTcs);
+                        TryCancelUiPublishAwaiter(optionsTcs);
+                        break;
+                    }
+
+                    lock (_uiPublishSync) {
+                        publishSession = _pendingSessionStatePublish;
+                        publishOptions = _pendingOptionsStatePublish;
+                        sessionTcs = _pendingSessionStatePublishTcs;
+                        optionsTcs = _pendingOptionsStatePublishTcs;
+                        _pendingSessionStatePublish = false;
+                        _pendingOptionsStatePublish = false;
+                        _pendingSessionStatePublishTcs = null;
+                        _pendingOptionsStatePublishTcs = null;
+                    }
+
+                    if (!publishSession && !publishOptions) {
+                        // Defensive shutdown/race guard: do not leave handed-out awaiters unresolved.
+                        TryCancelUiPublishAwaiter(sessionTcs);
+                        TryCancelUiPublishAwaiter(optionsTcs);
+                        break;
+                    }
                 }
 
-                try {
-                    await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
-                } catch (OperationCanceledException) {
-                    TryCancelUiPublishAwaiter(sessionTcs);
-                    TryCancelUiPublishAwaiter(optionsTcs);
-                    break;
+                if (!coalesceDelayApplied) {
+                    try {
+                        await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                    } catch (OperationCanceledException) {
+                        TryCancelUiPublishAwaiter(sessionTcs);
+                        TryCancelUiPublishAwaiter(optionsTcs);
+                        break;
+                    }
                 }
 
                 if (publishSession) {
