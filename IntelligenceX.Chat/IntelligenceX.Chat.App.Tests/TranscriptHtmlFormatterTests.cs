@@ -137,6 +137,28 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures /act-looking lines inside fenced code blocks are not converted into actionable chips.
+    /// </summary>
+    [Fact]
+    public void Format_DoesNotExtractPendingActionsFromFencedCode() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 16, 8, 15, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Example script:
+                          ~~~text
+                          1. Dangerous demo (`/act act_danger`)
+                          ~~~
+                          You can run one of these follow-up actions:
+                          1. Safe action (`/act act_safe`)
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("data-act-cmd='/act act_safe'", html);
+        Assert.DoesNotContain("data-act-cmd='/act act_danger'", html);
+    }
+
+    /// <summary>
     /// Ensures inline backtick spans always end up as code tags in transcript HTML.
     /// </summary>
     [Fact]

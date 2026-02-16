@@ -162,12 +162,16 @@ internal sealed class MarkdownComposer {
     }
 
     private static void RenderCodeFence(StringBuilder sb, string language, string content) {
+        var body = (content ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var fence = BuildFence(body);
         var lang = (language ?? string.Empty).Trim();
-        sb.Append("```").AppendLine(lang);
-        foreach (var line in EnumerateLines(content)) {
+        sb.Append(fence).AppendLine(lang);
+        foreach (var line in EnumerateLines(body)) {
             sb.AppendLine(line);
         }
-        sb.AppendLine("```");
+        sb.AppendLine(fence);
     }
 
     private static void RenderRaw(StringBuilder sb, string markdown) {
@@ -182,6 +186,38 @@ internal sealed class MarkdownComposer {
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
         return value.Split('\n', StringSplitOptions.None);
+    }
+
+    private static string BuildFence(string content) {
+        var longestBackticks = LongestRun(content, '`');
+        var longestTildes = LongestRun(content, '~');
+
+        var backtickLength = Math.Max(3, longestBackticks + 1);
+        var tildeLength = Math.Max(3, longestTildes + 1);
+        var marker = backtickLength <= tildeLength ? '`' : '~';
+        var length = marker == '`' ? backtickLength : tildeLength;
+        return new string(marker, length);
+    }
+
+    private static int LongestRun(string text, char marker) {
+        if (string.IsNullOrEmpty(text)) {
+            return 0;
+        }
+
+        var longest = 0;
+        var current = 0;
+        for (var i = 0; i < text.Length; i++) {
+            if (text[i] == marker) {
+                current++;
+                if (current > longest) {
+                    longest = current;
+                }
+            } else {
+                current = 0;
+            }
+        }
+
+        return longest;
     }
 
     private abstract record MarkdownNode;

@@ -236,12 +236,25 @@ internal static class TranscriptHtmlFormatter {
         var kept = new List<string>(lines.Length);
         var actions = new List<PendingActionRenderItem>();
         var inFence = false;
+        var fenceMarker = '\0';
+        var fenceRunLength = 0;
 
         for (var i = 0; i < lines.Length; i++) {
             var line = lines[i] ?? string.Empty;
             var trimmed = line.Trim();
-            if (IsFenceBoundary(trimmed)) {
-                inFence = !inFence;
+            if (TryReadFenceRun(line, out var runMarker, out var runLength, out var runSuffix)) {
+                if (!inFence) {
+                    inFence = true;
+                    fenceMarker = runMarker;
+                    fenceRunLength = runLength;
+                } else if (runMarker == fenceMarker
+                           && runLength >= fenceRunLength
+                           && string.IsNullOrWhiteSpace(runSuffix)) {
+                    inFence = false;
+                    fenceMarker = '\0';
+                    fenceRunLength = 0;
+                }
+
                 kept.Add(line);
                 continue;
             }
@@ -278,8 +291,38 @@ internal static class TranscriptHtmlFormatter {
         return new PendingActionExtraction(cleanedText, actions);
     }
 
-    private static bool IsFenceBoundary(string line) =>
-        !string.IsNullOrWhiteSpace(line) && line.StartsWith("```", StringComparison.Ordinal);
+    private static bool TryReadFenceRun(string line, out char marker, out int runLength, out string suffix) {
+        marker = '\0';
+        runLength = 0;
+        suffix = string.Empty;
+        if (line is null) {
+            return false;
+        }
+
+        var trimmed = line.TrimStart();
+        if (trimmed.Length < 3) {
+            return false;
+        }
+
+        var first = trimmed[0];
+        if (first != '`' && first != '~') {
+            return false;
+        }
+
+        var i = 0;
+        while (i < trimmed.Length && trimmed[i] == first) {
+            i++;
+        }
+
+        if (i < 3) {
+            return false;
+        }
+
+        marker = first;
+        runLength = i;
+        suffix = trimmed.Substring(i);
+        return true;
+    }
 
     private static string AppendPendingActionChips(string bodyHtml, IReadOnlyList<PendingActionRenderItem> actions) {
         if (actions is null || actions.Count == 0) {
