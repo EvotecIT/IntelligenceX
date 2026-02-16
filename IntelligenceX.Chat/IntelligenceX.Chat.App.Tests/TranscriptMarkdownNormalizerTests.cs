@@ -142,4 +142,17 @@ public sealed class TranscriptMarkdownNormalizerTests {
         Assert.Contains("\n2. **Foreign/trusted principal no longer resolvable**", normalized);
         Assert.DoesNotContain("2.^", normalized);
     }
+
+    /// <summary>
+    /// Ensures strong spans with smart quotes and hyphenated terms remain parseable.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesQuotedAndHyphenatedStrongSpans() {
+        var text =
+            "Run **“Top 8 high-signal security pack”** now, or only **GPO-related** reports.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
 }
