@@ -3,10 +3,20 @@
     return title || "New Chat";
   }
 
+  function conversationIsSystem(item) {
+    return !!(item && item.isSystem === true);
+  }
+
   function conversationMeta(item) {
+    var isSystem = conversationIsSystem(item);
     var count = item && typeof item.messageCount === "number" ? item.messageCount : 0;
     var updated = item && item.updatedLocal ? String(item.updatedLocal) : "";
-    var base = String(count) + (count === 1 ? " message" : " messages");
+    var base = isSystem
+      ? (String(count) + (count === 1 ? " event" : " events"))
+      : (String(count) + (count === 1 ? " message" : " messages"));
+    if (isSystem) {
+      base = "System log · " + base;
+    }
     return updated ? (base + " · " + updated) : base;
   }
 
@@ -37,6 +47,10 @@
       button.type = "button";
       button.className = "chat-sidebar-item";
       button.dataset.conversationId = id;
+      var isSystem = conversationIsSystem(chat);
+      if (isSystem) {
+        button.classList.add("system");
+      }
       if (id === state.options.activeConversationId) {
         button.classList.add("active");
       }
@@ -48,6 +62,12 @@
       title.className = "chat-sidebar-item-title";
       title.textContent = conversationTitle(chat);
       body.appendChild(title);
+      if (isSystem) {
+        var badge = document.createElement("span");
+        badge.className = "chat-sidebar-item-pill";
+        badge.textContent = "System";
+        body.appendChild(badge);
+      }
 
       var meta = document.createElement("span");
       meta.className = "chat-sidebar-item-meta";
@@ -56,15 +76,17 @@
 
       button.appendChild(body);
 
-      var deleteBtn = document.createElement("span");
-      deleteBtn.className = "chat-sidebar-item-delete";
-      deleteBtn.setAttribute("role", "button");
-      deleteBtn.setAttribute("aria-label", "Delete conversation");
-      deleteBtn.title = "Delete";
-      deleteBtn.dataset.conversationId = id;
-      deleteBtn.dataset.conversationTitle = conversationTitle(chat);
-      deleteBtn.innerHTML = "<svg width='10' height='10' viewBox='0 0 16 16' fill='none'><path d='M4 4l8 8M12 4l-8 8' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg>";
-      button.appendChild(deleteBtn);
+      if (!isSystem) {
+        var deleteBtn = document.createElement("span");
+        deleteBtn.className = "chat-sidebar-item-delete";
+        deleteBtn.setAttribute("role", "button");
+        deleteBtn.setAttribute("aria-label", "Delete conversation");
+        deleteBtn.title = "Delete";
+        deleteBtn.dataset.conversationId = id;
+        deleteBtn.dataset.conversationTitle = conversationTitle(chat);
+        deleteBtn.innerHTML = "<svg width='10' height='10' viewBox='0 0 16 16' fill='none'><path d='M4 4l8 8M12 4l-8 8' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg>";
+        button.appendChild(deleteBtn);
+      }
 
       host.appendChild(button);
     }
@@ -92,6 +114,10 @@
 
       var row = document.createElement("div");
       row.className = "options-conversation-item";
+      var isSystem = conversationIsSystem(chat);
+      if (isSystem) {
+        row.classList.add("system");
+      }
       if (id === state.options.activeConversationId) {
         row.classList.add("active");
       }
@@ -103,6 +129,12 @@
       title.className = "options-conversation-title";
       title.textContent = conversationTitle(chat);
       main.appendChild(title);
+      if (isSystem) {
+        var systemTag = document.createElement("span");
+        systemTag.className = "options-pill options-pill-category";
+        systemTag.textContent = "System";
+        main.appendChild(systemTag);
+      }
 
       var meta = document.createElement("div");
       meta.className = "options-conversation-meta";
@@ -130,23 +162,30 @@
         openButton.textContent = "Open";
         actions.appendChild(openButton);
 
-        var renameButton = document.createElement("button");
-        renameButton.type = "button";
-        renameButton.className = "options-btn options-btn-sm options-btn-ghost options-conversation-switch";
-        renameButton.dataset.action = "rename";
-        renameButton.dataset.conversationId = id;
-        renameButton.dataset.currentTitle = conversationTitle(chat);
-        renameButton.textContent = "Rename";
-        actions.appendChild(renameButton);
+        if (!isSystem) {
+          var renameButton = document.createElement("button");
+          renameButton.type = "button";
+          renameButton.className = "options-btn options-btn-sm options-btn-ghost options-conversation-switch";
+          renameButton.dataset.action = "rename";
+          renameButton.dataset.conversationId = id;
+          renameButton.dataset.currentTitle = conversationTitle(chat);
+          renameButton.textContent = "Rename";
+          actions.appendChild(renameButton);
 
-        var deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.className = "options-btn options-btn-sm options-btn-danger options-conversation-switch";
-        deleteButton.dataset.action = "delete";
-        deleteButton.dataset.conversationId = id;
-        deleteButton.dataset.currentTitle = conversationTitle(chat);
-        deleteButton.textContent = "Delete";
-        actions.appendChild(deleteButton);
+          var deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "options-btn options-btn-sm options-btn-danger options-conversation-switch";
+          deleteButton.dataset.action = "delete";
+          deleteButton.dataset.conversationId = id;
+          deleteButton.dataset.currentTitle = conversationTitle(chat);
+          deleteButton.textContent = "Delete";
+          actions.appendChild(deleteButton);
+        } else {
+          var lockedPill = document.createElement("span");
+          lockedPill.className = "options-pill";
+          lockedPill.textContent = "Locked";
+          actions.appendChild(lockedPill);
+        }
 
         row.appendChild(actions);
       } else {
@@ -158,23 +197,30 @@
         activePill.textContent = "Active";
         activeActions.appendChild(activePill);
 
-        var renameActiveButton = document.createElement("button");
-        renameActiveButton.type = "button";
-        renameActiveButton.className = "options-btn options-btn-sm options-btn-ghost options-conversation-switch";
-        renameActiveButton.dataset.action = "rename";
-        renameActiveButton.dataset.conversationId = id;
-        renameActiveButton.dataset.currentTitle = conversationTitle(chat);
-        renameActiveButton.textContent = "Rename";
-        activeActions.appendChild(renameActiveButton);
+        if (!isSystem) {
+          var renameActiveButton = document.createElement("button");
+          renameActiveButton.type = "button";
+          renameActiveButton.className = "options-btn options-btn-sm options-btn-ghost options-conversation-switch";
+          renameActiveButton.dataset.action = "rename";
+          renameActiveButton.dataset.conversationId = id;
+          renameActiveButton.dataset.currentTitle = conversationTitle(chat);
+          renameActiveButton.textContent = "Rename";
+          activeActions.appendChild(renameActiveButton);
 
-        var deleteActiveButton = document.createElement("button");
-        deleteActiveButton.type = "button";
-        deleteActiveButton.className = "options-btn options-btn-sm options-btn-danger options-conversation-switch";
-        deleteActiveButton.dataset.action = "delete";
-        deleteActiveButton.dataset.conversationId = id;
-        deleteActiveButton.dataset.currentTitle = conversationTitle(chat);
-        deleteActiveButton.textContent = "Delete";
-        activeActions.appendChild(deleteActiveButton);
+          var deleteActiveButton = document.createElement("button");
+          deleteActiveButton.type = "button";
+          deleteActiveButton.className = "options-btn options-btn-sm options-btn-danger options-conversation-switch";
+          deleteActiveButton.dataset.action = "delete";
+          deleteActiveButton.dataset.conversationId = id;
+          deleteActiveButton.dataset.currentTitle = conversationTitle(chat);
+          deleteActiveButton.textContent = "Delete";
+          activeActions.appendChild(deleteActiveButton);
+        } else {
+          var lockedActivePill = document.createElement("span");
+          lockedActivePill.className = "options-pill";
+          lockedActivePill.textContent = "Locked";
+          activeActions.appendChild(lockedActivePill);
+        }
 
         row.appendChild(activeActions);
       }

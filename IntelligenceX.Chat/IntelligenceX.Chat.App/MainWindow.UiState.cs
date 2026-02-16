@@ -31,6 +31,10 @@ public sealed partial class MainWindow : Window {
 
     private void ClearConversation() {
         var conversation = GetActiveConversation();
+        if (IsSystemConversation(conversation)) {
+            _ = SetStatusAsync("System conversation cannot be cleared.", SessionStatusTone.Warn);
+            return;
+        }
         conversation.Messages.Clear();
         conversation.Title = DefaultConversationTitle;
         conversation.ThreadId = null;
@@ -51,7 +55,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private void AppendSystem(string text) {
-        var conversation = GetActiveConversation();
+        var conversation = EnsureSystemConversation();
         AppendSystem(conversation, text);
     }
 
@@ -564,9 +568,10 @@ public sealed partial class MainWindow : Window {
         }
 
         var ordered = new List<ConversationRuntime>(_conversations);
-        ordered.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+        ordered.Sort(CompareConversationsForDisplay);
         var list = new List<object>(ordered.Count);
         foreach (var conversation in ordered) {
+            var isSystem = IsSystemConversation(conversation);
             var updatedUtc = conversation.UpdatedUtc == default ? DateTime.UtcNow : conversation.UpdatedUtc;
             var updatedLocal = EnsureUtc(updatedUtc).ToLocalTime();
             var preview = string.Empty;
@@ -582,10 +587,15 @@ public sealed partial class MainWindow : Window {
 
             list.Add(new {
                 id = conversation.Id,
-                title = string.IsNullOrWhiteSpace(conversation.Title) ? DefaultConversationTitle : conversation.Title,
+                title = isSystem
+                    ? SystemConversationTitle
+                    : string.IsNullOrWhiteSpace(conversation.Title)
+                        ? DefaultConversationTitle
+                        : conversation.Title,
                 messageCount = conversation.Messages.Count,
                 preview,
                 isActive = string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase),
+                isSystem,
                 updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
             });
         }

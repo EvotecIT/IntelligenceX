@@ -400,6 +400,16 @@ body {
   color: var(--ix-text-primary);
 }
 
+.chat-sidebar-item.system {
+  border-color: rgba(255, 206, 107, 0.52);
+  background: rgba(94, 66, 16, 0.28);
+}
+
+.chat-sidebar-item.system.active {
+  border-color: rgba(255, 206, 107, 0.76);
+  background: rgba(136, 92, 18, 0.34);
+}
+
 .chat-sidebar-item-title {
   display: block;
   font-size: 12px;
@@ -422,6 +432,20 @@ body {
 .chat-sidebar-item-body {
   flex: 1;
   min-width: 0;
+}
+
+.chat-sidebar-item-pill {
+  display: inline-block;
+  margin-top: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 206, 107, 0.62);
+  background: rgba(255, 206, 107, 0.2);
+  color: #ffefcb;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 6px;
 }
 
 .chat-sidebar-item-delete {

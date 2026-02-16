@@ -207,9 +207,6 @@ public static class ToolHealthDiagnostics {
             case "powershell":
                 smokeToolName = "powershell_environment_discover";
                 return true;
-            case "reviewersetup":
-                smokeToolName = "reviewer_setup_contract_verify";
-                return true;
             default:
                 return false;
         }
