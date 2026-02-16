@@ -17,13 +17,7 @@
     var pointerMatches = (typeof pointerId !== "number") || (pointerId === pendingPointerId);
 
     if (!pointerMatches && !force) {
-      if (dragBar && dragBar.hasPointerCapture && dragBar.hasPointerCapture(pointerId)) {
-        try {
-          dragBar.releasePointerCapture(pointerId);
-        } catch (_) {
-          // Ignore release failures.
-        }
-      }
+      // Ignore unrelated pointer events to avoid interfering with active capture.
       return;
     }
 
