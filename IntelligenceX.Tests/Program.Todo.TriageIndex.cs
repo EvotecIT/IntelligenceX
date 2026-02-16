@@ -170,6 +170,64 @@ internal static partial class Program {
         AssertEqual(true, matches[0].Confidence >= 0.90, "direct reference confidence");
     }
 
+    private static void TestTriageIndexMatchIssueToPullRequestsSupportsDirectPullRequestReference() {
+        var now = DateTimeOffset.UtcNow;
+        var pullRequest58 = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#58",
+            "pull_request",
+            58,
+            "Improve triage label reliability",
+            "https://github.com/EvotecIT/IntelligenceX/pull/58",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Improve triage label reliability"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Improve triage label reliability"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Improve triage label reliability for issues and pull requests"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "MERGEABLE", "APPROVED", "SUCCESS", 8, 180, 40, 4, 3, "dev3"),
+            null
+        );
+
+        var matches = IntelligenceX.Cli.Todo.TriageIndexRunner.MatchIssueToPullRequests(
+            "EvotecIT/IntelligenceX",
+            "Issue triage labels are flaky",
+            "Observed while validating PR #58 in production-like traffic.",
+            new[] { pullRequest58 }
+        );
+
+        AssertEqual(1, matches.Count, "direct pull-request match count");
+        AssertEqual(58, matches[0].Number, "direct pull-request number");
+        AssertEqual(true, matches[0].Confidence >= 0.90, "direct pull-request confidence");
+    }
+
+    private static void TestTriageIndexMatchIssueToPullRequestsSupportsPullRequestUrlReference() {
+        var now = DateTimeOffset.UtcNow;
+        var pullRequest72 = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#72",
+            "pull_request",
+            72,
+            "Add issue to PR linking suggestions",
+            "https://github.com/EvotecIT/IntelligenceX/pull/72",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Add issue to PR linking suggestions"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Add issue to PR linking suggestions"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Add issue to pull request linking suggestions in triage workflow"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "MERGEABLE", "REVIEW_REQUIRED", "SUCCESS", 5, 120, 22, 1, 2, "dev4"),
+            null
+        );
+
+        var matches = IntelligenceX.Cli.Todo.TriageIndexRunner.MatchIssueToPullRequests(
+            "EvotecIT/IntelligenceX",
+            "Need stronger issue to PR linking",
+            "See implementation draft: https://github.com/EvotecIT/IntelligenceX/pull/72",
+            new[] { pullRequest72 }
+        );
+
+        AssertEqual(1, matches.Count, "pull-request URL match count");
+        AssertEqual(72, matches[0].Number, "pull-request URL number");
+        AssertEqual(true, matches[0].Confidence >= 0.90, "pull-request URL confidence");
+    }
+
     private static void TestTriageIndexInferCategoryAndTagsDetectsSecurity() {
         var now = DateTimeOffset.UtcNow;
         var item = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(

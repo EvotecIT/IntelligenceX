@@ -395,6 +395,86 @@ internal static partial class Program {
         AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.89, "issue matched pull request confidence derived");
     }
 
+    private static void TestProjectSyncBuildEntriesPreservesHigherConfidenceIssueSidePullRequestMatch() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "pr#77",
+      "kind": "pull_request",
+      "number": 77,
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/77",
+      "relatedIssues": [
+        {
+          "number": 120,
+          "url": "https://github.com/EvotecIT/IntelligenceX/issues/120",
+          "confidence": 0.61,
+          "reason": "token overlap"
+        }
+      ]
+    },
+    {
+      "id": "issue#120",
+      "kind": "issue",
+      "number": 120,
+      "url": "https://github.com/EvotecIT/IntelligenceX/issues/120",
+      "matchedPullRequestUrl": "https://github.com/EvotecIT/IntelligenceX/pull/88",
+      "matchedPullRequestConfidence": 0.97
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            null,
+            100);
+
+        var issue = entries.Single(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/88", issue.MatchedPullRequestUrl, "issue-side pull request match preserved");
+        AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.97, "issue-side confidence preserved");
+    }
+
+    private static void TestProjectSyncBuildEntriesUsesIssueRelatedPullRequestFallback() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "issue#130",
+      "kind": "issue",
+      "number": 130,
+      "url": "https://github.com/EvotecIT/IntelligenceX/issues/130",
+      "relatedPullRequests": [
+        {
+          "number": 91,
+          "url": "https://github.com/EvotecIT/IntelligenceX/pull/91",
+          "confidence": 0.72,
+          "reason": "token overlap"
+        },
+        {
+          "number": 90,
+          "url": "https://github.com/EvotecIT/IntelligenceX/pull/90",
+          "confidence": 0.88,
+          "reason": "explicit pull request reference in issue title/body"
+        }
+      ]
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            null,
+            100);
+
+        var issue = entries.Single(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/90", issue.MatchedPullRequestUrl, "fallback uses top related pull request");
+        AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.88, "fallback confidence derived from top related pull request");
+    }
+
     private static void TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence() {
         var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
             Number: 55,

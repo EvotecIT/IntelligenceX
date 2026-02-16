@@ -452,6 +452,8 @@ internal static partial class Program {
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
         failed += Run("Todo triage index PR-issue explicit match", TestTriageIndexMatchPullRequestToIssuesSupportsExplicitReference);
         failed += Run("Todo triage index PR-issue direct match", TestTriageIndexMatchPullRequestToIssuesSupportsDirectIssueReference);
+        failed += Run("Todo triage index issue-PR direct match", TestTriageIndexMatchIssueToPullRequestsSupportsDirectPullRequestReference);
+        failed += Run("Todo triage index issue-PR URL match", TestTriageIndexMatchIssueToPullRequestsSupportsPullRequestUrlReference);
         failed += Run("Todo triage index category/tag inference", TestTriageIndexInferCategoryAndTagsDetectsSecurity);
         failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
@@ -485,6 +487,8 @@ internal static partial class Program {
         failed += Run("Todo project sync decision suggests merge-candidate", TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr);
         failed += Run("Todo project sync decision suggests defer for blocked PR", TestProjectSyncBuildEntriesSuggestsDeferForBlockedPr);
         failed += Run("Todo project sync derives issue pull-request matches", TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches);
+        failed += Run("Todo project sync preserves higher-confidence issue-side pull-request matches", TestProjectSyncBuildEntriesPreservesHigherConfidenceIssueSidePullRequestMatch);
+        failed += Run("Todo project sync uses issue related pull-request fallback", TestProjectSyncBuildEntriesUsesIssueRelatedPullRequestFallback);
         failed += Run("Todo project sync comment filters by confidence", TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence);
         failed += Run("Todo project sync comment omitted for weak candidates", TestProjectSyncBuildIssueMatchSuggestionCommentReturnsNullWithoutQualifiedCandidates);
         failed += Run("Todo project sync issue backlink comments aggregate PRs", TestProjectSyncBuildIssueBacklinkSuggestionCommentsAggregatesPullRequests);

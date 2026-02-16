@@ -490,6 +490,13 @@ internal static class ProjectSyncRunner {
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
                 var relatedIssues = ParseRelatedIssueCandidates(item);
+                var matchedPullRequestUrl = ReadNullableString(item, "matchedPullRequestUrl");
+                var matchedPullRequestConfidence = ReadNullableDouble(item, "matchedPullRequestConfidence");
+                var relatedPullRequests = ParseRelatedPullRequestCandidates(item);
+                if (string.IsNullOrWhiteSpace(matchedPullRequestUrl) && relatedPullRequests.Count > 0) {
+                    matchedPullRequestUrl = relatedPullRequests[0].Url;
+                    matchedPullRequestConfidence = relatedPullRequests[0].Confidence;
+                }
                 var decisionSignals = ParsePullRequestSignals(item);
                 if (decisionSignals is not null) {
                     decisionSignalsByUrl[url] = decisionSignals;
@@ -517,6 +524,8 @@ internal static class ProjectSyncRunner {
                     VisionConfidence: null,
                     RelatedIssues: relatedIssues,
                     SuggestedDecision: null,
+                    MatchedPullRequestUrl: matchedPullRequestUrl,
+                    MatchedPullRequestConfidence: matchedPullRequestConfidence,
                     ExistingLabels: existingLabels
                 );
             }
@@ -583,6 +592,13 @@ internal static class ProjectSyncRunner {
 
             if (issueMatchByUrl.TryGetValue(pair.Key, out var byUrlMatch) ||
                 (pair.Value.Number > 0 && issueMatchByNumber.TryGetValue(pair.Value.Number, out byUrlMatch))) {
+                if (!ShouldReplaceIssuePullRequestMatch(
+                        pair.Value.MatchedPullRequestUrl,
+                        pair.Value.MatchedPullRequestConfidence,
+                        byUrlMatch)) {
+                    continue;
+                }
+
                 entriesByUrl[pair.Key] = pair.Value with {
                     MatchedPullRequestUrl = byUrlMatch.Url,
                     MatchedPullRequestConfidence = byUrlMatch.Confidence
@@ -752,6 +768,30 @@ internal static class ProjectSyncRunner {
             return confidenceCompare;
         }
         return number.CompareTo(existing.Number);
+    }
+
+    private static bool ShouldReplaceIssuePullRequestMatch(
+        string? existingPullRequestUrl,
+        double? existingConfidence,
+        RelatedPullRequestCandidate candidate) {
+        if (string.IsNullOrWhiteSpace(existingPullRequestUrl) || !existingConfidence.HasValue) {
+            return true;
+        }
+
+        if (candidate.Confidence > existingConfidence.Value) {
+            return true;
+        }
+
+        if (candidate.Confidence < existingConfidence.Value) {
+            return false;
+        }
+
+        var (existingKind, existingNumber) = ParseKindAndNumberFromUrl(existingPullRequestUrl);
+        if (!existingKind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || existingNumber <= 0) {
+            return true;
+        }
+
+        return candidate.Number > 0 && candidate.Number < existingNumber;
     }
 
     private static PullRequestDecisionSignals? ParsePullRequestSignals(JsonElement item) {
@@ -1166,6 +1206,36 @@ internal static class ProjectSyncRunner {
             }
 
             results.Add(new RelatedIssueCandidate(
+                Number: number,
+                Url: url,
+                Confidence: Math.Round(Math.Clamp(confidence.Value, 0.0, 1.0), 4, MidpointRounding.AwayFromZero),
+                Reason: reason
+            ));
+        }
+
+        return results
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .Take(10)
+            .ToList();
+    }
+
+    private static IReadOnlyList<RelatedPullRequestCandidate> ParseRelatedPullRequestCandidates(JsonElement item) {
+        if (!TryGetProperty(item, "relatedPullRequests", out var relatedProp) || relatedProp.ValueKind != JsonValueKind.Array) {
+            return Array.Empty<RelatedPullRequestCandidate>();
+        }
+
+        var results = new List<RelatedPullRequestCandidate>();
+        foreach (var related in relatedProp.EnumerateArray()) {
+            var number = ReadInt(related, "number");
+            var url = ReadString(related, "url");
+            var confidence = ReadNullableDouble(related, "confidence");
+            var reason = ReadNullableString(related, "reason") ?? string.Empty;
+            if (number <= 0 || string.IsNullOrWhiteSpace(url) || !confidence.HasValue) {
+                continue;
+            }
+
+            results.Add(new RelatedPullRequestCandidate(
                 Number: number,
                 Url: url,
                 Confidence: Math.Round(Math.Clamp(confidence.Value, 0.0, 1.0), 4, MidpointRounding.AwayFromZero),
