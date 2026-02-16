@@ -13,15 +13,23 @@
       return;
     }
 
-    if (typeof pointerId === "number" && pendingWindowDrag.pointerId !== pointerId) {
-      return;
-    }
+    var pendingPointerId = pendingWindowDrag.pointerId;
 
-    if (dragBar && dragBar.hasPointerCapture && dragBar.hasPointerCapture(pendingWindowDrag.pointerId)) {
-      try {
-        dragBar.releasePointerCapture(pendingWindowDrag.pointerId);
-      } catch (_) {
-        // Ignore release failures.
+    if (dragBar && dragBar.hasPointerCapture) {
+      if (dragBar.hasPointerCapture(pendingPointerId)) {
+        try {
+          dragBar.releasePointerCapture(pendingPointerId);
+        } catch (_) {
+          // Ignore release failures.
+        }
+      }
+
+      if (typeof pointerId === "number" && pointerId !== pendingPointerId && dragBar.hasPointerCapture(pointerId)) {
+        try {
+          dragBar.releasePointerCapture(pointerId);
+        } catch (_) {
+          // Ignore release failures.
+        }
       }
     }
 
