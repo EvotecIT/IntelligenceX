@@ -45,6 +45,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(reviewIndex >= 0 && heartbeatIndex > reviewIndex);
     }
 
+    [Fact]
+    public async Task SynchronizedCaptureStream_FlushAsync_CanceledTokenReturnsCanceledTask() {
+        using var stream = new SynchronizedCaptureStream();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.FlushAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task SynchronizedCaptureStream_WriteAsync_CanceledTokenReturnsCanceledTask() {
+        using var stream = new SynchronizedCaptureStream();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var payload = new byte[] { 1, 2, 3 };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.WriteAsync(payload, 0, payload.Length, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.WriteAsync(payload.AsMemory(), cts.Token));
+    }
+
     private static async Task InvokePhaseProgressLoopAsync(ChatServiceSession session, StreamWriter writer, string phaseStatus, string phaseMessage,
         string heartbeatLabel, int heartbeatSeconds, Task phaseTask) {
         await session.RunPhaseProgressLoopAsync(
