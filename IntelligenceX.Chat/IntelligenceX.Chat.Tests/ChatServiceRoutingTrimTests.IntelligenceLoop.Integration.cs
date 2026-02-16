@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -12,10 +11,6 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
-    private static readonly MethodInfo RunPhaseProgressLoopAsyncMethod =
-        typeof(ChatServiceSession).GetMethod("RunPhaseProgressLoopAsync", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("RunPhaseProgressLoopAsync not found.");
-
     [Fact]
     public async Task PhaseProgressLoop_EmitsPlanExecuteReviewInOrder() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
@@ -52,7 +47,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     private static async Task InvokePhaseProgressLoopAsync(ChatServiceSession session, StreamWriter writer, string phaseStatus, string phaseMessage,
         string heartbeatLabel, int heartbeatSeconds, Task phaseTask) {
-        var args = new object?[] {
+        await session.RunPhaseProgressLoopAsync(
             writer,
             "req-intelligence-loop",
             "thread-intelligence-loop",
@@ -61,12 +56,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             heartbeatLabel,
             heartbeatSeconds,
             CancellationToken.None,
-            phaseTask
-        };
-
-        var invoked = RunPhaseProgressLoopAsyncMethod.Invoke(session, args);
-        var task = Assert.IsAssignableFrom<Task>(invoked);
-        await task;
+            phaseTask);
     }
 
     private static List<string> ParseStatuses(byte[] snapshotBytes) {
@@ -162,6 +152,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         public override Task FlushAsync(CancellationToken cancellationToken) {
+            if (cancellationToken.IsCancellationRequested) {
+                return Task.FromCanceled(cancellationToken);
+            }
+
             lock (_sync) {
                 _inner.Flush();
             }
@@ -185,6 +179,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) {
+            if (cancellationToken.IsCancellationRequested) {
+                return Task.FromCanceled(cancellationToken);
+            }
+
             lock (_sync) {
                 _inner.Write(buffer, offset, count);
             }
@@ -199,6 +197,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) {
+            if (cancellationToken.IsCancellationRequested) {
+                return ValueTask.FromCanceled(cancellationToken);
+            }
+
             lock (_sync) {
                 _inner.Write(buffer.Span);
             }

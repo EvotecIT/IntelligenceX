@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.OpenAI.Chat;
@@ -9,36 +8,10 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
-    private static readonly MethodInfo ResolveMaxReviewPassesMethod =
-        typeof(ChatServiceSession).GetMethod("ResolveMaxReviewPasses", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("ResolveMaxReviewPasses not found.");
-    private static readonly MethodInfo ResolveModelHeartbeatSecondsMethod =
-        typeof(ChatServiceSession).GetMethod("ResolveModelHeartbeatSeconds", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("ResolveModelHeartbeatSeconds not found.");
-    private static readonly MethodInfo ShouldAttemptResponseQualityReviewMethod =
-        typeof(ChatServiceSession).GetMethod("ShouldAttemptResponseQualityReview", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("ShouldAttemptResponseQualityReview not found.");
-    private static readonly MethodInfo BuildResponseQualityReviewPromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildResponseQualityReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BuildResponseQualityReviewPrompt not found.");
-    private static readonly MethodInfo TryReadProactiveModeFromRequestTextMethod =
-        typeof(ChatServiceSession).GetMethod("TryReadProactiveModeFromRequestText", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("TryReadProactiveModeFromRequestText not found.");
-    private static readonly MethodInfo ShouldAttemptProactiveFollowUpReviewMethod =
-        typeof(ChatServiceSession).GetMethod("ShouldAttemptProactiveFollowUpReview", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("ShouldAttemptProactiveFollowUpReview not found.");
-    private static readonly MethodInfo BuildProactiveFollowUpReviewPromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildProactiveFollowUpReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BuildProactiveFollowUpReviewPrompt not found.");
-    private static readonly MethodInfo CopyChatOptionsWithoutToolsMethod =
-        typeof(ChatServiceSession).GetMethod("CopyChatOptionsWithoutTools", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("CopyChatOptionsWithoutTools not found.");
-
     [Fact]
     public void ResolveMaxReviewPasses_DefaultsToSafeValueWhenUnset() {
-        var result = ResolveMaxReviewPassesMethod.Invoke(null, new object?[] { null });
-
-        Assert.Equal(1, Assert.IsType<int>(result));
+        var result = ChatServiceSession.ResolveMaxReviewPasses(null);
+        Assert.Equal(1, result);
     }
 
     [Theory]
@@ -52,9 +25,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             MaxReviewPasses = requested
         };
 
-        var result = ResolveMaxReviewPassesMethod.Invoke(null, new object?[] { options });
-
-        Assert.Equal(expected, Assert.IsType<int>(result));
+        var result = ChatServiceSession.ResolveMaxReviewPasses(options);
+        Assert.Equal(expected, result);
     }
 
     [Theory]
@@ -70,9 +42,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 ModelHeartbeatSeconds = requested.Value
             };
 
-        var result = ResolveModelHeartbeatSecondsMethod.Invoke(null, new object?[] { options });
-
-        Assert.Equal(expected, Assert.IsType<int>(result));
+        var result = ChatServiceSession.ResolveModelHeartbeatSeconds(options);
+        Assert.Equal(expected, result);
     }
 
     [Theory]
@@ -88,19 +59,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         int reviewPassesUsed,
         int maxReviewPasses,
         bool expected) {
-        var result = ShouldAttemptResponseQualityReviewMethod.Invoke(
-            null,
-            new object?[] { userRequest, assistantDraft, executionContractApplies, hasToolActivity, reviewPassesUsed, maxReviewPasses });
+        var result = ChatServiceSession.ShouldAttemptResponseQualityReview(
+            userRequest,
+            assistantDraft,
+            executionContractApplies,
+            hasToolActivity,
+            reviewPassesUsed,
+            maxReviewPasses);
 
-        Assert.Equal(expected, Assert.IsType<bool>(result));
+        Assert.Equal(expected, result);
     }
 
     [Fact]
     public void BuildResponseQualityReviewPrompt_EmitsStableMarkerAndPassMetadata() {
-        var result = BuildResponseQualityReviewPromptMethod.Invoke(
-            null,
-            new object?[] { "run diagnostics on dc01", "ok", false, 1, 2 });
-        var text = Assert.IsType<string>(result);
+        var text = ChatServiceSession.BuildResponseQualityReviewPrompt("run diagnostics on dc01", "ok", false, 1, 2);
 
         Assert.Contains("ix:response-review:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Review pass 1/2", text, StringComparison.OrdinalIgnoreCase);
@@ -112,11 +84,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: false", true, false)]
     [InlineData("no marker", false, false)]
     public void TryReadProactiveModeFromRequestText_ParsesStructuredMarker(string requestText, bool expectedRead, bool expectedEnabled) {
-        var args = new object?[] { requestText, null };
-        var result = TryReadProactiveModeFromRequestTextMethod.Invoke(null, args);
-
-        Assert.Equal(expectedRead, Assert.IsType<bool>(result));
-        Assert.Equal(expectedEnabled, Assert.IsType<bool>(args[1]));
+        var result = ChatServiceSession.TryReadProactiveModeFromRequestText(requestText, out var enabled);
+        Assert.Equal(expectedRead, result);
+        Assert.Equal(expectedEnabled, enabled);
     }
 
     [Theory]
@@ -131,19 +101,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
         bool proactiveFollowUpUsed,
         string assistantDraft,
         bool expected) {
-        var result = ShouldAttemptProactiveFollowUpReviewMethod.Invoke(
-            null,
-            new object?[] { proactiveModeEnabled, hasToolActivity, proactiveFollowUpUsed, assistantDraft });
+        var result = ChatServiceSession.ShouldAttemptProactiveFollowUpReview(
+            proactiveModeEnabled,
+            hasToolActivity,
+            proactiveFollowUpUsed,
+            assistantDraft);
 
-        Assert.Equal(expected, Assert.IsType<bool>(result));
+        Assert.Equal(expected, result);
     }
 
     [Fact]
     public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkerAndSections() {
-        var result = BuildProactiveFollowUpReviewPromptMethod.Invoke(
-            null,
-            new object?[] { "analyze failed logons", "Current findings..." });
-        var text = Assert.IsType<string>(result);
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt("analyze failed logons", "Current findings...");
 
         Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Potential issues to verify", text, StringComparison.OrdinalIgnoreCase);
@@ -159,8 +128,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ToolChoice = ToolChoice.Auto
         };
 
-        var result = CopyChatOptionsWithoutToolsMethod.Invoke(null, new object?[] { source, false });
-        var copy = Assert.IsType<ChatOptions>(result);
+        var copy = ChatServiceSession.CopyChatOptionsWithoutTools(source, false);
 
         Assert.Null(copy.Tools);
         Assert.Null(copy.ToolChoice);
