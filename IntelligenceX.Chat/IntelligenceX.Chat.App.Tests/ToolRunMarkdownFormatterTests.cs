@@ -42,7 +42,7 @@ public sealed class ToolRunMarkdownFormatterTests {
     /// Ensures structured tool failure fields are rendered in debug markdown.
     /// </summary>
     [Fact]
-    public void Format_RendersFailureContractAndHints() {
+    public void Format_RendersFailureDescriptorAndHints() {
         var tools = new ToolRunDto {
             Calls = new[] {
                 new ToolCallDto {
@@ -66,7 +66,7 @@ public sealed class ToolRunMarkdownFormatterTests {
         var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "AD Replication Check");
 
         Assert.Contains("#### AD Replication Check", markdown);
-        Assert.Contains("failure contract: code: `tool_timeout` | retryable: yes", markdown);
+        Assert.Contains("failure descriptor: code: `tool_timeout` | retryable: yes", markdown);
         Assert.Contains("error: Tool timed out after 60s.", markdown);
         Assert.Contains("- Narrow scope to one DC.", markdown);
         Assert.Contains("- Retry with a longer timeout.", markdown);

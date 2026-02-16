@@ -3,7 +3,7 @@ using System;
 namespace IntelligenceX.Tools.Common;
 
 /// <summary>
-/// Maps typed engine/tool failure contracts to stable tool error envelopes.
+/// Maps typed engine/tool failure descriptors to stable tool error envelopes.
 /// </summary>
 public static class ToolFailureMapper {
     /// <summary>

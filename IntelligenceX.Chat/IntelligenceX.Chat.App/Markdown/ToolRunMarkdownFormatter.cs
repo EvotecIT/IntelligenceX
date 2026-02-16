@@ -36,7 +36,7 @@ internal static class ToolRunMarkdownFormatter {
 
             markdown.Heading(toolLabel, 4);
             if (hasError) {
-                AppendFailureContract(markdown, output);
+                AppendFailureDescriptor(markdown, output);
             }
 
             var summary = NormalizeSummaryMarkdown(output.SummaryMarkdown, toolLabel);
@@ -204,7 +204,7 @@ internal static class ToolRunMarkdownFormatter {
         return hasPipe;
     }
 
-    private static void AppendFailureContract(MarkdownComposer markdown, ToolOutputDto output) {
+    private static void AppendFailureDescriptor(MarkdownComposer markdown, ToolOutputDto output) {
         var detailParts = new List<string>();
         var errorCode = (output.ErrorCode ?? string.Empty).Trim();
         var errorMessage = (output.Error ?? string.Empty).Trim();
@@ -216,7 +216,7 @@ internal static class ToolRunMarkdownFormatter {
             detailParts.Add("retryable: " + (output.IsTransient.Value ? "yes" : "no"));
         }
         if (detailParts.Count > 0) {
-            markdown.Quote("failure contract: " + string.Join(" | ", detailParts));
+            markdown.Quote("failure descriptor: " + string.Join(" | ", detailParts));
         }
 
         if (errorMessage.Length > 0) {
