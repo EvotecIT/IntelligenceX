@@ -13,7 +13,9 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Vision Fit", StringComparer.OrdinalIgnoreCase), "has Vision Fit");
         AssertEqual(true, names.Contains("Vision Confidence", StringComparer.OrdinalIgnoreCase), "has Vision Confidence");
         AssertEqual(true, names.Contains("Category", StringComparer.OrdinalIgnoreCase), "has Category");
+        AssertEqual(true, names.Contains("Category Confidence", StringComparer.OrdinalIgnoreCase), "has Category Confidence");
         AssertEqual(true, names.Contains("Tags", StringComparer.OrdinalIgnoreCase), "has Tags");
+        AssertEqual(true, names.Contains("Tag Confidence Summary", StringComparer.OrdinalIgnoreCase), "has Tag Confidence Summary");
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
         AssertEqual(true, names.Contains("Matched Issue Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Issue Confidence");
         AssertEqual(true, names.Contains("Matched Issue Reason", StringComparer.OrdinalIgnoreCase), "has Matched Issue Reason");
@@ -1086,6 +1088,58 @@ internal static partial class Program {
 
         var normalized = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildMatchReasonFieldValue(" explicit issue reference \r\n in PR body ");
         AssertEqual("explicit issue reference in PR body", normalized, "reason whitespace normalized");
+    }
+
+    private static void TestProjectSyncBuildTagConfidenceSummaryFieldValueOrdersAndLimitsCandidates() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 57,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/57",
+            Kind: "pull_request",
+            TriageScore: 70.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: new[] { "security", "api", "docs" },
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            TagConfidences: new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase) {
+                ["security"] = 0.91,
+                ["api"] = 0.57,
+                ["docs"] = 0.77,
+                ["maintenance"] = 0.88
+            }
+        );
+
+        var value = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildTagConfidenceSummaryFieldValue(entry, maxTags: 2);
+        AssertContainsText(value, "security: 0.91", "highest confidence tag included first");
+        AssertContainsText(value, "docs: 0.77", "second highest confidence tag included");
+        AssertEqual(false, value.Contains("api: 0.57", StringComparison.OrdinalIgnoreCase), "limited to top maxTags entries");
+        AssertEqual(false, value.Contains("maintenance: 0.88", StringComparison.OrdinalIgnoreCase), "non-tag confidence excluded when entry tags are present");
+    }
+
+    private static void TestProjectSyncBuildTagConfidenceSummaryFieldValueFallsBackToConfidenceMap() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 58,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/58",
+            Kind: "pull_request",
+            TriageScore: 71.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: new[] { "api" },
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            TagConfidences: new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase) {
+                ["security"] = 0.73
+            }
+        );
+
+        var value = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildTagConfidenceSummaryFieldValue(entry, maxTags: 3);
+        AssertContainsText(value, "security: 0.73", "falls back to full confidence map when tag names do not overlap");
     }
 #endif
 }

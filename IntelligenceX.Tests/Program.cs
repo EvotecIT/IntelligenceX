@@ -506,6 +506,10 @@ internal static partial class Program {
         failed += Run("Todo project sync related issues field value", TestProjectSyncBuildRelatedIssuesFieldValueOrdersAndLimitsCandidates);
         failed += Run("Todo project sync related pull requests field value", TestProjectSyncBuildRelatedPullRequestsFieldValueOrdersAndLimitsCandidates);
         failed += Run("Todo project sync match reason field value", TestProjectSyncBuildMatchReasonFieldValueNormalizesReasonText);
+        failed += Run("Todo project sync tag confidence summary field value",
+            TestProjectSyncBuildTagConfidenceSummaryFieldValueOrdersAndLimitsCandidates);
+        failed += Run("Todo project sync tag confidence summary fallback",
+            TestProjectSyncBuildTagConfidenceSummaryFieldValueFallsBackToConfidenceMap);
         failed += Run("Todo repository label sync plan add/remove managed labels", TestRepositoryLabelManagerBuildManagedLabelSyncPlanAddsAndRemovesManagedOnly);
         failed += Run("Todo repository label sync plan no-op when aligned", TestRepositoryLabelManagerBuildManagedLabelSyncPlanNoChangesWhenAligned);
         failed += Run("Todo project bootstrap renders project target", TestProjectBootstrapRenderWorkflowTemplateInjectsProjectTarget);
