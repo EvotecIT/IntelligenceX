@@ -394,8 +394,8 @@ public sealed partial class MainWindow : Window {
                         await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
                         coalesceDelayApplied = true;
                     } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: true);
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: true);
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
                         break;
                     }
 
@@ -422,8 +422,8 @@ public sealed partial class MainWindow : Window {
                     try {
                         await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
                     } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: true);
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: true);
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
                         break;
                     }
                 }
@@ -433,7 +433,7 @@ public sealed partial class MainWindow : Window {
                         await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
                         sessionTcs?.TrySetResult(null);
                     } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: true);
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
                     } catch (Exception ex) {
                         sessionTcs?.TrySetException(ex);
                     }
@@ -444,7 +444,7 @@ public sealed partial class MainWindow : Window {
                         await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
                         optionsTcs?.TrySetResult(null);
                     } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: true);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
                     } catch (Exception ex) {
                         optionsTcs?.TrySetException(ex);
                     }
