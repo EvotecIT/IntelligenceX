@@ -46,12 +46,61 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task PhaseProgressLoop_DoesNotEmitHeartbeatWhenDisabled() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var invokeTask = InvokePhaseProgressLoopAsync(
+            session,
+            writer,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            0,
+            completion.Task);
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        completion.TrySetResult(null);
+        await invokeTask;
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Contains("phase_review", statuses);
+        Assert.DoesNotContain("phase_heartbeat", statuses);
+    }
+
+    [Fact]
+    public async Task PhaseProgressLoop_PropagatesCancellationWhenPhaseTaskIsCanceled() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        using var cts = new CancellationTokenSource();
+
+        var phaseTask = Task.Delay(Timeout.InfiniteTimeSpan, cts.Token);
+        var invokeTask = InvokePhaseProgressLoopAsync(
+            session,
+            writer,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            1,
+            phaseTask,
+            cts.Token);
+
+        cts.CancelAfter(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invokeTask);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Contains("phase_review", statuses);
+    }
+
+    [Fact]
     public async Task SynchronizedCaptureStream_FlushAsync_CanceledTokenReturnsCanceledTask() {
         using var stream = new SynchronizedCaptureStream();
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.FlushAsync(cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stream.FlushAsync(cts.Token));
     }
 
     [Fact]
@@ -61,12 +110,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         cts.Cancel();
 
         var payload = new byte[] { 1, 2, 3 };
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.WriteAsync(payload, 0, payload.Length, cts.Token));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.WriteAsync(payload.AsMemory(), cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stream.WriteAsync(payload, 0, payload.Length, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stream.WriteAsync(payload.AsMemory(), cts.Token).AsTask());
     }
 
     private static async Task InvokePhaseProgressLoopAsync(ChatServiceSession session, StreamWriter writer, string phaseStatus, string phaseMessage,
-        string heartbeatLabel, int heartbeatSeconds, Task phaseTask) {
+        string heartbeatLabel, int heartbeatSeconds, Task phaseTask, CancellationToken cancellationToken = default) {
         await session.RunPhaseProgressLoopAsync(
             writer,
             "req-intelligence-loop",
@@ -75,7 +124,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             phaseMessage,
             heartbeatLabel,
             heartbeatSeconds,
-            CancellationToken.None,
+            cancellationToken,
             phaseTask);
     }
 
