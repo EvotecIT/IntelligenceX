@@ -20,6 +20,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo LooksLikeContinuationFollowUpMethod =
         typeof(ChatServiceSession).GetMethod("LooksLikeContinuationFollowUp", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("LooksLikeContinuationFollowUp not found.");
+    private static readonly MethodInfo LooksLikeCompactFollowUpMethod =
+        typeof(ChatServiceSession).GetMethod("LooksLikeCompactFollowUp", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("LooksLikeCompactFollowUp not found.");
     private static readonly MethodInfo CountLetterDigitTokensMethod =
         typeof(ChatServiceSession).GetMethod("CountLetterDigitTokens", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("CountLetterDigitTokens not found.");
@@ -212,6 +215,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("dzialaj")]
     [InlineData("uruchom to")]
     [InlineData("dalej?")]
+    [InlineData("please continue failed logon report for ado？")]
+    [InlineData("please continue failed logon report for ado؟")]
     [InlineData("继续")]
     [InlineData("继续执行")]
     [InlineData("xqzz ltmv")]
@@ -513,6 +518,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { userRequest, assistantDraft, true, 0, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerOnUnlinkedUnicodeQuestionDraft() {
+        var userRequest = "run now";
+        var assistantDraft = "Czy na pewno？";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Theory]
+    [InlineData("please continue failed logon report for ado?", true)]
+    [InlineData("please continue failed logon report for ado？", true)]
+    [InlineData("please continue failed logon report for ado؟", true)]
+    [InlineData("please continue failed logon report for ado", false)]
+    public void LooksLikeCompactFollowUp_RecognizesUnicodeQuestionPunctuation(string userRequest, bool expected) {
+        var result = LooksLikeCompactFollowUpMethod.Invoke(null, new object?[] { userRequest });
+        Assert.Equal(expected, Assert.IsType<bool>(result));
     }
 
     [Fact]

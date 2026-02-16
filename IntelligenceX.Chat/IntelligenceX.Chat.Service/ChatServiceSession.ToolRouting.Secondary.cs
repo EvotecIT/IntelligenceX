@@ -455,7 +455,7 @@ internal sealed partial class ChatServiceSession {
 
         return tokenCount <= 8
                && normalized.Length <= 96
-               && normalized.Contains('?', StringComparison.Ordinal);
+               && ContainsQuestionSignal(normalized);
     }
 
     private sealed class ToolRoutingStats {

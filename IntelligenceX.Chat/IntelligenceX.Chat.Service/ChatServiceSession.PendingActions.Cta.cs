@@ -5,6 +5,11 @@ using System.Text;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int MaxCompactCallToActionLength = 96;
+    private const int MaxCompactCallToActionTokenCount = 8;
+    private const int MaxCompactCallToActionTokenScan = 12;
+    private const int MaxPendingActionCallToActionTokens = 6;
+
     private static string NormalizeCompactCallToActionToken(string text) {
         // Assistant CTAs often appear in prose with trailing ':' / ';' (including fullwidth variants) that users
         // should not have to repeat, and that we explicitly disqualify for confirmation.
@@ -45,7 +50,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             tokens.Add(token);
-            if (tokens.Count >= 6) {
+            if (tokens.Count >= MaxPendingActionCallToActionTokens) {
                 break;
             }
         }
@@ -55,7 +60,7 @@ internal sealed partial class ChatServiceSession {
 
     private static bool LooksLikeCompactCallToActionToken(string token) {
         var value = (token ?? string.Empty).Trim();
-        if (value.Length == 0 || value.Length > 96) {
+        if (value.Length == 0 || value.Length > MaxCompactCallToActionLength) {
             return false;
         }
 
@@ -70,8 +75,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Keep it lean: only short, phrase-like tokens.
-        var tokens = CountLetterDigitTokens(value, maxTokens: 12);
-        return tokens is > 0 and <= 8;
+        var tokens = CountLetterDigitTokens(value, maxTokens: MaxCompactCallToActionTokenScan);
+        return tokens is > 0 and <= MaxCompactCallToActionTokenCount;
     }
 
     private static bool UserMatchesPendingActionCallToActionTokens(string userText, IReadOnlyList<string> tokens) {
@@ -80,7 +85,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var raw = (userText ?? string.Empty).Trim();
-        if (raw.Length == 0 || raw.Length > 96) {
+        if (raw.Length == 0 || raw.Length > MaxCompactCallToActionLength) {
             return false;
         }
 
@@ -96,7 +101,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var request = NormalizeCompactText(raw);
-        if (request.Length == 0 || request.Length > 96) {
+        if (request.Length == 0 || request.Length > MaxCompactCallToActionLength) {
             return false;
         }
 

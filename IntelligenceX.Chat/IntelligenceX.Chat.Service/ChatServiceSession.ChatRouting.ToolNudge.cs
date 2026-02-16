@@ -211,7 +211,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var asksAnotherQuestion = draft.Contains('?', StringComparison.Ordinal);
+        var asksAnotherQuestion = ContainsQuestionSignal(draft);
         if (asksAnotherQuestion) {
             if (echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft)) {
                 reason = "assistant_question_linked_to_follow_up";
@@ -804,7 +804,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        return tokenCount <= 8 && normalized.Length <= 80 && normalized.Contains('?', StringComparison.Ordinal);
+        return tokenCount <= 8 && normalized.Length <= 80 && ContainsQuestionSignal(normalized);
     }
 
     private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {
