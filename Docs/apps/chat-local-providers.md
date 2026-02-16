@@ -8,6 +8,19 @@ This is intended for providers that support (at minimum):
 
 Examples: Ollama, LM Studio, llama.cpp server, and similar OpenAI-compat endpoints.
 
+## Chat App (Easiest Local Setup)
+
+For the WinUI desktop app (`Build/Run-ChatApp.ps1`):
+
+1. Open **Options -> Profile -> Model Runtime**.
+2. Click **Use Ollama Runtime** or **Use LM Studio Runtime**.
+3. The app applies runtime settings immediately and refreshes model discovery.
+4. If needed, choose a model from **Discovered models** and click **Apply Runtime**.
+
+Notes:
+- `Refresh Models` applies pending runtime field changes first, then refreshes discovery.
+- For `compatible-http`, if the current model is empty or invalid, the app auto-selects the first discovered model.
+
 ## Security Model
 
 - `http://` is rejected by default.
@@ -72,4 +85,3 @@ When tool calling is not supported by the provider, the chat still works but too
 ## Current Limitations
 
 - Image inputs are not supported for `compatible-http` yet (text + tools only).
-
