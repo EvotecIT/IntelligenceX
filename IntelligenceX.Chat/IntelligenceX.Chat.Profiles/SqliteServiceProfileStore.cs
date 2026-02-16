@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   enable_powershell_pack INTEGER NOT NULL,
   powershell_allow_write INTEGER NOT NULL,
   enable_testimox_pack INTEGER NOT NULL,
+  enable_officeimo_pack INTEGER NOT NULL DEFAULT 1,
   enable_default_plugin_paths INTEGER NOT NULL,
   updated_utc TEXT NOT NULL
 );
@@ -93,6 +94,8 @@ CREATE TABLE IF NOT EXISTS {PluginPathsTable} (
 CREATE INDEX IF NOT EXISTS ix_service_profiles_updated_utc ON {ProfileTable}(updated_utc);
 CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(transport_kind);
 ");
+
+        EnsureColumnExists(ProfileTable, "enable_officeimo_pack", "INTEGER NOT NULL DEFAULT 1");
     }
 
     private bool HasLegacyJsonSchema() {
@@ -111,6 +114,30 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
             return false;
         } catch {
             return false;
+        }
+    }
+
+    private void EnsureColumnExists(string tableName, string columnName, string columnDefinition) {
+        if (string.IsNullOrWhiteSpace(tableName) || string.IsNullOrWhiteSpace(columnName) || string.IsNullOrWhiteSpace(columnDefinition)) {
+            return;
+        }
+
+        try {
+            var result = _db.Query(_dbPath, $"PRAGMA table_info('{tableName}')");
+            if (result is not DataTable dt || dt.Rows.Count == 0) {
+                return;
+            }
+
+            foreach (DataRow row in dt.Rows) {
+                var name = row["name"]?.ToString();
+                if (string.Equals(name, columnName, StringComparison.OrdinalIgnoreCase)) {
+                    return;
+                }
+            }
+
+            _db.ExecuteNonQuery(_dbPath, $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};");
+        } catch {
+            // Best-effort schema evolution; keep startup resilient.
         }
     }
 
@@ -150,6 +177,7 @@ SELECT
   enable_powershell_pack,
   powershell_allow_write,
   enable_testimox_pack,
+  enable_officeimo_pack,
   enable_default_plugin_paths
 FROM {ProfileTable}
 WHERE name = @name
@@ -202,6 +230,7 @@ LIMIT 1;",
             EnablePowerShellPack = ReadBool(r, "enable_powershell_pack", defaultValue: false),
             PowerShellAllowWrite = ReadBool(r, "powershell_allow_write", defaultValue: false),
             EnableTestimoXPack = ReadBool(r, "enable_testimox_pack", defaultValue: true),
+            EnableOfficeImoPack = ReadBool(r, "enable_officeimo_pack", defaultValue: true),
             EnableDefaultPluginPaths = ReadBool(r, "enable_default_plugin_paths", defaultValue: true)
         };
 
@@ -234,7 +263,7 @@ INSERT INTO {ProfileTable} (
   max_tool_rounds, parallel_tools, turn_timeout_seconds, tool_timeout_seconds,
   instructions_file, max_table_rows, max_sample, redact,
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
-  enable_powershell_pack, powershell_allow_write, enable_testimox_pack,
+  enable_powershell_pack, powershell_allow_write, enable_testimox_pack, enable_officeimo_pack,
   enable_default_plugin_paths, updated_utc
 )
 VALUES (
@@ -244,7 +273,7 @@ VALUES (
   @max_tool_rounds, @parallel_tools, @turn_timeout_seconds, @tool_timeout_seconds,
   @instructions_file, @max_table_rows, @max_sample, @redact,
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
-  @enable_powershell_pack, @powershell_allow_write, @enable_testimox_pack,
+  @enable_powershell_pack, @powershell_allow_write, @enable_testimox_pack, @enable_officeimo_pack,
   @enable_default_plugin_paths, @updated_utc
 )
 ON CONFLICT(name) DO UPDATE SET
@@ -273,6 +302,7 @@ ON CONFLICT(name) DO UPDATE SET
   enable_powershell_pack = excluded.enable_powershell_pack,
   powershell_allow_write = excluded.powershell_allow_write,
   enable_testimox_pack = excluded.enable_testimox_pack,
+  enable_officeimo_pack = excluded.enable_officeimo_pack,
   enable_default_plugin_paths = excluded.enable_default_plugin_paths,
   updated_utc = excluded.updated_utc;",
                 parameters: new Dictionary<string, object?> {
@@ -303,6 +333,7 @@ ON CONFLICT(name) DO UPDATE SET
                     ["@enable_powershell_pack"] = profile.EnablePowerShellPack ? 1 : 0,
                     ["@powershell_allow_write"] = profile.PowerShellAllowWrite ? 1 : 0,
                     ["@enable_testimox_pack"] = profile.EnableTestimoXPack ? 1 : 0,
+                    ["@enable_officeimo_pack"] = profile.EnableOfficeImoPack ? 1 : 0,
                     ["@enable_default_plugin_paths"] = profile.EnableDefaultPluginPaths ? 1 : 0,
                     ["@updated_utc"] = now
                 });

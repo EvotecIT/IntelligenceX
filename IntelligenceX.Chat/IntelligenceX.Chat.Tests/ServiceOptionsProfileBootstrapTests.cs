@@ -17,6 +17,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.True(string.IsNullOrWhiteSpace(error));
         Assert.Equal(0, options.MaxTableRows);
         Assert.Equal(0, options.MaxSample);
+        Assert.True(options.EnableOfficeImoPack);
     }
 
     [Fact]
@@ -66,6 +67,17 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         } finally {
             TryDelete(dbPath);
         }
+    }
+
+    [Fact]
+    public void Parse_Allows_Disabling_And_Enabling_OfficeImoPack() {
+        var disabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack" }, out var disabledError);
+        Assert.True(string.IsNullOrWhiteSpace(disabledError));
+        Assert.False(disabled.EnableOfficeImoPack);
+
+        var enabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack", "--enable-officeimo-pack" }, out var enabledError);
+        Assert.True(string.IsNullOrWhiteSpace(enabledError));
+        Assert.True(enabled.EnableOfficeImoPack);
     }
 
     private static void TryDelete(string path) {

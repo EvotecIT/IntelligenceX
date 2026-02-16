@@ -61,6 +61,7 @@ internal static partial class Program {
         public int AdMaxResults { get; set; } = 1000;
         public bool EnablePowerShellPack { get; set; }
         public bool EnableTestimoXPack { get; set; } = true;
+        public bool EnableOfficeImoPack { get; set; } = true;
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
 
@@ -232,6 +233,12 @@ internal static partial class Program {
                         break;
                     case "--disable-testimox-pack":
                         options.EnableTestimoXPack = false;
+                        break;
+                    case "--enable-officeimo-pack":
+                        options.EnableOfficeImoPack = true;
+                        break;
+                    case "--disable-officeimo-pack":
+                        options.EnableOfficeImoPack = false;
                         break;
                     case "--plugin-path":
                         if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
@@ -430,6 +437,7 @@ internal static partial class Program {
             AdMaxResults = profile.AdMaxResults;
             EnablePowerShellPack = profile.EnablePowerShellPack;
             EnableTestimoXPack = profile.EnableTestimoXPack;
+            EnableOfficeImoPack = profile.EnableOfficeImoPack;
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
             PluginPaths.Clear();
             if (profile.PluginPaths is { Count: > 0 }) {
@@ -477,6 +485,7 @@ internal static partial class Program {
                 AdMaxResults = AdMaxResults,
                 EnablePowerShellPack = EnablePowerShellPack,
                 EnableTestimoXPack = EnableTestimoXPack,
+                EnableOfficeImoPack = EnableOfficeImoPack,
                 EnableDefaultPluginPaths = EnableDefaultPluginPaths
             };
 

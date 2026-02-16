@@ -446,6 +446,7 @@ internal sealed partial class ChatServiceSession {
             EnablePowerShellPack = _options.EnablePowerShellPack,
             PowerShellAllowWrite = _options.PowerShellAllowWrite,
             EnableTestimoXPack = _options.EnableTestimoXPack,
+            EnableOfficeImoPack = _options.EnableOfficeImoPack,
             EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
             PluginPaths = _options.PluginPaths.ToArray(),
             OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)

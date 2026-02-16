@@ -532,6 +532,7 @@ internal static class PluginFolderToolPackLoader {
             "ad" => options.EnableActiveDirectoryPack,
             "powershell" => options.EnablePowerShellPack,
             "testimox" => options.EnableTestimoXPack,
+            "officeimo" => options.EnableOfficeImoPack,
             "reviewer_setup" => options.EnableReviewerSetupPack,
             "email" => options.EnableEmailPack,
             _ => true

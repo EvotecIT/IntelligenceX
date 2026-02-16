@@ -57,6 +57,7 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             EnablePowerShellPack = profile.EnablePowerShellPack,
             PowerShellAllowWrite = profile.PowerShellAllowWrite,
             EnableTestimoXPack = profile.EnableTestimoXPack,
+            EnableOfficeImoPack = profile.EnableOfficeImoPack,
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths,
             PluginPaths = new List<string>(profile.PluginPaths ?? new List<string>()),
             InstructionsFile = profile.InstructionsFile,
