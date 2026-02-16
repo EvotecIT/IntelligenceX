@@ -514,7 +514,7 @@ public sealed partial class MainWindow : Window {
         tcs?.TrySetCanceled();
     }
 
-    private void CancelQueuedUiPublishes() {
+    private void CancelQueuedUiPublishesForShutdown() {
         TaskCompletionSource<object?>? pendingSession;
         TaskCompletionSource<object?>? pendingOptions;
         TaskCompletionSource<object?>? activeSession;
@@ -522,7 +522,7 @@ public sealed partial class MainWindow : Window {
         CancellationTokenSource? pumpCts;
 
         lock (_uiPublishSync) {
-            // Queue teardown is a terminal shutdown boundary and must be self-contained.
+            // Terminal shutdown boundary only: cancel queue state and freeze new publishes.
             _shutdownRequested = true;
             pendingSession = _pendingSessionStatePublishTcs;
             pendingOptions = _pendingOptionsStatePublishTcs;
