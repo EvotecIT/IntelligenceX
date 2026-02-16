@@ -682,13 +682,14 @@ internal sealed partial class ChatServiceSession {
             .ConfigureAwait(false);
         var sw = Stopwatch.StartNew();
         var executeTask = ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken);
+        var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         while (!executeTask.IsCompleted) {
-            var heartbeatDelayTask = Task.Delay(ToolHeartbeatInterval, cancellationToken);
-            var completedTask = await Task.WhenAny(executeTask, heartbeatDelayTask).ConfigureAwait(false);
-            if (ReferenceEquals(completedTask, executeTask)) {
-                break;
-            }
-            if (heartbeatDelayTask.IsCanceled || cancellationToken.IsCancellationRequested) {
+            // Use a non-cancelable heartbeat delay and a separate cancellation task.
+            // This avoids a cancellation race where Task.Delay(..., token) can complete immediately
+            // and trigger a tight heartbeat loop while the tool task is still finishing.
+            var heartbeatDelayTask = Task.Delay(ToolHeartbeatInterval);
+            var completedTask = await Task.WhenAny(executeTask, heartbeatDelayTask, cancellationTask).ConfigureAwait(false);
+            if (ReferenceEquals(completedTask, executeTask) || ReferenceEquals(completedTask, cancellationTask)) {
                 break;
             }
 

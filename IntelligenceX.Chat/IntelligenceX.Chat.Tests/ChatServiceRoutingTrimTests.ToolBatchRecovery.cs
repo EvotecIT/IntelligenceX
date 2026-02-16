@@ -1,6 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using Xunit;
@@ -145,5 +152,61 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.True(hints.TryGetValue("ad_whoami", out var isMutating));
         Assert.False(isMutating);
+    }
+
+    [Fact]
+    public async Task ExecuteToolWithStatusAsync_DoesNotEmitHeartbeatAfterCancellation() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(registryField);
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "slow_tool",
+            static async (_, _) => {
+                await Task.Delay(250);
+                return """{"ok":true}""";
+            }));
+        registryField!.SetValue(session, registry);
+
+        var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
+            "ExecuteToolWithStatusAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(executeToolWithStatusMethod);
+
+        using var outputStream = new MemoryStream();
+        using var writer = new StreamWriter(outputStream, new UTF8Encoding(false), leaveOpen: true) {
+            AutoFlush = true
+        };
+        using var cts = new CancellationTokenSource();
+        var call = new ToolCall("call_001", "slow_tool", null, null, new JsonObject());
+
+        var taskObj = executeToolWithStatusMethod!.Invoke(
+            session,
+            new object?[] { writer, "req-001", "thread-001", call, 5, cts.Token });
+        var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
+
+        cts.CancelAfter(TimeSpan.FromMilliseconds(10));
+        await task;
+
+        writer.Flush();
+        var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
+        var heartbeatCount = Regex.Matches(statusOutput, "tool_heartbeat", RegexOptions.CultureInvariant).Count;
+        Assert.Equal(0, heartbeatCount);
+    }
+
+    private sealed class StubTool : ITool {
+        private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
+
+        public StubTool(string name, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
+            Definition = new ToolDefinition(name, description: "stub");
+            _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            return _invoke(arguments, cancellationToken);
+        }
     }
 }
