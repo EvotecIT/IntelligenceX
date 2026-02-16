@@ -491,14 +491,6 @@ public sealed partial class MainWindow : Window {
         tcs.TrySetResult(null);
     }
 
-    private static void TryCancelUiPublishAwaiter(TaskCompletionSource<object?>? tcs) {
-        if (tcs is null) {
-            return;
-        }
-
-        tcs.TrySetCanceled();
-    }
-
     private void CancelQueuedUiPublishes() {
         TaskCompletionSource<object?>? pendingSession;
         TaskCompletionSource<object?>? pendingOptions;
@@ -516,8 +508,9 @@ public sealed partial class MainWindow : Window {
             _uiPublishPumpRunning = false;
         }
 
-        TryCancelUiPublishAwaiter(pendingSession);
-        TryCancelUiPublishAwaiter(pendingOptions);
+        // Closing the window should not fault caller awaiters that are using best-effort publish semantics.
+        FinalizeUiPublishAwaiter(pendingSession, preferCancel: false);
+        FinalizeUiPublishAwaiter(pendingOptions, preferCancel: false);
 
         if (pumpCts is null) {
             return;
