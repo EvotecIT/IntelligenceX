@@ -218,24 +218,28 @@ internal static class ProjectSyncRunner {
                 }
             }
 
-            if (options.ApplyLinkComments && entry.Number > 0 &&
-                entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
-                var comment = BuildIssueMatchSuggestionComment(
-                    entry,
-                    options.LinkCommentMinConfidence,
-                    options.LinkCommentMaxIssues);
-                if (!string.IsNullOrWhiteSpace(comment)) {
-                    if (options.DryRun) {
-                        prCommentUpserts++;
-                    } else if (await IssueSuggestionCommentManager.UpsertAsync(options.Repo, entry.Number, comment)
-                                   .ConfigureAwait(false)) {
-                        prCommentUpserts++;
-                    }
-                }
-            }
         }
 
         if (options.ApplyLinkComments) {
+            var pullRequestSuggestionComments = BuildPullRequestIssueSuggestionComments(
+                entries,
+                options.LinkCommentMinConfidence,
+                options.LinkCommentMaxIssues);
+
+            foreach (var suggestion in pullRequestSuggestionComments) {
+                if (options.DryRun) {
+                    prCommentUpserts++;
+                    continue;
+                }
+
+                if (await IssueSuggestionCommentManager.UpsertAsync(
+                        options.Repo,
+                        suggestion.Key,
+                        suggestion.Value).ConfigureAwait(false)) {
+                    prCommentUpserts++;
+                }
+            }
+
             var issueBacklinkComments = BuildIssueBacklinkSuggestionComments(
                 entries,
                 options.LinkCommentMinConfidence,
@@ -1097,15 +1101,144 @@ internal static class ProjectSyncRunner {
             $"PR #{candidate.Number.ToString(CultureInfo.InvariantCulture)} | {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} | {candidate.Url}"));
     }
 
+    internal static IReadOnlyDictionary<int, string> BuildPullRequestIssueSuggestionComments(
+        IReadOnlyList<ProjectSyncEntry> entries,
+        double minConfidence,
+        int maxIssuesPerPullRequest) {
+        var threshold = Math.Clamp(minConfidence, 0.0, 1.0);
+        var pullRequestToCandidates = new Dictionary<int, Dictionary<int, RelatedIssueCandidate>>();
+
+        static void AddPullRequestCandidate(
+            IDictionary<int, Dictionary<int, RelatedIssueCandidate>> pullRequestMap,
+            int pullRequestNumber,
+            RelatedIssueCandidate candidate) {
+            if (pullRequestNumber <= 0 || candidate.Number <= 0 || string.IsNullOrWhiteSpace(candidate.Url)) {
+                return;
+            }
+
+            if (!pullRequestMap.TryGetValue(pullRequestNumber, out var issueMap)) {
+                issueMap = new Dictionary<int, RelatedIssueCandidate>();
+                pullRequestMap[pullRequestNumber] = issueMap;
+            }
+
+            if (issueMap.TryGetValue(candidate.Number, out var existing) &&
+                existing.Confidence >= candidate.Confidence) {
+                return;
+            }
+
+            issueMap[candidate.Number] = candidate;
+        }
+
+        foreach (var entry in entries) {
+            if (entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) && entry.Number > 0) {
+                var relatedIssues = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+                    .Where(candidate => candidate.Number > 0 &&
+                                        candidate.Confidence >= threshold &&
+                                        !string.IsNullOrWhiteSpace(candidate.Url))
+                    .ToList();
+
+                foreach (var candidate in relatedIssues) {
+                    AddPullRequestCandidate(pullRequestToCandidates, entry.Number, new RelatedIssueCandidate(
+                        Number: candidate.Number,
+                        Url: candidate.Url,
+                        Confidence: candidate.Confidence,
+                        Reason: candidate.Reason
+                    ));
+                }
+
+                if (!string.IsNullOrWhiteSpace(entry.MatchedIssueUrl) &&
+                    entry.MatchedIssueConfidence.HasValue &&
+                    entry.MatchedIssueConfidence.Value >= threshold) {
+                    var (kind, issueNumber) = ParseKindAndNumberFromUrl(entry.MatchedIssueUrl);
+                    if (kind.Equals("issue", StringComparison.OrdinalIgnoreCase) && issueNumber > 0) {
+                        AddPullRequestCandidate(pullRequestToCandidates, entry.Number, new RelatedIssueCandidate(
+                            Number: issueNumber,
+                            Url: entry.MatchedIssueUrl,
+                            Confidence: entry.MatchedIssueConfidence.Value,
+                            Reason: "matched issue"
+                        ));
+                    }
+                }
+
+                continue;
+            }
+
+            if (!entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+                continue;
+            }
+
+            var relatedPullRequests = (entry.RelatedPullRequests ?? Array.Empty<RelatedPullRequestCandidate>())
+                .Where(candidate => candidate.Number > 0 &&
+                                    candidate.Confidence >= threshold &&
+                                    !string.IsNullOrWhiteSpace(candidate.Url))
+                .ToList();
+
+            foreach (var candidate in relatedPullRequests) {
+                AddPullRequestCandidate(pullRequestToCandidates, candidate.Number, new RelatedIssueCandidate(
+                    Number: entry.Number,
+                    Url: entry.Url,
+                    Confidence: candidate.Confidence,
+                    Reason: candidate.Reason
+                ));
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl) &&
+                entry.MatchedPullRequestConfidence.HasValue &&
+                entry.MatchedPullRequestConfidence.Value >= threshold) {
+                var (kind, pullRequestNumber) = ParseKindAndNumberFromUrl(entry.MatchedPullRequestUrl);
+                if (kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) && pullRequestNumber > 0) {
+                    AddPullRequestCandidate(pullRequestToCandidates, pullRequestNumber, new RelatedIssueCandidate(
+                        Number: entry.Number,
+                        Url: entry.Url,
+                        Confidence: entry.MatchedPullRequestConfidence.Value,
+                        Reason: "issue-side matched pull request"
+                    ));
+                }
+            }
+        }
+
+        var comments = new Dictionary<int, string>();
+        foreach (var pullRequestCandidates in pullRequestToCandidates) {
+            var comment = BuildIssueMatchSuggestionComment(
+                pullRequestCandidates.Key,
+                pullRequestCandidates.Value.Values.ToList(),
+                threshold,
+                maxIssuesPerPullRequest);
+            if (!string.IsNullOrWhiteSpace(comment)) {
+                comments[pullRequestCandidates.Key] = comment;
+            }
+        }
+
+        return comments;
+    }
+
     internal static string? BuildIssueMatchSuggestionComment(ProjectSyncEntry entry, double minConfidence, int maxIssues) {
         if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
             return null;
         }
 
+        return BuildIssueMatchSuggestionComment(
+            entry.Number,
+            entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>(),
+            minConfidence,
+            maxIssues);
+    }
+
+    internal static string? BuildIssueMatchSuggestionComment(
+        int pullRequestNumber,
+        IReadOnlyList<RelatedIssueCandidate> candidates,
+        double minConfidence,
+        int maxIssues) {
+        if (pullRequestNumber <= 0 || candidates.Count == 0) {
+            return null;
+        }
+
         var threshold = Math.Clamp(minConfidence, 0.0, 1.0);
         var limit = Math.Max(1, Math.Min(maxIssues, 10));
-        var related = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
-            .Where(candidate => candidate.Confidence >= threshold && !string.IsNullOrWhiteSpace(candidate.Url))
+        var related = candidates
+            .Where(candidate => candidate.Number > 0 &&
+                                candidate.Confidence >= threshold &&
+                                !string.IsNullOrWhiteSpace(candidate.Url))
             .OrderByDescending(candidate => candidate.Confidence)
             .ThenBy(candidate => candidate.Number)
             .Take(limit)
