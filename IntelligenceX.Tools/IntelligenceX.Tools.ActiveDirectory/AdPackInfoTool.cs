@@ -35,6 +35,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Call ad_environment_discover first to learn effective domain_controller/search_base_dn and candidate DCs.",
                 "Use ad_forest_discover to make forest scope explicit and get a receipt (domains/trusts/DCs discovered and how).",
                 "Use ad_search/ad_groups_list/ad_spn_search for broad discovery.",
+                "Use ad_gpo_list/ad_gpo_changes/ad_gpo_health for GPO inventory, timeline, and hygiene diagnostics.",
                 "Use ad_object_resolve to avoid N+1 object lookups when correlating identities.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
                 "Use ad_search_facets/ad_replication_summary/ad_delegation_audit/ad_spn_stats for aggregated diagnostics.",
@@ -44,6 +45,9 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Discover candidate AD objects",
                     suggestedTools: new[] { "ad_search", "ad_groups_list", "ad_spn_search" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Assess GPO inventory, changes, and health",
+                    suggestedTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Discover forest scope and enumerate domains/DCs/trusts",
                     suggestedTools: new[] { "ad_forest_discover" }),
@@ -70,6 +74,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     id: "ad_diagnostics",
                     summary: "Provide LDAP diagnostics and aggregated security/replication insights.",
                     primaryTools: new[] { "ad_ldap_diagnostics", "ad_search_facets", "ad_replication_summary", "ad_delegation_audit", "ad_spn_stats" }),
+                ToolPackGuidance.Capability(
+                    id: "gpo_hygiene",
+                    summary: "Inspect Group Policy inventory, modification history, and AD/SYSVOL health state.",
+                    primaryTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health" }),
                 ToolPackGuidance.Capability(
                     id: "ad_runtime_monitoring",
                     summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication) for server or domain scope.",

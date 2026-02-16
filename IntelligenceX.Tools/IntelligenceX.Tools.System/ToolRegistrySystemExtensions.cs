@@ -70,6 +70,7 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemScheduledTasksListTool(options);
             yield return new SystemFirewallRulesTool(options);
             yield return new SystemFirewallProfilesTool(options);
+            yield return new SystemSecurityOptionsTool(options);
             yield return new SystemLogicalDisksListTool(options);
             yield return new SystemDisksListTool(options);
             yield return new SystemDevicesSummaryTool(options);

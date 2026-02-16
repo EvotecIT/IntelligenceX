@@ -35,6 +35,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             recommendedFlow: new[] {
                 "Call system_info or system_hardware_summary for baseline context.",
                 "Use list tools (processes/services/ports/adapters/firewall/disks/features) for evidence collection.",
+                "Use system_security_options when you need a registry-backed snapshot of Windows security-option posture.",
                 "Use optional projection arguments only when the user asks for specific columns or sorting."
             },
             flowSteps: new[] {
@@ -43,7 +44,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     suggestedTools: new[] { "system_info", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect process/network/security evidence",
-                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles" }),
+                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect storage/feature configuration evidence",
                     suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list" })
@@ -55,8 +56,8 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     primaryTools: new[] { "system_info", "system_hardware_identity", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.Capability(
                     id: "runtime_evidence",
-                    summary: "Enumerate processes, services, ports, adapters, firewall rules and profiles.",
-                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles" }),
+                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, and security-option posture.",
+                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options" }),
                 ToolPackGuidance.Capability(
                     id: "platform_configuration",
                     summary: "Inventory disks, devices, features, scheduled tasks, and optional WSL state.",

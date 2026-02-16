@@ -24,6 +24,43 @@ public class ToolTableViewTests {
     }
 
     [Fact]
+    public void TryParse_ShouldResolveProjectionAliasesForColumnsAndSortBy() {
+        var args = new JsonObject()
+            .Add("columns", new JsonArray().Add("rule_name").Add("deprecated"))
+            .Add("sort_by", "deprecated")
+            .Add("sort_direction", "desc");
+
+        var ok = ToolTableView.TryParse(
+            arguments: args,
+            allowedColumns: new[] { "rule_name", "is_deprecated", "scope" },
+            maxTop: 100,
+            request: out var request,
+            error: out var error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(new[] { "rule_name", "is_deprecated" }, request.Columns);
+        Assert.Equal("is_deprecated", request.SortBy);
+        Assert.Equal(ToolTableSortDirection.Desc, request.SortDirection);
+    }
+
+    [Fact]
+    public void TryParse_ShouldRejectAmbiguousSuffixAlias() {
+        var args = new JsonObject()
+            .Add("columns", new JsonArray().Add("status"));
+
+        var ok = ToolTableView.TryParse(
+            arguments: args,
+            allowedColumns: new[] { "overall_status", "preflight_status", "rule_name" },
+            maxTop: 100,
+            request: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.Contains("unsupported", error ?? string.Empty);
+    }
+
+    [Fact]
     public void Apply_ShouldSelectSortAndTopRows() {
         var rows = new[] {
             new Row(2, "b", 2048),

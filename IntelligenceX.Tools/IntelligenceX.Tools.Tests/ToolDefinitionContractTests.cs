@@ -60,6 +60,8 @@ public class ToolDefinitionContractTests {
             "ad_stale_accounts",
             "ad_spn_stats",
             "eventlog_pack_info",
+            "eventlog_named_events_catalog",
+            "eventlog_named_events_query",
             "eventlog_evtx_report_user_logons",
             "eventlog_evtx_report_failed_logons",
             "eventlog_evtx_report_account_lockouts"
@@ -82,6 +84,7 @@ public class ToolDefinitionContractTests {
         Assert.Contains("system_pack_info", names);
         Assert.Contains("system_firewall_rules", names);
         Assert.Contains("system_firewall_profiles", names);
+        Assert.Contains("system_security_options", names);
         Assert.Contains("system_logical_disks_list", names);
         Assert.Contains("system_disks_list", names);
         Assert.Contains("system_devices_summary", names);

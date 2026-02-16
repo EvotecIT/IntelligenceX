@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
+using TestimoX;
 using TestimoX.Configuration;
 using TestimoX.Definitions;
 using TestimoX.Execution;
@@ -17,11 +18,32 @@ namespace IntelligenceX.Tools.TestimoX;
 /// Executes a selected subset of TestimoX rules and returns typed run outcomes.
 /// </summary>
 public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
+    private const int MaxDomainFilters = 32;
+    private const int MaxDomainControllerFilters = 64;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "testimox_rules_run",
         "Run selected TestimoX rules and return typed per-rule outcomes.",
         ToolSchema.Object(
-                ("rule_names", ToolSchema.Array(ToolSchema.String(), "Rule names to execute (required).")),
+                ("rule_names", ToolSchema.Array(ToolSchema.String(), "Explicit rule names to execute.")),
+                ("rule_name_patterns", ToolSchema.Array(ToolSchema.String("Wildcard pattern matched against rule_name/display_name (for example: *kerberos*)."), "Optional wildcard selectors.")),
+                ("search_text", ToolSchema.String("Optional case-insensitive search across rule name/display/description.")),
+                ("categories", ToolSchema.Array(ToolSchema.String(), "Optional category-name filters (any-match).")),
+                ("tags", ToolSchema.Array(ToolSchema.String(), "Optional tag filters (any-match).")),
+                ("source_types", ToolSchema.Array(ToolSchema.String("Rule source type.").Enum(TestimoXRuleSelectionHelper.SourceTypeNames), "Optional source type filters (any-match).")),
+                ("rule_origin", ToolSchema.String("Optional origin filter. 'builtin' means bundled rules, 'external' means rules introduced through powershell_rules_directory.").Enum(TestimoXRuleSelectionHelper.RuleOriginNames)),
+                ("run_all_enabled_when_no_selection", ToolSchema.Boolean("When true, auto-select all enabled/visible/non-deprecated rules if no other selectors are provided.")),
+                ("include_disabled_for_selection", ToolSchema.Boolean("Include disabled rules when evaluating patterns/search/category/tag/source filters. Default false.")),
+                ("include_hidden_for_selection", ToolSchema.Boolean("Include hidden rules when evaluating filters. Default false.")),
+                ("include_deprecated_for_selection", ToolSchema.Boolean("Include deprecated rules when evaluating filters. Default true.")),
+                ("max_selected_rules", ToolSchema.Integer("Maximum selected rules after all filters (capped).")),
+                ("domain_name", ToolSchema.String("Optional domain DNS name shortcut (added to include_domains).")),
+                ("domain_controller", ToolSchema.String("Optional domain controller shortcut (added to include_domain_controllers).")),
+                ("include_domains", ToolSchema.Array(ToolSchema.String(), "Optional domain DNS names to include for discovery/query scope.")),
+                ("exclude_domains", ToolSchema.Array(ToolSchema.String(), "Optional domain DNS names to exclude from discovery/query scope.")),
+                ("include_domain_controllers", ToolSchema.Array(ToolSchema.String(), "Optional domain controllers to include for discovery/query scope.")),
+                ("exclude_domain_controllers", ToolSchema.Array(ToolSchema.String(), "Optional domain controllers to exclude from discovery/query scope.")),
+                ("include_trusted_domains", ToolSchema.Boolean("When true, discovery includes trusted-forest domains. Default false.")),
                 ("concurrency", ToolSchema.Integer("Execution concurrency (capped).")),
                 ("preflight", ToolSchema.String("Preflight mode. Default soft.").Enum("soft", "strict", "enforce", "off")),
                 ("include_superseded_rules", ToolSchema.Boolean("Include rules marked superseded. Default false.")),
@@ -29,7 +51,6 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
                 ("include_test_results", ToolSchema.Boolean("Include per-test rows for each executed rule. Default true.")),
                 ("include_rule_results", ToolSchema.Boolean("Include capped raw rule result rows. Default false.")),
                 ("max_result_rows_per_rule", ToolSchema.Integer("Maximum raw result rows per rule when include_rule_results=true (capped).")))
-            .Required("rule_names")
             .WithTableViewOptions()
             .NoAdditionalProperties());
 
@@ -54,8 +75,83 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         }
 
         var requestedRuleNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("rule_names"));
-        if (requestedRuleNames.Count == 0) {
-            return ToolResponse.Error("invalid_argument", "rule_names must contain at least one rule name.");
+        var ruleNamePatterns = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("rule_name_patterns"));
+        if (ruleNamePatterns.Count > TestimoXRuleSelectionHelper.MaxRuleNamePatterns) {
+            return ToolResponse.Error(
+                "invalid_argument",
+                $"rule_name_patterns supports at most {TestimoXRuleSelectionHelper.MaxRuleNamePatterns} values.");
+        }
+
+        var searchText = ToolArgs.GetOptionalTrimmed(arguments, "search_text");
+        var requestedCategories = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("categories"));
+        var requestedTags = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("tags"));
+        var requestedSourceTypes = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("source_types"));
+        if (!TestimoXRuleSelectionHelper.TryParseSourceTypes(
+                requestedSourceTypes,
+                out var sourceTypeFilter,
+                out var sourceTypeError)) {
+            return ToolResponse.Error("invalid_argument", sourceTypeError ?? "Invalid source_types argument.");
+        }
+        if (!TestimoXRuleSelectionHelper.TryParseRuleOrigin(
+                ToolArgs.GetOptionalTrimmed(arguments, "rule_origin"),
+                out var ruleOrigin,
+                out var ruleOriginError)) {
+            return ToolResponse.Error("invalid_argument", ruleOriginError ?? "Invalid rule_origin argument.");
+        }
+
+        var runAllEnabledWhenNoSelection = ToolArgs.GetBoolean(arguments, "run_all_enabled_when_no_selection", defaultValue: false);
+        var includeDisabledForSelection = ToolArgs.GetBoolean(arguments, "include_disabled_for_selection", defaultValue: false);
+        var includeHiddenForSelection = ToolArgs.GetBoolean(arguments, "include_hidden_for_selection", defaultValue: false);
+        var includeDeprecatedForSelection = ToolArgs.GetBoolean(arguments, "include_deprecated_for_selection", defaultValue: true);
+        var maxSelectedRules = ToolArgs.GetCappedInt32(
+            arguments: arguments,
+            key: "max_selected_rules",
+            defaultValue: Options.MaxRulesPerRun,
+            minInclusive: 1,
+            maxInclusive: Options.MaxRulesPerRun);
+        var includeTrustedDomains = ToolArgs.GetBoolean(arguments, "include_trusted_domains", defaultValue: false);
+
+        var includeDomains = BuildScopeList(
+            ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
+            ToolArgs.ReadDistinctStringArray(arguments?.GetArray("include_domains")),
+            MaxDomainFilters,
+            "include_domains/domain_name",
+            out var includeDomainError);
+        if (!string.IsNullOrWhiteSpace(includeDomainError)) {
+            return ToolResponse.Error("invalid_argument", includeDomainError);
+        }
+
+        var excludeDomains = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("exclude_domains"));
+        if (excludeDomains.Count > MaxDomainFilters) {
+            return ToolResponse.Error("invalid_argument", $"exclude_domains supports at most {MaxDomainFilters} values.");
+        }
+
+        var includeDomainControllers = BuildScopeList(
+            ToolArgs.GetOptionalTrimmed(arguments, "domain_controller"),
+            ToolArgs.ReadDistinctStringArray(arguments?.GetArray("include_domain_controllers")),
+            MaxDomainControllerFilters,
+            "include_domain_controllers/domain_controller",
+            out var includeDomainControllerError);
+        if (!string.IsNullOrWhiteSpace(includeDomainControllerError)) {
+            return ToolResponse.Error("invalid_argument", includeDomainControllerError);
+        }
+
+        var excludeDomainControllers = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("exclude_domain_controllers"));
+        if (excludeDomainControllers.Count > MaxDomainControllerFilters) {
+            return ToolResponse.Error("invalid_argument", $"exclude_domain_controllers supports at most {MaxDomainControllerFilters} values.");
+        }
+
+        var hasSelectorFilters =
+            ruleNamePatterns.Count > 0 ||
+            !string.IsNullOrWhiteSpace(searchText) ||
+            requestedCategories.Count > 0 ||
+            requestedTags.Count > 0 ||
+            sourceTypeFilter is { Count: > 0 } ||
+            !string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginAny, StringComparison.OrdinalIgnoreCase);
+        if (!runAllEnabledWhenNoSelection && requestedRuleNames.Count == 0 && !hasSelectorFilters) {
+            return ToolResponse.Error(
+                "invalid_argument",
+                "Provide at least one selection input: rule_names, rule_name_patterns, search_text, categories, tags, source_types, rule_origin, or set run_all_enabled_when_no_selection=true.");
         }
         if (requestedRuleNames.Count > Options.MaxRulesPerRun) {
             return ToolResponse.Error(
@@ -89,23 +185,28 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
 
         TestimoRunner runner;
         List<Rule> discoveredRules;
+        var usingExternalDirectory = !string.IsNullOrWhiteSpace(powerShellRulesDirectory);
+        HashSet<string>? builtinRuleNames = null;
         try {
             runner = new TestimoRunner();
             discoveredRules = await runner.DiscoverRulesAsync(
                 includeDisabled: true,
                 ct: cancellationToken,
                 powerShellRulesDirectory: powerShellRulesDirectory).ConfigureAwait(false);
+            if (usingExternalDirectory) {
+                builtinRuleNames = await TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync(cancellationToken).ConfigureAwait(false);
+            }
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
             return ToolResponse.Error("query_failed", $"TestimoX rule discovery failed: {ex.Message}");
         }
 
-        var available = new HashSet<string>(
-            discoveredRules.Select(static x => x.Name),
-            StringComparer.OrdinalIgnoreCase);
+        var availableByName = discoveredRules
+            .Where(static x => !string.IsNullOrWhiteSpace(x.Name))
+            .ToDictionary(static x => x.Name, StringComparer.OrdinalIgnoreCase);
         var unknown = requestedRuleNames
-            .Where(name => !available.Contains(name))
+            .Where(name => !availableByName.ContainsKey(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -116,6 +217,86 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
                 hints: new[] { "Call testimox_rules_list first to discover valid rule names." },
                 isTransient: false);
         }
+
+        var selectedRules = new Dictionary<string, Rule>(StringComparer.OrdinalIgnoreCase);
+        foreach (var requestedRuleName in requestedRuleNames) {
+            selectedRules[requestedRuleName] = availableByName[requestedRuleName];
+        }
+
+        if (hasSelectorFilters || runAllEnabledWhenNoSelection) {
+            IEnumerable<Rule> candidates = discoveredRules;
+
+            if (!includeDisabledForSelection) {
+                candidates = candidates.Where(static x => x.Enable);
+            }
+            if (!includeHiddenForSelection) {
+                candidates = candidates.Where(static x => x.Visibility != RuleVisibility.Hidden);
+            }
+            if (!includeDeprecatedForSelection) {
+                candidates = candidates.Where(static x => !x.IsDeprecated);
+            }
+
+            if (ruleNamePatterns.Count > 0) {
+                candidates = candidates.Where(rule => TestimoXRuleSelectionHelper.MatchesAnyPattern(rule, ruleNamePatterns));
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchText)) {
+                var term = searchText.Trim();
+                candidates = candidates.Where(rule =>
+                    TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.Name, term) ||
+                    TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.DisplayName, term) ||
+                    TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.Description, term));
+            }
+
+            if (requestedCategories.Count > 0) {
+                var requested = new HashSet<string>(requestedCategories, StringComparer.OrdinalIgnoreCase);
+                candidates = candidates.Where(rule => rule.Category.Any(cat => requested.Contains(cat.ToString())));
+            }
+
+            if (requestedTags.Count > 0) {
+                var requested = new HashSet<string>(requestedTags, StringComparer.OrdinalIgnoreCase);
+                candidates = candidates.Where(rule => rule.Tags.Any(tag => requested.Contains(tag)));
+            }
+
+            if (sourceTypeFilter is { Count: > 0 }) {
+                candidates = candidates.Where(rule => TestimoXRuleSelectionHelper.MatchesSourceType(rule, sourceTypeFilter));
+            }
+
+            if (!string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginAny, StringComparison.OrdinalIgnoreCase)) {
+                candidates = candidates.Where(rule =>
+                    string.Equals(
+                        TestimoXRuleSelectionHelper.ResolveRuleOrigin(rule, usingExternalDirectory, builtinRuleNames),
+                        ruleOrigin,
+                        StringComparison.OrdinalIgnoreCase));
+            }
+
+            foreach (var rule in candidates.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)) {
+                if (!string.IsNullOrWhiteSpace(rule.Name)) {
+                    selectedRules[rule.Name] = rule;
+                }
+            }
+        }
+
+        if (selectedRules.Count == 0) {
+            return ToolResponse.Error(
+                "invalid_argument",
+                "Selection resolved to zero rules. Broaden filters or call testimox_rules_list to discover available rules.");
+        }
+
+        if (selectedRules.Count > maxSelectedRules) {
+            return ToolResponse.Error(
+                "invalid_argument",
+                $"Selected rules exceed max_selected_rules ({maxSelectedRules}). Narrow filters or run in batches.");
+        }
+        if (selectedRules.Count > Options.MaxRulesPerRun) {
+            return ToolResponse.Error(
+                "invalid_argument",
+                $"Selected rules exceed the pack cap ({Options.MaxRulesPerRun}). Narrow filters or run in batches.");
+        }
+
+        var selectedRuleNames = selectedRules.Keys
+            .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         TestimoRunResult run;
         try {
@@ -134,8 +315,18 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
                 PowerShellRulesDirectory = powerShellRulesDirectory
             };
 
+            var engine = new Testimo {
+                IncludeDomains = includeDomains.Count == 0 ? null : includeDomains.ToArray(),
+                ExcludeDomains = excludeDomains.Count == 0 ? null : excludeDomains.ToArray(),
+                IncludeDomainControllers = includeDomainControllers.Count == 0 ? null : includeDomainControllers.ToArray(),
+                ExcludeDomainControllers = excludeDomainControllers.Count == 0 ? null : excludeDomainControllers.ToArray(),
+                IncludeTrustedDomains = includeTrustedDomains,
+                PowerShellRulesDirectory = powerShellRulesDirectory
+            };
+
             run = await runner.RunAsync(
-                ruleNames: requestedRuleNames,
+                engine: engine,
+                ruleNames: selectedRuleNames,
                 config: config,
                 ct: cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) {
@@ -153,12 +344,30 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
                 row,
                 includeTestResults: includeTestResults,
                 includeRuleResults: includeRuleResults,
-                maxResultRowsPerRule: maxResultRowsPerRule))
+                maxResultRowsPerRule: maxResultRowsPerRule,
+                usingExternalDirectory: usingExternalDirectory,
+                builtinRuleNames: builtinRuleNames))
             .ToList();
 
         var model = new TestimoRunResultModel(
             RequestedRuleNames: requestedRuleNames,
+            RequestedRuleNamePatterns: ruleNamePatterns,
+            SearchText: searchText,
+            Categories: requestedCategories,
+            Tags: requestedTags,
+            SourceTypes: sourceTypeFilter is null
+                ? Array.Empty<string>()
+                : sourceTypeFilter.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            RuleOrigin: ruleOrigin,
+            RunAllEnabledWhenNoSelection: runAllEnabledWhenNoSelection,
+            IncludeTrustedDomains: includeTrustedDomains,
+            IncludeDomains: includeDomains,
+            ExcludeDomains: excludeDomains,
+            IncludeDomainControllers: includeDomainControllers,
+            ExcludeDomainControllers: excludeDomainControllers,
+            SelectedRuleNames: selectedRuleNames,
             RequestedRuleCount: requestedRuleNames.Count,
+            SelectedRuleCount: selectedRuleNames.Length,
             ExecutedRuleCount: run.RuleCount,
             FailedRuleCount: run.FailedRules,
             SkippedRuleCount: run.SkippedRules,
@@ -184,7 +393,9 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         RuleComplete row,
         bool includeTestResults,
         bool includeRuleResults,
-        int maxResultRowsPerRule) {
+        int maxResultRowsPerRule,
+        bool usingExternalDirectory,
+        HashSet<string>? builtinRuleNames) {
         var testRows = includeTestResults
             ? row.TestResults.Select(static test => new TestimoRuleTestRunRow(
                 Name: test.Name,
@@ -198,9 +409,16 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
             ? ReadRawRows(row, maxResultRowsPerRule)
             : Array.Empty<object?>();
 
+        var sourceType = TestimoXRuleSelectionHelper.GetSourceType(row.Rule);
+        var ruleOrigin = row.Rule is null
+            ? (usingExternalDirectory ? TestimoXRuleSelectionHelper.RuleOriginExternal : TestimoXRuleSelectionHelper.RuleOriginBuiltin)
+            : TestimoXRuleSelectionHelper.ResolveRuleOrigin(row.Rule, usingExternalDirectory, builtinRuleNames);
+
         return new TestimoRuleRunRow(
             RuleName: row.RuleName,
             DisplayName: row.Rule?.DisplayName ?? string.Empty,
+            SourceType: sourceType,
+            RuleOrigin: ruleOrigin,
             Scope: row.Rule?.Scope.ToString() ?? string.Empty,
             OverallStatus: row.OverallStatus.ToString(),
             OverallStatusText: row.OverallStatusText,
@@ -254,6 +472,37 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         }
     }
 
+    private static IReadOnlyList<string> BuildScopeList(
+        string? singleValue,
+        IReadOnlyList<string> manyValues,
+        int maxItems,
+        string label,
+        out string? error) {
+        error = null;
+        var list = new List<string>(manyValues.Count + 1);
+        if (!string.IsNullOrWhiteSpace(singleValue)) {
+            list.Add(singleValue.Trim());
+        }
+
+        for (var i = 0; i < manyValues.Count; i++) {
+            var value = manyValues[i];
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            if (!list.Contains(value, StringComparer.OrdinalIgnoreCase)) {
+                list.Add(value.Trim());
+            }
+        }
+
+        if (list.Count > maxItems) {
+            error = $"{label} supports at most {maxItems} values.";
+            return Array.Empty<string>();
+        }
+
+        return list;
+    }
+
     private static bool TryParsePreflightMode(string? raw, out PreflightMode mode, out string? error) {
         mode = PreflightMode.Soft;
         error = null;
@@ -277,7 +526,21 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
 
     private sealed record TestimoRunResultModel(
         IReadOnlyList<string> RequestedRuleNames,
+        IReadOnlyList<string> RequestedRuleNamePatterns,
+        string? SearchText,
+        IReadOnlyList<string> Categories,
+        IReadOnlyList<string> Tags,
+        IReadOnlyList<string> SourceTypes,
+        string RuleOrigin,
+        bool RunAllEnabledWhenNoSelection,
+        bool IncludeTrustedDomains,
+        IReadOnlyList<string> IncludeDomains,
+        IReadOnlyList<string> ExcludeDomains,
+        IReadOnlyList<string> IncludeDomainControllers,
+        IReadOnlyList<string> ExcludeDomainControllers,
+        IReadOnlyList<string> SelectedRuleNames,
         int RequestedRuleCount,
+        int SelectedRuleCount,
         int ExecutedRuleCount,
         int FailedRuleCount,
         int SkippedRuleCount,
@@ -289,6 +552,8 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
     private sealed record TestimoRuleRunRow(
         string RuleName,
         string DisplayName,
+        string SourceType,
+        string RuleOrigin,
         string Scope,
         string OverallStatus,
         string OverallStatusText,

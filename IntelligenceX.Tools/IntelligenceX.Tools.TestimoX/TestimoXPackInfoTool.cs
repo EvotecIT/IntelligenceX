@@ -32,8 +32,10 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             engine: "TestimoX",
             tools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
-                "Call testimox_rules_list to discover available rules and metadata (scope/categories/tags/cost).",
-                "Select a focused subset of rules (prefer explicit names over broad all-rules execution).",
+                "Call testimox_rules_list to discover available rules and metadata (scope/source_type/origin/categories/tags/cost).",
+                "When you need deterministic pagination, call testimox_rules_list with page_size + offset (or cursor) and continue from next_offset/next_cursor.",
+                "Select a focused subset using explicit names and/or selectors (patterns/categories/tags/source_type/rule_origin).",
+                "Apply execution scope controls when needed (include_domains/include_domain_controllers/exclude_* and include_trusted_domains).",
                 "Call testimox_rules_run and correlate run output with AD/system/eventlog evidence."
             },
             flowSteps: new[] {
@@ -50,11 +52,11 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             capabilities: new[] {
                 ToolPackGuidance.Capability(
                     id: "rule_catalog",
-                    summary: "Enumerate TestimoX rules with metadata (scope, categories, tags, cost, visibility).",
+                    summary: "Enumerate TestimoX rules with metadata (scope, source_type, origin, categories, tags, cost, visibility).",
                     primaryTools: new[] { "testimox_rules_list" }),
                 ToolPackGuidance.Capability(
                     id: "rule_execution",
-                    summary: "Run selected TestimoX rules and return typed per-rule outcomes for downstream reasoning.",
+                    summary: "Run selected TestimoX rules using explicit names and/or selectors; return typed per-rule outcomes for downstream reasoning.",
                     primaryTools: new[] { "testimox_rules_run" })
             },
             toolCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(Options),

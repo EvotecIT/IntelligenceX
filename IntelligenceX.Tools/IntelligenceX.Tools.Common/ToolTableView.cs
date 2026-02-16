@@ -128,26 +128,41 @@ public static class ToolTableView {
             return false;
         }
 
-        var allowed = new HashSet<string>(allowedColumns.Where(static x => !string.IsNullOrWhiteSpace(x)), StringComparer.OrdinalIgnoreCase);
+        var allowedList = allowedColumns
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var allowed = new HashSet<string>(allowedList, StringComparer.OrdinalIgnoreCase);
         if (allowed.Count == 0) {
             error = "No columns are available for projection.";
             return false;
         }
 
-        var requestedColumns = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("columns"));
-        if (requestedColumns.Count > 0) {
-            foreach (var column in requestedColumns) {
-                if (!allowed.Contains(column)) {
+        var requestedColumnsRaw = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("columns"));
+        var requestedColumns = new List<string>(requestedColumnsRaw.Count);
+        var seenRequestedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (requestedColumnsRaw.Count > 0) {
+            foreach (var column in requestedColumnsRaw) {
+                if (!TryResolveAllowedColumnKey(column, allowedList, allowed, out var resolved)) {
                     error = $"columns contains unsupported value '{column}'.";
                     return false;
+                }
+
+                if (seenRequestedColumns.Add(resolved)) {
+                    requestedColumns.Add(resolved);
                 }
             }
         }
 
         var sortBy = ToolArgs.GetOptionalTrimmed(arguments, "sort_by");
-        if (!string.IsNullOrWhiteSpace(sortBy) && !allowed.Contains(sortBy)) {
-            error = $"sort_by must be one of: {string.Join(", ", allowedColumns)}.";
-            return false;
+        if (!string.IsNullOrWhiteSpace(sortBy)) {
+            if (!TryResolveAllowedColumnKey(sortBy, allowedList, allowed, out var resolvedSortBy)) {
+                error = $"sort_by must be one of: {string.Join(", ", allowedColumns)}.";
+                return false;
+            }
+
+            sortBy = resolvedSortBy;
         }
 
         var sortDirection = ToolTableSortDirection.Asc;
@@ -172,6 +187,98 @@ public static class ToolTableView {
             Top = top
         };
         return true;
+    }
+
+    private static bool TryResolveAllowedColumnKey(
+        string? requested,
+        IReadOnlyList<string> allowedList,
+        IReadOnlySet<string> allowedSet,
+        out string resolved) {
+        resolved = string.Empty;
+        var requestedTrimmed = (requested ?? string.Empty).Trim();
+        if (requestedTrimmed.Length == 0) {
+            return false;
+        }
+
+        if (allowedSet.Contains(requestedTrimmed)) {
+            // Keep canonical casing/spelling from allowed columns.
+            for (var i = 0; i < allowedList.Count; i++) {
+                if (string.Equals(allowedList[i], requestedTrimmed, StringComparison.OrdinalIgnoreCase)) {
+                    resolved = allowedList[i];
+                    return true;
+                }
+            }
+
+            resolved = requestedTrimmed;
+            return true;
+        }
+
+        var requestedCanonical = CanonicalizeColumnKey(requestedTrimmed);
+        if (requestedCanonical.Length == 0) {
+            return false;
+        }
+
+        var canonicalMatches = FindCanonicalMatches(requestedCanonical, allowedList, requireSuffixMatch: false);
+        if (canonicalMatches.Count == 1) {
+            resolved = canonicalMatches[0];
+            return true;
+        }
+        if (canonicalMatches.Count > 1) {
+            return false;
+        }
+
+        // Fuzzy fallback for common model aliases like "deprecated" -> "is_deprecated".
+        var suffixMatches = FindCanonicalMatches(requestedCanonical, allowedList, requireSuffixMatch: true);
+        if (suffixMatches.Count == 1) {
+            resolved = suffixMatches[0];
+            return true;
+        }
+
+        return false;
+    }
+
+    private static List<string> FindCanonicalMatches(string requestedCanonical, IReadOnlyList<string> allowedList, bool requireSuffixMatch) {
+        var matches = new List<string>();
+        for (var i = 0; i < allowedList.Count; i++) {
+            var candidate = allowedList[i];
+            var candidateCanonical = CanonicalizeColumnKey(candidate);
+            if (candidateCanonical.Length == 0) {
+                continue;
+            }
+
+            if (!requireSuffixMatch) {
+                if (string.Equals(candidateCanonical, requestedCanonical, StringComparison.OrdinalIgnoreCase)) {
+                    matches.Add(candidate);
+                }
+                continue;
+            }
+
+            if (candidateCanonical.Length >= requestedCanonical.Length
+                && candidateCanonical.EndsWith(requestedCanonical, StringComparison.OrdinalIgnoreCase)) {
+                matches.Add(candidate);
+            }
+        }
+
+        return matches;
+    }
+
+    private static string CanonicalizeColumnKey(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        Span<char> buffer = stackalloc char[value.Length];
+        var index = 0;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (!char.IsLetterOrDigit(ch)) {
+                continue;
+            }
+
+            buffer[index++] = char.ToLowerInvariant(ch);
+        }
+
+        return index == 0 ? string.Empty : new string(buffer[..index]);
     }
 
     /// <summary>
