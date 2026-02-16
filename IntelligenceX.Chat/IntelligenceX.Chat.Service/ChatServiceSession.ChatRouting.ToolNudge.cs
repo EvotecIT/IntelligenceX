@@ -15,6 +15,97 @@ internal sealed partial class ChatServiceSession {
     private const string ExecutionWatchdogMarker = "ix:execution-watchdog:v1";
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const string ExecutionContractEscapeMarker = "ix:execution-contract-escape:v1";
+    private static readonly HashSet<string> MutatingActionTokens = new(StringComparer.OrdinalIgnoreCase) {
+        "add",
+        "apply",
+        "approve",
+        "block",
+        "clear",
+        "create",
+        "delete",
+        "disable",
+        "enable",
+        "fix",
+        "grant",
+        "install",
+        "join",
+        "kill",
+        "lock",
+        "modify",
+        "move",
+        "patch",
+        "promote",
+        "purge",
+        "quarantine",
+        "remove",
+        "rename",
+        "revoke",
+        "reset",
+        "restart",
+        "reboot",
+        "rollback",
+        "set",
+        "shutdown",
+        "start",
+        "stop",
+        "terminate",
+        "uninstall",
+        "unlock",
+        "update",
+        "write"
+    };
+    private static readonly HashSet<string> ReadOnlyActionTokens = new(StringComparer.OrdinalIgnoreCase) {
+        "analyze",
+        "analyse",
+        "audit",
+        "check",
+        "collect",
+        "count",
+        "discover",
+        "enumerate",
+        "explain",
+        "fetch",
+        "find",
+        "get",
+        "inspect",
+        "list",
+        "map",
+        "query",
+        "read",
+        "report",
+        "resolve",
+        "review",
+        "scan",
+        "search",
+        "show",
+        "summarize",
+        "summarise",
+        "top",
+        "trace",
+        "verify"
+    };
+    private static readonly HashSet<string> ActionIntentSkipTokens = new(StringComparer.OrdinalIgnoreCase) {
+        "a",
+        "an",
+        "and",
+        "can",
+        "could",
+        "for",
+        "it",
+        "just",
+        "kindly",
+        "let",
+        "lets",
+        "me",
+        "now",
+        "please",
+        "the",
+        "this",
+        "to",
+        "we",
+        "would",
+        "you"
+    };
     private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
         MaxDepth = 16,
         CommentHandling = JsonCommentHandling.Disallow,
@@ -34,7 +125,11 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldEnforceExecuteOrExplainContract(string userRequest) {
-        return LooksLikeActionSelectionPayload((userRequest ?? string.Empty).Trim());
+        return TryReadActionSelectionIntent(
+                   text: (userRequest ?? string.Empty).Trim(),
+                   actionId: out _,
+                   actionIntentText: out var actionIntentText)
+               && IsLikelyMutatingActionIntent(actionIntentText);
     }
 
     private static bool ShouldAttemptNoToolExecutionWatchdog(
@@ -214,6 +309,16 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeActionSelectionPayload(string text) {
+        return TryReadActionSelectionIntent(
+            text: text,
+            actionId: out _,
+            actionIntentText: out _);
+    }
+
+    private static bool TryReadActionSelectionIntent(string text, out string actionId, out string actionIntentText) {
+        actionId = string.Empty;
+        actionIntentText = string.Empty;
+
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars) {
             return false;
@@ -244,17 +349,201 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (id.ValueKind == JsonValueKind.String) {
-                var value = (id.GetString() ?? string.Empty).Trim();
-                return value.Length > 0;
+                actionId = (id.GetString() ?? string.Empty).Trim();
+                if (actionId.Length == 0) {
+                    return false;
+                }
+            } else if (id.ValueKind == JsonValueKind.Number) {
+                if (!id.TryGetInt64(out var numericId) || numericId <= 0) {
+                    return false;
+                }
+                actionId = numericId.ToString();
+            } else {
+                return false;
             }
 
-            if (id.ValueKind == JsonValueKind.Number) {
-                return id.TryGetInt64(out var numericId) && numericId > 0;
-            }
+            var title = selection.TryGetProperty("title", out var titleNode) && titleNode.ValueKind == JsonValueKind.String
+                ? (titleNode.GetString() ?? string.Empty).Trim()
+                : string.Empty;
+            var request = selection.TryGetProperty("request", out var requestNode) && requestNode.ValueKind == JsonValueKind.String
+                ? (requestNode.GetString() ?? string.Empty).Trim()
+                : string.Empty;
 
-            return false;
+            actionIntentText = CollapseWhitespace(string.Join(' ', new[] { title, request }).Trim());
+            return true;
         } catch (JsonException) {
             return false;
+        }
+    }
+
+    private static bool IsLikelyMutatingActionIntent(string text) {
+        var normalized = CollapseWhitespace((text ?? string.Empty).Trim());
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var tokens = TokenizeActionIntent(normalized, maxTokens: 32);
+        if (tokens.Count == 0) {
+            return false;
+        }
+
+        var firstToken = FindFirstActionIntentVerb(tokens);
+        // Mutating verbs anywhere in the action intent must win over leading read-only verbs
+        // (for example: "check and disable user").
+        for (var i = 0; i < tokens.Count; i++) {
+            if (TokenMatchesActionVerb(tokens[i], MutatingActionTokens)) {
+                return true;
+            }
+        }
+
+        if (firstToken.Length > 0 && TokenMatchesActionVerb(firstToken, ReadOnlyActionTokens)) {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static string FindFirstActionIntentVerb(IReadOnlyList<string> tokens) {
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = tokens[i];
+            if (ActionIntentSkipTokens.Contains(token)) {
+                continue;
+            }
+            return token;
+        }
+
+        return string.Empty;
+    }
+
+    private static List<string> TokenizeActionIntent(string text, int maxTokens) {
+        var tokens = new List<string>();
+        if (string.IsNullOrWhiteSpace(text) || maxTokens <= 0) {
+            return tokens;
+        }
+
+        var tokenStart = -1;
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (char.IsLetterOrDigit(ch) || ch == '_') {
+                if (tokenStart < 0) {
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (tokenStart >= 0) {
+                tokens.Add(text.Substring(tokenStart, i - tokenStart).ToLowerInvariant());
+                tokenStart = -1;
+                if (tokens.Count >= maxTokens) {
+                    return tokens;
+                }
+            }
+        }
+
+        if (tokenStart >= 0 && tokens.Count < maxTokens) {
+            tokens.Add(text.Substring(tokenStart, text.Length - tokenStart).ToLowerInvariant());
+        }
+
+        return tokens;
+    }
+
+    private static bool TokenMatchesActionVerb(string token, HashSet<string> verbs) {
+        if (string.IsNullOrWhiteSpace(token) || verbs.Count == 0) {
+            return false;
+        }
+
+        if (SegmentMatchesActionVerb(token, verbs)) {
+            return true;
+        }
+
+        if (token.IndexOf('_', StringComparison.Ordinal) < 0) {
+            return false;
+        }
+
+        var start = 0;
+        while (start < token.Length) {
+            var end = token.IndexOf('_', start);
+            if (end < 0) {
+                end = token.Length;
+            }
+
+            var length = end - start;
+            if (length > 0) {
+                var segment = token.Substring(start, length);
+                if (SegmentMatchesActionVerb(segment, verbs)) {
+                    return true;
+                }
+            }
+
+            start = end + 1;
+        }
+
+        return false;
+    }
+
+    private static bool SegmentMatchesActionVerb(string segment, HashSet<string> verbs) {
+        if (segment.Length == 0) {
+            return false;
+        }
+
+        if (verbs.Contains(segment)) {
+            return true;
+        }
+
+        foreach (var candidate in EnumerateVerbCandidates(segment)) {
+            if (verbs.Contains(candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> EnumerateVerbCandidates(string token) {
+        if (string.IsNullOrWhiteSpace(token)) {
+            yield break;
+        }
+
+        if (token.EndsWith("ies", StringComparison.Ordinal) && token.Length > 4) {
+            yield return token.Substring(0, token.Length - 3) + "y";
+        }
+
+        if (token.EndsWith("ing", StringComparison.Ordinal) && token.Length > 5) {
+            var stem = token.Substring(0, token.Length - 3);
+            foreach (var candidate in EnumerateStemCandidates(stem)) {
+                yield return candidate;
+            }
+        }
+
+        if (token.EndsWith("ed", StringComparison.Ordinal) && token.Length > 4) {
+            var stem = token.Substring(0, token.Length - 2);
+            foreach (var candidate in EnumerateStemCandidates(stem)) {
+                yield return candidate;
+            }
+        }
+
+        if (token.EndsWith('s') && token.Length > 3) {
+            var stem = token.Substring(0, token.Length - 1);
+            foreach (var candidate in EnumerateStemCandidates(stem)) {
+                yield return candidate;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateStemCandidates(string stem) {
+        if (stem.Length == 0) {
+            yield break;
+        }
+
+        yield return stem;
+        yield return stem + "e";
+
+        if (stem.Length >= 2 && stem[^1] == stem[^2]) {
+            var deDoubled = stem.Substring(0, stem.Length - 1);
+            if (deDoubled.Length > 0) {
+                yield return deDoubled;
+                yield return deDoubled + "e";
+            }
         }
     }
 

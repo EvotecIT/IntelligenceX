@@ -390,6 +390,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Mutating actions must be selected explicitly (/act <id> or ordinal) to avoid accidental writes
+        // from natural-language follow-ups such as "go ahead".
+        if (actions.Count == 1 && IsLikelyMutatingPendingAction(actions[0])) {
+            reason = "mutating_action_requires_explicit_selection";
+            return false;
+        }
+
         // If there's only one pending action, allow the user to echo an assistant-provided call-to-action phrase.
         // This is language-agnostic, avoids locale-specific phrase lists in the host, and scopes matching to the
         // assistant-provided CTA tokens (not arbitrary substrings in the assistant message).
@@ -403,6 +410,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (TryMatchPendingActionByIntentOverlapWithReason(trimmed, actions, out var overlapMatch, out var overlapReason)) {
+            if (IsLikelyMutatingPendingAction(overlapMatch)) {
+                reason = "mutating_action_requires_explicit_selection";
+                return false;
+            }
             match = overlapMatch;
             reason = overlapReason;
             return true;
@@ -410,6 +421,21 @@ internal sealed partial class ChatServiceSession {
 
         reason = overlapReason;
         return false;
+    }
+
+    private static bool IsLikelyMutatingPendingAction(PendingAction action) {
+        var title = (action.Title ?? string.Empty).Trim();
+        var request = (action.Request ?? string.Empty).Trim();
+        if (request.Length == 0) {
+            request = title;
+        }
+
+        if (request.Length == 0 && title.Length == 0) {
+            return false;
+        }
+
+        var intentText = CollapseWhitespace(string.Join(' ', new[] { title, request }).Trim());
+        return IsLikelyMutatingActionIntent(intentText);
     }
 
     private static bool TryMatchPendingActionByIntentOverlap(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {

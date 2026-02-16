@@ -110,8 +110,46 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldEnforceExecuteOrExplainContract_TriggersForActionSelectionPayload() {
-        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
+    public void ShouldEnforceExecuteOrExplainContract_TriggersForMutatingActionSelectionPayload() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Reset account password\",\"request\":\"Reset password for user evotec\\\\john.\"}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_DoesNotTriggerForReadOnlyActionSelectionPayload() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report for the last 24 hours.\"}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersWhenSelectionHasMixedReadAndMutatingIntent() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Check and disable user\",\"request\":\"Check stale state and disable user evotec\\\\john if needed.\"}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersWhenMutatingVerbAppearsAfterLongUnderscoreToken() {
+        var longToken = new string('x', 64) + "_disable_account";
+        var userRequest = $"{{\"ix_action_selection\":{{\"id\":\"act_001\",\"title\":\"check {longToken}\",\"request\":\"Inspect current state only.\"}}}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Theory]
+    [InlineData("disabled")]
+    [InlineData("disabling")]
+    [InlineData("resets")]
+    [InlineData("updated")]
+    [InlineData("stopped")]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersForCommonMutatingVerbInflections(string inflectedVerb) {
+        var userRequest = $"{{\"ix_action_selection\":{{\"id\":\"act_001\",\"title\":\"Directory action\",\"request\":\"User was {inflectedVerb} by policy.\"}}}}";
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
 
         Assert.True(Assert.IsType<bool>(result));
@@ -127,7 +165,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldAttemptNoToolExecutionWatchdog_TriggersForStrictNoToolTurnAfterRecoveryAttempt() {
         var args = new object?[] {
-            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}",
+            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Disable account\",\"request\":\"Disable user evotec\\\\john and return confirmation.\"}}",
             "Ok, doing it now.",
             true,
             0,
@@ -148,7 +186,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldAttemptNoToolExecutionWatchdog_DoesNotTriggerWhenToolsUnavailable() {
         var args = new object?[] {
-            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}",
+            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Disable account\",\"request\":\"Disable user evotec\\\\john and return confirmation.\"}}",
             "Ok, doing it now.",
             false,
             0,
