@@ -400,6 +400,18 @@ internal static class VisionCheckRunner {
                 allTokens.Add(token);
             }
 
+            switch (policySection) {
+                case "accept":
+                    explicitAcceptBullets++;
+                    break;
+                case "reject":
+                    explicitRejectBullets++;
+                    break;
+                case "review":
+                    explicitReviewBullets++;
+                    break;
+            }
+
             if (policySection == "in" || policySection == "goals") {
                 foreach (var token in tokens) {
                     inScope.Add(token);
@@ -409,17 +421,14 @@ internal static class VisionCheckRunner {
                     outOfScope.Add(token);
                 }
             } else if (policySection == "accept") {
-                explicitAcceptBullets++;
                 foreach (var token in tokens) {
                     explicitAccept.Add(token);
                 }
             } else if (policySection == "reject") {
-                explicitRejectBullets++;
                 foreach (var token in tokens) {
                     explicitReject.Add(token);
                 }
             } else if (policySection == "review") {
-                explicitReviewBullets++;
                 foreach (var token in tokens) {
                     explicitReview.Add(token);
                 }

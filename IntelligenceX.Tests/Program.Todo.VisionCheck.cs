@@ -213,9 +213,9 @@ internal static partial class Program {
 
             var result = IntelligenceX.Cli.Todo.VisionCheckRunner.ParseVisionDocument(visionPath);
             AssertEqual(true, result.Contract.IsValid, "backticked policy prefixes should satisfy strict contract");
-            AssertEqual(true, result.Contract.ExplicitAcceptBullets >= 1, "aligned policy bullet detected with backticks");
-            AssertEqual(true, result.Contract.ExplicitRejectBullets >= 1, "reject policy bullet detected with backticks");
-            AssertEqual(true, result.Contract.ExplicitReviewBullets >= 1, "review policy bullet detected with backticks");
+            AssertEqual(1, result.Contract.ExplicitAcceptBullets, "aligned policy bullet counted with backticks");
+            AssertEqual(1, result.Contract.ExplicitRejectBullets, "reject policy bullet counted with backticks");
+            AssertEqual(1, result.Contract.ExplicitReviewBullets, "review policy bullet counted with backticks");
         } finally {
             try {
                 Directory.Delete(tempDir, recursive: true);
