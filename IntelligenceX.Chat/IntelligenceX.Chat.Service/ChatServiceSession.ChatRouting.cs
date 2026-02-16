@@ -39,12 +39,12 @@ internal sealed partial class ChatServiceSession {
 
     private static (bool ParallelTools, bool AllowMutatingParallel, string Mode) ResolveParallelToolExecutionMode(ChatRequestOptions? options,
         bool serviceDefaultParallelTools) {
-        var explicitModeRequested = !string.IsNullOrWhiteSpace(options?.ParallelToolMode);
+        var requestedParallelTools = options?.ParallelTools ?? serviceDefaultParallelTools;
         var mode = NormalizeParallelToolMode(options?.ParallelToolMode);
         return mode switch {
             ParallelToolModeForceSerial => (false, false, ParallelToolModeForceSerial),
             ParallelToolModeAllowParallel => (true, true, ParallelToolModeAllowParallel),
-            _ => (explicitModeRequested ? serviceDefaultParallelTools : (options?.ParallelTools ?? serviceDefaultParallelTools), false, ParallelToolModeAuto)
+            _ => (requestedParallelTools, false, ParallelToolModeAuto)
         };
     }
 

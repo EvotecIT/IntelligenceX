@@ -23,7 +23,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ResolveParallelToolExecutionMode_UsesServiceDefaultInAutoMode() {
+    public void ResolveParallelToolExecutionMode_RespectsExplicitParallelToolsFlagInAutoMode() {
         var options = new ChatRequestOptions {
             ParallelTools = false,
             ParallelToolMode = "auto"
@@ -32,7 +32,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true });
         var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
 
-        Assert.True(decision.Item1);
+        Assert.False(decision.Item1);
+        Assert.False(decision.Item2);
+        Assert.Equal("auto", decision.Item3);
+    }
+
+    [Fact]
+    public void ResolveParallelToolExecutionMode_UsesServiceDefaultWhenOptionsMissing() {
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { null, false });
+        var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
+
+        Assert.False(decision.Item1);
         Assert.False(decision.Item2);
         Assert.Equal("auto", decision.Item3);
     }
