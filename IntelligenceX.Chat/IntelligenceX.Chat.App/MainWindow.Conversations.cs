@@ -385,27 +385,65 @@ public sealed partial class MainWindow : Window {
         }
 
         userConversations.Sort(CompareConversationsForDisplay);
-        var protectedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-            _activeConversationId,
-            SystemConversationId
-        };
+        ConversationRuntime? activeConversation = null;
+        if (!string.IsNullOrWhiteSpace(_activeConversationId)) {
+            var resolvedActive = FindConversationById(_activeConversationId);
+            if (resolvedActive is not null && !IsSystemConversation(resolvedActive)) {
+                activeConversation = resolvedActive;
+            }
+        }
+
+        ConversationRuntime? activeRequestConversation = null;
         if (!string.IsNullOrWhiteSpace(_activeRequestConversationId)) {
-            protectedIds.Add(_activeRequestConversationId);
+            var resolvedRequest = FindConversationById(_activeRequestConversationId);
+            if (resolvedRequest is not null && !IsSystemConversation(resolvedRequest)) {
+                activeRequestConversation = resolvedRequest;
+            }
+        }
+
+        var protectedConversations = new HashSet<ConversationRuntime>();
+        if (activeConversation is not null) {
+            protectedConversations.Add(activeConversation);
+        }
+        if (activeRequestConversation is not null) {
+            protectedConversations.Add(activeRequestConversation);
         }
 
         while (userConversations.Count > userConversationLimit) {
             var removalIndex = userConversations.Count - 1;
-            while (removalIndex >= 0 && protectedIds.Contains(userConversations[removalIndex].Id)) {
+            while (removalIndex >= 0 && protectedConversations.Contains(userConversations[removalIndex])) {
                 removalIndex--;
             }
 
             if (removalIndex < 0) {
-                break;
+                // Keep cap enforcement deterministic even if all remaining entries are currently protected.
+                removalIndex = userConversations.Count - 1;
+                while (removalIndex >= 0 && ReferenceEquals(userConversations[removalIndex], activeConversation)) {
+                    removalIndex--;
+                }
+                if (removalIndex < 0) {
+                    removalIndex = userConversations.Count - 1;
+                }
             }
 
             var toRemove = userConversations[removalIndex];
             userConversations.RemoveAt(removalIndex);
             _conversations.Remove(toRemove);
+            protectedConversations.Remove(toRemove);
+
+            if (ReferenceEquals(toRemove, activeRequestConversation)) {
+                _activeRequestConversationId = null;
+                activeRequestConversation = null;
+            }
+
+            if (ReferenceEquals(toRemove, activeConversation)) {
+                _activeConversationId = string.Empty;
+                activeConversation = null;
+            }
+        }
+
+        if (activeConversation is null && userConversations.Count > 0) {
+            _activeConversationId = userConversations[0].Id;
         }
 
         _conversations.Sort(CompareConversationsForDisplay);
