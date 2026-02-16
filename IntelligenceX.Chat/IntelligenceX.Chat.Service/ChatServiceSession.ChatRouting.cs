@@ -77,7 +77,7 @@ internal sealed partial class ChatServiceSession {
             return DefaultMaxReviewPasses;
         }
 
-        return Math.Clamp(configured.Value, 0, MaxReviewPassesLimit);
+        return Math.Clamp(configured.Value, DefaultMaxReviewPasses, MaxReviewPassesLimit);
     }
 
     private static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
@@ -324,6 +324,33 @@ internal sealed partial class ChatServiceSession {
                 chatTask)
             .ConfigureAwait(false);
         return await chatTask.ConfigureAwait(false);
+    }
+
+    private Task<TurnInfo> RunReviewOnlyModelPhaseWithProgressAsync(
+        IntelligenceXClient client,
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        ChatInput input,
+        ChatOptions options,
+        CancellationToken cancellationToken,
+        string phaseStatus,
+        string phaseMessage,
+        string heartbeatLabel,
+        int heartbeatSeconds) {
+        // Review-only passes are in-thread rewrites of the current draft and must never execute tools.
+        return RunModelPhaseWithProgressAsync(
+            client,
+            writer,
+            requestId,
+            threadId,
+            input,
+            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
+            cancellationToken,
+            phaseStatus,
+            phaseMessage,
+            heartbeatLabel,
+            heartbeatSeconds);
     }
 
     private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {
@@ -710,13 +737,13 @@ internal sealed partial class ChatServiceSession {
                         hasToolActivity: hasToolActivity,
                         reviewPassNumber: reviewPassesUsed,
                         maxReviewPasses: maxReviewPasses);
-                    turn = await RunModelPhaseWithProgressAsync(
+                    turn = await RunReviewOnlyModelPhaseWithProgressAsync(
                             client,
                             writer,
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(reviewPrompt),
-                            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
+                            options,
                             turnToken,
                             phaseStatus: "phase_review",
                             phaseMessage: $"Reviewing response quality ({reviewPassesUsed}/{maxReviewPasses})...",
@@ -733,13 +760,13 @@ internal sealed partial class ChatServiceSession {
                         assistantDraft: text)) {
                     proactiveFollowUpUsed = true;
                     var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text);
-                    turn = await RunModelPhaseWithProgressAsync(
+                    turn = await RunReviewOnlyModelPhaseWithProgressAsync(
                             client,
                             writer,
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(proactivePrompt),
-                            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
+                            options,
                             turnToken,
                             phaseStatus: "phase_review",
                             phaseMessage: "Generating proactive next checks and fixes...",

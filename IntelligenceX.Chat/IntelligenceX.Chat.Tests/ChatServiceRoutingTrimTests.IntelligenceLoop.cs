@@ -154,6 +154,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void CopyChatOptionsWithoutTools_DisablesToolExecutionForReviewPasses() {
         var source = new ChatOptions {
             Model = "gpt-test",
+            NewThread = true,
             ParallelToolCalls = true,
             ToolChoice = ToolChoice.Auto
         };
@@ -164,6 +165,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Null(copy.Tools);
         Assert.Null(copy.ToolChoice);
         Assert.False(copy.ParallelToolCalls);
+        Assert.False(copy.NewThread);
         Assert.Equal("gpt-test", copy.Model);
+
+        // Ensure review-option copying does not mutate the original model options.
+        Assert.True(source.NewThread);
+        Assert.Equal(ToolChoice.Auto, source.ToolChoice);
+        Assert.True(source.ParallelToolCalls);
     }
 }
