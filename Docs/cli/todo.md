@@ -140,7 +140,7 @@ Useful options:
 - `--ensure-fields` / `--no-ensure-fields`.
 - `--apply-labels` to sync IX labels (`ix/category:*`, `ix/tag:*`, `ix/vision:*`, `ix/match:*`, `ix/decision:*`) on PRs/issues.
 - `--ensure-labels` / `--no-ensure-labels` for label taxonomy management.
-- `--apply-link-comments` to upsert assistive link comments on PRs (related issues) and issues (related PRs).
+- `--apply-link-comments` to upsert assistive link comments on PRs (related issues) and issues (related PRs), and remove stale managed suggestion comments.
 - `--project-item-scan-limit <n>` for larger projects.
 - `--dry-run` for a no-write sync preview.
 
@@ -150,6 +150,7 @@ Behavior:
 - Unknown categories/tags are normalized into dynamic labels (for example `ML Ops` -> `ix/category:ml-ops`, `Release Candidate` -> `ix/tag:release-candidate`) and are auto-created when `--apply-labels --ensure-labels` is used.
 - `--apply-labels` performs managed IX label reconciliation: stale `ix/*` labels for managed families are removed while non-IX maintainer labels are preserved.
 - Issues also receive match taxonomy labels when PR->issue linking signals exist (`ix/match:linked-pr` or `ix/match:needs-review-pr`).
+- Match-related project fields (`Matched Issue*`, `Related Issues`, `Matched Pull Request*`, `Related Pull Requests`) are cleared when no longer present in current triage outputs to prevent stale project metadata.
 
 ## Bootstrap project + workflow (recommended first run)
 

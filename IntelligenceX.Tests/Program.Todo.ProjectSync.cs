@@ -615,6 +615,132 @@ internal static partial class Program {
         AssertEqual(false, comment.Contains("issues/312", StringComparison.OrdinalIgnoreCase), "below-threshold issue-side candidate excluded");
     }
 
+    private static void TestProjectSyncBuildStaleSuggestionCommentTargetsForPullRequests() {
+        var entries = new[] {
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 501,
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/501",
+                Kind: "pull_request",
+                TriageScore: 80.0,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 502,
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/502",
+                Kind: "pull_request",
+                TriageScore: 82.0,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 601,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/601",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null)
+        };
+
+        var activeComments = new Dictionary<int, string> {
+            [501] = "active"
+        };
+
+        var staleTargets = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildStaleSuggestionCommentTargets(
+            entries,
+            kind: "pull_request",
+            activeComments: activeComments);
+
+        AssertEqual(1, staleTargets.Count, "single stale pull request comment target");
+        AssertEqual(502, staleTargets[0], "pull request without active suggestion is stale target");
+    }
+
+    private static void TestProjectSyncBuildStaleSuggestionCommentTargetsForIssuesDedupesAndSorts() {
+        var entries = new[] {
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 702,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/702",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "bug",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 700,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/700",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "bug",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 701,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/701",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "bug",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 700,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/700",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "bug",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null)
+        };
+
+        var activeComments = new Dictionary<int, string> {
+            [701] = "active"
+        };
+
+        var staleTargets = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildStaleSuggestionCommentTargets(
+            entries,
+            kind: "issue",
+            activeComments: activeComments);
+
+        AssertEqual(2, staleTargets.Count, "two stale issue comment targets");
+        AssertEqual(700, staleTargets[0], "sorted stale issue target #1");
+        AssertEqual(702, staleTargets[1], "sorted stale issue target #2");
+    }
+
     private static void TestProjectSyncBuildIssueMatchSuggestionCommentReturnsNullWithoutQualifiedCandidates() {
         var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
             Number: 56,
