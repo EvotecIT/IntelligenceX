@@ -172,4 +172,24 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("<code>/act act_ad0_sys3210_msg</code>", html);
         Assert.DoesNotContain("`/act act_ad0_sys3210_msg`", html);
     }
+
+    /// <summary>
+    /// Ensures common strong-emphasis phrases from assistant prose render as strong tags, not literal markers.
+    /// </summary>
+    [Fact]
+    public void Format_RendersCommonStrongPhrasesWithoutLiteralMarkers() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 16, 13, 6, 34, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "If you want, I can run a **“Top 8 high-signal security pack”** now, or list only **GPO-related** reports.", now),
+            ("Assistant", "Those were ** unresolved privileged SIDs** in a group sweep.", now.AddSeconds(1))
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<strong>“Top 8 high-signal security pack”</strong>", html);
+        Assert.Contains("<strong>GPO-related</strong>", html);
+        Assert.Contains("<strong>unresolved privileged SIDs</strong>", html);
+        Assert.DoesNotContain("**“Top 8 high-signal security pack”**", html);
+        Assert.DoesNotContain("**GPO-related**", html);
+        Assert.DoesNotContain("** unresolved privileged SIDs**", html);
+    }
 }
