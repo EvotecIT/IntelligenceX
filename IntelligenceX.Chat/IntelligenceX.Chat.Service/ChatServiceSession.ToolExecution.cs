@@ -839,6 +839,11 @@ internal sealed partial class ChatServiceSession {
         if (string.Equals(output.ErrorCode, "tool_not_registered", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
+        if (output.IsTransient is true && string.IsNullOrWhiteSpace(output.ErrorCode)) {
+            // Some providers/tools mark failures transient without a structured error code.
+            // Keep retry behavior resilient for those adapters when retry slots remain.
+            return true;
+        }
         if (string.Equals(output.ErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase) && profile.RetryOnTimeout) {
             return true;
         }

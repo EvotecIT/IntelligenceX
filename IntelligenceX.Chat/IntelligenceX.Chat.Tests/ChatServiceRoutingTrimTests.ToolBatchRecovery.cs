@@ -84,6 +84,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldRetryToolCall_RetriesTransientFailureWhenErrorCodeIsMissing() {
+        var resolveRetryProfileMethod = typeof(ChatServiceSession).GetMethod(
+            "ResolveRetryProfile",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolveRetryProfileMethod);
+        var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
+            "ShouldRetryToolCall",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(shouldRetryToolCallMethod);
+
+        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { "ad_replication_summary" });
+        var output = new ToolOutputDto {
+            CallId = "call_003",
+            Output = "{\"ok\":false,\"error\":\"transient transport issue\"}",
+            Ok = false,
+            ErrorCode = null,
+            Error = "transient transport issue",
+            IsTransient = true
+        };
+
+        var result = shouldRetryToolCallMethod!.Invoke(null, new[] { output, profile, (object)0 });
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void HasLikelyMutatingToolCalls_FalseWithoutStructuredHints() {
         var calls = new List<ToolCall> {
             new("call_1", "ad_replication_summary", null, null, new JsonObject()),
