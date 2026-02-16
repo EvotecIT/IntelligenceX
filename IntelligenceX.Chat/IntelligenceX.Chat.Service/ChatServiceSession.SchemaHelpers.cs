@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -172,19 +173,65 @@ internal sealed partial class ChatServiceSession {
 
         for (var i = 0; i < parts.Length; i++) {
             var part = parts[i];
-            if (part.Length <= 1) {
-                parts[i] = part.ToUpperInvariant();
-                continue;
-            }
-
-            parts[i] = char.ToUpperInvariant(part[0]) + part[1..];
+            parts[i] = NormalizeToolDisplayToken(part);
         }
 
         return string.Join(' ', parts);
     }
 
-    private static string InferToolCategory(string toolName, IReadOnlyList<string> tags) {
-        var packId = InferPackIdFromToolName(toolName, tags);
+    private static string ResolveToolDisplayName(ToolDefinition definition) {
+        if (definition is null) {
+            return "Tool";
+        }
+
+        var explicitDisplayName = ReadOptionalToolMetadata(definition, "DisplayName");
+        if (explicitDisplayName.Length > 0) {
+            return explicitDisplayName;
+        }
+
+        return FormatToolDisplayName(definition.Name);
+    }
+
+    private static string ResolveToolCategory(ToolDefinition definition) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        return ReadOptionalToolMetadata(definition, "Category");
+    }
+
+    private static string NormalizeToolDisplayToken(string token) {
+        var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalized switch {
+            "ad" => "AD",
+            "fs" => "File System",
+            "gpo" => "GPO",
+            "ldap" => "LDAP",
+            "spn" => "SPN",
+            "wsl" => "WSL",
+            "evtx" => "EVTX",
+            "imap" => "IMAP",
+            "smtp" => "SMTP",
+            "imo" => "IMO",
+            "id" => "ID",
+            "utc" => "UTC",
+            _ => normalized.Length <= 1
+                ? normalized.ToUpperInvariant()
+                : char.ToUpperInvariant(normalized[0]) + normalized[1..]
+        };
+    }
+
+    private static string InferToolCategory(string? explicitPackId, string? explicitCategory) {
+        var normalizedCategory = NormalizeCategoryLabel(explicitCategory);
+        if (normalizedCategory.Length > 0) {
+            return normalizedCategory;
+        }
+
+        var packId = NormalizePackId(explicitPackId);
         return packId switch {
             "ad" => "active-directory",
             "eventlog" => "event-log",
@@ -193,77 +240,50 @@ internal sealed partial class ChatServiceSession {
             "powershell" => "powershell",
             "email" => "email",
             "testimox" => "testimox",
+            "officeimo" => "officeimo",
             "reviewersetup" => "reviewer-setup",
             "reviewer-setup" => "reviewer-setup",
             _ => "other"
         };
     }
 
-    private static string InferPackIdFromToolName(string? toolName, IReadOnlyList<string>? tags) {
-        var normalized = (toolName ?? string.Empty).Trim().ToLowerInvariant();
+    private static string NormalizeCategoryLabel(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
         if (normalized.Length == 0) {
             return string.Empty;
         }
 
-        if (normalized.StartsWith("ad_", StringComparison.Ordinal)
-            || normalized.StartsWith("adplayground_", StringComparison.Ordinal)) {
-            return "ad";
-        }
-        if (normalized.StartsWith("eventlog_", StringComparison.Ordinal)) {
-            return "eventlog";
-        }
-        if (normalized.StartsWith("fs_", StringComparison.Ordinal)) {
-            return "fs";
-        }
-        if (normalized.StartsWith("system_", StringComparison.Ordinal) || normalized.StartsWith("wsl_", StringComparison.Ordinal)) {
-            return "system";
-        }
-        if (normalized.StartsWith("powershell_", StringComparison.Ordinal)) {
-            return "powershell";
-        }
-        if (normalized.StartsWith("email_", StringComparison.Ordinal)) {
-            return "email";
-        }
-        if (normalized.StartsWith("testimox_", StringComparison.Ordinal)) {
-            return "testimox";
-        }
-        if (normalized.StartsWith("reviewer_setup_", StringComparison.Ordinal)) {
-            return "reviewer-setup";
-        }
-        if (normalized.StartsWith("export_", StringComparison.Ordinal)) {
-            return "export";
+        normalized = normalized.Replace("_", "-", StringComparison.Ordinal)
+            .Replace(" ", "-", StringComparison.Ordinal);
+        normalized = Regex.Replace(normalized, "-{2,}", "-", RegexOptions.CultureInvariant);
+
+        return normalized switch {
+            "ad" => "active-directory",
+            "active-directory" => "active-directory",
+            "activedirectory" => "active-directory",
+            "eventlog" => "event-log",
+            "event-log" => "event-log",
+            "fs" => "file-system",
+            "file-system" => "file-system",
+            "filesystem" => "file-system",
+            "reviewersetup" => "reviewer-setup",
+            "reviewer-setup" => "reviewer-setup",
+            _ => normalized
+        };
+    }
+
+    private static string ReadOptionalToolMetadata(ToolDefinition definition, string propertyName) {
+        if (definition is null || string.IsNullOrWhiteSpace(propertyName)) {
+            return string.Empty;
         }
 
-        if (tags is { Count: > 0 }) {
-            foreach (var tag in tags) {
-                var normalizedTag = (tag ?? string.Empty).Trim().ToLowerInvariant();
-                if (normalizedTag.Length == 0) {
-                    continue;
-                }
-
-                if (normalizedTag.Contains("active-directory", StringComparison.Ordinal)
-                    || normalizedTag.Equals("ad", StringComparison.Ordinal)) {
-                    return "ad";
-                }
-
-                if (normalizedTag.Contains("eventlog", StringComparison.Ordinal)
-                    || normalizedTag.Contains("event-log", StringComparison.Ordinal)) {
-                    return "eventlog";
-                }
-
-                if (normalizedTag.Contains("filesystem", StringComparison.Ordinal)
-                    || normalizedTag.Contains("file-system", StringComparison.Ordinal)
-                    || normalizedTag.Equals("fs", StringComparison.Ordinal)) {
-                    return "fs";
-                }
-
-                if (normalizedTag.Contains("powershell", StringComparison.Ordinal)) {
-                    return "powershell";
-                }
-            }
+        var property = definition.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property is null || !property.CanRead || property.PropertyType != typeof(string)) {
+            return string.Empty;
         }
 
-        return "other";
+        var value = (property.GetValue(definition) as string ?? string.Empty).Trim();
+        return value;
     }
 
     private static async Task<string> EnsureThreadAsync(IntelligenceXClient client, string? requestThreadId, string? activeThreadId, string? model,

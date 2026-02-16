@@ -54,7 +54,7 @@ and can resolve engine sources from configured local roots when needed.
 - `IntelligenceX.Tools.EventLog`
   - EVTX parsing + Windows event log querying (engine-first via `EventViewerX`)
   - Includes `eventlog_pack_info` guidance tool
-- `IntelligenceX.Tools.ActiveDirectory`
+- `IntelligenceX.Tools.ADPlayground`
   - Engine-first via `ADPlayground` (in `TestimoX` monorepo)
   - Includes `ad_pack_info` guidance tool
 - `IntelligenceX.Tools.OfficeIMO`

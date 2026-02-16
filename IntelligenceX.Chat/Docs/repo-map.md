@@ -30,7 +30,7 @@ Examples:
 - `IntelligenceX.Tools.Email` (Mailozaurr/MailKit/MimeKit)
 - `IntelligenceX.Tools.System` (OS/system helpers)
 - Future Windows-only packs:
-  - `IntelligenceX.Tools.ActiveDirectory` (ADPlayground)
+  - `IntelligenceX.Tools.ADPlayground`
   - `IntelligenceX.Tools.EventLog` (EventViewerX)
 
 ## IntelligenceX.Chat (Windows app)

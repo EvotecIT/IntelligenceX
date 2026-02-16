@@ -457,7 +457,8 @@ internal sealed partial class ChatServiceSession {
         var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
 
         var registry = new ToolRegistry();
-        ToolPackBootstrap.RegisterAll(registry, packs);
+        _toolPackIdsByToolName.Clear();
+        ToolPackBootstrap.RegisterAll(registry, packs, _toolPackIdsByToolName);
 
         _packs = packs;
         _pluginSearchPaths = pluginSearchPaths;

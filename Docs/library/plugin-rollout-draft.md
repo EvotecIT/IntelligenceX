@@ -31,7 +31,7 @@ Recommended manifest file: `ix-plugin.json` at package root.
 {
   "schemaVersion": 1,
   "pluginId": "evotec.testimox",
-  "displayName": "TestimoX Diagnostics Pack",
+  "displayName": "TestimoX Pack",
   "packageId": "IntelligenceX.Tools.TestimoX",
   "version": "1.0.0",
   "entryAssembly": "IntelligenceX.Tools.TestimoX.dll",
@@ -73,7 +73,7 @@ On load failure, do not crash startup. Emit explicit diagnostics:
 ### Private-capable (your use case)
 - `IntelligenceX.Tools.System`
 - `IntelligenceX.Tools.TestimoX`
-- `IntelligenceX.Tools.ActiveDirectory` (if backed by private ADPlayground/TestimoX engines)
+- `IntelligenceX.Tools.ADPlayground` (if backed by private ADPlayground/TestimoX engines)
 - future `IntelligenceX.Tools.ComputerX`
 
 Recommendation:

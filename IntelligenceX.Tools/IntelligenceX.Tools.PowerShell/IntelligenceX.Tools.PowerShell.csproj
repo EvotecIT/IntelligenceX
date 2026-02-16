@@ -20,7 +20,8 @@
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Engine-first: dedicated PowerShell runtime support comes from ComputerX. -->
-    <ProjectReference Include="$(TestimoXRoot)ComputerX\\ComputerX.csproj" Condition="Exists('$(TestimoXRoot)ComputerX\\ComputerX.csproj')" />
+    <!-- Engine-first: dedicated PowerShell runtime support comes from local IntelligenceX engine contracts. -->
+    <ProjectReference Include="..\..\IntelligenceX.Engines\IntelligenceX.Engines.PowerShell\IntelligenceX.Engines.PowerShell.csproj"
+                      Condition="Exists('..\..\IntelligenceX.Engines\IntelligenceX.Engines.PowerShell\IntelligenceX.Engines.PowerShell.csproj')" />
   </ItemGroup>
 </Project>

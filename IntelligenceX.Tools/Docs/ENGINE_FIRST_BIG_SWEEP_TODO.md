@@ -42,34 +42,34 @@ Reduce all tool projects to thin wrappers:
 ## ActiveDirectory Project
 | File | Lane | Action | Target | Status |
 |---|---|---|---|---|
-| `IntelligenceX.Tools.ActiveDirectory/IntelligenceX.Tools.ActiveDirectory.csproj` | `L5` | Keep; update refs only if new ADPlayground contracts added | `IntelligenceX.Tools.ActiveDirectory` | `todo` |
-| `IntelligenceX.Tools.ActiveDirectory/ActiveDirectoryToolPack.cs` | `L5` | Keep | `IntelligenceX.Tools.ActiveDirectory` | `todo` |
-| `IntelligenceX.Tools.ActiveDirectory/ToolRegistryActiveDirectoryExtensions.cs` | `L5` | Keep; reorder/adjust registrations only if tools merged/split | `IntelligenceX.Tools.ActiveDirectory` | `todo` |
-| `IntelligenceX.Tools.ActiveDirectory/ActiveDirectoryToolOptions.cs` | `L5` | Keep | `IntelligenceX.Tools.ActiveDirectory` | `todo` |
-| `IntelligenceX.Tools.ActiveDirectory/ActiveDirectoryToolBase.cs` | `L4` | Keep; only generic wrapper plumbing, no domain parsing additions | `IntelligenceX.Tools.ActiveDirectory` | `todo` |
-| `IntelligenceX.Tools.ActiveDirectory/AdSearchRow.cs` | `L5` | Removed; replaced with engine-owned `LdapToolOutputRow` contract in AD wrappers | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdQueryResultHelpers.cs` | `L4` | Keep; move generic parts to `Tools.Common` if reused outside AD | `IntelligenceX.Tools.Common` | `todo` |
-| `IntelligenceX.Tools.ActiveDirectory/AdLdapDiagnosticsTool.cs` | `L5` | Wrapper simplified; diagnostics execution remains engine-owned via `LdapDiagnosticsReportBuilder` and projection now uses `TryBuildModelResponseAutoColumns` | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdUsersExpiredTool.cs` | `L5` | Keep wrapper; pass through `ExpiredUserEntry` engine rows directly | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdStaleAccountsTool.cs` | `L1` | Direct pass-through of `StaleAccountsQueryResult` and `StaleAccountEntry` engine types (no local result/row wrappers) | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdObjectResolveTool.cs` | `L1` | Batched DN/SID resolve execution and row DTOs moved to `LdapToolObjectResolveService`; wrapper keeps args and uses auto-column projection for preview | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdSearchTool.cs` | `L1` | Filter/query execution + attribute policy moved to `LdapToolSearchService` + `LdapToolSearchPolicy`; wrapper keeps preview + output contract shaping | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdLdapQueryTool.cs` | `L1` | Query validation/scope/attribute policy/sensitive checks and execution moved to `LdapToolAdLdapQueryService`; wrapper keeps caps/context + preview shaping | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdLdapQueryPagedTool.cs` | `L1` | Paged query validation/attribute policy/cursor handling/paging math moved to `LdapToolAdLdapQueryPagedService` + `LdapToolOffsetCursor`; wrapper keeps caps/context + preview shaping | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdGroupsListTool.cs` | `L1` | Query/filter/paging/list shaping moved to `AdGroupsListService`; wrapper is pass-through + preview | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdGroupMembersTool.cs` | `L1` | Group lookup and direct member enumeration moved to `AdGroupMembersService` | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdGroupMembersResolvedTool.cs` | `L1` | Resolve pipeline + ambiguity handling moved to `AdGroupMembersResolvedService` | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdSpnSearchTool.cs` | `L1` | SPN search execution + attribute policy moved to `LdapToolSpnSearchService` + `LdapToolSpnSearchPolicy`; wrapper keeps preview + output contract shaping | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdObjectGetTool.cs` | `L1` | Object-get decision model and attribute selection policy moved to `LdapToolObjectGetService` + `LdapToolObjectGetPolicy`; wrapper keeps output compatibility shaping | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdDomainInfoTool.cs` | `L1` | Root/domain-info composition moved to `DomainInfoService`; local `DomainInfoResult` removed from wrapper | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdDomainControllersTool.cs` | `L1` | Domain-controller query/fallback execution moved to `AdDomainControllersService`; wrapper keeps preview + output contract shaping | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdDelegationAuditTool.cs` | `L1` | Delegation/UAC analysis and row DTOs moved to `LdapToolDelegationAuditService`; tool is pass-through wrapper with auto-column projection | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdSearchFacetsTool.cs` | `L1` | Facets/UAC/password-age aggregation + sample shaping moved to `LdapToolSearchFacetsService`; tool is pass-through wrapper | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdSpnStatsTool.cs` | `L1` | Direct pass-through of `ADPlayground.Kerberos.SpnStatsResult` (no local SPN result/row wrappers) with auto-column projection | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdPrivilegedGroupsSummaryTool.cs` | `L1` | Summary aggregation + typed result rows moved to `PrivilegedGroupsSummaryService`; wrapper is pass-through | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdDomainAdminsSummaryTool.cs` | `L1` | Summary aggregation + typed result/member rows moved to `DomainAdminsSummaryService`; wrapper is pass-through | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdReplicationSummaryTool.cs` | `L1` | Replication summary aggregation + typed result/detail rows moved to `ReplicationSummaryQueryService`; wrapper keeps meta rendering and uses auto-column projection for preview | `ADPlayground` | `done` |
-| `IntelligenceX.Tools.ActiveDirectory/AdWhoAmITool.cs` | `L1` | Runtime identity + RootDSE context moved to `AdWhoAmIService`; wrapper keeps markdown/output shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/IntelligenceX.Tools.ADPlayground.csproj` | `L5` | Keep; update refs only if new ADPlayground contracts added | `IntelligenceX.Tools.ADPlayground` | `todo` |
+| `IntelligenceX.Tools.ADPlayground/ActiveDirectoryToolPack.cs` | `L5` | Keep | `IntelligenceX.Tools.ADPlayground` | `todo` |
+| `IntelligenceX.Tools.ADPlayground/ToolRegistryActiveDirectoryExtensions.cs` | `L5` | Keep; reorder/adjust registrations only if tools merged/split | `IntelligenceX.Tools.ADPlayground` | `todo` |
+| `IntelligenceX.Tools.ADPlayground/ActiveDirectoryToolOptions.cs` | `L5` | Keep | `IntelligenceX.Tools.ADPlayground` | `todo` |
+| `IntelligenceX.Tools.ADPlayground/ActiveDirectoryToolBase.cs` | `L4` | Keep; only generic wrapper plumbing, no domain parsing additions | `IntelligenceX.Tools.ADPlayground` | `todo` |
+| `IntelligenceX.Tools.ADPlayground/AdSearchRow.cs` | `L5` | Removed; replaced with engine-owned `LdapToolOutputRow` contract in AD wrappers | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdQueryResultHelpers.cs` | `L4` | Keep; move generic parts to `Tools.Common` if reused outside AD | `IntelligenceX.Tools.Common` | `todo` |
+| `IntelligenceX.Tools.ADPlayground/AdLdapDiagnosticsTool.cs` | `L5` | Wrapper simplified; diagnostics execution remains engine-owned via `LdapDiagnosticsReportBuilder` and projection now uses `TryBuildModelResponseAutoColumns` | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdUsersExpiredTool.cs` | `L5` | Keep wrapper; pass through `ExpiredUserEntry` engine rows directly | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdStaleAccountsTool.cs` | `L1` | Direct pass-through of `StaleAccountsQueryResult` and `StaleAccountEntry` engine types (no local result/row wrappers) | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdObjectResolveTool.cs` | `L1` | Batched DN/SID resolve execution and row DTOs moved to `LdapToolObjectResolveService`; wrapper keeps args and uses auto-column projection for preview | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdSearchTool.cs` | `L1` | Filter/query execution + attribute policy moved to `LdapToolSearchService` + `LdapToolSearchPolicy`; wrapper keeps preview + output contract shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdLdapQueryTool.cs` | `L1` | Query validation/scope/attribute policy/sensitive checks and execution moved to `LdapToolAdLdapQueryService`; wrapper keeps caps/context + preview shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdLdapQueryPagedTool.cs` | `L1` | Paged query validation/attribute policy/cursor handling/paging math moved to `LdapToolAdLdapQueryPagedService` + `LdapToolOffsetCursor`; wrapper keeps caps/context + preview shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdGroupsListTool.cs` | `L1` | Query/filter/paging/list shaping moved to `AdGroupsListService`; wrapper is pass-through + preview | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdGroupMembersTool.cs` | `L1` | Group lookup and direct member enumeration moved to `AdGroupMembersService` | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdGroupMembersResolvedTool.cs` | `L1` | Resolve pipeline + ambiguity handling moved to `AdGroupMembersResolvedService` | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdSpnSearchTool.cs` | `L1` | SPN search execution + attribute policy moved to `LdapToolSpnSearchService` + `LdapToolSpnSearchPolicy`; wrapper keeps preview + output contract shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdObjectGetTool.cs` | `L1` | Object-get decision model and attribute selection policy moved to `LdapToolObjectGetService` + `LdapToolObjectGetPolicy`; wrapper keeps output compatibility shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdDomainInfoTool.cs` | `L1` | Root/domain-info composition moved to `DomainInfoService`; local `DomainInfoResult` removed from wrapper | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdDomainControllersTool.cs` | `L1` | Domain-controller query/fallback execution moved to `AdDomainControllersService`; wrapper keeps preview + output contract shaping | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdDelegationAuditTool.cs` | `L1` | Delegation/UAC analysis and row DTOs moved to `LdapToolDelegationAuditService`; tool is pass-through wrapper with auto-column projection | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdSearchFacetsTool.cs` | `L1` | Facets/UAC/password-age aggregation + sample shaping moved to `LdapToolSearchFacetsService`; tool is pass-through wrapper | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdSpnStatsTool.cs` | `L1` | Direct pass-through of `ADPlayground.Kerberos.SpnStatsResult` (no local SPN result/row wrappers) with auto-column projection | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdPrivilegedGroupsSummaryTool.cs` | `L1` | Summary aggregation + typed result rows moved to `PrivilegedGroupsSummaryService`; wrapper is pass-through | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdDomainAdminsSummaryTool.cs` | `L1` | Summary aggregation + typed result/member rows moved to `DomainAdminsSummaryService`; wrapper is pass-through | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdReplicationSummaryTool.cs` | `L1` | Replication summary aggregation + typed result/detail rows moved to `ReplicationSummaryQueryService`; wrapper keeps meta rendering and uses auto-column projection for preview | `ADPlayground` | `done` |
+| `IntelligenceX.Tools.ADPlayground/AdWhoAmITool.cs` | `L1` | Runtime identity + RootDSE context moved to `AdWhoAmIService`; wrapper keeps markdown/output shaping | `ADPlayground` | `done` |
 
 ## System Project
 | File | Lane | Action | Target | Status |

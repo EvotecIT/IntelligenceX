@@ -784,12 +784,12 @@ internal static partial class Program {
         Console.WriteLine("Usage: /toolhealth [filters]");
         Console.WriteLine("Filters can be combined with spaces or commas.");
         Console.WriteLine("Source filters: open, closed/private, builtin.");
-        Console.WriteLine("Pack filters: pack:<id> or aliases (computerx, adplayground, testimox).");
+        Console.WriteLine("Pack filters: pack:<id> where id is canonical (for example: system, ad, testimox, eventlog, fs).");
         Console.WriteLine("Examples:");
         Console.WriteLine("  /toolhealth");
         Console.WriteLine("  /toolhealth closed");
         Console.WriteLine("  /toolhealth open,pack:eventlog");
-        Console.WriteLine("  /toolhealth private pack:computerx pack:adplayground pack:testimox");
+        Console.WriteLine("  /toolhealth private pack:system pack:ad pack:testimox");
     }
 
     private static string FormatProbeScope(string packId, string? packName, string sourceKind) {

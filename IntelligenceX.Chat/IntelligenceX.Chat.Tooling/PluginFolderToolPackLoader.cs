@@ -180,21 +180,22 @@ internal static class PluginFolderToolPackLoader {
             }
 
             var descriptorId = pack.Descriptor.Id?.Trim();
-            if (string.IsNullOrWhiteSpace(descriptorId)) {
+            var normalizedDescriptorId = ToolPackBootstrap.NormalizePackId(descriptorId);
+            if (normalizedDescriptorId.Length == 0) {
                 onWarning?.Invoke($"[plugin] init_failed plugin='{pluginId}' type='{candidateType.FullName}' error='descriptor id is empty'");
                 continue;
             }
 
-            if (existingPackIds.Contains(descriptorId)) {
+            if (existingPackIds.Contains(normalizedDescriptorId)) {
                 if (isExplicitRoot) {
-                    onWarning?.Invoke($"[plugin] duplicate_pack plugin='{pluginId}' descriptor='{descriptorId}' action='skipped'");
+                    onWarning?.Invoke($"[plugin] duplicate_pack plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
                 }
                 continue;
             }
 
-            if (!IsPackEnabledByOptions(descriptorId, options)) {
+            if (!IsPackEnabledByOptions(normalizedDescriptorId, options)) {
                 if (isExplicitRoot) {
-                    onWarning?.Invoke($"[plugin] pack_disabled plugin='{pluginId}' descriptor='{descriptorId}' action='skipped'");
+                    onWarning?.Invoke($"[plugin] pack_disabled plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
                 }
                 continue;
             }
@@ -205,7 +206,7 @@ internal static class PluginFolderToolPackLoader {
             }
 
             pack = ToolPackBootstrap.WithSourceKind(pack, sourceKind);
-            existingPackIds.Add(descriptorId);
+            existingPackIds.Add(normalizedDescriptorId);
             packs.Add(pack);
         }
     }
@@ -522,18 +523,19 @@ internal static class PluginFolderToolPackLoader {
     }
 
     private static bool IsPackEnabledByOptions(string descriptorId, ToolPackBootstrapOptions options) {
-        if (string.IsNullOrWhiteSpace(descriptorId)) {
+        var normalized = ToolPackBootstrap.NormalizePackId(descriptorId);
+        if (normalized.Length == 0) {
             return false;
         }
 
-        return descriptorId.Trim().ToLowerInvariant() switch {
+        return normalized switch {
             "fs" => options.EnableFileSystemPack,
             "system" => options.EnableSystemPack,
             "ad" => options.EnableActiveDirectoryPack,
             "powershell" => options.EnablePowerShellPack,
             "testimox" => options.EnableTestimoXPack,
             "officeimo" => options.EnableOfficeImoPack,
-            "reviewer_setup" => options.EnableReviewerSetupPack,
+            "reviewersetup" => options.EnableReviewerSetupPack,
             "email" => options.EnableEmailPack,
             _ => true
         };

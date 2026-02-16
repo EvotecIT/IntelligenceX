@@ -114,7 +114,7 @@ $publicToolProjects = @(
 
 $privateToolProjects = @(
     'IntelligenceX.Tools\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj',
+    'IntelligenceX.Tools\IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj',
     'IntelligenceX.Tools\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj'
 )
 $resolvedTestimoXRoot = $null

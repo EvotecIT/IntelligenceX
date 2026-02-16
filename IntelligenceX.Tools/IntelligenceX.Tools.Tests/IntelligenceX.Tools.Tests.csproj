@@ -28,7 +28,7 @@
     <ProjectReference Include="..\IntelligenceX.Tools.FileSystem\IntelligenceX.Tools.FileSystem.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj" />
-    <ProjectReference Include="..\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.OfficeIMO\IntelligenceX.Tools.OfficeIMO.csproj" />
   </ItemGroup>

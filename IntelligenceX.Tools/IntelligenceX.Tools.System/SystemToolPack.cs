@@ -21,10 +21,10 @@ public sealed class SystemToolPack : IToolPack {
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "system",
-        Name = "System",
+        Name = "ComputerX",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
-        Description = "Local system read-only tools.",
+        Description = "ComputerX host inventory and diagnostics (read-only).",
         SourceKind = "closed_source"
     };
 

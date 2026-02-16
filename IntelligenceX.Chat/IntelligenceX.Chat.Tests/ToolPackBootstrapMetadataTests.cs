@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -22,11 +24,12 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Theory]
-    [InlineData("computerx", "system")]
-    [InlineData("adplayground", "ad")]
-    [InlineData("reviewer_setup_pack", "reviewersetup")]
-    [InlineData("IX.FileSystem", "fs")]
-    public void NormalizePackId_UsesCanonicalAliases(string input, string expected) {
+    [InlineData("system", "system")]
+    [InlineData("ad", "ad")]
+    [InlineData("reviewer_setup", "reviewersetup")]
+    [InlineData("event-log", "eventlog")]
+    [InlineData("file system", "filesystem")]
+    public void NormalizePackId_UsesCanonicalShape(string input, string expected) {
         var normalized = ToolPackBootstrap.NormalizePackId(input);
         Assert.Equal(expected, normalized);
     }
@@ -62,5 +65,29 @@ public sealed class ToolPackBootstrapMetadataTests {
         });
 
         Assert.DoesNotContain(packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAll_AssignsPackIds_ForRegisteredTools() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false,
+            EnableEmailPack = false,
+            EnableDefaultPluginPaths = false
+        });
+        var registry = new ToolRegistry();
+        var toolPackIdsByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        ToolPackBootstrap.RegisterAll(registry, packs, toolPackIdsByToolName);
+
+        Assert.True(toolPackIdsByToolName.TryGetValue("eventlog_pack_info", out var eventLogPackId));
+        Assert.Equal("eventlog", eventLogPackId);
+
+        Assert.True(toolPackIdsByToolName.TryGetValue("reviewer_setup_pack_info", out var reviewerPackId));
+        Assert.Equal("reviewersetup", reviewerPackId);
     }
 }

@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window {
             seen.Add(name);
             _toolDescriptions[name] = tool.Description ?? string.Empty;
             _toolDisplayNames[name] = string.IsNullOrWhiteSpace(tool.DisplayName) ? FormatToolDisplayName(name) : tool.DisplayName.Trim();
-            _toolCategories[name] = string.IsNullOrWhiteSpace(tool.Category) ? InferToolCategory(name) : tool.Category.Trim();
+            _toolCategories[name] = string.IsNullOrWhiteSpace(tool.Category) ? "other" : tool.Category.Trim();
             if (!string.IsNullOrWhiteSpace(tool.PackId)) {
                 _toolPackIds[name] = tool.PackId.Trim();
             } else {
@@ -141,7 +141,7 @@ public sealed partial class MainWindow : Window {
 
     private string ResolveToolPackId(string toolName) {
         if (string.IsNullOrWhiteSpace(toolName)) {
-            return "other";
+            return "uncategorized";
         }
 
         if (_toolPackIds.TryGetValue(toolName, out var explicitPackId) && !string.IsNullOrWhiteSpace(explicitPackId)) {
@@ -149,42 +149,13 @@ public sealed partial class MainWindow : Window {
         }
 
         if (_toolCategories.TryGetValue(toolName, out var category) && !string.IsNullOrWhiteSpace(category)) {
-            var fromCategory = MapCategoryToPackId(category);
-            if (!string.IsNullOrWhiteSpace(fromCategory)) {
+            var fromCategory = NormalizePackId(category);
+            if (!string.IsNullOrWhiteSpace(fromCategory) && !string.Equals(fromCategory, "other", StringComparison.OrdinalIgnoreCase)) {
                 return fromCategory;
             }
         }
 
-        var lower = toolName.Trim().ToLowerInvariant();
-        return lower switch {
-            _ when lower.StartsWith("ad_", StringComparison.Ordinal) => "ad",
-            _ when lower.StartsWith("eventlog_", StringComparison.Ordinal) => "eventlog",
-            _ when lower.StartsWith("system_", StringComparison.Ordinal) => "system",
-            _ when lower.StartsWith("wsl_", StringComparison.Ordinal) => "system",
-            _ when lower.StartsWith("fs_", StringComparison.Ordinal) => "fs",
-            _ when lower.StartsWith("email_", StringComparison.Ordinal) => "email",
-            _ when lower.StartsWith("testimox_", StringComparison.Ordinal) => "testimox",
-            _ when lower.StartsWith("reviewer_setup_", StringComparison.Ordinal) => "reviewer-setup",
-            _ when lower.StartsWith("export_", StringComparison.Ordinal) => "export",
-            _ => "other"
-        };
-    }
-
-    private static string MapCategoryToPackId(string category) {
-        return NormalizePackId(category) switch {
-            "ad" => "ad",
-            "active-directory" => "ad",
-            "eventlog" => "eventlog",
-            "event-log" => "eventlog",
-            "fs" => "fs",
-            "file-system" => "fs",
-            "system" => "system",
-            "email" => "email",
-            "testimox" => "testimox",
-            "reviewer-setup" => "reviewer-setup",
-            "export" => "export",
-            _ => string.Empty
-        };
+        return "uncategorized";
     }
 
     private static string NormalizePackId(string? packId) {
@@ -194,28 +165,16 @@ public sealed partial class MainWindow : Window {
         }
 
         normalized = normalized
-            .Replace("_", "-", StringComparison.Ordinal)
-            .Replace(".", "-", StringComparison.Ordinal)
-            .Replace(" ", "-", StringComparison.Ordinal);
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(".", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
 
-        if (normalized.StartsWith("ix-", StringComparison.Ordinal)) {
-            normalized = normalized[3..];
-        } else if (normalized.StartsWith("intelligencex-", StringComparison.Ordinal)) {
-            normalized = normalized["intelligencex-".Length..];
+        if (string.Equals(normalized, "other", StringComparison.Ordinal)) {
+            return "uncategorized";
         }
 
-        return normalized switch {
-            "active-directory" => "ad",
-            "activedirectory" => "ad",
-            "adplayground" => "ad",
-            "computerx" => "system",
-            "event-log" => "eventlog",
-            "filesystem" => "fs",
-            "file-system" => "fs",
-            "reviewersetup" => "reviewer-setup",
-            "reviewer-setup" => "reviewer-setup",
-            _ => normalized
-        };
+        return normalized;
     }
 
     private async Task SetTimeModeAsync(string value) {

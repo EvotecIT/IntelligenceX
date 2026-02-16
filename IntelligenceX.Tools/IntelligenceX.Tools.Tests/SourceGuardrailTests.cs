@@ -19,7 +19,7 @@ public class SourceGuardrailTests {
     [InlineData("AdSearchFacetsTool.cs")]
     public void ActiveDirectoryThinWrappers_ShouldNotContainRawLdapLoops(string fileName) {
         var repoRoot = FindRepoRoot();
-        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", fileName);
+        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", fileName);
         var source = File.ReadAllText(filePath);
 
         Assert.DoesNotContain("SearchResult sr", source);
@@ -32,7 +32,7 @@ public class SourceGuardrailTests {
     [Fact]
     public void DomainInfoTool_ShouldNotImplementLocalDnParsing() {
         var repoRoot = FindRepoRoot();
-        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdDomainInfoTool.cs");
+        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDomainInfoTool.cs");
         var source = File.ReadAllText(filePath);
 
         Assert.DoesNotContain("Split(',')", source);
@@ -100,7 +100,7 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogTopRow.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogAggregates.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogArgs.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdSearchRow.cs")
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSearchRow.cs")
         };
 
         foreach (var removedFile in removedFiles) {
@@ -112,26 +112,26 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxAccountLockoutsReportTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxUserLogonsReportTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogPackInfoTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdSpnStatsTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdStaleAccountsTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdUsersExpiredTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdWhoAmITool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdDomainInfoTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdPrivilegedGroupsSummaryTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdDomainAdminsSummaryTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdReplicationSummaryTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdDomainControllersTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdDelegationAuditTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdSearchFacetsTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdSearchTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdSpnSearchTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdObjectGetTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdLdapQueryTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdLdapQueryPagedTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdGroupsListTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdGroupMembersTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdGroupMembersResolvedTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory", "AdObjectResolveTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSpnStatsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdStaleAccountsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdUsersExpiredTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdWhoAmITool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDomainInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdPrivilegedGroupsSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDomainAdminsSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdReplicationSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDomainControllersTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDelegationAuditTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSearchFacetsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSearchTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSpnSearchTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdObjectGetTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdLdapQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdLdapQueryPagedTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupsListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupMembersTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupMembersResolvedTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdObjectResolveTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemInfoTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemHardwareIdentityTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemWhoAmITool.cs")
@@ -200,7 +200,7 @@ public class SourceGuardrailTests {
     public void ToolWrappers_ShouldNotReintroduceLocalArgumentParserHelpers() {
         var repoRoot = FindRepoRoot();
         string[] toolFolders = {
-            Path.Combine(repoRoot, "IntelligenceX.Tools.ActiveDirectory"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem"),

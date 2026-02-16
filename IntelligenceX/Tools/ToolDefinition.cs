@@ -15,6 +15,8 @@ public sealed class ToolDefinition {
     /// <param name="name">Tool name.</param>
     /// <param name="description">Tool description.</param>
     /// <param name="parameters">JSON schema for tool parameters.</param>
+    /// <param name="displayName">Optional human-friendly tool display name.</param>
+    /// <param name="category">Optional tool category label.</param>
     /// <param name="tags">Optional tags used for model/tooling guidance.</param>
     /// <param name="aliases">Optional aliases that should invoke the same tool implementation.</param>
     /// <param name="aliasOf">Optional canonical tool name when this definition is an alias.</param>
@@ -22,6 +24,8 @@ public sealed class ToolDefinition {
         string name,
         string? description = null,
         JsonObject? parameters = null,
+        string? displayName = null,
+        string? category = null,
         IReadOnlyList<string>? tags = null,
         IReadOnlyList<ToolAliasDefinition>? aliases = null,
         string? aliasOf = null) {
@@ -36,6 +40,8 @@ public sealed class ToolDefinition {
 
         Description = description;
         Parameters = parameters;
+        DisplayName = NormalizeOptionalText(displayName);
+        Category = NormalizeOptionalText(category);
         Tags = NormalizeTags(tags);
         Aliases = NormalizeAliases(aliases, Name);
         AliasOf = string.IsNullOrWhiteSpace(aliasOf) ? null : aliasOf!.Trim();
@@ -53,6 +59,14 @@ public sealed class ToolDefinition {
     /// Gets the JSON schema for tool parameters.
     /// </summary>
     public JsonObject? Parameters { get; }
+    /// <summary>
+    /// Gets optional human-friendly display name.
+    /// </summary>
+    public string? DisplayName { get; }
+    /// <summary>
+    /// Gets optional tool category label.
+    /// </summary>
+    public string? Category { get; }
 
     /// <summary>
     /// Gets optional tags associated with this tool definition.
@@ -95,6 +109,8 @@ public sealed class ToolDefinition {
             name: normalizedAliasName,
             description: string.IsNullOrWhiteSpace(description) ? Description : description,
             parameters: Parameters,
+            displayName: null,
+            category: Category,
             tags: mergedTags,
             aliases: null,
             aliasOf: CanonicalName);
@@ -159,6 +175,11 @@ public sealed class ToolDefinition {
         }
 
         return list.Count == 0 ? Array.Empty<ToolAliasDefinition>() : list.ToArray();
+    }
+
+    private static string? NormalizeOptionalText(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> first, IReadOnlyList<string>? second) {

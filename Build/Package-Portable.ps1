@@ -19,6 +19,7 @@
     [switch] $IncludeService,
     [switch] $IncludePrivateToolPacks,
     [string] $TestimoXRoot,
+    [switch] $IncludeSymbols,
 
     [string] $OutDir,
     [string] $BundleName,
@@ -121,13 +122,27 @@ function New-ZipFromFolder {
     [System.IO.Compression.ZipFile]::CreateFromDirectory($FolderPath, $ZipPath)
 }
 
+function Remove-BundleSymbols {
+    param(
+        [Parameter(Mandatory)]
+        [string] $BundleRoot
+    )
+
+    if ($IncludeSymbols) {
+        return
+    }
+
+    Get-ChildItem -Path $BundleRoot -Recurse -File -Filter '*.pdb' -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 function New-PortableLauncherScripts {
     param(
         [Parameter(Mandatory)]
         [string] $BundleRoot
     )
 
-    $launcherPs1 = @'
+        $launcherPs1 = @'
 param(
     [string[]] $AllowRoot,
     [string[]] $ExtraArgs
@@ -255,6 +270,7 @@ Write-Step "Runtime: $Runtime"
 Write-Step "Framework: $Framework"
 Write-Step "Plugin mode: $PluginMode"
 Write-Step "Bundle root: $bundleRoot"
+Write-Step "Include symbols: $([bool]$IncludeSymbols)"
 
 Write-Header 'Publish Host (primary app)'
 Publish-Project -ProjectPath $hostProject -OutputPath $bundleRoot
@@ -279,6 +295,9 @@ $exportArgs = @(
     '-OutDir',
     $pluginsOut
 )
+if ($IncludeSymbols) {
+    $exportArgs += '-IncludeSymbols'
+}
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
     $exportArgs += @('-TestimoXRoot', $TestimoXRoot)
 }
@@ -290,6 +309,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Header 'Generate Portable Launchers'
 New-PortableLauncherScripts -BundleRoot $bundleRoot
 New-PortableReadme -BundleRoot $bundleRoot -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode
+Remove-BundleSymbols -BundleRoot $bundleRoot
 
 $bundleMetadata = [ordered]@{
     schemaVersion = 1
@@ -300,6 +320,7 @@ $bundleMetadata = [ordered]@{
     pluginMode = $PluginMode
     includeService = [bool]$IncludeService
     includePrivateToolPacks = [bool]$IncludePrivateToolPacks
+    includeSymbols = [bool]$IncludeSymbols
     createdUtc = (Get-Date).ToUniversalTime().ToString('o')
 }
 $bundleMetadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $bundleRoot 'portable-bundle.json') -Encoding UTF8
@@ -313,3 +334,6 @@ if ($Zip) {
 }
 
 Write-Ok "Portable bundle ready: $bundleRoot"
+
+
+

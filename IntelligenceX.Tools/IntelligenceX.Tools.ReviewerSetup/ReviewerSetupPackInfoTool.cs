@@ -29,7 +29,7 @@ public sealed class ReviewerSetupPackInfoTool : ReviewerSetupToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
-            pack: "reviewer_setup",
+            pack: "reviewersetup",
             engine: "IntelligenceX.Cli.Setup",
             tools: ToolRegistryReviewerSetupExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {

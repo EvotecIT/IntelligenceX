@@ -19,7 +19,7 @@ public sealed class ReviewerSetupToolPack : IToolPack {
 
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
-        Id = "reviewer_setup",
+        Id = "reviewersetup",
         Name = "Reviewer Setup",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,

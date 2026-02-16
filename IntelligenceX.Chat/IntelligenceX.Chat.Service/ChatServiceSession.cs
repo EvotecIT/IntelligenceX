@@ -37,7 +37,9 @@ internal sealed partial class ChatServiceSession {
     private string[] _startupWarnings;
     private string[] _pluginSearchPaths;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _toolPackIdsByToolName = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingStatsLock = new();
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();
@@ -85,7 +87,8 @@ internal sealed partial class ChatServiceSession {
         _pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
         _startupWarnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
         _registry = new ToolRegistry();
-        ToolPackBootstrap.RegisterAll(_registry, _packs);
+        _toolPackIdsByToolName.Clear();
+        ToolPackBootstrap.RegisterAll(_registry, _packs, _toolPackIdsByToolName);
         UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
 
         _json = new JsonSerializerOptions {
@@ -95,6 +98,7 @@ internal sealed partial class ChatServiceSession {
 
     private void UpdatePackMetadataIndexes(IReadOnlyList<ToolPackDescriptor> descriptors) {
         _packDisplayNamesById.Clear();
+        _packDescriptionsById.Clear();
         _packSourceKindsById.Clear();
 
         for (var i = 0; i < descriptors.Count; i++) {
@@ -105,6 +109,10 @@ internal sealed partial class ChatServiceSession {
             }
 
             _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
+            var description = (descriptor.Description ?? string.Empty).Trim();
+            if (description.Length > 0) {
+                _packDescriptionsById[normalizedPackId] = description;
+            }
             _packSourceKindsById[normalizedPackId] = MapSourceKind(descriptor.SourceKind, descriptor.Id);
         }
     }

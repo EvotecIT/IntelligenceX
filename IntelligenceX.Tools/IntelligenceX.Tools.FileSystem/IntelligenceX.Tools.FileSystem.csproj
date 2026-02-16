@@ -20,7 +20,8 @@
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- File system tools are engine-first and rely on ComputerX. -->
-    <ProjectReference Include="$(TestimoXRoot)ComputerX\\ComputerX.csproj" Condition="Exists('$(TestimoXRoot)ComputerX\\ComputerX.csproj')" />
+    <!-- Engine-first: dedicated filesystem runtime support comes from local IntelligenceX engine contracts. -->
+    <ProjectReference Include="..\..\IntelligenceX.Engines\IntelligenceX.Engines.FileSystem\IntelligenceX.Engines.FileSystem.csproj"
+                      Condition="Exists('..\..\IntelligenceX.Engines\IntelligenceX.Engines.FileSystem\IntelligenceX.Engines.FileSystem.csproj')" />
   </ItemGroup>
 </Project>

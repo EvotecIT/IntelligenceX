@@ -1,0 +1,24 @@
+<Project Sdk="WixToolset.Sdk/4.0.6">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <ProductName>IntelligenceX Chat</ProductName>
+    <Manufacturer>Evotec</Manufacturer>
+    <ProductVersion>1.0.0</ProductVersion>
+    <UpgradeCode>{a2b787a5-f539-4763-add6-2baa2c2518c7}</UpgradeCode>
+    <PayloadDir>..\..\Artifacts\Portable\win-x64\IntelligenceX.Chat-Portable-win-x64</PayloadDir>
+    <HarvestFile></HarvestFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants>PayloadDir=$(PayloadDir);ProductName=$(ProductName);Manufacturer=$(Manufacturer);ProductVersion=$(ProductVersion);UpgradeCode=$(UpgradeCode)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="4.0.6" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(HarvestFile)' != ''">
+    <Compile Include="$(HarvestFile)" />
+  </ItemGroup>
+</Project>

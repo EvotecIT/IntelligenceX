@@ -1,4 +1,5 @@
 # Export tool packs as folder-based plugins (main assembly + dependencies + manifest).
+# Release exports strip .pdb files by default unless -IncludeSymbols is specified.
 
 [CmdletBinding()] param(
     [ValidateSet('public','private','all')]
@@ -9,7 +10,8 @@
 
     [string] $Framework = 'net10.0-windows',
     [string] $OutDir,
-    [string] $TestimoXRoot
+    [string] $TestimoXRoot,
+    [switch] $IncludeSymbols
 )
 
 Set-StrictMode -Version Latest
@@ -144,6 +146,22 @@ function Resolve-FrameworkForProject {
     return $ProjectFrameworks[0]
 }
 
+function Remove-PluginSymbols {
+    param(
+        [Parameter(Mandatory)]
+        [string] $PluginDirectory
+    )
+
+    if ($IncludeSymbols) {
+        return
+    }
+
+    $symbolFiles = Get-ChildItem -Path $PluginDirectory -File -Filter '*.pdb' -ErrorAction SilentlyContinue
+    foreach ($symbolFile in $symbolFiles) {
+        Remove-Item -Force $symbolFile.FullName
+    }
+}
+
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
@@ -161,7 +179,7 @@ $publicProjects = @(
 
 $privateProjects = @(
     'IntelligenceX.Tools\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj',
+    'IntelligenceX.Tools\IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj',
     'IntelligenceX.Tools\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj'
 )
 
@@ -183,6 +201,7 @@ Write-Header 'Export Plugin Folders'
 Write-Step "Mode: $Mode"
 Write-Step "Framework: $Framework"
 Write-Step "Output: $OutDir"
+Write-Step "Include symbols: $([bool]$IncludeSymbols)"
 
 foreach ($project in $selected) {
     $projectPath = Join-Path $script:RepoRoot $project
@@ -225,6 +244,7 @@ foreach ($project in $selected) {
         $publishArgs += $privateArg
     }
     Invoke-DotNet -Args $publishArgs -WorkingDirectory $script:RepoRoot
+    Remove-PluginSymbols -PluginDirectory $pluginDir
 
     $manifestPath = Join-Path $pluginDir 'ix-plugin.json'
     $sourceKind = if ($privateProjects -contains $project) { 'closed_source' } else { 'open_source' }
