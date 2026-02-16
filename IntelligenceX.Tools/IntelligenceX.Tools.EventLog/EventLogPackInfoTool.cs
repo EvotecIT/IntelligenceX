@@ -45,6 +45,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_top_events for quick triage (top N most recent events from a live channel, local or remote).",
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
+                "Use eventlog_named_events_catalog/eventlog_named_events_query for rule-based, intent-level detections (AD/Kerberos/GPO/etc).",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
                 "Use security report tools for lockouts/logons/failures when investigating authentication incidents.",
                 "For AD identity correlation: call ad_environment_discover, then ad_search using eventlog report ad_correlation candidates."
@@ -60,6 +61,9 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Build aggregate signal baselines",
                     suggestedTools: new[] { "eventlog_evtx_stats", "eventlog_live_stats" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Run named-event rule detections",
+                    suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Investigate authentication incidents",
                     suggestedTools: new[] { "eventlog_evtx_report_failed_logons", "eventlog_evtx_report_account_lockouts", "eventlog_evtx_report_user_logons" }),
@@ -81,6 +85,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     id: "security_reports",
                     summary: "Produce focused lockout/logon/failure views for security investigations.",
                     primaryTools: new[] { "eventlog_evtx_report_failed_logons", "eventlog_evtx_report_account_lockouts", "eventlog_evtx_report_user_logons" }),
+                ToolPackGuidance.Capability(
+                    id: "named_event_rules",
+                    summary: "Run EventViewerX named-event rule detections and return normalized evidence rows.",
+                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query" }),
                 ToolPackGuidance.Capability(
                     id: "ad_correlation_hints",
                     summary: "Emit AD follow-up hints/candidate identities from security report aggregates.",

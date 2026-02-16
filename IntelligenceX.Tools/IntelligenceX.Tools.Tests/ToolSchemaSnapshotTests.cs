@@ -122,6 +122,24 @@ public class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_gpo_list",
+            new[] { "forest_name", "domain_name", "name_contains", "consistency", "link_state", "modified_since_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_gpo_changes",
+            new[] { "domain_name", "since_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
+            "ad_gpo_health",
+            new[] { "domain_name", "gpo_ids", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "gpo_ids" }
+        };
+
+        yield return new object[] {
             "ad_group_members",
             new[] { "identity", "search_base_dn", "domain_controller", "max_members" },
             new[] { "identity" }
@@ -256,6 +274,18 @@ public class ToolSchemaSnapshotTests {
         yield return new object[] {
             "eventlog_evtx_find",
             new[] { "query", "log_name", "max_results" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "eventlog_named_events_catalog",
+            new[] { "name_contains", "categories", "available_only", "include_event_ids", "max_event_ids_per_row", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "eventlog_named_events_query",
+            new[] { "named_events", "categories", "machine_name", "machine_names", "time_period", "start_time_utc", "end_time_utc", "log_name", "event_ids", "max_events_per_named_event", "max_events", "max_threads", "include_payload", "payload_keys", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
         };
 

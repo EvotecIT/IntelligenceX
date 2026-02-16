@@ -12,7 +12,7 @@ public sealed class TestimoXToolOptions {
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Maximum number of rules returned by catalog queries.
+    /// Maximum page size accepted by catalog queries when callers request paged output.
     /// </summary>
     public int MaxRulesInCatalog { get; set; } = 2000;
 

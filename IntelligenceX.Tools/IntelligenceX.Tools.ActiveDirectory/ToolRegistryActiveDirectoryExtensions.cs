@@ -60,6 +60,9 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdPackInfoTool(options);
         yield return new AdEnvironmentDiscoverTool(options);
         yield return new AdForestDiscoverTool(options);
+        yield return new AdGpoListTool(options);
+        yield return new AdGpoChangesTool(options);
+        yield return new AdGpoHealthTool(options);
         yield return new AdDomainInfoTool(options);
         yield return new AdDomainControllersTool(options);
         yield return new AdSpnSearchTool(options);
