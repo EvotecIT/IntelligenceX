@@ -394,8 +394,8 @@ public sealed partial class MainWindow : Window {
                         await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
                         coalesceDelayApplied = true;
                     } catch (OperationCanceledException) {
-                        TryCancelUiPublishAwaiter(sessionTcs);
-                        TryCancelUiPublishAwaiter(optionsTcs);
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: true);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: true);
                         break;
                     }
 
@@ -411,9 +411,9 @@ public sealed partial class MainWindow : Window {
                     }
 
                     if (!publishSession && !publishOptions) {
-                        // Defensive shutdown/race guard: do not leave handed-out awaiters unresolved.
-                        TryCancelUiPublishAwaiter(sessionTcs);
-                        TryCancelUiPublishAwaiter(optionsTcs);
+                        // Idle transition: no-op publish requests should complete rather than cancel.
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: false);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: false);
                         break;
                     }
                 }
@@ -422,8 +422,8 @@ public sealed partial class MainWindow : Window {
                     try {
                         await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
                     } catch (OperationCanceledException) {
-                        TryCancelUiPublishAwaiter(sessionTcs);
-                        TryCancelUiPublishAwaiter(optionsTcs);
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: true);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: true);
                         break;
                     }
                 }
@@ -433,7 +433,7 @@ public sealed partial class MainWindow : Window {
                         await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
                         sessionTcs?.TrySetResult(null);
                     } catch (OperationCanceledException) {
-                        TryCancelUiPublishAwaiter(sessionTcs);
+                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: true);
                     } catch (Exception ex) {
                         sessionTcs?.TrySetException(ex);
                     }
@@ -444,7 +444,7 @@ public sealed partial class MainWindow : Window {
                         await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
                         optionsTcs?.TrySetResult(null);
                     } catch (OperationCanceledException) {
-                        TryCancelUiPublishAwaiter(optionsTcs);
+                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: true);
                     } catch (Exception ex) {
                         optionsTcs?.TrySetException(ex);
                     }
@@ -476,6 +476,19 @@ public sealed partial class MainWindow : Window {
                 _ = Task.Run(() => ProcessUiPublishQueueAsync(restartToken));
             }
         }
+    }
+
+    private void FinalizeUiPublishAwaiter(TaskCompletionSource<object?>? tcs, bool preferCancel) {
+        if (tcs is null) {
+            return;
+        }
+
+        if (preferCancel && _shutdownRequested) {
+            tcs.TrySetCanceled();
+            return;
+        }
+
+        tcs.TrySetResult(null);
     }
 
     private static void TryCancelUiPublishAwaiter(TaskCompletionSource<object?>? tcs) {
