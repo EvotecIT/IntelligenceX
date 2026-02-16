@@ -20,6 +20,7 @@ internal static class ProjectBootstrapRunner {
     private const string DefaultWorkflowPath = ".github/workflows/ix-triage-project-sync.yml";
     private const string DefaultVisionPath = "VISION.md";
     private const string DefaultControlIssueTitle = "IX Triage Control";
+    private const double DefaultVisionDriftThreshold = 0.70;
     private const string ControlIssueVariableName = "IX_TRIAGE_CONTROL_ISSUE";
 
     private sealed class Options {
@@ -39,6 +40,7 @@ internal static class ProjectBootstrapRunner {
         public string WorkflowPath { get; set; } = DefaultWorkflowPath;
         public string VisionPath { get; set; } = DefaultVisionPath;
         public int MaxItems { get; set; } = 500;
+        public double VisionDriftThreshold { get; set; } = DefaultVisionDriftThreshold;
         public bool SkipProjectInit { get; set; }
         public bool ForceWorkflowWrite { get; set; }
         public bool SkipVisionScaffold { get; set; }
@@ -82,7 +84,7 @@ internal static class ProjectBootstrapRunner {
             return 1;
         }
 
-        var workflowYaml = RenderWorkflowTemplate(workflowTemplate, owner, projectNumber, options.MaxItems);
+        var workflowYaml = RenderWorkflowTemplate(workflowTemplate, owner, projectNumber, options.MaxItems, options.VisionDriftThreshold);
 
         string visionTemplate;
         if (!options.SkipVisionScaffold) {
@@ -153,11 +155,12 @@ internal static class ProjectBootstrapRunner {
         return 0;
     }
 
-    internal static string RenderWorkflowTemplate(string template, string owner, int projectNumber, int maxItems) {
+    internal static string RenderWorkflowTemplate(string template, string owner, int projectNumber, int maxItems, double visionDriftThreshold) {
         var result = template;
         result = result.Replace("{{Owner}}", owner, StringComparison.Ordinal);
         result = result.Replace("{{ProjectNumber}}", projectNumber.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         result = result.Replace("{{MaxItems}}", Math.Max(1, maxItems).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        result = result.Replace("{{VisionDriftThreshold}}", visionDriftThreshold.ToString("0.00", CultureInfo.InvariantCulture), StringComparison.Ordinal);
         return result;
     }
 
@@ -391,6 +394,15 @@ internal static class ProjectBootstrapRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--vision-drift-threshold":
+                    if (i + 1 < args.Length &&
+                        TryParseVisionDriftThreshold(args[++i], out var visionDriftThreshold)) {
+                        options.VisionDriftThreshold = visionDriftThreshold;
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 case "--skip-project-init":
                     options.SkipProjectInit = true;
                     break;
@@ -472,6 +484,7 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine("  --workflow-out <path>     Workflow output path (default: .github/workflows/ix-triage-project-sync.yml)");
         Console.WriteLine("  --vision-out <path>       Vision file output path (default: VISION.md)");
         Console.WriteLine("  --max-items <n>           Default max items for scheduled sync (default: 500)");
+        Console.WriteLine("  --vision-drift-threshold <0-1> Default drift threshold injected into workflow (default: 0.70)");
         Console.WriteLine("  --skip-project-init       Do not run project-init; only render workflow from --config-out");
         Console.WriteLine("  --force-workflow-write    Overwrite existing workflow output file");
         Console.WriteLine("  --skip-vision-scaffold    Do not create/update VISION.md template");
@@ -482,6 +495,24 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine();
         Console.WriteLine("Required token scopes: project (+ read:project for sync operations).");
         Console.WriteLine("For control issue automation, repository issue + variable write permissions are also required.");
+    }
+
+    private static bool TryParseVisionDriftThreshold(string input, out double threshold) {
+        threshold = 0;
+        if (!double.TryParse(input, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsed)) {
+            return false;
+        }
+
+        if (double.IsNaN(parsed) || double.IsInfinity(parsed)) {
+            return false;
+        }
+
+        if (parsed < 0.0 || parsed > 1.0) {
+            return false;
+        }
+
+        threshold = parsed;
+        return true;
     }
 
     private static bool TryReadProjectTarget(string configPath, out string owner, out int projectNumber, out string error) {
