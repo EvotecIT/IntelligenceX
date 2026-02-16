@@ -343,7 +343,21 @@ public sealed partial class MainWindow : Window {
         }
 
         if (nonSystemConversationCount <= 1) {
-            ClearConversation();
+            if (string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
+                ClearConversation();
+                return;
+            }
+
+            conversation.Messages.Clear();
+            conversation.Title = DefaultConversationTitle;
+            conversation.ThreadId = null;
+            conversation.UpdatedUtc = DateTime.UtcNow;
+            if (string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
+                _activeRequestConversationId = null;
+            }
+
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            await PersistAppStateAsync().ConfigureAwait(false);
             return;
         }
 
