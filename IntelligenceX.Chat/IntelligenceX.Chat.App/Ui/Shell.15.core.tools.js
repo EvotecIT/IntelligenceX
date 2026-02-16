@@ -835,10 +835,15 @@
     var autonomy = state.options.autonomy || {};
     var maxRoundsInput = byId("optAutonomyMaxRounds");
     var parallelSelect = byId("optAutonomyParallel");
+    var proactiveModeToggle = byId("optProactiveMode");
+    var queueAutoDispatchToggle = byId("optQueueAutoDispatch");
     var turnTimeoutInput = byId("optAutonomyTurnTimeout");
     var toolTimeoutInput = byId("optAutonomyToolTimeout");
     var weightedRoutingSelect = byId("optAutonomyWeightedRouting");
     var maxCandidatesInput = byId("optAutonomyMaxCandidates");
+    var runNextQueuedButton = byId("btnRunNextQueuedTurn");
+    var clearQueuedButton = byId("btnClearQueuedTurns");
+    var queueStateLabel = byId("optQueueDispatchState");
 
     if (maxRoundsInput) {
       maxRoundsInput.value = autonomy.maxToolRounds == null ? "" : String(autonomy.maxToolRounds);
@@ -850,14 +855,25 @@
       toolTimeoutInput.value = autonomy.toolTimeoutSeconds == null ? "" : String(autonomy.toolTimeoutSeconds);
     }
     if (parallelSelect) {
-      if (autonomy.parallelTools === true) {
-        parallelSelect.value = "on";
+      var parallelMode = String(autonomy.parallelToolMode || "").toLowerCase();
+      if (parallelMode === "allow_parallel" || parallelMode === "allow-parallel" || parallelMode === "allowparallel" || parallelMode === "on") {
+        parallelSelect.value = "allow_parallel";
+      } else if (parallelMode === "force_serial" || parallelMode === "force-serial" || parallelMode === "forceserial" || parallelMode === "off") {
+        parallelSelect.value = "force_serial";
+      } else if (autonomy.parallelTools === true) {
+        parallelSelect.value = "allow_parallel";
       } else if (autonomy.parallelTools === false) {
-        parallelSelect.value = "off";
+        parallelSelect.value = "force_serial";
       } else {
-        parallelSelect.value = "default";
+        parallelSelect.value = "auto";
       }
       syncCustomSelect(parallelSelect);
+    }
+    if (proactiveModeToggle) {
+      proactiveModeToggle.checked = autonomy.proactiveMode !== false;
+    }
+    if (queueAutoDispatchToggle) {
+      queueAutoDispatchToggle.checked = autonomy.queueAutoDispatch !== false;
     }
     if (weightedRoutingSelect) {
       if (autonomy.weightedToolRouting === true) {
@@ -871,6 +887,45 @@
     }
     if (maxCandidatesInput) {
       maxCandidatesInput.value = autonomy.maxCandidateTools == null ? "" : String(autonomy.maxCandidateTools);
+    }
+
+    var queuedTurns = Number(state.queuedTurnCount);
+    if (!Number.isFinite(queuedTurns) || queuedTurns < 0) {
+      queuedTurns = 0;
+    } else {
+      queuedTurns = Math.floor(queuedTurns);
+    }
+    var queuedSignIn = Number(state.queuedPromptCount);
+    if (!Number.isFinite(queuedSignIn) || queuedSignIn < 0) {
+      queuedSignIn = 0;
+    } else {
+      queuedSignIn = Math.floor(queuedSignIn);
+    }
+    var queuedTotal = queuedTurns + queuedSignIn;
+    var autoDispatchEnabled = autonomy.queueAutoDispatch !== false;
+
+    if (runNextQueuedButton) {
+      runNextQueuedButton.disabled = normalizeBool(state.sending) || queuedTotal <= 0;
+      runNextQueuedButton.textContent = queuedTotal > 0
+        ? ("Run Next Queued (" + queuedTotal + ")")
+        : "Run Next Queued";
+    }
+
+    if (clearQueuedButton) {
+      clearQueuedButton.disabled = queuedTotal <= 0;
+      clearQueuedButton.textContent = queuedTotal > 0
+        ? ("Clear Queues (" + queuedTotal + ")")
+        : "Clear Queues";
+    }
+
+    if (queueStateLabel) {
+      if (queuedTotal <= 0) {
+        queueStateLabel.textContent = "Queue empty.";
+      } else if (autoDispatchEnabled) {
+        queueStateLabel.textContent = "Queued: " + queuedTurns + " turn(s), " + queuedSignIn + " sign-in item(s). Auto-dispatch is enabled.";
+      } else {
+        queueStateLabel.textContent = "Queued: " + queuedTurns + " turn(s), " + queuedSignIn + " sign-in item(s). Queue is paused.";
+      }
     }
   }
 
@@ -978,9 +1033,42 @@
 
     var stateLabel = byId("optDebugModeState");
     if (stateLabel) {
-      stateLabel.textContent = normalizeBool(state.debugMode)
+      var parts = [];
+      parts.push(normalizeBool(state.debugMode)
         ? "Engine debug is enabled."
-        : "Engine debug is disabled.";
+        : "Engine debug is disabled.");
+
+      var metrics = state.lastTurnMetrics;
+      if (metrics && typeof metrics === "object") {
+        var durationMs = Number(metrics.durationMs);
+        var durationText = Number.isFinite(durationMs)
+          ? (durationMs >= 1000 ? (durationMs / 1000).toFixed(1) + "s" : Math.max(0, Math.floor(durationMs)) + "ms")
+          : "n/a";
+        var outcome = metrics.outcome ? String(metrics.outcome) : "unknown";
+        var toolCalls = Number(metrics.toolCalls);
+        var queueWait = Number(metrics.queueWaitMs);
+        var queueWaitText = Number.isFinite(queueWait) && queueWait > 0
+          ? " queue " + Math.floor(queueWait) + "ms"
+          : "";
+        var callsText = Number.isFinite(toolCalls) ? String(Math.max(0, Math.floor(toolCalls))) : "0";
+        parts.push("Last turn: " + outcome + " in " + durationText + ", tools " + callsText + queueWaitText + ".");
+      }
+
+      var queuedTurnCount = Number(state.queuedTurnCount);
+      if (Number.isFinite(queuedTurnCount) && queuedTurnCount > 0) {
+        parts.push("Turn queue: " + Math.floor(queuedTurnCount) + ".");
+      }
+
+      var queuedPromptCount = Number(state.queuedPromptCount);
+      if (Number.isFinite(queuedPromptCount) && queuedPromptCount > 0) {
+        parts.push("Sign-in queue: " + Math.floor(queuedPromptCount) + ".");
+      }
+
+      if (Array.isArray(state.activityTimeline) && state.activityTimeline.length > 0) {
+        parts.push("Live timeline: " + state.activityTimeline.join(" > "));
+      }
+
+      stateLabel.textContent = parts.join(" ");
     }
 
     var toggleEngine = byId("btnDebugToggleEngine");

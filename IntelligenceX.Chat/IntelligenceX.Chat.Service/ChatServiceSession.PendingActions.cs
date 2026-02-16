@@ -21,6 +21,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
         new[] { '\\', '{', '}', '[', ']', '<', '>', '=' };
     private readonly record struct FallbackChoiceCandidate(string Title, bool IsNumbered, string ActionId);
+    private readonly record struct PendingAction(string Id, string Title, string Request, ActionMutability Mutability);
 
     private static bool LooksLikeStructuredPendingActionConfirmationInput(string userText) {
         // Confirmation is safety-sensitive. If the user message looks like a command/payload rather than
@@ -50,7 +51,6 @@ internal sealed partial class ChatServiceSession {
 
         return false;
     }
-    private readonly record struct PendingAction(string Id, string Title, string Request);
 
     private void RememberPendingActions(string threadId, string assistantText) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -130,12 +130,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Only apply selection rewriting for explicit /act <id>, or when the message looks like a short follow-up.
-        // This prevents rewriting normal user messages that happen to start with digits (e.g., "2 servers are down").
         var isExplicitAct = TryParseExplicitActSelection(normalized, out _, out _);
-        if (!isExplicitAct && !LooksLikeContinuationFollowUp(normalized)) {
-            return false;
-        }
+        // Keep action-selection matching available for longer contextual follow-ups too.
+        // Safety remains in TryMatchPendingActionWithReason:
+        // - actions not explicitly marked read-only still require explicit /act or ordinal selection
+        // - structured payload-like inputs are rejected
+        // - ambiguous overlap does not auto-select
 
         PendingAction[]? actions;
         long ticks;
@@ -276,13 +276,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Hand off the selection as structured data (so downstream stages treat it as data, not a privileged block).
-        resolvedRequest = JsonSerializer.Serialize(new {
-            ix_action_selection = new {
-                id = selected.Value.Id.Trim(),
-                title = selected.Value.Title.Trim(),
-                request = CollapseWhitespace(request).Trim()
-            }
-        });
+        resolvedRequest = BuildActionSelectionPayloadJson(
+            actionId: selected.Value.Id.Trim(),
+            title: selected.Value.Title.Trim(),
+            request: request,
+            mutability: selected.Value.Mutability);
         TracePendingActionDecision(
             userText: normalized,
             isExplicitAct: isExplicitAct,
@@ -318,13 +316,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        payloadJson = JsonSerializer.Serialize(new {
-            ix_action_selection = new {
-                id = actionId,
-                title,
-                request = CollapseWhitespace(request).Trim()
-            }
-        });
+        payloadJson = BuildActionSelectionPayloadJson(
+            actionId: actionId,
+            title: title,
+            request: request,
+            mutability: action.Mutability);
         return true;
     }
 
@@ -390,9 +386,9 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Mutating actions must be selected explicitly (/act <id> or ordinal) to avoid accidental writes
-        // from natural-language follow-ups such as "go ahead".
-        if (actions.Count == 1 && IsLikelyMutatingPendingAction(actions[0])) {
+        // Fail closed for actions that are not explicitly marked read-only.
+        // Unknown mutability can still represent state-changing operations.
+        if (actions.Count == 1 && RequiresExplicitPendingActionSelection(actions[0])) {
             reason = "mutating_action_requires_explicit_selection";
             return false;
         }
@@ -410,7 +406,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (TryMatchPendingActionByIntentOverlapWithReason(trimmed, actions, out var overlapMatch, out var overlapReason)) {
-            if (IsLikelyMutatingPendingAction(overlapMatch)) {
+            if (RequiresExplicitPendingActionSelection(overlapMatch)) {
                 reason = "mutating_action_requires_explicit_selection";
                 return false;
             }
@@ -423,19 +419,8 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool IsLikelyMutatingPendingAction(PendingAction action) {
-        var title = (action.Title ?? string.Empty).Trim();
-        var request = (action.Request ?? string.Empty).Trim();
-        if (request.Length == 0) {
-            request = title;
-        }
-
-        if (request.Length == 0 && title.Length == 0) {
-            return false;
-        }
-
-        var intentText = CollapseWhitespace(string.Join(' ', new[] { title, request }).Trim());
-        return IsLikelyMutatingActionIntent(intentText);
+    private static bool RequiresExplicitPendingActionSelection(PendingAction action) {
+        return action.Mutability != ActionMutability.ReadOnly;
     }
 
     private static bool TryMatchPendingActionByIntentOverlap(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
@@ -600,6 +585,25 @@ internal sealed partial class ChatServiceSession {
         }
 
         return title + " " + request;
+    }
+
+    private static string BuildActionSelectionPayloadJson(string actionId, string title, string request, ActionMutability mutability) {
+        var normalizedRequest = CollapseWhitespace((request ?? string.Empty).Trim());
+        var selection = new Dictionary<string, object?>(StringComparer.Ordinal) {
+            ["id"] = (actionId ?? string.Empty).Trim(),
+            ["title"] = (title ?? string.Empty).Trim(),
+            ["request"] = normalizedRequest
+        };
+
+        if (mutability == ActionMutability.Mutating) {
+            selection["mutating"] = true;
+        } else if (mutability == ActionMutability.ReadOnly) {
+            selection["mutating"] = false;
+        }
+
+        return JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal) {
+            ["ix_action_selection"] = selection
+        });
     }
 
     private static List<string> ExtractPendingActionIntentTokens(string text, int maxTokens) {
@@ -939,6 +943,8 @@ internal sealed partial class ChatServiceSession {
             string? id = null;
             string? title = null;
             string? reply = null;
+            bool? mutating = null;
+            bool? readOnly = null;
             var request = new StringBuilder();
             var sawRequest = false;
 
@@ -971,6 +977,18 @@ internal sealed partial class ChatServiceSession {
                 }
                 if (TryReadField(current, "reply", out field)) {
                     reply = field;
+                    continue;
+                }
+                if (TryReadField(current, "mutating", out field)) {
+                    if (TryParseProtocolBoolean(field, out var parsedMutating)) {
+                        mutating = parsedMutating;
+                    }
+                    continue;
+                }
+                if (TryReadField(current, "readonly", out field)) {
+                    if (TryParseProtocolBoolean(field, out var parsedReadOnly)) {
+                        readOnly = parsedReadOnly;
+                    }
                     continue;
                 }
 
@@ -1009,7 +1027,11 @@ internal sealed partial class ChatServiceSession {
                 req = req.Substring(0, 600);
             }
 
-            actions.Add(new PendingAction(Id: id, Title: title, Request: req));
+            actions.Add(new PendingAction(
+                Id: id,
+                Title: title,
+                Request: req,
+                Mutability: ResolveActionMutability(mutating, readOnly)));
             if (actions.Count >= 6) {
                 break;
             }
@@ -1081,7 +1103,11 @@ internal sealed partial class ChatServiceSession {
                 request = request[..600];
             }
 
-            actions.Add(new PendingAction(Id: id, Title: title, Request: request));
+            actions.Add(new PendingAction(
+                Id: id,
+                Title: title,
+                Request: request,
+                Mutability: ActionMutability.Unknown));
         }
 
         if (actions.Count > 1) {
@@ -1447,7 +1473,8 @@ internal sealed partial class ChatServiceSession {
             actions.Add(new PendingAction(
                 Id: actionId,
                 Title: title,
-                Request: title));
+                Request: title,
+                Mutability: ActionMutability.ReadOnly));
         }
 
         return actions;

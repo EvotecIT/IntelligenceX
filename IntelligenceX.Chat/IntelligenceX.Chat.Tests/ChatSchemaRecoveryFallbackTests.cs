@@ -40,6 +40,44 @@ public sealed class ChatSchemaRecoveryFallbackTests {
         Assert.False(shouldRetry);
     }
 
+    [Fact]
+    public void ServiceShouldRetryWithoutTools_RetriesOnStructuredNativeToolSchemaError() {
+        var options = BuildOptionsWithTools();
+        var ex = new InvalidOperationException("request failed");
+        ex.Data["openai:native_transport"] = true;
+        ex.Data["openai:error_code"] = "missing_required_parameter";
+        ex.Data["openai:error_param"] = "tools[0].name";
+
+        var shouldRetry = InvokeShouldRetry(ServiceShouldRetryWithoutToolsMethod, ex, options);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryWithoutTools_RetriesOnStructuredNativeContextLengthError() {
+        var options = BuildOptionsWithTools();
+        var ex = new InvalidOperationException("request failed");
+        ex.Data["openai:native_transport"] = true;
+        ex.Data["openai:error_code"] = "context_length_exceeded";
+
+        var shouldRetry = InvokeShouldRetry(ServiceShouldRetryWithoutToolsMethod, ex, options);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryWithoutTools_DoesNotRetryOnStructuredNativeNonRetryableError() {
+        var options = BuildOptionsWithTools();
+        var ex = new InvalidOperationException("request failed");
+        ex.Data["openai:native_transport"] = true;
+        ex.Data["openai:error_code"] = "invalid_request_error";
+        ex.Data["openai:error_param"] = "input";
+
+        var shouldRetry = InvokeShouldRetry(ServiceShouldRetryWithoutToolsMethod, ex, options);
+
+        Assert.False(shouldRetry);
+    }
+
     private static ChatOptions BuildOptionsWithTools() {
         return new ChatOptions {
             Tools = new[] { new ToolDefinition("fs_list", "List files") },

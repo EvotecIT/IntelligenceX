@@ -160,17 +160,23 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        var queuedPromptCount = GetQueuedPromptAfterLoginCount();
+        var queuedTurnCount = GetQueuedTurnCount();
         var json = JsonSerializer.Serialize(new {
             status = _statusText,
             statusTone = MapStatusTone(_statusTone),
             usageLimitSwitchRecommended = _usageLimitSwitchRecommended,
-            queuedPromptPending = !string.IsNullOrWhiteSpace(_queuedPromptAfterLogin),
+            queuedPromptPending = queuedPromptCount > 0,
+            queuedPromptCount,
+            queuedTurnCount,
             connected = _isConnected,
             authenticated = _isAuthenticated,
             loginInProgress = _loginInProgress,
             sending = _isSending,
             cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId),
             cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId),
+            activityTimeline = SnapshotActivityTimeline(),
+            lastTurnMetrics = BuildLastTurnMetricsState(),
             debugMode = _debugMode,
             windowMaximized = IsWindowMaximized()
         });
@@ -252,10 +258,13 @@ public sealed partial class MainWindow : Window {
             autonomy = new {
                 maxToolRounds = _autonomyMaxToolRounds,
                 parallelTools = _autonomyParallelTools,
+                parallelToolMode = ResolveParallelToolMode(_autonomyParallelTools),
                 turnTimeoutSeconds = _autonomyTurnTimeoutSeconds,
                 toolTimeoutSeconds = _autonomyToolTimeoutSeconds,
                 weightedToolRouting = _autonomyWeightedToolRouting,
-                maxCandidateTools = _autonomyMaxCandidateTools
+                maxCandidateTools = _autonomyMaxCandidateTools,
+                queueAutoDispatch = _queueAutoDispatchEnabled,
+                proactiveMode = _proactiveModeEnabled
             },
             memory = BuildMemoryState(),
             memoryDebug = BuildMemoryDebugState(),
@@ -786,13 +795,15 @@ public sealed partial class MainWindow : Window {
         return list.ToArray();
     }
 
-    private async Task SetActivityAsync(string? text) {
+    private async Task SetActivityAsync(string? text, IReadOnlyList<string>? timeline = null) {
         if (!_webViewReady) {
             return;
         }
 
-        var json = JsonSerializer.Serialize(text ?? string.Empty);
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetActivity(" + json + ");").AsTask()).ConfigureAwait(false);
+        var textJson = JsonSerializer.Serialize(text ?? string.Empty);
+        var timelineJson = JsonSerializer.Serialize(timeline ?? Array.Empty<string>());
+        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetActivity(" + textJson + "," + timelineJson + ");").AsTask())
+            .ConfigureAwait(false);
     }
 
     private void StartTurnWatchdog() {
@@ -844,7 +855,7 @@ public sealed partial class MainWindow : Window {
                 : _latestServiceActivityText;
             var elapsedSeconds = Math.Max(1, (int)Math.Round(elapsed.TotalSeconds));
             var watchdogText = $"{baseActivity} ({elapsedSeconds}s elapsed - press Stop to cancel)";
-            await SetActivityAsync(watchdogText).ConfigureAwait(false);
+            await SetActivityAsync(watchdogText, SnapshotActivityTimeline()).ConfigureAwait(false);
         }
     }
 
@@ -871,15 +882,114 @@ public sealed partial class MainWindow : Window {
             "thinking" => "Thinking...",
             "tool_call" when toolLabel.Length > 0 => "Preparing " + toolLabel + "...",
             "tool_running" when toolLabel.Length > 0 => "Running " + toolLabel + "...",
+            "tool_heartbeat" when toolLabel.Length > 0 =>
+                status.DurationMs is not null
+                    ? toolLabel + " still running (" + FormatDuration(status.DurationMs.Value) + ")"
+                    : toolLabel + " still running...",
             "tool_completed" when toolLabel.Length > 0 =>
                 status.DurationMs is not null
                     ? toolLabel + " done (" + FormatDuration(status.DurationMs.Value) + ")"
                     : toolLabel + " done",
             "tool_recovered" when toolLabel.Length > 0 => toolLabel + " recovered with safe defaults",
+            "tool_parallel_mode" => "Parallel mode changed for this turn...",
+            "tool_parallel_forced" => "Parallel mode forced for mutating tools...",
+            "tool_parallel_safety_off" => "Using sequential mode for mutating tools...",
+            "tool_batch_started" => "Starting parallel tool batch...",
+            "tool_batch_progress" => "Parallel tool batch in progress...",
+            "tool_batch_recovering" => "Recovering transient tool failures...",
+            "tool_batch_recovered" => "Recovery pass complete",
+            "tool_batch_completed" => "Parallel tool batch complete",
             _ => string.IsNullOrWhiteSpace(status.Status)
                 ? "Working..."
                 : char.ToUpperInvariant(status.Status[0]) + status.Status[1..]
         };
+    }
+
+    private void ResetActivityTimeline() {
+        lock (_turnDiagnosticsSync) {
+            _activityTimeline.Clear();
+        }
+    }
+
+    private void AppendActivityTimeline(ChatStatusMessage status, string activityText) {
+        var label = BuildActivityTimelineLabel(status, activityText);
+        if (label.Length == 0) {
+            return;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (_activityTimeline.Count > 0
+                && string.Equals(_activityTimeline[^1], label, StringComparison.OrdinalIgnoreCase)) {
+                return;
+            }
+
+            _activityTimeline.Add(label);
+            while (_activityTimeline.Count > MaxActivityTimelineEntries) {
+                _activityTimeline.RemoveAt(0);
+            }
+        }
+    }
+
+    private string[] SnapshotActivityTimeline() {
+        lock (_turnDiagnosticsSync) {
+            return _activityTimeline.Count == 0 ? Array.Empty<string>() : _activityTimeline.ToArray();
+        }
+    }
+
+    private object? BuildLastTurnMetricsState() {
+        TurnMetricsSnapshot? snapshot;
+        lock (_turnDiagnosticsSync) {
+            snapshot = _lastTurnMetrics;
+        }
+
+        if (snapshot is null) {
+            return null;
+        }
+
+        return new {
+            completedLocal = EnsureUtc(snapshot.CompletedUtc).ToLocalTime().ToString(_timestampFormat, CultureInfo.InvariantCulture),
+            durationMs = snapshot.DurationMs,
+            ttftMs = snapshot.TtftMs,
+            queueWaitMs = snapshot.QueueWaitMs,
+            toolCalls = snapshot.ToolCallsCount,
+            toolRounds = snapshot.ToolRounds,
+            projectionFallbacks = snapshot.ProjectionFallbackCount,
+            outcome = snapshot.Outcome,
+            errorCode = snapshot.ErrorCode ?? string.Empty
+        };
+    }
+
+    private string BuildActivityTimelineLabel(ChatStatusMessage status, string activityText) {
+        var toolLabel = string.IsNullOrWhiteSpace(status.ToolName) ? string.Empty : ResolveToolActivityName(status.ToolName!);
+        var normalizedStatus = (status.Status ?? string.Empty).Trim().ToLowerInvariant();
+        var label = normalizedStatus switch {
+            "thinking" => "thinking",
+            "routing_tool" when toolLabel.Length > 0 => "route " + toolLabel,
+            "tool_call" when toolLabel.Length > 0 => "prepare " + toolLabel,
+            "tool_running" when toolLabel.Length > 0 => "run " + toolLabel,
+            "tool_heartbeat" when toolLabel.Length > 0 => "run " + toolLabel,
+            "tool_completed" when toolLabel.Length > 0 => "done " + toolLabel,
+            "tool_recovered" when toolLabel.Length > 0 => "recover " + toolLabel,
+            "tool_parallel_mode" => "mode parallel",
+            "tool_parallel_forced" => "mode forced",
+            "tool_parallel_safety_off" => "safety serialized",
+            "tool_batch_started" => "batch start",
+            "tool_batch_progress" => "batch progress",
+            "tool_batch_recovering" => "batch recovery",
+            "tool_batch_recovered" => "batch recovered",
+            "tool_batch_completed" => "batch completed",
+            "completed" => "completed",
+            "finished" => "finished",
+            "done" => "done",
+            _ => activityText
+        };
+
+        label = (label ?? string.Empty).Trim();
+        if (label.Length > MaxActivityTimelineLabelChars) {
+            label = label[..MaxActivityTimelineLabelChars].TrimEnd() + "...";
+        }
+
+        return label;
     }
 
     private void ClearToolRoutingInsights() {

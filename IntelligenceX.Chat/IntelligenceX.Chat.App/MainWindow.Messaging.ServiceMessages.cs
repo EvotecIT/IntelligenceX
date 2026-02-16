@@ -56,13 +56,26 @@ public sealed partial class MainWindow : Window {
 
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
+                    AppendActivityTimeline(status, activityText ?? string.Empty);
                     _latestServiceActivityText = activityText ?? string.Empty;
-                    _ = SetActivityAsync(activityText);
+                    _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
+                    _ = PublishSessionStateAsync();
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
                     }
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatStatusTrace(status));
+                    }
+                    break;
+                case ChatMetricsMessage metrics:
+                    if (!ShouldProcessLiveRequestMessage(metrics.RequestId) && !IsLatestTurnRequest(metrics.RequestId)) {
+                        break;
+                    }
+
+                    ApplyTurnMetrics(metrics);
+                    _ = PublishSessionStateAsync();
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(FormatMetricsTrace(metrics));
                     }
                     break;
                 case ChatGptLoginUrlMessage url:
@@ -82,14 +95,8 @@ public sealed partial class MainWindow : Window {
                     if (!done.Ok && !string.IsNullOrWhiteSpace(done.Error)) {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
-                    if (done.Ok && !string.IsNullOrWhiteSpace(_queuedPromptAfterLogin)) {
-                        var pending = _queuedPromptAfterLogin;
-                        var pendingConversationId = _queuedPromptAfterLoginConversationId;
-                        _queuedPromptAfterLogin = null;
-                        _queuedPromptAfterLoginConversationId = null;
-                        _ = SendPromptToConversationAsync(pending!, pendingConversationId);
-                    } else if (done.Ok) {
-                        _ = MaybeStartModelKickoffAsync();
+                    if (done.Ok) {
+                        _ = HandlePostLoginCompletionAsync();
                     }
                     break;
                 case ErrorMessage err:
@@ -104,6 +111,54 @@ public sealed partial class MainWindow : Window {
                     break;
             }
         });
+    }
+
+    private async Task HandlePostLoginCompletionAsync() {
+        var dispatched = await DispatchNextQueuedTurnAsync(honorAutoDispatch: true).ConfigureAwait(false);
+        if (dispatched) {
+            return;
+        }
+
+        var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
+        if (queuedTotal > 0 && !_queueAutoDispatchEnabled) {
+            await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
+            return;
+        }
+
+        await MaybeStartModelKickoffAsync().ConfigureAwait(false);
+    }
+
+    private void ApplyTurnMetrics(ChatMetricsMessage metrics) {
+        var completedUtc = metrics.CompletedAtUtc.Kind == DateTimeKind.Utc
+            ? metrics.CompletedAtUtc
+            : DateTime.SpecifyKind(metrics.CompletedAtUtc, DateTimeKind.Utc);
+        var outcome = (metrics.Outcome ?? string.Empty).Trim();
+        if (outcome.Length == 0) {
+            outcome = "unknown";
+        }
+
+        lock (_turnDiagnosticsSync) {
+            _lastTurnMetrics = new TurnMetricsSnapshot(
+                CompletedUtc: completedUtc,
+                DurationMs: Math.Max(0, metrics.DurationMs),
+                TtftMs: metrics.TtftMs,
+                QueueWaitMs: _activeTurnQueueWaitMs,
+                ToolCallsCount: Math.Max(0, metrics.ToolCallsCount),
+                ToolRounds: Math.Max(0, metrics.ToolRounds),
+                ProjectionFallbackCount: Math.Max(0, metrics.ProjectionFallbackCount),
+                Outcome: outcome,
+                ErrorCode: string.IsNullOrWhiteSpace(metrics.ErrorCode) ? null : metrics.ErrorCode.Trim());
+        }
+    }
+
+    private static string FormatMetricsTrace(ChatMetricsMessage metrics) {
+        return "metrics: duration="
+               + metrics.DurationMs.ToString(CultureInfo.InvariantCulture)
+               + "ms"
+               + (metrics.TtftMs is null ? string.Empty : " ttft=" + metrics.TtftMs.Value.ToString(CultureInfo.InvariantCulture) + "ms")
+               + " tools=" + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
+               + " rounds=" + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture)
+               + " outcome=" + (metrics.Outcome ?? "unknown");
     }
 
     private async Task PublishOptionsStateSafeAsync() {

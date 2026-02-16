@@ -28,6 +28,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -66,6 +67,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -88,6 +90,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -110,6 +113,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -137,6 +141,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -163,6 +168,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -190,6 +196,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -209,6 +216,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
 
@@ -229,6 +237,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
 
@@ -241,6 +250,82 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesLongContextualConfirmation() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
+            reply: /act act_failed4625
+            """;
+        var input =
+            "Please proceed with the failed logon report on ADO Security and include a concise top-events summary before we move on.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_failed4625", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesBestPendingActionByIntentOverlapWhenMultipleActionsAndLongFollowUp() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Failed logons (4625)
+            request: Run failed logon report on ADO Security.
+            mutating: false
+            reply: /act act_failed4625
+
+            [Action]
+            ix:action:v1
+            id: act_lockout4740
+            title: Account lockouts (4740)
+            request: Run account lockout report on ADO Security.
+            mutating: false
+            reply: /act act_lockout4740
+            """;
+        var input =
+            "Let's start with the account lockouts 4740 report on ADO Security first and summarize impacted users for triage.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_lockout4740", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveMutatingSinglePendingActionForLongNaturalLanguageConfirmation() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_disable_user
+            title: Disable user account
+            request: Disable user evotec\john and confirm status.
+            mutating: true
+            reply: /act act_disable_user
+            """;
+        var input =
+            "Please go ahead with that user disable operation now and then confirm the account state in the same run.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveMutatingSinglePendingActionForNaturalLanguageConfirmation() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -249,6 +334,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_disable_user
             title: Disable user account
             request: Disable user evotec\john and confirm status.
+            mutating: true
             reply: /act act_disable_user
             """;
 
@@ -260,6 +346,116 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionForLongNaturalLanguageConfirmation() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+        var input =
+            "Please proceed with the failed logon report on ADO Security and include a concise top-events summary before we move on.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionWhenUserEchoesAssistantCallToAction() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            If you say "run now", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("run now", expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownPendingActionByIntentOverlapWhenMultipleActionsExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_failed4625
+            title: Failed logons (4625)
+            request: Run failed logon report on ADO Security.
+            reply: /act act_unknown_failed4625
+
+            [Action]
+            ix:action:v1
+            id: act_unknown_lockout4740
+            title: Account lockouts (4740)
+            request: Run account lockout report on ADO Security.
+            reply: /act act_unknown_lockout4740
+            """;
+        var input =
+            "Let's start with the account lockouts 4740 report on ADO Security first and summarize impacted users for triage.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesExplicitAct() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_unknown_single" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesOrdinalSelection() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "1" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesMutatingSinglePendingActionWhenUserUsesExplicitAct() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -268,6 +464,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_disable_user
             title: Disable user account
             request: Disable user evotec\john and confirm status.
+            mutating: true
             reply: /act act_disable_user
             """;
 
@@ -288,6 +485,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_disable_user
             title: Disable user account
             request: Disable user evotec\john and confirm status.
+            mutating: true
             reply: /act act_disable_user
             """;
 
@@ -300,6 +498,50 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_PreservesMutatingFlagForExplicitMutatingActionSelection() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_disable_user
+            title: Disable user account
+            request: Disable user evotec\john and confirm status.
+            mutating: true
+            reply: /act act_disable_user
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_disable_user" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.True(selection.GetProperty("mutating").GetBoolean());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_PreservesReadOnlyFlagForActionSelection() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
+            reply: /act act_failed4625
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "failed logons please" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.False(selection.GetProperty("mutating").GetBoolean());
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenSingleOverlapIsNonTrailing() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -308,6 +550,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
 
@@ -327,6 +570,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Failed logons (4625)
             request: Run failed logon report on ADO Security.
+            mutating: false
             reply: /act act_failed4625
 
             [Action]
@@ -334,6 +578,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_lockout4740
             title: Account lockouts (4740)
             request: Run account lockout report on ADO Security.
+            mutating: false
             reply: /act act_lockout4740
             """;
 
@@ -354,6 +599,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Failed logons (4625)
             request: Run failed logon report on ADO Security.
+            mutating: false
             reply: /act act_failed4625
 
             [Action]
@@ -361,6 +607,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_lockout4740
             title: Account lockouts (4740)
             request: Run account lockout report on ADO Security.
+            mutating: false
             reply: /act act_lockout4740
             """;
 
@@ -512,6 +759,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: Failed logons (4625)
             request: Run failed logons report.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -534,6 +782,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: Failed logons (4625)
             request: Run failed logons report.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -553,6 +802,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: Failed logons (4625)
             request: Run failed logons report.
+            mutating: false
             reply: /act act_001
             """;
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", actionDraft });
@@ -573,7 +823,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void RememberPendingActions_RehydratesReplayActionFromExecutionContractBlockerText() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
-        var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\"}}";
+        var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\",\"mutating\":false}}";
         var blockerText = Assert.IsType<string>(BuildExecutionContractBlockerTextMethod.Invoke(
             null,
             new object?[] { selectionPayload, "Ok, doing it now.", "no_tool_calls_after_watchdog_retry" }));

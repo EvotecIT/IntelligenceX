@@ -53,6 +53,6 @@ public sealed class AssistantTurnOutcomeFormatterTests {
 
         Assert.Contains("tool safety limit", text);
         Assert.Contains("max rounds: 3", text);
-        Assert.Contains("continue", text);
+        Assert.Contains("preferred next step", text);
     }
 }

@@ -25,6 +25,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 id: act_001
                 title: Run forest probe
                 request: Run the forest-wide replication and LDAP diagnostics now.
+                mutating: false
                 reply: /act act_001
                 """;
 
@@ -70,6 +71,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 id: act_001
                 title: First
                 request: Do first thing.
+                mutating: false
                 reply: /act act_001
 
                 [Action]
@@ -77,6 +79,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 id: act_002
                 title: Second
                 request: Do second thing.
+                mutating: false
                 reply: /act act_002
                 """;
 
@@ -118,7 +121,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                         {
                           "Id": "act_001",
                           "Title": "First",
-                          "Request": "Do first thing."
+                          "Request": "Do first thing.",
+                          "Mutating": false
                         }
                       ]
                     }
@@ -156,6 +160,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 

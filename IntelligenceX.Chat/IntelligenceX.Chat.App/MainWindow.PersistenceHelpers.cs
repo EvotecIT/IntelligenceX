@@ -49,6 +49,8 @@ public sealed partial class MainWindow : Window {
             _appState.ExportSaveMode = _exportSaveMode;
             _appState.ExportDefaultFormat = _exportDefaultFormat;
             _appState.ExportLastDirectory = _lastExportDirectory;
+            _appState.QueueAutoDispatchEnabled = _queueAutoDispatchEnabled;
+            _appState.ProactiveModeEnabled = _proactiveModeEnabled;
             _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
             _appState.LocalProviderTransport = _localProviderTransport;
             _appState.LocalProviderBaseUrl = _localProviderBaseUrl;

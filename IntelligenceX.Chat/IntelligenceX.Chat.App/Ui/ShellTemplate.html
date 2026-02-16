@@ -280,10 +280,18 @@
           <div class="options-row">
             <label class="options-label-inline" for="optAutonomyParallel">Parallel tools</label>
             <select id="optAutonomyParallel" class="options-select">
-              <option value="default">Service default</option>
-              <option value="on">Enabled</option>
-              <option value="off">Disabled</option>
+              <option value="auto">Auto (policy + safety)</option>
+              <option value="allow_parallel">Allow parallel always</option>
+              <option value="force_serial">Force serial</option>
             </select>
+          </div>
+          <div class="options-row options-row-inline">
+            <label class="options-label-inline" for="optProactiveMode">Proactive execution mode</label>
+            <input id="optProactiveMode" class="options-toggle" type="checkbox" />
+          </div>
+          <div class="options-row options-row-inline">
+            <label class="options-label-inline" for="optQueueAutoDispatch">Auto-dispatch queued turns</label>
+            <input id="optQueueAutoDispatch" class="options-toggle" type="checkbox" />
           </div>
           <div class="options-row">
             <label class="options-label-inline" for="optAutonomyTurnTimeout">Turn timeout (seconds)</label>
@@ -308,6 +316,11 @@
           <div class="options-actions">
             <button id="btnAutonomyReset" class="options-btn options-btn-ghost options-btn-sm">Use Service Defaults</button>
           </div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnRunNextQueuedTurn" class="options-btn options-btn-sm options-btn-ghost">Run Next Queued</button>
+            <button id="btnClearQueuedTurns" class="options-btn options-btn-sm options-btn-ghost">Clear Queues</button>
+          </div>
+          <div class="options-note" id="optQueueDispatchState">Queue empty.</div>
         </section>
 
         <section class="options-group">

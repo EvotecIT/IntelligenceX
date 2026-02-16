@@ -141,9 +141,23 @@ public sealed partial class MainWindow : Window {
         await SwitchAccountAsync().ConfigureAwait(false);
     }
 
-    private async Task SendPromptAsync(string text) {
+    private async Task SendPromptAsync(string text, string? preferredConversationId = null, DateTime? queuedAtUtc = null) {
+        text = (text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return;
+        }
+
         if (_isSending) {
-            await SetStatusAsync(SessionStatus.PreviousRequestStillRunning()).ConfigureAwait(false);
+            var queueConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
+                ? _activeConversationId
+                : preferredConversationId;
+            if (TryEnqueuePendingTurn(text, queueConversationId, out var queuedCount)) {
+                await SetStatusAsync($"Queued next turn ({queuedCount}/{MaxQueuedTurns})").ConfigureAwait(false);
+            } else {
+                await SetStatusAsync("Turn queue is full. Wait for the current turn to finish or press Stop.").ConfigureAwait(false);
+            }
+
+            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
@@ -157,21 +171,27 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        text = (text ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(text)) {
-            return;
-        }
-
         var turn = await PrepareChatTurnAsync(text).ConfigureAwait(false);
         if (turn is null) {
             return;
         }
 
+        long? queueWaitMs = null;
+        if (queuedAtUtc.HasValue && queuedAtUtc.Value.Kind == DateTimeKind.Utc) {
+            var elapsed = DateTime.UtcNow - queuedAtUtc.Value;
+            if (elapsed.TotalMilliseconds > 0) {
+                queueWaitMs = (long)Math.Round(elapsed.TotalMilliseconds);
+            }
+        }
+
         var requestId = turn.RequestId;
         _isSending = true;
         _activeTurnRequestId = requestId;
+        _latestTurnRequestId = requestId;
         _cancelRequestedTurnRequestId = null;
         _latestServiceActivityText = string.Empty;
+        _activeTurnQueueWaitMs = queueWaitMs;
+        ResetActivityTimeline();
         StartTurnWatchdog();
         _activeRequestConversationId = turn.ConversationId;
         ClearToolRoutingInsights();
@@ -191,29 +211,209 @@ public sealed partial class MainWindow : Window {
             _cancelRequestedTurnRequestId = null;
             _activeRequestConversationId = null;
             _activeTurnReceivedDelta = false;
+            _activeTurnQueueWaitMs = null;
             try {
                 await PublishSessionStateAsync().ConfigureAwait(false);
             } finally {
                 await PublishOptionsStateSafeAsync().ConfigureAwait(false);
             }
+
+            var dispatchedNextQueuedTurn = await DispatchNextQueuedTurnAsync(honorAutoDispatch: true).ConfigureAwait(false);
+            if (!dispatchedNextQueuedTurn) {
+                var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
+                if (!_queueAutoDispatchEnabled && queuedTotal > 0) {
+                    await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
+                }
+            }
         }
     }
 
-    private async Task SendPromptToConversationAsync(string text, string? conversationId) {
+    private async Task SendPromptToConversationAsync(string text, string? conversationId, DateTime? queuedAtUtc = null) {
         var normalized = (conversationId ?? string.Empty).Trim();
+        if (_isSending) {
+            await SendPromptAsync(text, normalized.Length == 0 ? _activeConversationId : normalized, queuedAtUtc).ConfigureAwait(false);
+            return;
+        }
+
         if (normalized.Length == 0 || string.Equals(normalized, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            await SendPromptAsync(text).ConfigureAwait(false);
+            await SendPromptAsync(text, normalized, queuedAtUtc).ConfigureAwait(false);
             return;
         }
 
         var target = FindConversationById(normalized);
         if (target is null) {
-            await SendPromptAsync(text).ConfigureAwait(false);
+            await SendPromptAsync(text, normalized, queuedAtUtc).ConfigureAwait(false);
             return;
         }
 
         await SwitchConversationAsync(target.Id).ConfigureAwait(false);
-        await SendPromptAsync(text).ConfigureAwait(false);
+        await SendPromptAsync(text, normalized, queuedAtUtc).ConfigureAwait(false);
+    }
+
+    private bool TryEnqueuePendingTurn(string text, string? conversationId, out int queuedCount) {
+        var trimmedText = (text ?? string.Empty).Trim();
+        var trimmedConversationId = (conversationId ?? string.Empty).Trim();
+        lock (_pendingTurnQueueSync) {
+            if (trimmedText.Length == 0 || _pendingTurns.Count >= MaxQueuedTurns) {
+                queuedCount = _pendingTurns.Count;
+                return false;
+            }
+
+            _pendingTurns.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow));
+            queuedCount = _pendingTurns.Count;
+            return true;
+        }
+    }
+
+    private bool TryDequeuePendingTurn(out QueuedTurn queuedTurn) {
+        lock (_pendingTurnQueueSync) {
+            if (_pendingTurns.Count == 0) {
+                queuedTurn = null!;
+                return false;
+            }
+
+            queuedTurn = _pendingTurns.Dequeue();
+            return true;
+        }
+    }
+
+    private int GetQueuedTurnCount() {
+        lock (_pendingTurnQueueSync) {
+            return _pendingTurns.Count;
+        }
+    }
+
+    private int ClearPendingTurns() {
+        lock (_pendingTurnQueueSync) {
+            var cleared = _pendingTurns.Count;
+            _pendingTurns.Clear();
+            return cleared;
+        }
+    }
+
+    private bool TryEnqueuePromptAfterLogin(string text, string? conversationId, out int queuedCount) {
+        var trimmedText = (text ?? string.Empty).Trim();
+        var trimmedConversationId = (conversationId ?? string.Empty).Trim();
+        lock (_queuedAfterLoginSync) {
+            if (trimmedText.Length == 0 || _queuedTurnsAfterLogin.Count >= MaxQueuedTurns) {
+                queuedCount = _queuedTurnsAfterLogin.Count;
+                return false;
+            }
+
+            _queuedTurnsAfterLogin.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow));
+            queuedCount = _queuedTurnsAfterLogin.Count;
+            return true;
+        }
+    }
+
+    private bool TryDequeuePromptAfterLogin(out QueuedTurn queuedTurn) {
+        lock (_queuedAfterLoginSync) {
+            if (_queuedTurnsAfterLogin.Count == 0) {
+                queuedTurn = null!;
+                return false;
+            }
+
+            queuedTurn = _queuedTurnsAfterLogin.Dequeue();
+            return true;
+        }
+    }
+
+    private int GetQueuedPromptAfterLoginCount() {
+        lock (_queuedAfterLoginSync) {
+            return _queuedTurnsAfterLogin.Count;
+        }
+    }
+
+    private int ClearQueuedPromptsAfterLogin() {
+        lock (_queuedAfterLoginSync) {
+            var cleared = _queuedTurnsAfterLogin.Count;
+            _queuedTurnsAfterLogin.Clear();
+            return cleared;
+        }
+    }
+
+    private async Task<bool> TryDispatchQueuedPromptAfterLoginAsync(bool honorAutoDispatch = true) {
+        if (_isSending || !_isAuthenticated || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
+            return false;
+        }
+
+        if (!TryDequeuePromptAfterLogin(out var queuedTurn)) {
+            return false;
+        }
+
+        await SendPromptToConversationAsync(queuedTurn.Text, queuedTurn.ConversationId, queuedTurn.EnqueuedUtc).ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task<bool> DispatchNextQueuedTurnAsync(bool honorAutoDispatch) {
+        if (_isSending || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
+            return false;
+        }
+
+        if (TryDequeuePendingTurn(out var queuedTurn)) {
+            await SendPromptToConversationAsync(queuedTurn.Text, queuedTurn.ConversationId, queuedTurn.EnqueuedUtc).ConfigureAwait(false);
+            return true;
+        }
+
+        if (GetQueuedPromptAfterLoginCount() == 0) {
+            return false;
+        }
+
+        if (!honorAutoDispatch && (!_isAuthenticated || _loginInProgress)) {
+            var started = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
+            if (started) {
+                var queuedCount = GetQueuedPromptAfterLoginCount();
+                if (queuedCount > 0) {
+                    await SetStatusAsync($"Waiting for sign-in... ({queuedCount}/{MaxQueuedTurns} queued)").ConfigureAwait(false);
+                }
+            }
+            return false;
+        }
+
+        return await TryDispatchQueuedPromptAfterLoginAsync(honorAutoDispatch).ConfigureAwait(false);
+    }
+
+    private async Task RunNextQueuedTurnAsync() {
+        if (_isSending) {
+            await SetStatusAsync("Current turn is still running.").ConfigureAwait(false);
+            return;
+        }
+
+        var dispatched = await DispatchNextQueuedTurnAsync(honorAutoDispatch: false).ConfigureAwait(false);
+        if (dispatched) {
+            return;
+        }
+
+        var queuedTurns = GetQueuedTurnCount();
+        var queuedSignIn = GetQueuedPromptAfterLoginCount();
+        var queuedTotal = queuedTurns + queuedSignIn;
+        if (queuedTotal == 0) {
+            await SetStatusAsync("No queued turns.").ConfigureAwait(false);
+            await PublishSessionStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        if (!_isAuthenticated && queuedSignIn > 0) {
+            await SetStatusAsync($"Waiting for sign-in... ({queuedSignIn}/{MaxQueuedTurns} queued)").ConfigureAwait(false);
+            return;
+        }
+
+        await SetStatusAsync("Queued turns are waiting.").ConfigureAwait(false);
+        await PublishSessionStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task ClearQueuedTurnsAsync() {
+        var clearedPending = ClearPendingTurns();
+        var clearedSignIn = ClearQueuedPromptsAfterLogin();
+        var clearedTotal = clearedPending + clearedSignIn;
+        if (clearedTotal <= 0) {
+            await SetStatusAsync("No queued turns to clear.").ConfigureAwait(false);
+            await PublishSessionStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        await SetStatusAsync($"Cleared queued turns ({clearedTotal} removed).").ConfigureAwait(false);
+        await PublishSessionStateAsync().ConfigureAwait(false);
     }
 
     private async Task CancelActiveTurnAsync() {
@@ -321,6 +521,16 @@ public sealed partial class MainWindow : Window {
 
         return !string.IsNullOrWhiteSpace(_activeTurnRequestId)
                && string.Equals(id, _activeTurnRequestId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsLatestTurnRequest(string? requestId) {
+        var id = NormalizeRequestId(requestId);
+        if (id.Length == 0) {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(_latestTurnRequestId)
+               && string.Equals(id, _latestTurnRequestId, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsActiveKickoffRequest(string? requestId) {

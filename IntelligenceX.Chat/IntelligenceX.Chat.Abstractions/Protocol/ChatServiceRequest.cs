@@ -223,8 +223,14 @@ public sealed record ChatRequestOptions {
     public int MaxToolRounds { get; init; } = 24;
     /// <summary>
     /// Whether to execute tool calls in parallel when possible.
+    /// This remains as a compatibility flag for older clients/servers.
     /// </summary>
     public bool ParallelTools { get; init; } = true;
+    /// <summary>
+    /// Optional parallel tool strategy override.
+    /// Supported values: <c>auto</c>, <c>force_serial</c>, <c>allow_parallel</c>.
+    /// </summary>
+    public string? ParallelToolMode { get; init; }
     /// <summary>
     /// Optional per-turn timeout in seconds (null means use service default; 0 means no explicit timeout).
     /// </summary>

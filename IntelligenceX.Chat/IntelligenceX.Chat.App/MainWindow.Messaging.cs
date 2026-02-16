@@ -180,6 +180,28 @@ public sealed partial class MainWindow : Window {
                         }
                         break;
                     }
+                case "set_proactive_mode":
+                    {
+                        var enabled = TryGetBoolean(root, "enabled");
+                        if (enabled.HasValue) {
+                            await SetProactiveModeAsync(enabled.Value).ConfigureAwait(true);
+                        }
+                        break;
+                    }
+                case "set_queue_auto_dispatch":
+                    {
+                        var enabled = TryGetBoolean(root, "enabled");
+                        if (enabled.HasValue) {
+                            await SetQueueAutoDispatchAsync(enabled.Value).ConfigureAwait(true);
+                        }
+                        break;
+                    }
+                case "run_next_queued":
+                    await RunNextQueuedTurnAsync().ConfigureAwait(true);
+                    break;
+                case "clear_queued_turns":
+                    await ClearQueuedTurnsAsync().ConfigureAwait(true);
+                    break;
                 case "add_memory_note":
                     {
                         var text = TryGetString(root, "text");
