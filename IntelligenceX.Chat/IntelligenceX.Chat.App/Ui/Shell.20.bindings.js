@@ -95,7 +95,8 @@
   });
 
   dragBar.addEventListener("lostpointercapture", function(e) {
-    clearPendingWindowDrag(e.pointerId);
+    var hasPointerId = typeof e.pointerId === "number";
+    clearPendingWindowDrag(hasPointerId ? e.pointerId : undefined, !hasPointerId);
   });
 
   dragBar.addEventListener("dblclick", function(e) {
