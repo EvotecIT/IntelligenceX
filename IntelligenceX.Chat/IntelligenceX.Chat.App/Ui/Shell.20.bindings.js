@@ -8,12 +8,24 @@
     return !!target.closest("[data-no-drag],button,input,textarea,a,select");
   }
 
-  function clearPendingWindowDrag(pointerId) {
+  function clearPendingWindowDrag(pointerId, force) {
     if (!pendingWindowDrag) {
       return;
     }
 
     var pendingPointerId = pendingWindowDrag.pointerId;
+    var pointerMatches = (typeof pointerId !== "number") || (pointerId === pendingPointerId);
+
+    if (!pointerMatches && !force) {
+      if (dragBar && dragBar.hasPointerCapture && dragBar.hasPointerCapture(pointerId)) {
+        try {
+          dragBar.releasePointerCapture(pointerId);
+        } catch (_) {
+          // Ignore release failures.
+        }
+      }
+      return;
+    }
 
     if (dragBar && dragBar.hasPointerCapture) {
       if (dragBar.hasPointerCapture(pendingPointerId)) {
@@ -40,6 +52,9 @@
     if (e.button !== 0 || isNoDragTarget(e.target)) {
       return;
     }
+
+    // Reset any stale candidate before tracking a new pointer sequence.
+    clearPendingWindowDrag(undefined, true);
 
     pendingWindowDrag = {
       pointerId: e.pointerId,
