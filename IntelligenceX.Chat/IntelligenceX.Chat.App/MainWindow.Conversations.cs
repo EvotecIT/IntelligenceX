@@ -343,17 +343,24 @@ public sealed partial class MainWindow : Window {
         }
 
         if (nonSystemConversationCount <= 1) {
-            if (string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
-                ClearConversation();
-                return;
-            }
-
+            var isActiveConversation = string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase);
             conversation.Messages.Clear();
             conversation.Title = DefaultConversationTitle;
             conversation.ThreadId = null;
             conversation.UpdatedUtc = DateTime.UtcNow;
             if (string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
                 _activeRequestConversationId = null;
+            }
+
+            if (isActiveConversation) {
+                _messages = conversation.Messages;
+                _assistantStreaming.Clear();
+                _threadId = null;
+                ClearToolRoutingInsights();
+                _modelKickoffAttempted = false;
+                _modelKickoffInProgress = false;
+                _pendingLoginPrompt = null;
+                await RenderTranscriptAsync().ConfigureAwait(false);
             }
 
             await PublishOptionsStateAsync().ConfigureAwait(false);
