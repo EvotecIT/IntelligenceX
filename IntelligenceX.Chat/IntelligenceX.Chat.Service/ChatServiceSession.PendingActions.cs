@@ -133,7 +133,7 @@ internal sealed partial class ChatServiceSession {
         var isExplicitAct = TryParseExplicitActSelection(normalized, out _, out _);
         // Keep action-selection matching available for longer contextual follow-ups too.
         // Safety remains in TryMatchPendingActionWithReason:
-        // - mutating actions still require explicit /act or ordinal selection
+        // - actions not explicitly marked read-only still require explicit /act or ordinal selection
         // - structured payload-like inputs are rejected
         // - ambiguous overlap does not auto-select
 
@@ -386,9 +386,9 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Mutating actions must be selected explicitly (/act <id> or ordinal) to avoid accidental writes
-        // from natural-language follow-ups such as "go ahead".
-        if (actions.Count == 1 && IsLikelyMutatingPendingAction(actions[0])) {
+        // Fail closed for actions that are not explicitly marked read-only.
+        // Unknown mutability can still represent state-changing operations.
+        if (actions.Count == 1 && RequiresExplicitPendingActionSelection(actions[0])) {
             reason = "mutating_action_requires_explicit_selection";
             return false;
         }
@@ -406,7 +406,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (TryMatchPendingActionByIntentOverlapWithReason(trimmed, actions, out var overlapMatch, out var overlapReason)) {
-            if (IsLikelyMutatingPendingAction(overlapMatch)) {
+            if (RequiresExplicitPendingActionSelection(overlapMatch)) {
                 reason = "mutating_action_requires_explicit_selection";
                 return false;
             }
@@ -419,8 +419,8 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool IsLikelyMutatingPendingAction(PendingAction action) {
-        return action.Mutability == ActionMutability.Mutating;
+    private static bool RequiresExplicitPendingActionSelection(PendingAction action) {
+        return action.Mutability != ActionMutability.ReadOnly;
     }
 
     private static bool TryMatchPendingActionByIntentOverlap(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {

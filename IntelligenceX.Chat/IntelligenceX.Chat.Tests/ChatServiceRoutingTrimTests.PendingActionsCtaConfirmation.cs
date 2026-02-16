@@ -28,6 +28,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -66,6 +67,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -88,6 +90,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -110,6 +113,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -137,6 +141,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -163,6 +168,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -190,6 +196,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: First
             request: Do first thing.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -209,6 +216,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
 
@@ -229,6 +237,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
 
@@ -249,6 +258,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
         var input =
@@ -271,6 +281,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Failed logons (4625)
             request: Run failed logon report on ADO Security.
+            mutating: false
             reply: /act act_failed4625
 
             [Action]
@@ -278,6 +289,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_lockout4740
             title: Account lockouts (4740)
             request: Run account lockout report on ADO Security.
+            mutating: false
             reply: /act act_lockout4740
             """;
         var input =
@@ -331,6 +343,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var expanded = Assert.IsType<string>(result);
 
         Assert.Equal("go ahead and run it", expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionForLongNaturalLanguageConfirmation() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+        var input =
+            "Please proceed with the failed logon report on ADO Security and include a concise top-events summary before we move on.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownPendingActionByIntentOverlapWhenMultipleActionsExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_failed4625
+            title: Failed logons (4625)
+            request: Run failed logon report on ADO Security.
+            reply: /act act_unknown_failed4625
+
+            [Action]
+            ix:action:v1
+            id: act_unknown_lockout4740
+            title: Account lockouts (4740)
+            request: Run account lockout report on ADO Security.
+            reply: /act act_unknown_lockout4740
+            """;
+        var input =
+            "Let's start with the account lockouts 4740 report on ADO Security first and summarize impacted users for triage.";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
     }
 
     [Fact]
@@ -428,6 +489,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Run failed logon report (4625)
             request: Run failed logon report on ADO Security and summarize the top five events.
+            mutating: false
             reply: /act act_failed4625
             """;
 
@@ -447,6 +509,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Failed logons (4625)
             request: Run failed logon report on ADO Security.
+            mutating: false
             reply: /act act_failed4625
 
             [Action]
@@ -454,6 +517,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_lockout4740
             title: Account lockouts (4740)
             request: Run account lockout report on ADO Security.
+            mutating: false
             reply: /act act_lockout4740
             """;
 
@@ -474,6 +538,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_failed4625
             title: Failed logons (4625)
             request: Run failed logon report on ADO Security.
+            mutating: false
             reply: /act act_failed4625
 
             [Action]
@@ -481,6 +546,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_lockout4740
             title: Account lockouts (4740)
             request: Run account lockout report on ADO Security.
+            mutating: false
             reply: /act act_lockout4740
             """;
 
@@ -632,6 +698,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: Failed logons (4625)
             request: Run failed logons report.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -654,6 +721,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: Failed logons (4625)
             request: Run failed logons report.
+            mutating: false
             reply: /act act_001
             """;
 
@@ -673,6 +741,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             id: act_001
             title: Failed logons (4625)
             request: Run failed logons report.
+            mutating: false
             reply: /act act_001
             """;
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", actionDraft });
@@ -693,7 +762,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void RememberPendingActions_RehydratesReplayActionFromExecutionContractBlockerText() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
-        var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\"}}";
+        var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\",\"mutating\":false}}";
         var blockerText = Assert.IsType<string>(BuildExecutionContractBlockerTextMethod.Invoke(
             null,
             new object?[] { selectionPayload, "Ok, doing it now.", "no_tool_calls_after_watchdog_retry" }));

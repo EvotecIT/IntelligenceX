@@ -683,8 +683,12 @@ internal sealed partial class ChatServiceSession {
         var sw = Stopwatch.StartNew();
         var executeTask = ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken);
         while (!executeTask.IsCompleted) {
-            var completedTask = await Task.WhenAny(executeTask, Task.Delay(ToolHeartbeatInterval, cancellationToken)).ConfigureAwait(false);
+            var heartbeatDelayTask = Task.Delay(ToolHeartbeatInterval, cancellationToken);
+            var completedTask = await Task.WhenAny(executeTask, heartbeatDelayTask).ConfigureAwait(false);
             if (ReferenceEquals(completedTask, executeTask)) {
+                break;
+            }
+            if (heartbeatDelayTask.IsCanceled || cancellationToken.IsCancellationRequested) {
                 break;
             }
 
