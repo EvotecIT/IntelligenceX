@@ -382,8 +382,8 @@ public sealed partial class MainWindow : Window {
                 try {
                     await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
                 } catch (OperationCanceledException) {
-                    TryCancelUiPublishAwaiter(sessionTcs);
-                    TryCancelUiPublishAwaiter(optionsTcs);
+                    TryCompleteUiPublishAwaiter(sessionTcs);
+                    TryCompleteUiPublishAwaiter(optionsTcs);
                     return;
                 }
 
@@ -392,7 +392,7 @@ public sealed partial class MainWindow : Window {
                         await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
                         sessionTcs?.TrySetResult(null);
                     } catch (OperationCanceledException) {
-                        TryCancelUiPublishAwaiter(sessionTcs);
+                        TryCompleteUiPublishAwaiter(sessionTcs);
                     } catch (Exception ex) {
                         sessionTcs?.TrySetException(ex);
                     }
@@ -403,7 +403,7 @@ public sealed partial class MainWindow : Window {
                         await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
                         optionsTcs?.TrySetResult(null);
                     } catch (OperationCanceledException) {
-                        TryCancelUiPublishAwaiter(optionsTcs);
+                        TryCompleteUiPublishAwaiter(optionsTcs);
                     } catch (Exception ex) {
                         optionsTcs?.TrySetException(ex);
                     }
@@ -437,12 +437,12 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private static void TryCancelUiPublishAwaiter(TaskCompletionSource<object?>? tcs) {
+    private static void TryCompleteUiPublishAwaiter(TaskCompletionSource<object?>? tcs) {
         if (tcs is null) {
             return;
         }
 
-        tcs.TrySetCanceled();
+        tcs.TrySetResult(null);
     }
 
     private void CancelQueuedUiPublishes() {
@@ -462,8 +462,8 @@ public sealed partial class MainWindow : Window {
             _uiPublishPumpRunning = false;
         }
 
-        TryCancelUiPublishAwaiter(pendingSession);
-        TryCancelUiPublishAwaiter(pendingOptions);
+        TryCompleteUiPublishAwaiter(pendingSession);
+        TryCompleteUiPublishAwaiter(pendingOptions);
 
         if (pumpCts is null) {
             return;
