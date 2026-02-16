@@ -330,11 +330,10 @@ public sealed partial class MainWindow : Window {
         };
 
         Closed += async (_, _) => {
-            _shutdownRequested = true;
-            CancelQueuedUiPublishesForShutdown();
             StopAutoReconnectLoop();
             await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
             await PersistAppStateAsync(allowDuringShutdown: true).ConfigureAwait(false);
+            CancelQueuedUiPublishesForShutdown();
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
             UninstallGlobalWheelHook();
