@@ -391,7 +391,7 @@ public sealed partial class MainWindow : Window {
                     // Defensive shutdown/race guard: do not leave handed-out awaiters unresolved.
                     TryCancelUiPublishAwaiter(sessionTcs);
                     TryCancelUiPublishAwaiter(optionsTcs);
-                    return;
+                    break;
                 }
 
                 try {
@@ -399,7 +399,7 @@ public sealed partial class MainWindow : Window {
                 } catch (OperationCanceledException) {
                     TryCancelUiPublishAwaiter(sessionTcs);
                     TryCancelUiPublishAwaiter(optionsTcs);
-                    return;
+                    break;
                 }
 
                 if (publishSession) {
