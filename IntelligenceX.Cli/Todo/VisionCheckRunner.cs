@@ -524,59 +524,72 @@ internal static class VisionCheckRunner {
             return false;
         }
 
-        var normalized = NormalizeHeading(heading);
-        switch (normalized) {
-            case "goals":
-                section = "goals";
-                requiredSection = "goals";
-                return true;
-            case "mission":
-                section = "goals";
-                return true;
-            case "nongoals":
-                section = "non-goals";
-                requiredSection = "non-goals";
-                return true;
-            case "inscope":
-            case "included":
-                section = "in";
-                if (normalized == "inscope") {
-                    requiredSection = "in-scope";
-                }
-                return true;
-            case "outofscope":
-            case "notinscope":
-                section = "out";
-                if (normalized == "outofscope") {
-                    requiredSection = "out-of-scope";
-                }
-                return true;
-            case "acceptguidance":
-            case "acceptsignals":
-            case "accept":
-                section = "accept";
-                return true;
-            case "rejectguidance":
-            case "rejectsignals":
-            case "reject":
-                section = "reject";
-                return true;
-            case "humanreviewguidance":
-            case "needshumanreview":
-            case "review":
-                section = "review";
-                return true;
-            case "decisionprinciples":
-                section = "decision-principles";
-                requiredSection = "decision-principles";
-                return true;
-            case "decisionnotes":
-            case "maintainerguidance":
-                section = "decision-principles";
-                return true;
-            default:
-                return false;
+        var words = ExtractHeadingWords(heading);
+        if (words.Count == 0) {
+            return false;
         }
+
+        if (HeadingHasPhrase(words, "non", "goals") ||
+            HeadingHasPhrase(words, "non", "goal") ||
+            HeadingHasAnyWord(words, "nongoals", "nongoal")) {
+            section = "non-goals";
+            requiredSection = "non-goals";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "goals", "goal", "mission")) {
+            section = "goals";
+            requiredSection = "goals";
+            return true;
+        }
+
+        if (HeadingHasPhrase(words, "in", "scope") ||
+            HeadingHasAnyWord(words, "inscope", "included")) {
+            section = "in";
+            requiredSection = "in-scope";
+            return true;
+        }
+
+        if (HeadingHasPhrase(words, "out", "of", "scope") ||
+            HeadingHasPhrase(words, "not", "in", "scope") ||
+            HeadingHasAnyWord(words, "outofscope")) {
+            section = "out";
+            requiredSection = "out-of-scope";
+            return true;
+        }
+
+        if (HeadingHasPhrase(words, "decision", "principles") ||
+            HeadingHasPhrase(words, "decision", "principle") ||
+            HeadingHasPhrase(words, "decision", "notes") ||
+            HeadingHasPhrase(words, "maintainer", "guidance") ||
+            HeadingHasPhrase(words, "maintainers", "guidance")) {
+            section = "decision-principles";
+            requiredSection = "decision-principles";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "accept") ||
+            HeadingHasPhrase(words, "accept", "guidance") ||
+            HeadingHasPhrase(words, "accept", "signals")) {
+            section = "accept";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "reject") ||
+            HeadingHasPhrase(words, "reject", "guidance") ||
+            HeadingHasPhrase(words, "reject", "signals")) {
+            section = "reject";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "review") ||
+            HeadingHasPhrase(words, "needs", "human", "review") ||
+            HeadingHasPhrase(words, "human", "review", "guidance")) {
+            section = "review";
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryMapLegacySectionLine(string loweredLine, out string section) {
@@ -617,14 +630,61 @@ internal static class VisionCheckRunner {
         return false;
     }
 
-    private static string NormalizeHeading(string heading) {
-        var builder = new StringBuilder(heading.Length);
+    private static List<string> ExtractHeadingWords(string heading) {
+        var words = new List<string>();
+        var token = new StringBuilder(heading.Length);
         foreach (var ch in heading) {
             if (char.IsLetterOrDigit(ch)) {
-                builder.Append(char.ToLowerInvariant(ch));
+                token.Append(char.ToLowerInvariant(ch));
+                continue;
+            }
+
+            if (token.Length == 0) {
+                continue;
+            }
+            words.Add(token.ToString());
+            token.Clear();
+        }
+
+        if (token.Length > 0) {
+            words.Add(token.ToString());
+        }
+
+        return words;
+    }
+
+    private static bool HeadingHasAnyWord(IReadOnlyList<string> words, params string[] expectedWords) {
+        for (var i = 0; i < expectedWords.Length; i++) {
+            var expected = expectedWords[i];
+            for (var j = 0; j < words.Count; j++) {
+                if (words[j].Equals(expected, StringComparison.Ordinal)) {
+                    return true;
+                }
             }
         }
-        return builder.ToString();
+        return false;
+    }
+
+    private static bool HeadingHasPhrase(IReadOnlyList<string> words, params string[] expectedPhrase) {
+        if (expectedPhrase.Length == 0 || words.Count < expectedPhrase.Length) {
+            return false;
+        }
+
+        for (var i = 0; i <= words.Count - expectedPhrase.Length; i++) {
+            var matches = true;
+            for (var j = 0; j < expectedPhrase.Length; j++) {
+                if (!words[i + j].Equals(expectedPhrase[j], StringComparison.Ordinal)) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (matches) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string DisplaySectionName(string normalized) {

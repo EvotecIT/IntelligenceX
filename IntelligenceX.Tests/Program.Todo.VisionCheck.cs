@@ -143,6 +143,86 @@ internal static partial class Program {
         }
     }
 
+    private static void TestVisionCheckParseDocumentSupportsHeadingVariants() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-heading-variants-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var visionPath = Path.Combine(tempDir, "VISION.md");
+            var visionContent = string.Join('\n', new[] {
+                "# Vision",
+                string.Empty,
+                "## Mission",
+                "- Keep delivery quality high",
+                string.Empty,
+                "## Non Goals",
+                "- Ignore unrelated website redesign work",
+                string.Empty,
+                "## In   Scope:",
+                "- API stability and security hardening",
+                string.Empty,
+                "## Out of Scope",
+                "- Marketing campaign redesign",
+                string.Empty,
+                "## Decision principles",
+                "- aligned: security hardening",
+                "- likely-out-of-scope: marketing redesign",
+                "- needs-human-review: migration rollout"
+            }) + "\n";
+            File.WriteAllText(visionPath, visionContent);
+
+            var result = IntelligenceX.Cli.Todo.VisionCheckRunner.ParseVisionDocument(visionPath);
+            AssertEqual(true, result.Contract.IsValid, "heading variants should satisfy strict contract");
+            AssertEqual(0, result.Contract.MissingSections.Count, "no required sections missing with heading variants");
+        } finally {
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best effort
+            }
+        }
+    }
+
+    private static void TestVisionCheckParseDocumentSupportsLegacyDecisionHeading() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-heading-legacy-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var visionPath = Path.Combine(tempDir, "VISION.md");
+            var visionContent = string.Join('\n', new[] {
+                "# Vision",
+                string.Empty,
+                "## Goals",
+                "- Keep delivery quality high",
+                string.Empty,
+                "## Non-Goals",
+                "- Ignore unrelated website redesign work",
+                string.Empty,
+                "## In Scope",
+                "- API stability and security hardening",
+                string.Empty,
+                "## Out Of Scope",
+                "- Marketing campaign redesign",
+                string.Empty,
+                "## Maintainer Guidance",
+                "- aligned: security hardening",
+                "- likely-out-of-scope: marketing redesign",
+                "- needs-human-review: migration rollout"
+            }) + "\n";
+            File.WriteAllText(visionPath, visionContent);
+
+            var result = IntelligenceX.Cli.Todo.VisionCheckRunner.ParseVisionDocument(visionPath);
+            AssertEqual(true, result.Contract.IsValid, "maintainer guidance heading should satisfy decision principles requirement");
+            AssertEqual(true, result.Contract.DecisionPrinciplesBullets >= 3, "decision bullets captured under legacy heading");
+        } finally {
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best effort
+            }
+        }
+    }
+
     private static void TestVisionCheckParseDocumentReportsMissingRequiredSection() {
         var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-contract-missing-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
