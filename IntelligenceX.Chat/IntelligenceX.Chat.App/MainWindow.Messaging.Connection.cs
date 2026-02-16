@@ -171,6 +171,8 @@ public sealed partial class MainWindow : Window {
         _isSending = true;
         _activeTurnRequestId = requestId;
         _cancelRequestedTurnRequestId = null;
+        _latestServiceActivityText = string.Empty;
+        StartTurnWatchdog();
         _activeRequestConversationId = turn.ConversationId;
         ClearToolRoutingInsights();
         try {
@@ -183,6 +185,7 @@ public sealed partial class MainWindow : Window {
         try {
             await ExecuteChatTurnWithReconnectAsync(turn).ConfigureAwait(false);
         } finally {
+            StopTurnWatchdog();
             _isSending = false;
             _activeTurnRequestId = null;
             _cancelRequestedTurnRequestId = null;

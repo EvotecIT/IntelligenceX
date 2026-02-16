@@ -184,6 +184,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildExecutionContractEscapePrompt_EmitsStableMarker() {
+        var result = BuildExecutionContractEscapePromptMethod.Invoke(null, new object?[] { "run now", "draft" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("ix:execution-contract-escape:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("full tool availability", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildExecutionContractBlockerText_EmbedsReplayableActionEnvelopeForSelectionPayload() {
         var request = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security.\"}}";
         var result = BuildExecutionContractBlockerTextMethod.Invoke(null, new object?[] { request, "draft", "no_tool_calls_after_watchdog_retry" });
@@ -237,8 +246,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldSkipWeightedRouting_TrueForCompactFollowUp() {
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "run now" });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldSkipWeightedRouting_FalseForRegularRequestText() {
-        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "failed logons please" });
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "Show failed logons across all domain controllers for the last 24 hours with source IP breakdown." });
 
         Assert.False(Assert.IsType<bool>(result));
     }

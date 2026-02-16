@@ -73,6 +73,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
         toolDefs = SanitizeToolDefinitions(toolDefs);
+        var fullToolDefs = toolDefs.Count == 0 ? Array.Empty<ToolDefinition>() : toolDefs.ToArray();
         var originalToolCount = toolDefs.Count;
         var routingInsights = new List<ToolRoutingInsight>();
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
@@ -135,12 +136,14 @@ internal sealed partial class ChatServiceSession {
             await EmitRoutingInsightsAsync(writer, request.RequestId, threadId, routingInsights).ConfigureAwait(false);
         }
 
-        await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
+        await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking", message: "Reasoning with available tools...")
+            .ConfigureAwait(false);
         TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), CopyChatOptions(options), turnToken)
             .ConfigureAwait(false);
         var executionNudgeUsed = false;
         var toolReceiptCorrectionUsed = false;
         var noToolExecutionWatchdogUsed = false;
+        var executionContractEscapeUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -268,6 +271,34 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var hasToolActivity = toolCalls.Count > 0 || toolOutputs.Count > 0;
+                if (executionContractApplies
+                    && !hasToolActivity
+                    && !executionContractEscapeUsed
+                    && fullToolDefs.Length > 0) {
+                    executionContractEscapeUsed = true;
+                    toolDefs = fullToolDefs;
+                    options.Tools = fullToolDefs;
+                    options.ToolChoice = ToolChoice.Auto;
+                    usedContinuationSubset = false;
+                    RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+
+                    var escapePrompt = BuildExecutionContractEscapePrompt(routedUserRequest, text);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: "Selected action had no tool activity; retrying with full tool availability.")
+                        .ConfigureAwait(false);
+                    turn = await ChatWithToolSchemaRecoveryAsync(
+                            client,
+                            ChatInput.FromText(escapePrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 if (executionContractApplies && !hasToolActivity) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
@@ -345,7 +376,13 @@ internal sealed partial class ChatServiceSession {
             foreach (var output in executed) {
                 next.AddToolOutput(output.CallId, output.Output);
             }
-            await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "thinking",
+                    message: $"Analyzing {executed.Count} tool result(s)...")
+                .ConfigureAwait(false);
             turn = await ChatWithToolSchemaRecoveryAsync(client, next, CopyChatOptions(options, newThreadOverride: false), turnToken).ConfigureAwait(false);
         }
 

@@ -16,6 +16,7 @@ namespace IntelligenceX.Chat.Tooling;
 /// </summary>
 public static class ToolHealthDiagnostics {
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private const string PackInfoSuffix = "_pack_info";
 
     /// <summary>
     /// Result of a single tool-health probe.
@@ -71,6 +72,16 @@ public static class ToolHealthDiagnostics {
                 var raw = await tool.InvokeAsync(new JsonObject(), toolToken).ConfigureAwait(false) ?? string.Empty;
                 if (TryReadFailure(raw, out var errorCode, out var error)) {
                     return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: errorCode, Error: error, DurationMs: sw.ElapsedMilliseconds);
+                }
+
+                if (TryResolveOperationalSmokeProbe(normalizedToolName, out var smokeToolName, out var smokeArguments)
+                    && registry.TryGet(smokeToolName, out var smokeTool)) {
+                    var smokeRaw = await smokeTool.InvokeAsync(smokeArguments, toolToken).ConfigureAwait(false) ?? string.Empty;
+                    if (TryReadFailure(smokeRaw, out var smokeErrorCode, out var smokeError)) {
+                        var resolvedCode = string.IsNullOrWhiteSpace(smokeErrorCode) ? "smoke_probe_failed" : "smoke_" + smokeErrorCode;
+                        var resolvedError = CompactOneLine($"{smokeToolName}: {smokeError}");
+                        return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: resolvedCode, Error: resolvedError, DurationMs: sw.ElapsedMilliseconds);
+                    }
                 }
 
                 return new ProbeResult(normalizedToolName, Ok: true, ErrorCode: null, Error: null, DurationMs: sw.ElapsedMilliseconds);
@@ -167,5 +178,40 @@ public static class ToolHealthDiagnostics {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         return cts;
+    }
+
+    private static bool TryResolveOperationalSmokeProbe(string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
+        smokeToolName = string.Empty;
+        smokeArguments = new JsonObject();
+
+        var normalized = (packInfoToolName ?? string.Empty).Trim();
+        if (normalized.Length == 0 || !normalized.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var packId = ToolPackBootstrap.NormalizePackId(normalized[..^PackInfoSuffix.Length]);
+        switch (packId) {
+            case "system":
+                smokeToolName = "system_info";
+                return true;
+            case "ad":
+                smokeToolName = "ad_environment_discover";
+                return true;
+            case "eventlog":
+                smokeToolName = "eventlog_named_events_catalog";
+                return true;
+            case "testimox":
+                smokeToolName = "testimox_rules_list";
+                smokeArguments.Add("page_size", 25);
+                return true;
+            case "powershell":
+                smokeToolName = "powershell_environment_discover";
+                return true;
+            case "reviewersetup":
+                smokeToolName = "reviewer_setup_contract_verify";
+                return true;
+            default:
+                return false;
+        }
     }
 }

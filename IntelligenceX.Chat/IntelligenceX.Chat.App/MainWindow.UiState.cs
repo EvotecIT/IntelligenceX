@@ -785,6 +785,59 @@ public sealed partial class MainWindow : Window {
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetActivity(" + json + ");").AsTask()).ConfigureAwait(false);
     }
 
+    private void StartTurnWatchdog() {
+        Interlocked.Exchange(ref _activeTurnStartedUtcTicks, DateTime.UtcNow.Ticks);
+
+        lock (_turnWatchdogSync) {
+            _turnWatchdogCts?.Cancel();
+            _turnWatchdogCts?.Dispose();
+            _turnWatchdogCts = new CancellationTokenSource();
+            var token = _turnWatchdogCts.Token;
+            _ = Task.Run(() => TurnWatchdogLoopAsync(token), token);
+        }
+    }
+
+    private void StopTurnWatchdog() {
+        Interlocked.Exchange(ref _activeTurnStartedUtcTicks, 0);
+        lock (_turnWatchdogSync) {
+            _turnWatchdogCts?.Cancel();
+            _turnWatchdogCts?.Dispose();
+            _turnWatchdogCts = null;
+        }
+    }
+
+    private async Task TurnWatchdogLoopAsync(CancellationToken cancellationToken) {
+        while (!cancellationToken.IsCancellationRequested) {
+            try {
+                await Task.Delay(TurnWatchdogTickInterval, cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                return;
+            }
+
+            if (cancellationToken.IsCancellationRequested || !_isSending) {
+                continue;
+            }
+
+            var startedTicks = Interlocked.Read(ref _activeTurnStartedUtcTicks);
+            if (startedTicks <= 0) {
+                continue;
+            }
+
+            var startedUtc = new DateTime(startedTicks, DateTimeKind.Utc);
+            var elapsed = DateTime.UtcNow - startedUtc;
+            if (elapsed < TurnWatchdogHintThreshold) {
+                continue;
+            }
+
+            var baseActivity = string.IsNullOrWhiteSpace(_latestServiceActivityText)
+                ? "Working..."
+                : _latestServiceActivityText;
+            var elapsedSeconds = Math.Max(1, (int)Math.Round(elapsed.TotalSeconds));
+            var watchdogText = $"{baseActivity} ({elapsedSeconds}s elapsed - press Stop to cancel)";
+            await SetActivityAsync(watchdogText).ConfigureAwait(false);
+        }
+    }
+
     private string FormatActivityText(ChatStatusMessage status) {
         if (string.Equals(status.Status, "routing_tool", StringComparison.OrdinalIgnoreCase)) {
             var routingToolLabel = string.IsNullOrWhiteSpace(status.ToolName)
