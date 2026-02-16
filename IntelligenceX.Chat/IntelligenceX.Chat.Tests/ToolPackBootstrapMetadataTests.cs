@@ -30,4 +30,37 @@ public sealed class ToolPackBootstrapMetadataTests {
         var normalized = ToolPackBootstrap.NormalizePackId(input);
         Assert.Equal(expected, normalized);
     }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_IncludesOfficeImoPack_ByDefault() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableEmailPack = false,
+            EnableReviewerSetupPack = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        Assert.Contains(packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_RespectsDisableOfficeImoPack() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false,
+            EnableEmailPack = false,
+            EnableReviewerSetupPack = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        Assert.DoesNotContain(packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+    }
 }

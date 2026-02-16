@@ -57,6 +57,7 @@ internal static partial class Program {
         Console.WriteLine($"Redaction: {(options.Redact ? "on" : "off")}");
         Console.WriteLine($"IX.PowerShell pack: {(options.EnablePowerShellPack ? "enabled (dangerous)" : "disabled")}");
         Console.WriteLine($"IX.TestimoX pack: {(options.EnableTestimoXPack ? "enabled" : "disabled")}");
+        Console.WriteLine($"IX.OfficeIMO pack: {(options.EnableOfficeImoPack ? "enabled" : "disabled")}");
         Console.WriteLine($"Allowed roots: {(options.AllowedRoots.Count == 0 ? "(none)" : string.Join("; ", options.AllowedRoots))}");
         var authPath = ResolveAuthPath(options);
         if (!string.IsNullOrWhiteSpace(authPath)) {
@@ -904,6 +905,8 @@ internal static partial class Program {
         Console.WriteLine("  --enable-powershell-pack  Enable dangerous IX.PowerShell runtime tools (default: off).");
         Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
+        Console.WriteLine("  --enable-officeimo-pack  Enable IX.OfficeIMO document ingestion tools (default: on).");
+        Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");

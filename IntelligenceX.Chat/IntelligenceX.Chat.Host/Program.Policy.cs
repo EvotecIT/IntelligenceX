@@ -36,6 +36,7 @@ internal static partial class Program {
             AdMaxResults = options.AdMaxResults,
             EnablePowerShellPack = options.EnablePowerShellPack,
             EnableTestimoXPack = options.EnableTestimoXPack,
+            EnableOfficeImoPack = options.EnableOfficeImoPack,
             EnableDefaultPluginPaths = options.EnableDefaultPluginPaths,
             PluginPaths = options.PluginPaths.ToArray(),
             OnBootstrapWarning = onBootstrapWarning

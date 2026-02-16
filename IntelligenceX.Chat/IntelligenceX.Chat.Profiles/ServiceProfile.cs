@@ -36,6 +36,7 @@ internal sealed class ServiceProfile {
     public bool EnablePowerShellPack { get; set; }
     public bool PowerShellAllowWrite { get; set; }
     public bool EnableTestimoXPack { get; set; } = true;
+    public bool EnableOfficeImoPack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; set; } = new();
 

@@ -44,6 +44,7 @@ internal sealed class ServiceOptions {
     public bool EnablePowerShellPack { get; set; }
     public bool PowerShellAllowWrite { get; set; }
     public bool EnableTestimoXPack { get; set; } = true;
+    public bool EnableOfficeImoPack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
 
@@ -308,6 +309,14 @@ internal sealed class ServiceOptions {
                 options.EnableTestimoXPack = false;
                 continue;
             }
+            if (arg is "--enable-officeimo-pack") {
+                options.EnableOfficeImoPack = true;
+                continue;
+            }
+            if (arg is "--disable-officeimo-pack") {
+                options.EnableOfficeImoPack = false;
+                continue;
+            }
             if (arg is "--plugin-path") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -422,6 +431,8 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
         Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
+        Console.WriteLine("  --enable-officeimo-pack  Enable IX.OfficeIMO document ingestion tools (default: on).");
+        Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
@@ -522,6 +533,7 @@ internal sealed class ServiceOptions {
         EnablePowerShellPack = profile.EnablePowerShellPack;
         PowerShellAllowWrite = profile.PowerShellAllowWrite;
         EnableTestimoXPack = profile.EnableTestimoXPack;
+        EnableOfficeImoPack = profile.EnableOfficeImoPack;
         EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
         PluginPaths.Clear();
         if (profile.PluginPaths != null && profile.PluginPaths.Count > 0) {
@@ -558,6 +570,7 @@ internal sealed class ServiceOptions {
             EnablePowerShellPack = EnablePowerShellPack,
             PowerShellAllowWrite = PowerShellAllowWrite,
             EnableTestimoXPack = EnableTestimoXPack,
+            EnableOfficeImoPack = EnableOfficeImoPack,
             EnableDefaultPluginPaths = EnableDefaultPluginPaths,
             PluginPaths = new List<string>(PluginPaths),
             InstructionsFile = InstructionsFile,

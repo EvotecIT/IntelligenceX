@@ -59,6 +59,11 @@ public sealed record ToolPackBootstrapOptions {
     public bool EnableTestimoXPack { get; init; } = true;
 
     /// <summary>
+    /// Enables IX.OfficeIMO read-only document ingestion pack when available.
+    /// </summary>
+    public bool EnableOfficeImoPack { get; init; } = true;
+
+    /// <summary>
     /// Enables reviewer setup guidance pack.
     /// </summary>
     public bool EnableReviewerSetupPack { get; init; } = true;
@@ -134,6 +139,8 @@ public static class ToolPackBootstrap {
     private const string PowerShellOptionsTypeName = "IntelligenceX.Tools.PowerShell.PowerShellToolOptions, IntelligenceX.Tools.PowerShell";
     private const string TestimoXPackTypeName = "IntelligenceX.Tools.TestimoX.TestimoXToolPack, IntelligenceX.Tools.TestimoX";
     private const string TestimoXOptionsTypeName = "IntelligenceX.Tools.TestimoX.TestimoXToolOptions, IntelligenceX.Tools.TestimoX";
+    private const string OfficeImoPackTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolPack, IntelligenceX.Tools.OfficeIMO";
+    private const string OfficeImoOptionsTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolOptions, IntelligenceX.Tools.OfficeIMO";
     private const string EmailPackTypeName = "IntelligenceX.Tools.Email.EmailToolPack, IntelligenceX.Tools.Email";
     private const string EmailOptionsTypeName = "IntelligenceX.Tools.Email.EmailToolOptions, IntelligenceX.Tools.Email";
 
@@ -229,6 +236,19 @@ public static class ToolPackBootstrap {
                 optionsTypeName: TestimoXOptionsTypeName,
                 configureOptions: testimoOptions => {
                     SetPropertyIfPresent(testimoOptions, "Enabled", true);
+                },
+                warnWhenUnavailable: true,
+                onWarning: options.OnBootstrapWarning);
+        }
+
+        if (options.EnableOfficeImoPack) {
+            TryAddPack(
+                packs,
+                packLabel: "IX.OfficeIMO",
+                packTypeName: OfficeImoPackTypeName,
+                optionsTypeName: OfficeImoOptionsTypeName,
+                configureOptions: officeImoOptions => {
+                    AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
                 },
                 warnWhenUnavailable: true,
                 onWarning: options.OnBootstrapWarning);
