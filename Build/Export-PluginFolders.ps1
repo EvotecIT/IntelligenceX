@@ -109,7 +109,7 @@ function Get-ProjectFrameworks {
     }
 
     $frameworksNode = $Xml.SelectSingleNode('//Project/PropertyGroup/TargetFrameworks')
-    if ($frameworksNode -eq $null -or [string]::IsNullOrWhiteSpace($frameworksNode.InnerText)) {
+    if ($null -eq $frameworksNode -or [string]::IsNullOrWhiteSpace($frameworksNode.InnerText)) {
         return @()
     }
 
@@ -215,12 +215,12 @@ foreach ($project in $selected) {
     $projectFrameworks = Get-ProjectFrameworks -Xml $xml
     $resolvedFramework = Resolve-FrameworkForProject -ProjectFrameworks $projectFrameworks -Preferred $Framework
 
-    $assemblyName = if ($assemblyNameNode -eq $null -or [string]::IsNullOrWhiteSpace($assemblyNameNode.InnerText)) {
+    $assemblyName = if ($null -eq $assemblyNameNode -or [string]::IsNullOrWhiteSpace($assemblyNameNode.InnerText)) {
         [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
     } else {
         $assemblyNameNode.InnerText.Trim()
     }
-    $packageId = if ($packageIdNode -eq $null -or [string]::IsNullOrWhiteSpace($packageIdNode.InnerText)) { $assemblyName } else { $packageIdNode.InnerText.Trim() }
+    $packageId = if ($null -eq $packageIdNode -or [string]::IsNullOrWhiteSpace($packageIdNode.InnerText)) { $assemblyName } else { $packageIdNode.InnerText.Trim() }
     $pluginDir = Join-Path $OutDir $packageId
 
     Write-Step "Publish plugin folder: $packageId ($resolvedFramework)"

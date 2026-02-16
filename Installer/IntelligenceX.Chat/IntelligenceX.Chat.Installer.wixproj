@@ -18,7 +18,12 @@
     <PackageReference Include="WixToolset.UI.wixext" Version="4.0.6" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(HarvestFile)' != ''">
+  <Target Name="EnsureHarvestFile" BeforeTargets="Compile">
+    <Error Condition="'$(HarvestFile)' == ''" Text="HarvestFile must be provided. Run Build/Build-Installer.ps1 to generate it." />
+    <Error Condition="!Exists('$(HarvestFile)')" Text="HarvestFile not found: $(HarvestFile)" />
+  </Target>
+
+  <ItemGroup Condition="'$(HarvestFile)' != '' and Exists('$(HarvestFile)')">
     <Compile Include="$(HarvestFile)" />
   </ItemGroup>
 </Project>

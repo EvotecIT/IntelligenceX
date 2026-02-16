@@ -194,6 +194,27 @@ function Write-HarvestWxs {
     Set-Content -Path $OutputPath -Value $sb.ToString() -Encoding UTF8
 }
 
+function Test-HarvestPayloadManifest {
+    param([Parameter(Mandatory)][string] $HarvestPath)
+
+    if (-not (Test-Path $HarvestPath)) {
+        throw "Harvest file was not generated: $HarvestPath"
+    }
+
+    [xml] $harvestXml = Get-Content $HarvestPath
+    $ns = [System.Xml.XmlNamespaceManager]::new($harvestXml.NameTable)
+    $ns.AddNamespace('w', 'http://wixtoolset.org/schemas/v4/wxs')
+
+    $group = $harvestXml.SelectSingleNode('/w:Wix/w:Fragment/w:ComponentGroup[@Id="ProductFiles"]', $ns)
+    if ($null -eq $group) {
+        throw "Harvest file does not define ComponentGroup Id='ProductFiles': $HarvestPath"
+    }
+
+    $refs = $group.SelectNodes('w:ComponentRef', $ns)
+    if ($null -eq $refs -or $refs.Count -eq 0) {
+        throw "Harvest file defines ProductFiles but contains no ComponentRef entries: $HarvestPath"
+    }
+}
 function Convert-ToMsiVersion {
     param([string] $RawVersion)
 
@@ -309,6 +330,7 @@ try {
     Write-Step "Build payload alias: $payloadForBuild"
     Write-Step "Harvest file: $harvestPath"
     Write-HarvestWxs -PayloadRoot $payloadForBuild -OutputPath $harvestPath -ExcludeFile $hostExeForBuild
+    Test-HarvestPayloadManifest -HarvestPath $harvestPath
 
     $manifest = [ordered]@{
         schemaVersion = 1
@@ -384,4 +406,3 @@ try {
         Remove-Item -Force $junctionPath -ErrorAction SilentlyContinue
     }
 }
-

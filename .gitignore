@@ -368,6 +368,7 @@ FodyWeavers.xsd
 .vscode/*
 
 build/*
+!Build/
 !Build/Build-Installer.ps1
 !Build/Build-Release.ps1
 
