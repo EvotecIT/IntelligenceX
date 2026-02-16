@@ -656,6 +656,7 @@ internal sealed partial class ChatServiceSession {
 
         var hasDigit = false;
         var hasLetter = false;
+        var hasNonAscii = false;
         for (var i = 0; i < value.Length; i++) {
             var ch = value[i];
             if (!char.IsLetterOrDigit(ch)) {
@@ -667,6 +668,9 @@ internal sealed partial class ChatServiceSession {
             if (char.IsLetter(ch)) {
                 hasLetter = true;
             }
+            if (ch > 127) {
+                hasNonAscii = true;
+            }
         }
 
         if (hasDigit) {
@@ -677,7 +681,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return value.Length >= 3;
+        var minLength = hasNonAscii ? 2 : 3;
+        return value.Length >= minLength;
     }
 
     private static bool TokenOverlapsPendingActionIntent(string token, IReadOnlyList<string> actionTokens) {

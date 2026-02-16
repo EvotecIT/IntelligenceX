@@ -89,6 +89,7 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 - Do not gate chat routing or safety behavior on hardcoded natural-language keyword lists (for example English-only verbs like "disable", "run", "can't").
 - Do not special-case compact follow-ups with literal phrases (for example "go ahead", "do it", "run it"). Continuation and nudge eligibility must be shape/context based.
 - For pending-action and execution-contract decisions, prefer structured protocol fields (for example `ix_action_selection.mutating` and `ix:action:v1` `mutating: true|false`) over lexical inference from free text.
+- For intent-token heuristics, keep script awareness: do not require English-like token lengths globally (for example, accept short non-Latin intent tokens when safe) and preserve tests for this behavior.
 - If provider interoperability requires message-text matching, keep it as a structured-first fallback and do not reuse it for chat routing/confirmation logic.
 - When changing Chat routing/safety logic, add or update tests that prove the behavior is language-agnostic.
 - Keep `plan -> execute -> review` quality loops language-neutral too: review eligibility must use structure/shape signals (length, turn state, tool activity), not word lists.
