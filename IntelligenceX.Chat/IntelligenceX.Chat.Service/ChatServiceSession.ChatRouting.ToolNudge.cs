@@ -452,7 +452,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (verbs.Contains(token)) {
+        if (SegmentMatchesActionVerb(token, verbs)) {
             return true;
         }
 
@@ -470,7 +470,7 @@ internal sealed partial class ChatServiceSession {
             var length = end - start;
             if (length > 0) {
                 var segment = token.Substring(start, length);
-                if (verbs.Contains(segment)) {
+                if (SegmentMatchesActionVerb(segment, verbs)) {
                     return true;
                 }
             }
@@ -479,6 +479,72 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool SegmentMatchesActionVerb(string segment, HashSet<string> verbs) {
+        if (segment.Length == 0) {
+            return false;
+        }
+
+        if (verbs.Contains(segment)) {
+            return true;
+        }
+
+        foreach (var candidate in EnumerateVerbCandidates(segment)) {
+            if (verbs.Contains(candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> EnumerateVerbCandidates(string token) {
+        if (string.IsNullOrWhiteSpace(token)) {
+            yield break;
+        }
+
+        if (token.EndsWith("ies", StringComparison.Ordinal) && token.Length > 4) {
+            yield return token.Substring(0, token.Length - 3) + "y";
+        }
+
+        if (token.EndsWith("ing", StringComparison.Ordinal) && token.Length > 5) {
+            var stem = token.Substring(0, token.Length - 3);
+            foreach (var candidate in EnumerateStemCandidates(stem)) {
+                yield return candidate;
+            }
+        }
+
+        if (token.EndsWith("ed", StringComparison.Ordinal) && token.Length > 4) {
+            var stem = token.Substring(0, token.Length - 2);
+            foreach (var candidate in EnumerateStemCandidates(stem)) {
+                yield return candidate;
+            }
+        }
+
+        if (token.EndsWith('s') && token.Length > 3) {
+            var stem = token.Substring(0, token.Length - 1);
+            foreach (var candidate in EnumerateStemCandidates(stem)) {
+                yield return candidate;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateStemCandidates(string stem) {
+        if (stem.Length == 0) {
+            yield break;
+        }
+
+        yield return stem;
+        yield return stem + "e";
+
+        if (stem.Length >= 2 && stem[^1] == stem[^2]) {
+            var deDoubled = stem.Substring(0, stem.Length - 1);
+            if (deDoubled.Length > 0) {
+                yield return deDoubled;
+                yield return deDoubled + "e";
+            }
+        }
     }
 
     private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft, bool onlyBulletContext = false) {

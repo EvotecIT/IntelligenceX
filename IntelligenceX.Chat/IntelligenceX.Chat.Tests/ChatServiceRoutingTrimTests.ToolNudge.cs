@@ -142,6 +142,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(Assert.IsType<bool>(result));
     }
 
+    [Theory]
+    [InlineData("disabled")]
+    [InlineData("disabling")]
+    [InlineData("resets")]
+    [InlineData("updated")]
+    [InlineData("stopped")]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersForCommonMutatingVerbInflections(string inflectedVerb) {
+        var userRequest = $"{{\"ix_action_selection\":{{\"id\":\"act_001\",\"title\":\"Directory action\",\"request\":\"User was {inflectedVerb} by policy.\"}}}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
     [Fact]
     public void ShouldEnforceExecuteOrExplainContract_DoesNotTriggerForPlainTextRequest() {
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { "run now" });
