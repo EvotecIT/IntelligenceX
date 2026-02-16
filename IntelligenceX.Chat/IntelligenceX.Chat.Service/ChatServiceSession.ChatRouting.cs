@@ -259,23 +259,41 @@ internal sealed partial class ChatServiceSession {
 
         var heartbeatInterval = TimeSpan.FromSeconds(Math.Max(1, heartbeatSeconds));
         var sw = Stopwatch.StartNew();
-        var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        while (!phaseTask.IsCompleted) {
-            var heartbeatDelayTask = Task.Delay(heartbeatInterval);
-            var completedTask = await Task.WhenAny(phaseTask, heartbeatDelayTask, cancellationTask).ConfigureAwait(false);
-            if (ReferenceEquals(completedTask, phaseTask) || ReferenceEquals(completedTask, cancellationTask)) {
-                break;
-            }
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var timer = new PeriodicTimer(heartbeatInterval);
+        var stopHeartbeatTask = phaseTask.ContinueWith(
+            static (_, state) => {
+                try {
+                    ((CancellationTokenSource)state!).Cancel();
+                } catch {
+                    // Best-effort heartbeat stop.
+                }
+            },
+            heartbeatCts,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
-            var elapsedSeconds = Math.Max(1, (int)Math.Round(sw.Elapsed.TotalSeconds));
-            await TryWriteStatusAsync(
-                    writer,
-                    requestId,
-                    threadId,
-                    status: "phase_heartbeat",
-                    durationMs: sw.ElapsedMilliseconds,
-                    message: $"{heartbeatLabel}... ({elapsedSeconds}s)")
-                .ConfigureAwait(false);
+        try {
+            while (await timer.WaitForNextTickAsync(heartbeatCts.Token).ConfigureAwait(false)) {
+                if (phaseTask.IsCompleted) {
+                    break;
+                }
+
+                var elapsedSeconds = Math.Max(1, (int)Math.Round(sw.Elapsed.TotalSeconds));
+                await TryWriteStatusAsync(
+                        writer,
+                        requestId,
+                        threadId,
+                        status: "phase_heartbeat",
+                        durationMs: sw.ElapsedMilliseconds,
+                        message: $"{heartbeatLabel}... ({elapsedSeconds}s)")
+                    .ConfigureAwait(false);
+            }
+        } catch (OperationCanceledException) when (heartbeatCts.IsCancellationRequested) {
+            // Expected when the model phase completes or the turn is canceled.
+        } finally {
+            await stopHeartbeatTask.ConfigureAwait(false);
         }
 
         await phaseTask.ConfigureAwait(false);
