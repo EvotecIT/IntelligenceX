@@ -169,7 +169,11 @@ public sealed partial class MainWindow : Window {
         }
 
         if (_loginInProgress) {
-            await SetStatusAsync(SessionStatus.WaitingForSignIn()).ConfigureAwait(false);
+            var queuedCount = GetQueuedPromptAfterLoginCount();
+            var waitingText = queuedCount > 0
+                ? $"Waiting for sign-in... ({queuedCount}/{MaxQueuedTurns} queued)"
+                : SessionStatusFormatter.Format(SessionStatus.WaitingForSignIn());
+            await SetStatusAsync(waitingText).ConfigureAwait(false);
             return true;
         }
 

@@ -185,6 +185,12 @@
     if (typeof nextState.queuedPromptPending === "boolean") {
       state.queuedPromptPending = nextState.queuedPromptPending;
     }
+    if (typeof nextState.queuedPromptCount === "number" && Number.isFinite(nextState.queuedPromptCount)) {
+      state.queuedPromptCount = Math.max(0, Math.floor(nextState.queuedPromptCount));
+    }
+    if (typeof nextState.queuedTurnCount === "number" && Number.isFinite(nextState.queuedTurnCount)) {
+      state.queuedTurnCount = Math.max(0, Math.floor(nextState.queuedTurnCount));
+    }
     if (typeof nextState.connected === "boolean") {
       state.connected = nextState.connected;
     }
@@ -206,6 +212,14 @@
     if (typeof nextState.debugMode === "boolean") {
       state.debugMode = nextState.debugMode;
     }
+    if (Array.isArray(nextState.activityTimeline)) {
+      state.activityTimeline = nextState.activityTimeline;
+    }
+    if (nextState.lastTurnMetrics && typeof nextState.lastTurnMetrics === "object") {
+      state.lastTurnMetrics = nextState.lastTurnMetrics;
+    } else if (nextState.lastTurnMetrics === null) {
+      state.lastTurnMetrics = null;
+    }
     if (typeof nextState.windowMaximized === "boolean") {
       state.windowMaximized = nextState.windowMaximized;
     }
@@ -214,6 +228,7 @@
     updateWindowControlsState();
     updateMenuState();
     updateComposerState();
+    renderAutonomy();
     renderDebugPanel();
   };
 
@@ -246,11 +261,16 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  window.ixSetActivity = function(text) {
+  window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
     var label = el.querySelector(".activity-text");
     if (text) {
-      label.textContent = text;
+      var timelineSummary = "";
+      if (Array.isArray(timeline) && timeline.length > 0) {
+        state.activityTimeline = timeline;
+        timelineSummary = " | " + timeline.join(" > ");
+      }
+      label.textContent = text + timelineSummary;
       el.classList.add("active");
       if (isNearBottom(transcript)) {
         scrollToBottom(transcript);

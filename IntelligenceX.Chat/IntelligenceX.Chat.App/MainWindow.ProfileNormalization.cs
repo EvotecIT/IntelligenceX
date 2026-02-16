@@ -326,8 +326,8 @@ public sealed partial class MainWindow : Window {
         _threadId = null;
         _assistantStreaming.Clear();
         _activeRequestConversationId = null;
-        _queuedPromptAfterLogin = null;
-        _queuedPromptAfterLoginConversationId = null;
+        ClearPendingTurns();
+        ClearQueuedPromptsAfterLogin();
         _modelKickoffAttempted = false;
         _modelKickoffInProgress = false;
         _autoSignInAttempted = _isAuthenticated;

@@ -33,6 +33,8 @@ internal static class PromptMarkdownBuilder {
     /// <param name="localContextLines">Optional compact local context fallback lines.</param>
     /// <param name="persistentMemoryLines">Optional persistent memory facts.</param>
     /// <param name="persistentMemoryPrompt">Optional persistent memory protocol guidance.</param>
+    /// <param name="runtimeCapabilityLines">Optional runtime capability handshake lines.</param>
+    /// <param name="proactiveExecutionEnabled">Optional proactive execution mode guidance.</param>
     /// <returns>Request text to send to service/model.</returns>
     public static string BuildServiceRequest(
         string userText,
@@ -44,14 +46,18 @@ internal static class PromptMarkdownBuilder {
         string executionBehaviorPrompt,
         IReadOnlyList<string>? localContextLines = null,
         IReadOnlyList<string>? persistentMemoryLines = null,
-        string? persistentMemoryPrompt = null) {
+        string? persistentMemoryPrompt = null,
+        IReadOnlyList<string>? runtimeCapabilityLines = null,
+        bool? proactiveExecutionEnabled = null) {
         var hasName = !string.IsNullOrWhiteSpace(effectiveName);
         var hasPersona = !string.IsNullOrWhiteSpace(effectivePersona);
         var hasSupplementalContext = includeLiveProfileUpdates
                                      || !string.IsNullOrWhiteSpace(executionBehaviorPrompt)
                                      || !string.IsNullOrWhiteSpace(persistentMemoryPrompt)
                                      || (localContextLines is { Count: > 0 })
-                                     || (persistentMemoryLines is { Count: > 0 });
+                                     || (persistentMemoryLines is { Count: > 0 })
+                                     || (runtimeCapabilityLines is { Count: > 0 })
+                                     || proactiveExecutionEnabled.HasValue;
 
         if (!hasName && !hasPersona && !onboardingInProgress && !hasSupplementalContext) {
             return userText;
@@ -88,8 +94,39 @@ internal static class PromptMarkdownBuilder {
                 .BlankLine();
         }
 
+        if (runtimeCapabilityLines is { Count: > 0 }) {
+            markdown
+                .Paragraph("[Runtime capability handshake]")
+                .Bullet("Treat these as the live runtime/tool limits for this turn.")
+                .BlankLine();
+
+            for (var i = 0; i < runtimeCapabilityLines.Count; i++) {
+                var line = runtimeCapabilityLines[i];
+                if (!string.IsNullOrWhiteSpace(line)) {
+                    markdown.Bullet(line.Trim());
+                }
+            }
+
+            markdown.BlankLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(executionBehaviorPrompt)) {
             markdown.Raw(executionBehaviorPrompt).BlankLine();
+        }
+
+        if (proactiveExecutionEnabled.HasValue) {
+            markdown
+                .Paragraph("[Proactive execution mode]");
+            if (proactiveExecutionEnabled.Value) {
+                markdown
+                    .Bullet("Proactively run relevant read-only checks when they can discover issues without extra user prompts.")
+                    .Bullet("Surface detected risks and propose concrete next fixes before waiting for more direction.");
+            } else {
+                markdown
+                    .Bullet("Stay strictly scoped to the explicit user request.")
+                    .Bullet("Do not expand into additional diagnostics unless the user asks.");
+            }
+            markdown.BlankLine();
         }
 
         if (!string.IsNullOrWhiteSpace(persistentMemoryPrompt)) {

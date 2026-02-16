@@ -102,7 +102,7 @@ internal static class AssistantTurnOutcomeFormatter {
             + " (max rounds: " + roundsText + ").\n\n"
             + "I can continue right away if we narrow one step:\n"
             + "1. Ask for one target query first (for example one DC / one group / one OU).\n"
-            + "2. Say \"continue\" and I’ll keep going from discovered context.\n"
+            + "2. Share your preferred next step and I’ll keep going from discovered context.\n"
             + "3. If needed, share explicit scope (domain controller or Base DN) to reduce retries.";
     }
 

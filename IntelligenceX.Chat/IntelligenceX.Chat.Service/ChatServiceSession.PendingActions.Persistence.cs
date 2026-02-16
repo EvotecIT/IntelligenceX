@@ -86,6 +86,7 @@ internal sealed partial class ChatServiceSession {
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Request { get; set; } = string.Empty;
+        public bool? Mutating { get; set; }
     }
 
     private static string ResolveDefaultPendingActionsStorePath() {
@@ -169,7 +170,10 @@ internal sealed partial class ChatServiceSession {
                     .Select(a => new PendingActionDto {
                         Id = (a.Id ?? string.Empty).Trim(),
                         Title = (a.Title ?? string.Empty).Trim(),
-                        Request = (a.Request ?? string.Empty).Trim()
+                        Request = (a.Request ?? string.Empty).Trim(),
+                        Mutating = a.Mutability == ActionMutability.Unknown
+                            ? null
+                            : a.Mutability == ActionMutability.Mutating
                     })
                     .ToArray()
             };
@@ -239,7 +243,8 @@ internal sealed partial class ChatServiceSession {
                 .Select(a => new PendingAction(
                     Id: (a.Id ?? string.Empty).Trim(),
                     Title: (a.Title ?? string.Empty).Trim(),
-                    Request: (a.Request ?? string.Empty).Trim()))
+                    Request: (a.Request ?? string.Empty).Trim(),
+                    Mutability: ResolveActionMutabilityFromNullableBoolean(a.Mutating)))
                 .ToArray();
 
             if (actions.Length == 0) {

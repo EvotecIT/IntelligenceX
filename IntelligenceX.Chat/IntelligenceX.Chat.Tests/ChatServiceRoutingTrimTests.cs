@@ -35,6 +35,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptNoToolExecutionWatchdogMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptNoToolExecutionWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptNoToolExecutionWatchdog not found.");
+    private static readonly MethodInfo ShouldAttemptContinuationSubsetEscapeMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAttemptContinuationSubsetEscape", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAttemptContinuationSubsetEscape not found.");
     private static readonly MethodInfo ShouldAttemptToolReceiptCorrectionMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolReceiptCorrection", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolReceiptCorrection not found.");
@@ -50,9 +53,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildExecutionContractEscapePromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildExecutionContractEscapePrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildExecutionContractEscapePrompt not found.");
+    private static readonly MethodInfo BuildContinuationSubsetEscapePromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildContinuationSubsetEscapePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildContinuationSubsetEscapePrompt not found.");
     private static readonly MethodInfo BuildToolReceiptCorrectionPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolReceiptCorrectionPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolReceiptCorrectionPrompt not found.");
+    private static readonly MethodInfo ResolveParallelToolConcurrencyMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveParallelToolConcurrency", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveParallelToolConcurrency not found.");
+    private static readonly MethodInfo BuildToolBatchStartedMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolBatchStartedMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolBatchStartedMessage not found.");
+    private static readonly MethodInfo BuildToolBatchProgressMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolBatchProgressMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolBatchProgressMessage not found.");
+    private static readonly MethodInfo BuildToolBatchCompletedMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolBatchCompletedMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolBatchCompletedMessage not found.");
+    private static readonly MethodInfo CollectLowConcurrencyRecoveryIndexesMethod =
+        typeof(ChatServiceSession).GetMethod("CollectLowConcurrencyRecoveryIndexes", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("CollectLowConcurrencyRecoveryIndexes not found.");
+    private static readonly MethodInfo ShouldReplayToolCallAtLowConcurrencyMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldReplayToolCallAtLowConcurrency", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldReplayToolCallAtLowConcurrency not found.");
+    private static readonly MethodInfo IsLikelyMutatingToolNameMethod =
+        typeof(ChatServiceSession).GetMethod("IsLikelyMutatingToolName", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("IsLikelyMutatingToolName not found.");
+    private static readonly MethodInfo HasLikelyMutatingToolCallsMethod =
+        typeof(ChatServiceSession).GetMethod("HasLikelyMutatingToolCalls", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("HasLikelyMutatingToolCalls not found.");
+    private static readonly MethodInfo BuildToolBatchRecoveringMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolBatchRecoveringMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolBatchRecoveringMessage not found.");
+    private static readonly MethodInfo BuildToolBatchRecoveredMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolBatchRecoveredMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolBatchRecoveredMessage not found.");
+    private static readonly MethodInfo BuildToolHeartbeatMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolHeartbeatMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolHeartbeatMessage not found.");
+    private static readonly MethodInfo BuildMutatingToolHintsByNameMethod =
+        typeof(ChatServiceSession).GetMethod("BuildMutatingToolHintsByName", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildMutatingToolHintsByName not found.");
+    private static readonly MethodInfo NormalizeParallelToolModeMethod =
+        typeof(ChatServiceSession).GetMethod("NormalizeParallelToolMode", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("NormalizeParallelToolMode not found.");
+    private static readonly MethodInfo ResolveParallelToolExecutionModeMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveParallelToolExecutionMode", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveParallelToolExecutionMode not found.");
     private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");
@@ -166,9 +214,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("dalej?")]
     [InlineData("继续")]
     [InlineData("继续执行")]
+    [InlineData("xqzz ltmv")]
+    [InlineData("frobulate proceed")]
     public void LooksLikeContinuationFollowUp_RecognizesCompactFollowUpsAcrossLanguages(string userText) {
         var result = LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userText });
         Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TreatsCompactFollowUpByShapeNotKeyword() {
+        var keywordRequest = "do it";
+        var keywordDraft = "Proceeding with do it now.";
+        var shapeOnlyRequest = "xqzz ltmv";
+        var shapeOnlyDraft = "Proceeding with xqzz ltmv now.";
+
+        var keywordResult = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { keywordRequest, keywordDraft, true, 0, 0, true });
+        var shapeOnlyResult = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { shapeOnlyRequest, shapeOnlyDraft, true, 0, 0, true });
+
+        Assert.Equal(Assert.IsType<bool>(keywordResult), Assert.IsType<bool>(shapeOnlyResult));
+        Assert.True(Assert.IsType<bool>(shapeOnlyResult));
     }
 
     [Fact]
@@ -455,6 +523,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
             new object?[] { userRequest, assistantDraft, true, 0, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForLongContextualFollowUpWhenContinuationSubsetUsed() {
+        var userRequest = "Please proceed with the failed logon report on ADO Security and include a concise summary of top impacted accounts.";
+        var assistantDraft = "I can run the failed logon report on ADO Security and include a concise summary of top impacted accounts.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForLongContextualFollowUpWithoutContinuationSubset() {
+        var userRequest = "Please proceed with the failed logon report on ADO Security and include a concise summary of top impacted accounts.";
+        var assistantDraft = "I can run the failed logon report on ADO Security and include a concise summary of top impacted accounts.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForLongContextualFollowUpInPolishWithoutContinuationSubset() {
+        var userRequest = "Prosze kontynuowac raport nieudanych logowan w ADO Security i dodaj krotkie podsumowanie najbardziej dotknietych kont.";
+        var assistantDraft = "Moge kontynuowac raport nieudanych logowan w ADO Security i dodac krotkie podsumowanie najbardziej dotknietych kont.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForLongContextualFollowUpWhenDraftIsCapabilityBlockerWithoutContinuationSubset() {
+        var userRequest = "Please proceed with the failed logon report on ADO Security and include a concise summary of top impacted accounts.";
+        var assistantDraft = "I can't query remote ADO live logs directly without machine access.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }

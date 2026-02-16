@@ -25,6 +25,13 @@ This file defines how automated agents should operate in this repo.
 - Keep architecture decisions explicit and versioned.
 - Avoid nested bullets in `TODO.md`.
 
+## Language-Neutral Chat Routing (Strict)
+- Do not introduce hardcoded natural-language keyword gates for routing/safety (for example English-only trigger/deny words).
+- Do not special-case compact follow-ups using literal phrases (for example "go ahead", "do it", "run it"); use structural/context signals instead.
+- Use structured machine fields for action safety classification (`ix_action_selection.mutating`, `ix:action:v1` `mutating: true|false`) instead of lexical intent guessing.
+- If message-text matching is unavoidable for provider compatibility, keep it structured-first and isolated from chat routing/confirmation decisions.
+- Any change to action-selection, pending-action confirmation, or execution-contract logic must include regression tests that are language-agnostic.
+
 ## Build/Quality Standards (when code exists)
 - Nullable enabled
 - Warnings as errors

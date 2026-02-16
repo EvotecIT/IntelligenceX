@@ -29,6 +29,9 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     private const int SafeDefaultMaxToolRounds = 24;
     private const bool SafeDefaultParallelTools = true;
+    private const string ParallelToolModeAuto = "auto";
+    private const string ParallelToolModeForceSerial = "force_serial";
+    private const string ParallelToolModeAllowParallel = "allow_parallel";
     private const int SafeDefaultTurnTimeoutSeconds = 180;
     private const int SafeDefaultToolTimeoutSeconds = 60;
     private static readonly StringComparer MemoryTokenComparer = StringComparer.OrdinalIgnoreCase;
@@ -264,9 +267,9 @@ public sealed partial class MainWindow : Window {
             ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 64)
             ?? SafeDefaultMaxToolRounds;
 
-        var effectiveParallelTools = _autonomyParallelTools
-            ?? _sessionPolicy?.ParallelTools
-            ?? SafeDefaultParallelTools;
+        var serviceDefaultParallelTools = _sessionPolicy?.ParallelTools ?? SafeDefaultParallelTools;
+        var parallelToolMode = ResolveParallelToolMode(_autonomyParallelTools);
+        var effectiveParallelTools = ResolveParallelToolsForRequest(parallelToolMode, serviceDefaultParallelTools);
 
         var effectiveTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds
             ?? NormalizePositiveTimeout(_sessionPolicy?.TurnTimeoutSeconds)
@@ -281,6 +284,7 @@ public sealed partial class MainWindow : Window {
             DisabledTools = disabled.Count == 0 ? null : disabled.ToArray(),
             MaxToolRounds = effectiveMaxToolRounds,
             ParallelTools = effectiveParallelTools,
+            ParallelToolMode = parallelToolMode,
             TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
             ToolTimeoutSeconds = effectiveToolTimeoutSeconds,
             WeightedToolRouting = _autonomyWeightedToolRouting,
@@ -291,7 +295,7 @@ public sealed partial class MainWindow : Window {
     private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout,
         string? weightedRouting, string? maxCandidates) {
         _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: 64);
-        _autonomyParallelTools = ParseAutonomyParallelMode(parallelMode);
+        _autonomyParallelTools = ParseAutonomyParallelToolMode(parallelMode);
         _autonomyTurnTimeoutSeconds = ParseAutonomyInt(turnTimeout, min: 0, max: 3600);
         _autonomyToolTimeoutSeconds = ParseAutonomyInt(toolTimeout, min: 0, max: 3600);
         _autonomyWeightedToolRouting = ParseAutonomyParallelMode(weightedRouting);
@@ -325,6 +329,44 @@ public sealed partial class MainWindow : Window {
 
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task SetProactiveModeAsync(bool enabled) {
+        if (_proactiveModeEnabled == enabled && _appState.ProactiveModeEnabled == enabled) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        _proactiveModeEnabled = enabled;
+        _appState.ProactiveModeEnabled = enabled;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task SetQueueAutoDispatchAsync(bool enabled) {
+        if (_queueAutoDispatchEnabled == enabled && _appState.QueueAutoDispatchEnabled == enabled) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            await PublishSessionStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        _queueAutoDispatchEnabled = enabled;
+        _appState.QueueAutoDispatchEnabled = enabled;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+        await PublishSessionStateAsync().ConfigureAwait(false);
+
+        var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
+        if (!enabled) {
+            if (queuedTotal > 0) {
+                await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
+            }
+            return;
+        }
+
+        if (!_isSending) {
+            await DispatchNextQueuedTurnAsync(honorAutoDispatch: false).ConfigureAwait(false);
+        }
     }
 
     private static int? ParseAutonomyInt(string? raw, int min, int max) {
@@ -409,6 +451,40 @@ public sealed partial class MainWindow : Window {
         return null;
     }
 
+    private static bool? ParseAutonomyParallelToolMode(string? raw) {
+        var text = (raw ?? string.Empty).Trim();
+        return text.ToLowerInvariant() switch {
+            "auto" => null,
+            "default" => null,
+            "allow_parallel" => true,
+            "allow-parallel" => true,
+            "allowparallel" => true,
+            "on" => true,
+            "force_serial" => false,
+            "force-serial" => false,
+            "forceserial" => false,
+            "serial" => false,
+            "off" => false,
+            _ => null
+        };
+    }
+
+    private static string ResolveParallelToolMode(bool? overrideParallelTools) {
+        return overrideParallelTools switch {
+            true => ParallelToolModeAllowParallel,
+            false => ParallelToolModeForceSerial,
+            _ => ParallelToolModeAuto
+        };
+    }
+
+    private static bool ResolveParallelToolsForRequest(string parallelToolMode, bool serviceDefaultParallelTools) {
+        return parallelToolMode switch {
+            ParallelToolModeAllowParallel => true,
+            ParallelToolModeForceSerial => false,
+            _ => serviceDefaultParallelTools
+        };
+    }
+
     private static int? NormalizePositiveTimeout(int? value) {
         if (!value.HasValue || value.Value <= 0) {
             return null;
@@ -445,6 +521,7 @@ public sealed partial class MainWindow : Window {
         IReadOnlyList<string> missingFields = onboardingInProgress ? BuildMissingOnboardingFields() : Array.Empty<string>();
         var localContextLines = BuildLocalContextFallbackLines(activeConversation, userText);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
+        var runtimeCapabilityLines = BuildRuntimeCapabilityContextLines();
         return PromptMarkdownBuilder.BuildServiceRequest(
             userText: userText,
             effectiveName: effectiveName,
@@ -455,7 +532,47 @@ public sealed partial class MainWindow : Window {
             executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
             localContextLines: localContextLines,
             persistentMemoryLines: memoryContextLines,
-            persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty);
+            persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
+            runtimeCapabilityLines: runtimeCapabilityLines,
+            proactiveExecutionEnabled: _proactiveModeEnabled);
+    }
+
+    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines() {
+        var lines = new List<string>();
+        var options = BuildChatRequestOptions();
+        var enabledTools = 0;
+        var disabledTools = 0;
+        foreach (var pair in _toolStates) {
+            if (pair.Value) {
+                enabledTools++;
+            } else {
+                disabledTools++;
+            }
+        }
+
+        var transportLabel = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            ? "compatible-http"
+            : "native";
+        var modelLabel = string.IsNullOrWhiteSpace(_localProviderModel) ? "(default)" : _localProviderModel.Trim();
+        lines.Add("Runtime transport: " + transportLabel + ", model: " + modelLabel);
+        lines.Add("Tools enabled: " + enabledTools.ToString(CultureInfo.InvariantCulture)
+                  + ", disabled: " + disabledTools.ToString(CultureInfo.InvariantCulture));
+        if (options is not null) {
+            lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
+                      + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
+            lines.Add("Max tool rounds: " + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture));
+            lines.Add("Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
+                      + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+        }
+
+        var queuedTurns = GetQueuedTurnCount();
+        if (queuedTurns > 0) {
+            lines.Add("Queued follow-up turns: " + queuedTurns.ToString(CultureInfo.InvariantCulture));
+        }
+        lines.Add("Queued turn auto-dispatch: " + (_queueAutoDispatchEnabled ? "enabled" : "paused"));
+
+        lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
+        return lines;
     }
 
 }

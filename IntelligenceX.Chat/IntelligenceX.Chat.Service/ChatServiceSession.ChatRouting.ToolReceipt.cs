@@ -27,65 +27,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // High-signal receipt fragments that should not appear unless we actually ran tools.
-        if (LooksLikeToolReceiptOutput(draft)) {
-            return true;
-        }
-
         if (tools is null || tools.Count == 0) {
             return false;
         }
 
         return DraftBindsToolNameToResults(draft, tools);
-    }
-
-    private static bool LooksLikeToolReceiptOutput(string text) {
-        return text.IndexOf("exit code", StringComparison.OrdinalIgnoreCase) >= 0
-               || text.IndexOf("exited with code", StringComparison.OrdinalIgnoreCase) >= 0
-               || ContainsReceiptLabel(text, "stdout")
-               || ContainsReceiptLabel(text, "stderr");
-    }
-
-    private static bool ContainsReceiptLabel(string text, string label) {
-        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(label)) {
-            return false;
-        }
-
-        var startIndex = 0;
-        while (true) {
-            var idx = text.IndexOf(label, startIndex, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) {
-                return false;
-            }
-
-            // Require a word-ish boundary so casual mentions like "about stdout" don't trigger unless they look like
-            // "stdout: <content>" receipts.
-            var beforeOk = idx == 0 || !IsReceiptLabelChar(text[idx - 1]);
-            var afterIdx = idx + label.Length;
-            var afterOk = afterIdx >= text.Length || !IsReceiptLabelChar(text[afterIdx]);
-            if (beforeOk && afterOk) {
-                // Match both "stdout:" and "stdout :".
-                var scan = afterIdx;
-                var consumedWhitespace = 0;
-                while (scan < text.Length && consumedWhitespace < 16 && char.IsWhiteSpace(text[scan])) {
-                    scan++;
-                    consumedWhitespace++;
-                }
-
-                if (scan < text.Length && text[scan] == ':') {
-                    return true;
-                }
-            }
-
-            startIndex = idx + 1;
-            if (startIndex >= text.Length) {
-                return false;
-            }
-        }
-    }
-
-    private static bool IsReceiptLabelChar(char ch) {
-        return char.IsLetterOrDigit(ch) || ch == '_';
     }
 
     private static bool DraftBindsToolNameToResults(string assistantDraft, IReadOnlyList<ToolDefinition> tools) {
@@ -140,28 +86,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Prefer high-precision binding signals close to the tool name to avoid false positives in normal prose.
-        // Example of intended triggers:
-        // - "ad_search returned 2 users"
-        // - "eventlog_live_query: { ... }"
-        // - "I ran ad_search and got ..."
-        var afterWindowEnd = Math.Min(text.Length, afterToolName + 96);
-        var afterWindowLength = afterWindowEnd - afterToolName;
-        if (afterWindowLength > 0) {
-            if (text.IndexOf("returned", afterToolName, afterWindowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
-                return true;
-            }
-
-            if (text.IndexOf("output", afterToolName, afterWindowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
-                return true;
-            }
-        }
-
-        if (LooksLikeToolCallClaimPrefix(text, toolNameIndex)) {
-            return true;
-        }
-
-        // "tool_name: { ... }" or "tool_name: [ ... ]" is a strong result binding signal.
+        // Language-neutral: only trust structural receipts (tool name directly bound to a JSON-like payload).
+        // Example: "eventlog_live_query: { ... }" or "eventlog_live_query: [ ... ]".
         var scan = afterToolName;
         var consumedWhitespace = 0;
         while (scan < text.Length && consumedWhitespace < 3 && char.IsWhiteSpace(text[scan])) {
@@ -186,47 +112,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
-    }
-
-    private static bool LooksLikeToolCallClaimPrefix(string text, int toolNameIndex) {
-        // Look for "I ran <tool>" / "we called <tool>" style claims immediately preceding the tool name.
-        // This is intentionally tight: it avoids triggering on generic prose that happens to mention a tool name
-        // near words like "output" or "returned".
-        var left = Math.Max(0, toolNameIndex - 64);
-        var prefix = text.AsSpan(left, toolNameIndex - left);
-        if (prefix.Length == 0) {
-            return false;
-        }
-
-        return EndsWithClaimPrefix(prefix, "i ran")
-               || EndsWithClaimPrefix(prefix, "we ran")
-               || EndsWithClaimPrefix(prefix, "i called")
-               || EndsWithClaimPrefix(prefix, "we called");
-    }
-
-    private static bool EndsWithClaimPrefix(ReadOnlySpan<char> prefix, string phrase) {
-        // Accept punctuation/whitespace between the phrase and the tool name.
-        var normalized = prefix.TrimEnd();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        // Scan backwards over separators.
-        var end = normalized.Length;
-        while (end > 0) {
-            var ch = normalized[end - 1];
-            if (char.IsWhiteSpace(ch) || char.IsPunctuation(ch)) {
-                end--;
-                continue;
-            }
-            break;
-        }
-        if (end <= 0) {
-            return false;
-        }
-
-        normalized = normalized.Slice(0, end);
-        return normalized.EndsWith(phrase.AsSpan(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildToolReceiptCorrectionPrompt(string userRequest, string assistantDraft) {

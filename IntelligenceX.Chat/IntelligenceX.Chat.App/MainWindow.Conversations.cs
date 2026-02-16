@@ -337,6 +337,8 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        ClearPendingTurns();
+        ClearQueuedPromptsAfterLogin();
         await PersistAppStateAsync().ConfigureAwait(false);
         await LoadProfileStateAsync(normalized, render: true).ConfigureAwait(false);
         ClearConversationThreadIds();

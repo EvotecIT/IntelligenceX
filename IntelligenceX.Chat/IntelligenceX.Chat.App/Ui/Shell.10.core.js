@@ -33,12 +33,16 @@
     statusTone: "warn",
     usageLimitSwitchRecommended: false,
     queuedPromptPending: false,
+    queuedPromptCount: 0,
+    queuedTurnCount: 0,
     connected: false,
     authenticated: false,
     loginInProgress: false,
     sending: false,
     cancelable: false,
     cancelRequested: false,
+    activityTimeline: [],
+    lastTurnMetrics: null,
     windowMaximized: false,
     debugMode: false,
     expandedToolPacks: {},
@@ -53,10 +57,13 @@
       autonomy: {
         maxToolRounds: null,
         parallelTools: null,
+        parallelToolMode: "auto",
         turnTimeoutSeconds: null,
         toolTimeoutSeconds: null,
         weightedToolRouting: null,
-        maxCandidateTools: null
+        maxCandidateTools: null,
+        queueAutoDispatch: true,
+        proactiveMode: true
       },
       memory: {
         enabled: true,
@@ -483,7 +490,14 @@
     var debugDivider = byId("menuDebugDivider");
     var authenticated = normalizeBool(state.authenticated);
     var loginInProgress = normalizeBool(state.loginInProgress);
-    var switchRecommended = normalizeBool(state.usageLimitSwitchRecommended) || normalizeBool(state.queuedPromptPending);
+    var queuedPromptCount = Number(state.queuedPromptCount);
+    if (!Number.isFinite(queuedPromptCount) || queuedPromptCount < 0) {
+      queuedPromptCount = 0;
+    } else {
+      queuedPromptCount = Math.floor(queuedPromptCount);
+    }
+    var hasQueuedPrompts = queuedPromptCount > 0 || normalizeBool(state.queuedPromptPending);
+    var switchRecommended = normalizeBool(state.usageLimitSwitchRecommended) || hasQueuedPrompts;
     var debugToolsEnabled = normalizeBool(state.options.debugToolsEnabled);
 
     signIn.hidden = false;
@@ -494,14 +508,18 @@
     } else {
       signIn.textContent = loginInProgress
         ? "Signing In..."
-        : (switchRecommended ? "Sign In (retry queued prompt)" : "Sign In");
+        : (hasQueuedPrompts
+          ? (queuedPromptCount > 0 ? ("Sign In (" + queuedPromptCount + " queued)") : "Sign In (retry queued prompt)")
+          : "Sign In");
       signIn.setAttribute("data-cmd", "login");
     }
 
     if (switchAccount) {
       switchAccount.hidden = false;
       switchAccount.disabled = loginInProgress;
-      switchAccount.textContent = switchRecommended ? "Switch Account (Recommended)" : "Switch Account";
+      switchAccount.textContent = switchRecommended
+        ? (queuedPromptCount > 0 ? ("Switch Account (" + queuedPromptCount + " queued)") : "Switch Account (Recommended)")
+        : "Switch Account";
     }
 
     reconnect.textContent = normalizeBool(state.connected) ? "Reconnect runtime" : "Start runtime";
@@ -523,23 +541,50 @@
     var loginBusy = normalizeBool(state.loginInProgress);
     var cancelable = normalizeBool(state.cancelable);
     var cancelRequested = normalizeBool(state.cancelRequested);
+    var promptText = (promptEl.value || "").trim();
+    var hasPromptText = promptText.length > 0;
+    var queueingWhileRunning = cancelable && hasPromptText;
+    var queueingForLogin = loginBusy && hasPromptText;
+    var queuedPromptCount = Number(state.queuedPromptCount);
+    if (!Number.isFinite(queuedPromptCount) || queuedPromptCount < 0) {
+      queuedPromptCount = 0;
+    } else {
+      queuedPromptCount = Math.floor(queuedPromptCount);
+    }
     var busy = sending || loginBusy;
 
-    send.disabled = loginBusy || (sending && !cancelable) || (cancelable && cancelRequested);
-    send.classList.toggle("cancel-mode", cancelable);
+    send.disabled = (loginBusy && !hasPromptText) || (sending && !cancelable) || (cancelable && cancelRequested && !hasPromptText);
+    send.classList.toggle("cancel-mode", cancelable && !hasPromptText);
 
-    if (cancelable) {
+    if (cancelable && !hasPromptText) {
       send.setAttribute("aria-label", cancelRequested ? "Canceling turn" : "Stop turn");
       send.title = cancelRequested ? "Canceling..." : "Stop";
       send.innerHTML = "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><rect x='7' y='7' width='10' height='10' rx='2'/></svg>";
     } else {
       send.setAttribute("aria-label", "Send");
-      send.title = "Send";
+      send.title = queueingForLogin ? "Queue for sign-in" : (queueingWhileRunning ? "Queue next turn" : "Send");
       send.innerHTML = "<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><line x1='12' y1='19' x2='12' y2='5'/><polyline points='5 12 12 5 19 12'/></svg>";
     }
 
     promptEl.setAttribute("aria-busy", busy ? "true" : "false");
-    promptEl.placeholder = busy ? "IntelligenceX is working..." : "Ask IntelligenceX...";
+    if (!busy) {
+      promptEl.placeholder = "Ask IntelligenceX...";
+      return;
+    }
+
+    if (state.queuedTurnCount > 0) {
+      promptEl.placeholder = "Working... " + state.queuedTurnCount + " queued";
+      return;
+    }
+
+    if (loginBusy && queuedPromptCount > 0) {
+      promptEl.placeholder = "Waiting for sign-in... " + queuedPromptCount + " queued";
+      return;
+    }
+
+    promptEl.placeholder = cancelable
+      ? "Working... type to queue the next turn"
+      : "IntelligenceX is working...";
   }
 
   function renderPolicy() {

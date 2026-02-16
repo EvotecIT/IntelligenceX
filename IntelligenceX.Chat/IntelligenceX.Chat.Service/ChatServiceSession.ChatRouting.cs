@@ -25,6 +25,9 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const string ParallelToolModeAuto = "auto";
+    private const string ParallelToolModeForceSerial = "force_serial";
+    private const string ParallelToolModeAllowParallel = "allow_parallel";
 
     private sealed record ChatTurnRunResult(
         ChatResultMessage Result,
@@ -33,6 +36,33 @@ internal sealed partial class ChatServiceSession {
         int ToolRounds,
         int ProjectionFallbackCount,
         IReadOnlyList<ToolErrorMetricDto> ToolErrors);
+
+    private static (bool ParallelTools, bool AllowMutatingParallel, string Mode) ResolveParallelToolExecutionMode(ChatRequestOptions? options,
+        bool serviceDefaultParallelTools) {
+        var explicitModeRequested = !string.IsNullOrWhiteSpace(options?.ParallelToolMode);
+        var mode = NormalizeParallelToolMode(options?.ParallelToolMode);
+        return mode switch {
+            ParallelToolModeForceSerial => (false, false, ParallelToolModeForceSerial),
+            ParallelToolModeAllowParallel => (true, true, ParallelToolModeAllowParallel),
+            _ => (explicitModeRequested ? serviceDefaultParallelTools : (options?.ParallelTools ?? serviceDefaultParallelTools), false, ParallelToolModeAuto)
+        };
+    }
+
+    private static string NormalizeParallelToolMode(string? mode) {
+        var normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "allow_parallel" => ParallelToolModeAllowParallel,
+            "allow-parallel" => ParallelToolModeAllowParallel,
+            "allowparallel" => ParallelToolModeAllowParallel,
+            "on" => ParallelToolModeAllowParallel,
+            "force_serial" => ParallelToolModeForceSerial,
+            "force-serial" => ParallelToolModeForceSerial,
+            "forceserial" => ParallelToolModeForceSerial,
+            "serial" => ParallelToolModeForceSerial,
+            "off" => ParallelToolModeForceSerial,
+            _ => ParallelToolModeAuto
+        };
+    }
 
     private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {
         if (options is null) {
@@ -110,7 +140,7 @@ internal sealed partial class ChatServiceSession {
             RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
         }
 
-        var parallelTools = request.Options?.ParallelTools ?? _options.ParallelTools;
+        var (parallelTools, allowMutatingParallel, parallelToolMode) = ResolveParallelToolExecutionMode(request.Options, _options.ParallelTools);
         var maxRounds = request.Options?.MaxToolRounds ?? _options.MaxToolRounds;
         var turnTimeoutSeconds = request.Options?.TurnTimeoutSeconds ?? _options.TurnTimeoutSeconds;
         var toolTimeoutSeconds = request.Options?.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
@@ -124,6 +154,16 @@ internal sealed partial class ChatServiceSession {
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
         };
+
+        if (!string.Equals(parallelToolMode, ParallelToolModeAuto, StringComparison.Ordinal)) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "tool_parallel_mode",
+                    message: $"Tool parallel mode: {parallelToolMode}.")
+                .ConfigureAwait(false);
+        }
 
         if (weightedToolRouting && originalToolCount > 0 && toolDefs.Count > 0 && toolDefs.Count < originalToolCount) {
             await TryWriteStatusAsync(
@@ -144,6 +184,7 @@ internal sealed partial class ChatServiceSession {
         var toolReceiptCorrectionUsed = false;
         var noToolExecutionWatchdogUsed = false;
         var executionContractEscapeUsed = false;
+        var continuationSubsetEscapeUsed = false;
         var autoPendingActionReplayUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
@@ -326,6 +367,39 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var shouldAttemptContinuationSubsetEscape = ShouldAttemptContinuationSubsetEscape(
+                    executionContractApplies: executionContractApplies,
+                    usedContinuationSubset: usedContinuationSubset,
+                    continuationSubsetEscapeUsed: continuationSubsetEscapeUsed,
+                    toolsAvailable: fullToolDefs.Length > 0,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count,
+                    out _);
+                if (shouldAttemptContinuationSubsetEscape) {
+                    continuationSubsetEscapeUsed = true;
+                    toolDefs = fullToolDefs;
+                    options.Tools = fullToolDefs;
+                    options.ToolChoice = ToolChoice.Auto;
+                    usedContinuationSubset = false;
+                    RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+
+                    var subsetEscapePrompt = BuildContinuationSubsetEscapePrompt(routedUserRequest, text);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: "Follow-up subset had no tool activity; retrying with full tool availability.")
+                        .ConfigureAwait(false);
+                    turn = await ChatWithToolSchemaRecoveryAsync(
+                            client,
+                            ChatInput.FromText(subsetEscapePrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 if (executionContractApplies && !hasToolActivity) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
@@ -376,7 +450,9 @@ internal sealed partial class ChatServiceSession {
                 });
             }
 
-            var executed = await ExecuteToolsAsync(writer, request.RequestId, threadId, extracted, parallelTools, toolTimeoutSeconds, turnToken)
+            var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
+            var executed = await ExecuteToolsAsync(writer, request.RequestId, threadId, extracted, parallelTools, allowMutatingParallel,
+                    mutatingToolHints, toolTimeoutSeconds, turnToken)
                 .ConfigureAwait(false);
             UpdateToolRoutingStats(extracted, executed);
             foreach (var output in executed) {
@@ -548,7 +624,7 @@ internal sealed partial class ChatServiceSession {
         var details = reason.Length == 0
             ? $"status '{status}'"
             : $"status '{status}' (reason: {reason})";
-        var notice = $"Partial response: model returned {details}. Reply 'continue' to resume.";
+        var notice = $"Partial response: model returned {details}. Share your next step to resume.";
 
         var body = (text ?? string.Empty).TrimEnd();
         if (body.Length == 0) {

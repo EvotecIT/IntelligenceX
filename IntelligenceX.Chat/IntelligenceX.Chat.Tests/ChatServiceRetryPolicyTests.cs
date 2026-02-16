@@ -38,9 +38,9 @@ public sealed class ChatServiceRetryPolicyTests {
         var profile = InvokeResolveRetryProfile("ad_replication_summary");
         var output = new ToolOutputDto {
             CallId = "call-1",
-            Output = "{\"error\":\"Unauthorized: access denied to domain controller.\"}",
+            Output = "{\"error_code\":\"permission_denied\",\"error\":\"Unauthorized: access denied to domain controller.\"}",
             Ok = false,
-            ErrorCode = "tool_exception",
+            ErrorCode = "permission_denied",
             Error = "Unauthorized: access denied to domain controller.",
             IsTransient = true
         };

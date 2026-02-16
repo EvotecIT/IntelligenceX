@@ -41,6 +41,9 @@ public sealed partial class MainWindow : Window {
     private const int HtCaption = 0x0002;
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
+    private const int MaxQueuedTurns = 8;
+    private const int MaxActivityTimelineEntries = 6;
+    private const int MaxActivityTimelineLabelChars = 48;
     private const string DefaultConversationTitle = "New Chat";
     private const string DefaultLocalModel = "gpt-5.3-codex";
     private const string TransportNative = "native";
@@ -133,8 +136,8 @@ public sealed partial class MainWindow : Window {
     private string? _threadId;
     private int _nextRequestId = 1;
     private (string LoginId, string PromptId, string PromptText)? _pendingLoginPrompt;
-    private string? _queuedPromptAfterLogin;
-    private string? _queuedPromptAfterLoginConversationId;
+    private readonly object _queuedAfterLoginSync = new();
+    private readonly Queue<QueuedTurn> _queuedTurnsAfterLogin = new();
     private bool _isAuthenticated;
     private bool _loginInProgress;
     private bool _debugMode;
@@ -150,6 +153,7 @@ public sealed partial class MainWindow : Window {
     private int? _autonomyToolTimeoutSeconds;
     private bool? _autonomyWeightedToolRouting;
     private int? _autonomyMaxCandidateTools;
+    private bool _proactiveModeEnabled = true;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
     private string? _lastExportDirectory;
@@ -195,9 +199,16 @@ public sealed partial class MainWindow : Window {
     private readonly HashSet<string> _knownProfiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _appStateLoaded;
     private bool _isSending;
+    private readonly object _pendingTurnQueueSync = new();
+    private readonly Queue<QueuedTurn> _pendingTurns = new();
     private string? _activeTurnRequestId;
+    private string? _latestTurnRequestId;
     private string? _activeKickoffRequestId;
     private string? _cancelRequestedTurnRequestId;
+    private readonly object _turnDiagnosticsSync = new();
+    private readonly List<string> _activityTimeline = new();
+    private TurnMetricsSnapshot? _lastTurnMetrics;
+    private long? _activeTurnQueueWaitMs;
     private long _activeTurnStartedUtcTicks;
     private readonly object _turnWatchdogSync = new();
     private CancellationTokenSource? _turnWatchdogCts;
@@ -210,6 +221,7 @@ public sealed partial class MainWindow : Window {
     private string? _sessionUserNameOverride;
     private string? _sessionAssistantPersonaOverride;
     private string? _sessionThemeOverride;
+    private bool _queueAutoDispatchEnabled = true;
     private string? _activeRequestConversationId;
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
@@ -252,6 +264,19 @@ public sealed partial class MainWindow : Window {
         public List<(string Role, string Text, DateTime Time)> Messages { get; } = new();
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     }
+
+    private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc);
+
+    private sealed record TurnMetricsSnapshot(
+        DateTime CompletedUtc,
+        long DurationMs,
+        long? TtftMs,
+        long? QueueWaitMs,
+        int ToolCallsCount,
+        int ToolRounds,
+        int ProjectionFallbackCount,
+        string Outcome,
+        string? ErrorCode);
 
     private sealed class UserProfileIntent {
         public string? UserName { get; set; }
@@ -798,6 +823,10 @@ public sealed partial class MainWindow : Window {
         _appState.ExportDefaultFormat = _exportDefaultFormat;
         _lastExportDirectory = ExportPreferencesContract.NormalizeDirectory(_appState.ExportLastDirectory);
         _appState.ExportLastDirectory = _lastExportDirectory;
+        _queueAutoDispatchEnabled = _appState.QueueAutoDispatchEnabled;
+        _appState.QueueAutoDispatchEnabled = _queueAutoDispatchEnabled;
+        _proactiveModeEnabled = _appState.ProactiveModeEnabled;
+        _appState.ProactiveModeEnabled = _proactiveModeEnabled;
         _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
         _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
         _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);

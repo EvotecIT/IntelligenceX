@@ -10,7 +10,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
-    public void ShouldAttemptToolReceiptCorrection_TriggersWhenDraftBindsToolNameToReturned() {
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForLexicalReturnedClaimWithoutStructuredBinding() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };
         var assistantDraft = "ad_search returned 2 users.";
@@ -20,7 +20,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { "Find Bob", assistantDraft, tools, 0, 0, 0 });
 
         var value = Assert.IsType<bool>(result);
-        Assert.True(value);
+        Assert.False(value);
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldAttemptToolReceiptCorrection_TriggersForExitCodeReceiptFragmentsEvenWithoutToolNames() {
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForExitCodeReceiptFragmentsWithoutStructuredBinding() {
         var assistantDraft = "Process exited with code 0.";
 
         var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
@@ -88,7 +88,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
 
         var value = Assert.IsType<bool>(result);
-        Assert.True(value);
+        Assert.False(value);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldAttemptToolReceiptCorrection_TriggersForStdoutReceiptLabel() {
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForStdoutReceiptLabelWithoutStructuredBinding() {
         var assistantDraft = "stdout: hello world";
 
         var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
@@ -112,11 +112,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
 
         var value = Assert.IsType<bool>(result);
-        Assert.True(value);
+        Assert.False(value);
     }
 
     [Fact]
-    public void ShouldAttemptToolReceiptCorrection_TriggersForStdoutReceiptLabel_WithWhitespaceBeforeColon() {
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForStdoutReceiptLabelWithWhitespaceBeforeColonWithoutStructuredBinding() {
         var assistantDraft = "stdout    : hello world";
 
         var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
@@ -124,11 +124,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
 
         var value = Assert.IsType<bool>(result);
-        Assert.True(value);
+        Assert.False(value);
     }
 
     [Fact]
-    public void ShouldAttemptToolReceiptCorrection_TriggersForStderrReceiptLabel() {
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForStderrReceiptLabelWithoutStructuredBinding() {
         var assistantDraft = "stderr: something failed";
 
         var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
@@ -136,7 +136,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
 
         var value = Assert.IsType<bool>(result);
-        Assert.True(value);
+        Assert.False(value);
     }
 
     [Fact]

@@ -29,12 +29,20 @@ public sealed partial class MainWindow : Window {
         var conversationId = conversation.Id;
 
         if (!_isAuthenticated) {
-            _queuedPromptAfterLogin = text;
-            _queuedPromptAfterLoginConversationId = conversationId;
+            var promptQueued = TryEnqueuePromptAfterLogin(text, conversationId, out var queuedCount);
             var loginStarted = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
-            await SetStatusAsync(loginStarted ? SessionStatus.WaitingForSignIn() : SessionStatus.SignInRequired()).ConfigureAwait(false);
+            if (loginStarted) {
+                var waitingText = promptQueued
+                    ? $"Waiting for sign-in... ({queuedCount}/{MaxQueuedTurns} queued)"
+                    : "Waiting for sign-in... (queue full)";
+                await SetStatusAsync(waitingText).ConfigureAwait(false);
+            } else {
+                await SetStatusAsync(SessionStatus.SignInRequired()).ConfigureAwait(false);
+            }
             if (!loginStarted) {
                 AppendSystem(SystemNotice.SignInRequiredBeforeSendingMessages());
+            } else if (!promptQueued) {
+                AppendSystem("Sign-in queue is full. Complete sign-in or wait for queued prompts to run.");
             }
 
             return null;
@@ -179,7 +187,7 @@ public sealed partial class MainWindow : Window {
         notice = outcome.Kind switch {
             AssistantTurnOutcomeKind.ToolRoundLimit =>
                 "Partial response shown above. The turn hit the tool safety limit before completion. "
-                + "Say \"continue\" to keep going, or narrow scope (one DC / one OU).",
+                + "Reply naturally to proceed, or narrow scope (one DC / one OU).",
             AssistantTurnOutcomeKind.UsageLimit =>
                 "Partial response shown above. The turn then hit your account usage limit. "
                 + "Switch account or try again later.",
@@ -346,9 +354,7 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        _queuedPromptAfterLogin = text;
-        _queuedPromptAfterLoginConversationId = (conversationId ?? string.Empty).Trim();
-        return true;
+        return TryEnqueuePromptAfterLogin(text, (conversationId ?? string.Empty).Trim(), out _);
     }
 
     private AssistantTurnOutcome ResolveTurnOutcome(string requestId, Exception ex, bool disconnectedFallback) {

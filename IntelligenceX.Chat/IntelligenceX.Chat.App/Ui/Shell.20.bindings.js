@@ -459,7 +459,7 @@
   function postAutonomySettings() {
     post("set_autonomy", {
       maxToolRounds: (byId("optAutonomyMaxRounds").value || "").trim(),
-      parallelMode: (byId("optAutonomyParallel").value || "default").trim(),
+      parallelMode: (byId("optAutonomyParallel").value || "auto").trim(),
       turnTimeoutSeconds: (byId("optAutonomyTurnTimeout").value || "").trim(),
       toolTimeoutSeconds: (byId("optAutonomyToolTimeout").value || "").trim(),
       weightedToolRouting: (byId("optAutonomyWeightedRouting").value || "default").trim(),
@@ -473,6 +473,30 @@
   byId("optAutonomyParallel").addEventListener("change", postAutonomySettings);
   byId("optAutonomyWeightedRouting").addEventListener("change", postAutonomySettings);
   byId("optAutonomyMaxCandidates").addEventListener("change", postAutonomySettings);
+  var proactiveModeToggle = byId("optProactiveMode");
+  if (proactiveModeToggle) {
+    proactiveModeToggle.addEventListener("change", function(e) {
+      post("set_proactive_mode", { enabled: e.target.checked === true });
+    });
+  }
+  var queueAutoDispatchToggle = byId("optQueueAutoDispatch");
+  if (queueAutoDispatchToggle) {
+    queueAutoDispatchToggle.addEventListener("change", function(e) {
+      post("set_queue_auto_dispatch", { enabled: e.target.checked === true });
+    });
+  }
+  var runNextQueuedButton = byId("btnRunNextQueuedTurn");
+  if (runNextQueuedButton) {
+    runNextQueuedButton.addEventListener("click", function() {
+      post("run_next_queued");
+    });
+  }
+  var clearQueuedButton = byId("btnClearQueuedTurns");
+  if (clearQueuedButton) {
+    clearQueuedButton.addEventListener("click", function() {
+      post("clear_queued_turns");
+    });
+  }
   byId("btnAutonomyReset").addEventListener("click", function() {
     post("reset_autonomy");
   });
@@ -995,12 +1019,20 @@
       return;
     }
 
+    var text = (promptEl.value || "").trim();
     if (normalizeBool(state.cancelable)) {
+      if (text) {
+        post("send", { text: text });
+        promptEl.value = "";
+        autoResizePrompt();
+        updateComposerState();
+        return;
+      }
+
       post("cancel_turn");
       return;
     }
 
-    var text = (promptEl.value || "").trim();
     if (!text) {
       return;
     }
@@ -1008,6 +1040,10 @@
     post("send", { text: text });
     promptEl.value = "";
     autoResizePrompt();
+    updateComposerState();
   });
 
-  promptEl.addEventListener("input", autoResizePrompt);
+  promptEl.addEventListener("input", function() {
+    autoResizePrompt();
+    updateComposerState();
+  });

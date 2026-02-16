@@ -15,97 +15,13 @@ internal sealed partial class ChatServiceSession {
     private const string ExecutionWatchdogMarker = "ix:execution-watchdog:v1";
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const string ExecutionContractEscapeMarker = "ix:execution-contract-escape:v1";
-    private static readonly HashSet<string> MutatingActionTokens = new(StringComparer.OrdinalIgnoreCase) {
-        "add",
-        "apply",
-        "approve",
-        "block",
-        "clear",
-        "create",
-        "delete",
-        "disable",
-        "enable",
-        "fix",
-        "grant",
-        "install",
-        "join",
-        "kill",
-        "lock",
-        "modify",
-        "move",
-        "patch",
-        "promote",
-        "purge",
-        "quarantine",
-        "remove",
-        "rename",
-        "revoke",
-        "reset",
-        "restart",
-        "reboot",
-        "rollback",
-        "set",
-        "shutdown",
-        "start",
-        "stop",
-        "terminate",
-        "uninstall",
-        "unlock",
-        "update",
-        "write"
-    };
-    private static readonly HashSet<string> ReadOnlyActionTokens = new(StringComparer.OrdinalIgnoreCase) {
-        "analyze",
-        "analyse",
-        "audit",
-        "check",
-        "collect",
-        "count",
-        "discover",
-        "enumerate",
-        "explain",
-        "fetch",
-        "find",
-        "get",
-        "inspect",
-        "list",
-        "map",
-        "query",
-        "read",
-        "report",
-        "resolve",
-        "review",
-        "scan",
-        "search",
-        "show",
-        "summarize",
-        "summarise",
-        "top",
-        "trace",
-        "verify"
-    };
-    private static readonly HashSet<string> ActionIntentSkipTokens = new(StringComparer.OrdinalIgnoreCase) {
-        "a",
-        "an",
-        "and",
-        "can",
-        "could",
-        "for",
-        "it",
-        "just",
-        "kindly",
-        "let",
-        "lets",
-        "me",
-        "now",
-        "please",
-        "the",
-        "this",
-        "to",
-        "we",
-        "would",
-        "you"
-    };
+    private const string ContinuationSubsetEscapeMarker = "ix:continuation-subset-escape:v1";
+    private enum ActionMutability {
+        Unknown = 0,
+        ReadOnly = 1,
+        Mutating = 2
+    }
+
     private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
         MaxDepth = 16,
         CommentHandling = JsonCommentHandling.Disallow,
@@ -128,8 +44,8 @@ internal sealed partial class ChatServiceSession {
         return TryReadActionSelectionIntent(
                    text: (userRequest ?? string.Empty).Trim(),
                    actionId: out _,
-                   actionIntentText: out var actionIntentText)
-               && IsLikelyMutatingActionIntent(actionIntentText);
+                   mutability: out var mutability)
+               && mutability == ActionMutability.Mutating;
     }
 
     private static bool ShouldAttemptNoToolExecutionWatchdog(
@@ -189,6 +105,45 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    private static bool ShouldAttemptContinuationSubsetEscape(
+        bool executionContractApplies,
+        bool usedContinuationSubset,
+        bool continuationSubsetEscapeUsed,
+        bool toolsAvailable,
+        int priorToolCalls,
+        int priorToolOutputs,
+        out string reason) {
+        reason = "not_eligible";
+
+        if (executionContractApplies) {
+            reason = "execution_contract_turn";
+            return false;
+        }
+
+        if (!usedContinuationSubset) {
+            reason = "full_tools_already_available";
+            return false;
+        }
+
+        if (continuationSubsetEscapeUsed) {
+            reason = "subset_escape_already_used";
+            return false;
+        }
+
+        if (!toolsAvailable) {
+            reason = "tools_unavailable";
+            return false;
+        }
+
+        if (priorToolCalls > 0 || priorToolOutputs > 0) {
+            reason = "tool_activity_present";
+            return false;
+        }
+
+        reason = "continuation_subset_no_tool_activity";
+        return true;
+    }
+
     private static bool EvaluateToolExecutionNudgeDecision(
         string userRequest,
         string assistantDraft,
@@ -244,13 +199,15 @@ internal sealed partial class ChatServiceSession {
         // If the assistant explicitly told the user to "say/type/etc." a quoted phrase, accept echoing that phrase even when
         // weighted continuation routing wasn't used (for example after a restart or when tool routing kept full tool lists).
         var echoedCallToAction = UserMatchesAssistantCallToAction(request, draft);
-        if (!usedContinuationSubset && !echoedCallToAction) {
-            reason = "no_continuation_subset_and_no_cta_echo";
+        var compactFollowUp = LooksLikeCompactFollowUp(request);
+        var contextualFollowUp = !compactFollowUp && LooksLikeContextualFollowUpForExecutionNudge(request, draft);
+        if (!usedContinuationSubset && !echoedCallToAction && !contextualFollowUp) {
+            reason = "no_continuation_subset_and_no_cta_or_contextual_follow_up";
             return false;
         }
 
-        if (!echoedCallToAction && !LooksLikeCompactFollowUp(request)) {
-            reason = "request_not_compact_follow_up";
+        if (!echoedCallToAction && !compactFollowUp && !contextualFollowUp) {
+            reason = "request_not_compact_or_contextual_follow_up";
             return false;
         }
 
@@ -312,12 +269,12 @@ internal sealed partial class ChatServiceSession {
         return TryReadActionSelectionIntent(
             text: text,
             actionId: out _,
-            actionIntentText: out _);
+            mutability: out _);
     }
 
-    private static bool TryReadActionSelectionIntent(string text, out string actionId, out string actionIntentText) {
+    private static bool TryReadActionSelectionIntent(string text, out string actionId, out ActionMutability mutability) {
         actionId = string.Empty;
-        actionIntentText = string.Empty;
+        mutability = ActionMutability.Unknown;
 
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars) {
@@ -362,189 +319,100 @@ internal sealed partial class ChatServiceSession {
                 return false;
             }
 
-            var title = selection.TryGetProperty("title", out var titleNode) && titleNode.ValueKind == JsonValueKind.String
-                ? (titleNode.GetString() ?? string.Empty).Trim()
-                : string.Empty;
-            var request = selection.TryGetProperty("request", out var requestNode) && requestNode.ValueKind == JsonValueKind.String
-                ? (requestNode.GetString() ?? string.Empty).Trim()
-                : string.Empty;
-
-            actionIntentText = CollapseWhitespace(string.Join(' ', new[] { title, request }).Trim());
+            mutability = ResolveActionSelectionMutability(selection);
             return true;
         } catch (JsonException) {
             return false;
         }
     }
 
-    private static bool IsLikelyMutatingActionIntent(string text) {
-        var normalized = CollapseWhitespace((text ?? string.Empty).Trim());
+    private static ActionMutability ResolveActionSelectionMutability(JsonElement selection) {
+        bool? mutating = null;
+        bool? readOnly = null;
+
+        if (TryReadSelectionBoolean(selection, "mutating", out var parsedMutating)) {
+            mutating = parsedMutating;
+        }
+
+        if (TryReadSelectionBoolean(selection, "readonly", out var parsedReadOnly)) {
+            readOnly = parsedReadOnly;
+        }
+
+        return ResolveActionMutability(mutating, readOnly);
+    }
+
+    private static ActionMutability ResolveActionMutability(bool? mutating, bool? readOnly) {
+        if (mutating.HasValue) {
+            return mutating.Value ? ActionMutability.Mutating : ActionMutability.ReadOnly;
+        }
+
+        if (readOnly.HasValue) {
+            return readOnly.Value ? ActionMutability.ReadOnly : ActionMutability.Mutating;
+        }
+
+        return ActionMutability.Unknown;
+    }
+
+    private static ActionMutability ResolveActionMutabilityFromNullableBoolean(bool? mutating) {
+        return mutating.HasValue
+            ? (mutating.Value ? ActionMutability.Mutating : ActionMutability.ReadOnly)
+            : ActionMutability.Unknown;
+    }
+
+    private static bool TryReadSelectionBoolean(JsonElement element, string propertyName, out bool value) {
+        value = false;
+        if (!element.TryGetProperty(propertyName, out var node)) {
+            return false;
+        }
+
+        switch (node.ValueKind) {
+            case JsonValueKind.True:
+                value = true;
+                return true;
+            case JsonValueKind.False:
+                value = false;
+                return true;
+            case JsonValueKind.Number:
+                if (node.TryGetInt64(out var number)) {
+                    if (number == 0) {
+                        value = false;
+                        return true;
+                    }
+                    if (number == 1) {
+                        value = true;
+                        return true;
+                    }
+                }
+                return false;
+            case JsonValueKind.String: {
+                    var text = (node.GetString() ?? string.Empty).Trim();
+                    return TryParseProtocolBoolean(text, out value);
+                }
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryParseProtocolBoolean(string value, out bool parsed) {
+        parsed = false;
+        var normalized = (value ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
         }
 
-        var tokens = TokenizeActionIntent(normalized, maxTokens: 32);
-        if (tokens.Count == 0) {
-            return false;
-        }
-
-        var firstToken = FindFirstActionIntentVerb(tokens);
-        // Mutating verbs anywhere in the action intent must win over leading read-only verbs
-        // (for example: "check and disable user").
-        for (var i = 0; i < tokens.Count; i++) {
-            if (TokenMatchesActionVerb(tokens[i], MutatingActionTokens)) {
-                return true;
-            }
-        }
-
-        if (firstToken.Length > 0 && TokenMatchesActionVerb(firstToken, ReadOnlyActionTokens)) {
-            return false;
-        }
-
-        return false;
-    }
-
-    private static string FindFirstActionIntentVerb(IReadOnlyList<string> tokens) {
-        for (var i = 0; i < tokens.Count; i++) {
-            var token = tokens[i];
-            if (ActionIntentSkipTokens.Contains(token)) {
-                continue;
-            }
-            return token;
-        }
-
-        return string.Empty;
-    }
-
-    private static List<string> TokenizeActionIntent(string text, int maxTokens) {
-        var tokens = new List<string>();
-        if (string.IsNullOrWhiteSpace(text) || maxTokens <= 0) {
-            return tokens;
-        }
-
-        var tokenStart = -1;
-        for (var i = 0; i < text.Length; i++) {
-            var ch = text[i];
-            if (char.IsLetterOrDigit(ch) || ch == '_') {
-                if (tokenStart < 0) {
-                    tokenStart = i;
-                }
-                continue;
-            }
-
-            if (tokenStart >= 0) {
-                tokens.Add(text.Substring(tokenStart, i - tokenStart).ToLowerInvariant());
-                tokenStart = -1;
-                if (tokens.Count >= maxTokens) {
-                    return tokens;
-                }
-            }
-        }
-
-        if (tokenStart >= 0 && tokens.Count < maxTokens) {
-            tokens.Add(text.Substring(tokenStart, text.Length - tokenStart).ToLowerInvariant());
-        }
-
-        return tokens;
-    }
-
-    private static bool TokenMatchesActionVerb(string token, HashSet<string> verbs) {
-        if (string.IsNullOrWhiteSpace(token) || verbs.Count == 0) {
-            return false;
-        }
-
-        if (SegmentMatchesActionVerb(token, verbs)) {
+        if (string.Equals(normalized, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "1", StringComparison.Ordinal)) {
+            parsed = true;
             return true;
         }
 
-        if (token.IndexOf('_', StringComparison.Ordinal) < 0) {
-            return false;
-        }
-
-        var start = 0;
-        while (start < token.Length) {
-            var end = token.IndexOf('_', start);
-            if (end < 0) {
-                end = token.Length;
-            }
-
-            var length = end - start;
-            if (length > 0) {
-                var segment = token.Substring(start, length);
-                if (SegmentMatchesActionVerb(segment, verbs)) {
-                    return true;
-                }
-            }
-
-            start = end + 1;
-        }
-
-        return false;
-    }
-
-    private static bool SegmentMatchesActionVerb(string segment, HashSet<string> verbs) {
-        if (segment.Length == 0) {
-            return false;
-        }
-
-        if (verbs.Contains(segment)) {
+        if (string.Equals(normalized, "false", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "0", StringComparison.Ordinal)) {
+            parsed = false;
             return true;
         }
 
-        foreach (var candidate in EnumerateVerbCandidates(segment)) {
-            if (verbs.Contains(candidate)) {
-                return true;
-            }
-        }
-
         return false;
-    }
-
-    private static IEnumerable<string> EnumerateVerbCandidates(string token) {
-        if (string.IsNullOrWhiteSpace(token)) {
-            yield break;
-        }
-
-        if (token.EndsWith("ies", StringComparison.Ordinal) && token.Length > 4) {
-            yield return token.Substring(0, token.Length - 3) + "y";
-        }
-
-        if (token.EndsWith("ing", StringComparison.Ordinal) && token.Length > 5) {
-            var stem = token.Substring(0, token.Length - 3);
-            foreach (var candidate in EnumerateStemCandidates(stem)) {
-                yield return candidate;
-            }
-        }
-
-        if (token.EndsWith("ed", StringComparison.Ordinal) && token.Length > 4) {
-            var stem = token.Substring(0, token.Length - 2);
-            foreach (var candidate in EnumerateStemCandidates(stem)) {
-                yield return candidate;
-            }
-        }
-
-        if (token.EndsWith('s') && token.Length > 3) {
-            var stem = token.Substring(0, token.Length - 1);
-            foreach (var candidate in EnumerateStemCandidates(stem)) {
-                yield return candidate;
-            }
-        }
-    }
-
-    private static IEnumerable<string> EnumerateStemCandidates(string stem) {
-        if (stem.Length == 0) {
-            yield break;
-        }
-
-        yield return stem;
-        yield return stem + "e";
-
-        if (stem.Length >= 2 && stem[^1] == stem[^2]) {
-            var deDoubled = stem.Substring(0, stem.Length - 1);
-            if (deDoubled.Length > 0) {
-                yield return deDoubled;
-                yield return deDoubled + "e";
-            }
-        }
     }
 
     private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft, bool onlyBulletContext = false) {
@@ -939,6 +807,141 @@ internal sealed partial class ChatServiceSession {
         return tokenCount <= 8 && normalized.Length <= 80 && normalized.Contains('?', StringComparison.Ordinal);
     }
 
+    private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0 || request.Length > 240) {
+            return false;
+        }
+
+        if (request.Contains('\n', StringComparison.Ordinal) || request.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        // Avoid retrying on obviously structured/payload-like user input.
+        if (request.Contains('{', StringComparison.Ordinal)
+            || request.Contains('}', StringComparison.Ordinal)
+            || request.Contains('[', StringComparison.Ordinal)
+            || request.Contains(']', StringComparison.Ordinal)
+            || request.Contains('<', StringComparison.Ordinal)
+            || request.Contains('>', StringComparison.Ordinal)
+            || request.Contains('|', StringComparison.Ordinal)
+            || request.Contains('=', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(request, maxTokens: 28);
+        if (tokenCount < 2 || tokenCount > 24) {
+            return false;
+        }
+
+        return AssistantDraftHasContextualAnchor(request, assistantDraft);
+    }
+
+    private static bool AssistantDraftHasContextualAnchor(string userRequest, string assistantDraft) {
+        var request = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+        var draft = CollapseWhitespace((assistantDraft ?? string.Empty).Trim());
+        if (request.Length == 0 || draft.Length == 0) {
+            return false;
+        }
+
+        if (request.Length >= 12 && draft.IndexOf(request, StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 24);
+        if (requestTokens.Count < 2) {
+            return false;
+        }
+
+        var requestUnique = new HashSet<string>(requestTokens, StringComparer.OrdinalIgnoreCase);
+        var draftUnique = new HashSet<string>(ExtractMeaningfulTokensForContext(draft, maxTokens: 48), StringComparer.OrdinalIgnoreCase);
+        var sharedCount = 0;
+        foreach (var token in requestUnique) {
+            if (draftUnique.Contains(token)) {
+                sharedCount++;
+            }
+        }
+
+        if (sharedCount < 2) {
+            return false;
+        }
+
+        for (var i = 0; i < requestTokens.Count - 1; i++) {
+            var first = requestTokens[i];
+            var second = requestTokens[i + 1];
+            if (first.Length < 3 || second.Length < 3) {
+                continue;
+            }
+
+            if (first.Length < 4 && second.Length < 4) {
+                continue;
+            }
+
+            var pair = first + " " + second;
+            if (ContainsPhraseWithBoundaries(draft, pair)) {
+                return true;
+            }
+        }
+
+        if (requestUnique.Count >= 6 && sharedCount >= 4) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static List<string> ExtractMeaningfulTokensForContext(string text, int maxTokens) {
+        var value = (text ?? string.Empty).Trim();
+        var tokens = new List<string>();
+        if (value.Length == 0 || maxTokens <= 0) {
+            return tokens;
+        }
+
+        var inToken = false;
+        var tokenStart = 0;
+        for (var i = 0; i <= value.Length; i++) {
+            var ch = i < value.Length ? value[i] : '\0';
+            var isTokenChar = i < value.Length && char.IsLetterOrDigit(ch);
+            if (isTokenChar) {
+                if (!inToken) {
+                    inToken = true;
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (!inToken) {
+                continue;
+            }
+
+            var token = value.Substring(tokenStart, i - tokenStart);
+            inToken = false;
+            if (token.Length == 0) {
+                continue;
+            }
+
+            var hasNonAscii = false;
+            for (var t = 0; t < token.Length; t++) {
+                if (token[t] > 127) {
+                    hasNonAscii = true;
+                    break;
+                }
+            }
+
+            var minLen = hasNonAscii ? 2 : 3;
+            if (token.Length < minLen) {
+                continue;
+            }
+
+            tokens.Add(token);
+            if (tokens.Count >= maxTokens) {
+                break;
+            }
+        }
+
+        return tokens;
+    }
+
     private static bool AssistantDraftReferencesUserRequest(string userRequest, string assistantDraft) {
         var request = (userRequest ?? string.Empty).Trim();
         var draft = (assistantDraft ?? string.Empty).Trim();
@@ -1077,7 +1080,7 @@ internal sealed partial class ChatServiceSession {
 
             Reason code: {{reasonCode}}
 
-            Please retry this action. Reply `continue` to retry in this context, or use the action command below.
+            Please retry this action in this context, or use the action command below.
             {{replayActionBlock}}
             """;
     }
@@ -1104,13 +1107,47 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
+    private static string BuildContinuationSubsetEscapePrompt(string userRequest, string assistantDraft) {
+        var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
+        var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        return $$"""
+            [Continuation subset escape]
+            {{ContinuationSubsetEscapeMarker}}
+            This follow-up turn reused a narrowed tool subset and still produced zero tool activity.
+
+            User request:
+            {{requestText}}
+
+            Previous assistant draft:
+            {{draftText}}
+
+            Retry now with full tool availability for this turn.
+            Requirements:
+            - Call at least one relevant tool in this turn when any registered tool can satisfy the request.
+            - If no tool can satisfy the request, state the exact blocker and the minimal missing input.
+            - Keep the response concise and execution-focused.
+            """;
+    }
+
     private static string BuildExecutionContractReplayActionBlock(string userRequest, string assistantDraft) {
-        if (!TryResolveReplayActionForExecutionContract(userRequest, assistantDraft, out var actionId, out var actionTitle, out var actionRequest)) {
+        if (!TryResolveReplayActionForExecutionContract(
+                userRequest,
+                assistantDraft,
+                out var actionId,
+                out var actionTitle,
+                out var actionRequest,
+                out var mutability)) {
             return string.Empty;
         }
 
         actionTitle = NormalizeReplayActionText(actionTitle, maxChars: 120);
         actionRequest = NormalizeReplayActionText(actionRequest, maxChars: 220);
+        var mutabilityLine = mutability switch {
+            ActionMutability.Mutating => "mutating: true",
+            ActionMutability.ReadOnly => "mutating: false",
+            _ => string.Empty
+        };
+        var mutabilityBlock = mutabilityLine.Length == 0 ? string.Empty : mutabilityLine + Environment.NewLine;
 
         return $$"""
 
@@ -1119,22 +1156,34 @@ internal sealed partial class ChatServiceSession {
             id: {{actionId}}
             title: {{actionTitle}}
             request: {{actionRequest}}
-            reply: /act {{actionId}}
+            {{mutabilityBlock}}reply: /act {{actionId}}
             """;
     }
 
-    private static bool TryResolveReplayActionForExecutionContract(string userRequest, string assistantDraft, out string actionId, out string actionTitle, out string actionRequest) {
-        if (TryParseActionSelectionForReplay(userRequest, out actionId, out actionTitle, out actionRequest)) {
+    private static bool TryResolveReplayActionForExecutionContract(
+        string userRequest,
+        string assistantDraft,
+        out string actionId,
+        out string actionTitle,
+        out string actionRequest,
+        out ActionMutability mutability) {
+        if (TryParseActionSelectionForReplay(userRequest, out actionId, out actionTitle, out actionRequest, out mutability)) {
             return true;
         }
 
-        return TryParseSinglePendingActionForReplay(assistantDraft, out actionId, out actionTitle, out actionRequest);
+        return TryParseSinglePendingActionForReplay(assistantDraft, out actionId, out actionTitle, out actionRequest, out mutability);
     }
 
-    private static bool TryParseSinglePendingActionForReplay(string assistantDraft, out string actionId, out string actionTitle, out string actionRequest) {
+    private static bool TryParseSinglePendingActionForReplay(
+        string assistantDraft,
+        out string actionId,
+        out string actionTitle,
+        out string actionRequest,
+        out ActionMutability mutability) {
         actionId = string.Empty;
         actionTitle = string.Empty;
         actionRequest = string.Empty;
+        mutability = ActionMutability.Unknown;
 
         var actions = ExtractPendingActions(assistantDraft);
         if (actions.Count == 0) {
@@ -1145,6 +1194,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var action = actions[0];
+        mutability = action.Mutability;
         actionId = NormalizeReplayActionIdToken(action.Id);
         if (actionId.Length == 0) {
             return false;
@@ -1165,10 +1215,16 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static bool TryParseActionSelectionForReplay(string userRequest, out string actionId, out string actionTitle, out string actionRequest) {
+    private static bool TryParseActionSelectionForReplay(
+        string userRequest,
+        out string actionId,
+        out string actionTitle,
+        out string actionRequest,
+        out ActionMutability mutability) {
         actionId = string.Empty;
         actionTitle = string.Empty;
         actionRequest = string.Empty;
+        mutability = ActionMutability.Unknown;
 
         var normalized = (userRequest ?? string.Empty).Trim();
         if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars || normalized[0] != '{') {
@@ -1196,6 +1252,7 @@ internal sealed partial class ChatServiceSession {
 
             actionTitle = NormalizeReplayActionText(TryReadReplayActionSelectionText(selection, "title"), maxChars: 200);
             actionRequest = NormalizeReplayActionText(TryReadReplayActionSelectionText(selection, "request"), maxChars: 600);
+            mutability = ResolveActionSelectionMutability(selection);
             if (actionRequest.Length == 0) {
                 actionRequest = actionTitle;
             }

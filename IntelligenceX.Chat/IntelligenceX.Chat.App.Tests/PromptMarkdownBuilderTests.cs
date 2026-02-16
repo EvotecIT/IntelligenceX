@@ -21,6 +21,8 @@ public sealed class PromptMarkdownBuilderTests {
             missingOnboardingFields: new[] { "themePreset" },
             includeLiveProfileUpdates: true,
             executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.",
+            runtimeCapabilityLines: new[] { "Parallel tool execution: enabled", "Max tool rounds: 24" },
+            proactiveExecutionEnabled: true,
             persistentMemoryLines: new[] { "Prefers concise answers." },
             persistentMemoryPrompt: "[Persistent memory protocol]");
 
@@ -29,7 +31,10 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("- Assistant persona: security analyst with concise outputs", markdown);
         Assert.Contains("[Onboarding context]", markdown);
         Assert.Contains("[Live profile updates]", markdown);
+        Assert.Contains("[Runtime capability handshake]", markdown);
+        Assert.Contains("Parallel tool execution: enabled", markdown);
         Assert.Contains("[Execution behavior]", markdown);
+        Assert.Contains("[Proactive execution mode]", markdown);
         Assert.Contains("[Persistent memory protocol]", markdown);
         Assert.Contains("[Persistent memory]", markdown);
         Assert.Contains("Prefers concise answers.", markdown);
@@ -75,5 +80,24 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("[Persistent memory]", markdown);
         Assert.Contains("Default domain controller is DC-01.", markdown);
         Assert.Contains("User request:", markdown);
+    }
+
+    /// <summary>
+    /// Ensures proactive execution mode can be explicitly disabled.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesProactiveModeDisabledGuidance() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "Just answer exactly what I asked.",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            proactiveExecutionEnabled: false);
+
+        Assert.Contains("[Proactive execution mode]", markdown);
+        Assert.Contains("Stay strictly scoped", markdown);
     }
 }
