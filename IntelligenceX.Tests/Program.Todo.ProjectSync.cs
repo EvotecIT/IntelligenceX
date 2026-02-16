@@ -531,6 +531,90 @@ internal static partial class Program {
         AssertEqual(false, (comment ?? string.Empty).Contains("issues/12", StringComparison.OrdinalIgnoreCase), "low confidence issue excluded");
     }
 
+    private static void TestProjectSyncBuildPullRequestIssueSuggestionCommentsIncludesIssueSideCandidates() {
+        var entries = new[] {
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 210,
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/210",
+                Kind: "pull_request",
+                TriageScore: 71.0,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/310",
+                MatchedIssueConfidence: 0.62,
+                VisionFit: "aligned",
+                VisionConfidence: 0.74,
+                RelatedIssues: new[] {
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(310, "https://github.com/EvotecIT/IntelligenceX/issues/310", 0.60, "token overlap")
+                }
+            ),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 310,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/310",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null,
+                RelatedPullRequests: new[] {
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(210, "https://github.com/EvotecIT/IntelligenceX/pull/210", 0.87, "explicit pull request reference")
+                }
+            ),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 311,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/311",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null,
+                MatchedPullRequestUrl: "https://github.com/EvotecIT/IntelligenceX/pull/210",
+                MatchedPullRequestConfidence: 0.79
+            ),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 312,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/312",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null,
+                RelatedPullRequests: new[] {
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(210, "https://github.com/EvotecIT/IntelligenceX/pull/210", 0.41, "weak overlap")
+                }
+            )
+        };
+
+        var comments = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildPullRequestIssueSuggestionComments(
+            entries,
+            minConfidence: 0.55,
+            maxIssuesPerPullRequest: 3);
+
+        AssertEqual(true, comments.ContainsKey(210), "pull request comment generated");
+        var comment = comments[210];
+        AssertContainsText(comment, "<!-- intelligencex:pr-issue-suggestions -->", "pull request marker present");
+        AssertContainsText(comment, "#310 (https://github.com/EvotecIT/IntelligenceX/issues/310) - confidence 0.87", "issue-side confidence supersedes weaker PR-side candidate");
+        AssertContainsText(comment, "#311 (https://github.com/EvotecIT/IntelligenceX/issues/311)", "matched pull request fallback contributes issue");
+        AssertEqual(false, comment.Contains("issues/312", StringComparison.OrdinalIgnoreCase), "below-threshold issue-side candidate excluded");
+    }
+
     private static void TestProjectSyncBuildIssueMatchSuggestionCommentReturnsNullWithoutQualifiedCandidates() {
         var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
             Number: 56,
