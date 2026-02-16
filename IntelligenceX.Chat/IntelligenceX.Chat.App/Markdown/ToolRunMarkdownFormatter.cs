@@ -99,8 +99,35 @@ internal static class ToolRunMarkdownFormatter {
 
         var sb = new StringBuilder();
         var previousBlank = false;
+        var inFence = false;
+        var fenceMarker = '\0';
+        var fenceRunLength = 0;
         foreach (var rawLine in lines) {
             var line = rawLine.TrimEnd();
+            if (TryReadFenceRun(line, out var runMarker, out var runLength, out var runSuffix)) {
+                if (!inFence) {
+                    inFence = true;
+                    fenceMarker = runMarker;
+                    fenceRunLength = runLength;
+                } else if (runMarker == fenceMarker
+                           && runLength >= fenceRunLength
+                           && string.IsNullOrWhiteSpace(runSuffix)) {
+                    inFence = false;
+                    fenceMarker = '\0';
+                    fenceRunLength = 0;
+                }
+
+                sb.AppendLine(line);
+                previousBlank = false;
+                continue;
+            }
+
+            if (inFence) {
+                sb.AppendLine(line);
+                previousBlank = false;
+                continue;
+            }
+
             if (line.Length == 0) {
                 if (!previousBlank && sb.Length > 0) {
                     sb.AppendLine();
@@ -125,6 +152,39 @@ internal static class ToolRunMarkdownFormatter {
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    private static bool TryReadFenceRun(string line, out char marker, out int runLength, out string suffix) {
+        marker = '\0';
+        runLength = 0;
+        suffix = string.Empty;
+        if (line is null) {
+            return false;
+        }
+
+        var trimmed = line.TrimStart();
+        if (trimmed.Length < 3) {
+            return false;
+        }
+
+        var first = trimmed[0];
+        if (first != '`' && first != '~') {
+            return false;
+        }
+
+        var i = 0;
+        while (i < trimmed.Length && trimmed[i] == first) {
+            i++;
+        }
+
+        if (i < 3) {
+            return false;
+        }
+
+        marker = first;
+        runLength = i;
+        suffix = trimmed.Substring(i);
+        return true;
     }
 
     private static bool IsPipeOnlyLine(string line) {

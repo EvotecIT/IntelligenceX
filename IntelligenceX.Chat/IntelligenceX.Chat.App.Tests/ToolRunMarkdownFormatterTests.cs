@@ -71,4 +71,32 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.Contains("- Narrow scope to one DC.", markdown);
         Assert.Contains("- Retry with a longer timeout.", markdown);
     }
+
+    /// <summary>
+    /// Ensures summary normalization preserves pipe-only lines when they are inside fenced code blocks.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesPipeOnlyLinesInsideFencedCode() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c3",
+                    Name = "diag"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c3",
+                    Output = "{}",
+                    SummaryMarkdown = "```text\n|---|\n```"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Diagnostic Tool");
+
+        Assert.Contains("```text", markdown);
+        Assert.Contains("|---|", markdown);
+        Assert.Contains("```", markdown);
+    }
 }

@@ -67,9 +67,7 @@ public static class ToolMarkdown {
     /// <param name="content">Block content.</param>
     public static string CodeBlock(string? language, string? content) {
         var body = NormalizeBlock(content);
-
-        // If the content contains triple backticks, use tildes as the fence.
-        var fence = body.Contains("```", StringComparison.Ordinal) ? "~~~~" : "```";
+        var fence = BuildFence(body);
         var lang = string.IsNullOrWhiteSpace(language) ? string.Empty : language.Trim();
 
         var sb = new StringBuilder(body.Length + 16);
@@ -197,5 +195,37 @@ public static class ToolMarkdown {
         }
         // Prefer LF for renderers.
         return value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal).TrimEnd('\n');
+    }
+
+    private static string BuildFence(string content) {
+        var longestBackticks = LongestRun(content, '`');
+        var longestTildes = LongestRun(content, '~');
+
+        var backtickLength = Math.Max(3, longestBackticks + 1);
+        var tildeLength = Math.Max(3, longestTildes + 1);
+        var marker = backtickLength <= tildeLength ? '`' : '~';
+        var length = marker == '`' ? backtickLength : tildeLength;
+        return new string(marker, length);
+    }
+
+    private static int LongestRun(string text, char marker) {
+        if (string.IsNullOrEmpty(text)) {
+            return 0;
+        }
+
+        var longest = 0;
+        var current = 0;
+        for (var i = 0; i < text.Length; i++) {
+            if (text[i] == marker) {
+                current++;
+                if (current > longest) {
+                    longest = current;
+                }
+            } else {
+                current = 0;
+            }
+        }
+
+        return longest;
     }
 }

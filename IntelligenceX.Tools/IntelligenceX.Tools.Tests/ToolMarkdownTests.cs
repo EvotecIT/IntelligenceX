@@ -46,4 +46,13 @@ public class ToolMarkdownTests {
         Assert.Contains("First paragraph.", markdown);
         Assert.Contains("Second paragraph.", markdown);
     }
+
+    [Fact]
+    public void CodeBlock_ShouldChooseFenceLongerThanContentRuns() {
+        var markdown = ToolMarkdown.CodeBlock("text", "```\n~~~~\n`");
+
+        Assert.StartsWith("````text", markdown, global::System.StringComparison.Ordinal);
+        Assert.EndsWith("````", markdown, global::System.StringComparison.Ordinal);
+        Assert.Contains("~~~~", markdown, global::System.StringComparison.Ordinal);
+    }
 }

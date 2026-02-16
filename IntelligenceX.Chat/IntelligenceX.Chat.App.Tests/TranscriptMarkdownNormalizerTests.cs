@@ -108,4 +108,38 @@ public sealed class TranscriptMarkdownNormalizerTests {
         Assert.False(cleanChanged);
         Assert.Equal(clean, cleanText);
     }
+
+    /// <summary>
+    /// Ensures normalization does not rewrite markdown artifacts inside fenced code blocks.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotMutateFencedCodeBlocks() {
+        var text = """
+                   ```text
+                   ✅I can run 1) LDAP checks, or2) cert checks.
+                   **Status: HEALTHY** - **Servers checked:**5
+                   ```
+                   """;
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures prose cleanup fixes common bold/list artifacts seen in model output.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RepairsBoldAndCollapsedOrderedListArtifacts() {
+        var text =
+            "Those 3 weren't user accounts; they were ** unresolved privileged SIDs** in the sweep.\n"
+            + "1. **Deleted object remnants**(SID left in ACL path) 2.^ **Foreign/trusted principal no longer resolvable**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("**unresolved privileged SIDs**", normalized);
+        Assert.Contains("**Deleted object remnants** (SID left in ACL path)", normalized);
+        Assert.Contains("\n2. **Foreign/trusted principal no longer resolvable**", normalized);
+        Assert.DoesNotContain("2.^", normalized);
+    }
 }

@@ -29,4 +29,18 @@ public sealed class MarkdownComposerTests {
         Assert.Contains("{\"ok\":true}", markdown);
         Assert.EndsWith("```", markdown);
     }
+
+    /// <summary>
+    /// Ensures code fence rendering chooses a fence that does not collide with content runs.
+    /// </summary>
+    [Fact]
+    public void Build_CodeFenceChoosesSafeFenceWhenContentContainsBackticksAndTildes() {
+        var markdown = new MarkdownComposer()
+            .CodeFence("text", "```\n~~~~")
+            .Build();
+
+        Assert.StartsWith("````text", markdown, System.StringComparison.Ordinal);
+        Assert.EndsWith("````", markdown, System.StringComparison.Ordinal);
+        Assert.Contains("~~~~", markdown, System.StringComparison.Ordinal);
+    }
 }
