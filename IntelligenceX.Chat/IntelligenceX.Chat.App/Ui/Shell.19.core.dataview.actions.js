@@ -40,20 +40,6 @@
       cursor = cursor.nextElementSibling;
     }
 
-    cursor = pre.previousElementSibling;
-    while (cursor) {
-      if (cursor.tagName === "TABLE") {
-        return cursor;
-      }
-      if (cursor.querySelector) {
-        var nestedPrev = cursor.querySelector("table");
-        if (nestedPrev) {
-          return nestedPrev;
-        }
-      }
-      cursor = cursor.previousElementSibling;
-    }
-
     return null;
   }
 
