@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window {
         _pendingLoginPrompt = null;
         _ = RenderTranscriptAsync();
         _ = PublishOptionsStateAsync();
-        _ = PersistAppStateAsync();
+        QueuePersistAppState();
     }
 
     private void AppendSystem(string text) {
@@ -137,7 +137,11 @@ public sealed partial class MainWindow : Window {
             status.Kind == SessionStatusKind.UsageLimitReached);
     }
 
-    private async Task PublishSessionStateAsync() {
+    private Task PublishSessionStateAsync() {
+        return QueueUiPublishAsync(requestSessionState: true, requestOptionsState: false);
+    }
+
+    private async Task PublishSessionStateCoreAsync() {
         if (!_webViewReady) {
             return;
         }
@@ -208,7 +212,11 @@ public sealed partial class MainWindow : Window {
                || normalized.Contains("switch account", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task PublishOptionsStateAsync() {
+    private Task PublishOptionsStateAsync() {
+        return QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true);
+    }
+
+    private async Task PublishOptionsStateCoreAsync() {
         if (!_webViewReady) {
             return;
         }
@@ -289,6 +297,90 @@ public sealed partial class MainWindow : Window {
         });
 
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
+    }
+
+    private Task QueueUiPublishAsync(bool requestSessionState, bool requestOptionsState) {
+        if (!requestSessionState && !requestOptionsState) {
+            return Task.CompletedTask;
+        }
+
+        Task sessionTask = Task.CompletedTask;
+        Task optionsTask = Task.CompletedTask;
+        var shouldStartPump = false;
+
+        lock (_uiPublishSync) {
+            if (requestSessionState) {
+                _pendingSessionStatePublish = true;
+                _pendingSessionStatePublishTcs ??= new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                sessionTask = _pendingSessionStatePublishTcs.Task;
+            }
+
+            if (requestOptionsState) {
+                _pendingOptionsStatePublish = true;
+                _pendingOptionsStatePublishTcs ??= new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                optionsTask = _pendingOptionsStatePublishTcs.Task;
+            }
+
+            if (!_uiPublishPumpRunning) {
+                _uiPublishPumpRunning = true;
+                shouldStartPump = true;
+            }
+        }
+
+        if (shouldStartPump) {
+            _ = Task.Run(ProcessUiPublishQueueAsync);
+        }
+
+        if (requestSessionState && requestOptionsState) {
+            return Task.WhenAll(sessionTask, optionsTask);
+        }
+
+        return requestSessionState ? sessionTask : optionsTask;
+    }
+
+    private async Task ProcessUiPublishQueueAsync() {
+        while (true) {
+            bool publishSession;
+            bool publishOptions;
+            TaskCompletionSource<object?>? sessionTcs;
+            TaskCompletionSource<object?>? optionsTcs;
+
+            lock (_uiPublishSync) {
+                publishSession = _pendingSessionStatePublish;
+                publishOptions = _pendingOptionsStatePublish;
+                sessionTcs = _pendingSessionStatePublishTcs;
+                optionsTcs = _pendingOptionsStatePublishTcs;
+                _pendingSessionStatePublish = false;
+                _pendingOptionsStatePublish = false;
+                _pendingSessionStatePublishTcs = null;
+                _pendingOptionsStatePublishTcs = null;
+
+                if (!publishSession && !publishOptions) {
+                    _uiPublishPumpRunning = false;
+                    return;
+                }
+            }
+
+            await Task.Delay(UiPublishCoalesceInterval).ConfigureAwait(false);
+
+            if (publishSession) {
+                try {
+                    await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
+                    sessionTcs?.TrySetResult(null);
+                } catch (Exception ex) {
+                    sessionTcs?.TrySetException(ex);
+                }
+            }
+
+            if (publishOptions) {
+                try {
+                    await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
+                    optionsTcs?.TrySetResult(null);
+                } catch (Exception ex) {
+                    optionsTcs?.TrySetException(ex);
+                }
+            }
+        }
     }
 
     private object[] BuildConversationState() {

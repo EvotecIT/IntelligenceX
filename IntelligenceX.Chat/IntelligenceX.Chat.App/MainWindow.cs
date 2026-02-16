@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window {
     private const string DefaultOllamaBaseUrl = "http://127.0.0.1:11434";
     private const string DefaultLmStudioBaseUrl = "http://127.0.0.1:1234/v1";
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan PersistDebounceInterval = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -210,6 +212,14 @@ public sealed partial class MainWindow : Window {
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
     private long _transcriptRenderGeneration;
     private long _transcriptLastRenderUtcTicks;
+    private readonly object _uiPublishSync = new();
+    private bool _uiPublishPumpRunning;
+    private bool _pendingSessionStatePublish;
+    private bool _pendingOptionsStatePublish;
+    private TaskCompletionSource<object?>? _pendingSessionStatePublishTcs;
+    private TaskCompletionSource<object?>? _pendingOptionsStatePublishTcs;
+    private readonly object _persistDebounceSync = new();
+    private CancellationTokenSource? _persistDebounceCts;
 
     private Process? _serviceProcess;
     private string? _servicePipeName;
@@ -314,6 +324,7 @@ public sealed partial class MainWindow : Window {
 
         Closed += async (_, _) => {
             StopAutoReconnectLoop();
+            CancelQueuedPersistAppState();
             await PersistAppStateAsync().ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();

@@ -73,6 +73,60 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private void QueuePersistAppState() {
+        if (!_appStateLoaded) {
+            return;
+        }
+
+        CancellationTokenSource cts;
+        lock (_persistDebounceSync) {
+            _persistDebounceCts?.Cancel();
+            _persistDebounceCts?.Dispose();
+            _persistDebounceCts = new CancellationTokenSource();
+            cts = _persistDebounceCts;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(PersistDebounceInterval, cts.Token).ConfigureAwait(false);
+                await PersistAppStateAsync().ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Expected when a newer update supersedes this queued save.
+            } catch (ObjectDisposedException) {
+                // Best-effort background save path during shutdown.
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    try {
+                        await RunOnUiThreadAsync(() => {
+                            AppendSystem(SystemNotice.StateSaveFailed(ex.Message));
+                            return Task.CompletedTask;
+                        }).ConfigureAwait(false);
+                    } catch {
+                        // Best-effort diagnostics only.
+                    }
+                }
+            }
+        });
+    }
+
+    private void CancelQueuedPersistAppState() {
+        CancellationTokenSource? cts;
+        lock (_persistDebounceSync) {
+            cts = _persistDebounceCts;
+            _persistDebounceCts = null;
+        }
+
+        if (cts is null) {
+            return;
+        }
+
+        try {
+            cts.Cancel();
+        } finally {
+            cts.Dispose();
+        }
+    }
+
     private static List<string> BuildDisabledToolsList(Dictionary<string, bool> toolStates) {
         var list = new List<string>();
         foreach (var pair in toolStates) {
