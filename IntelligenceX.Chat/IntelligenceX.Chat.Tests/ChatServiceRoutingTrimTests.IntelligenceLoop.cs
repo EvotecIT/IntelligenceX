@@ -2,6 +2,8 @@ using System;
 using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.ToolCalling;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -28,6 +30,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildProactiveFollowUpReviewPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildProactiveFollowUpReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildProactiveFollowUpReviewPrompt not found.");
+    private static readonly MethodInfo CopyChatOptionsWithoutToolsMethod =
+        typeof(ChatServiceSession).GetMethod("CopyChatOptionsWithoutTools", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("CopyChatOptionsWithoutTools not found.");
 
     [Fact]
     public void ResolveMaxReviewPasses_DefaultsToSafeValueWhenUnset() {
@@ -143,5 +148,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Potential issues to verify", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Recommended next fixes", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CopyChatOptionsWithoutTools_DisablesToolExecutionForReviewPasses() {
+        var source = new ChatOptions {
+            Model = "gpt-test",
+            ParallelToolCalls = true,
+            ToolChoice = ToolChoice.Auto
+        };
+
+        var result = CopyChatOptionsWithoutToolsMethod.Invoke(null, new object?[] { source, false });
+        var copy = Assert.IsType<ChatOptions>(result);
+
+        Assert.Null(copy.Tools);
+        Assert.Null(copy.ToolChoice);
+        Assert.False(copy.ParallelToolCalls);
+        Assert.Equal("gpt-test", copy.Model);
     }
 }

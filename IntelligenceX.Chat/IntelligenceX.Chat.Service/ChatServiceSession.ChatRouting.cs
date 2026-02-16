@@ -338,6 +338,14 @@ internal sealed partial class ChatServiceSession {
         return copy;
     }
 
+    private static ChatOptions CopyChatOptionsWithoutTools(ChatOptions options, bool? newThreadOverride = null) {
+        var copy = CopyChatOptions(options, newThreadOverride);
+        copy.Tools = null;
+        copy.ToolChoice = null;
+        copy.ParallelToolCalls = false;
+        return copy;
+    }
+
     private async Task<ChatTurnRunResult> RunChatOnCurrentThreadAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string threadId,
         CancellationToken cancellationToken) {
         var toolCalls = new List<ToolCallDto>();
@@ -708,7 +716,7 @@ internal sealed partial class ChatServiceSession {
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(reviewPrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
                             turnToken,
                             phaseStatus: "phase_review",
                             phaseMessage: $"Reviewing response quality ({reviewPassesUsed}/{maxReviewPasses})...",
@@ -731,7 +739,7 @@ internal sealed partial class ChatServiceSession {
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(proactivePrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
                             turnToken,
                             phaseStatus: "phase_review",
                             phaseMessage: "Generating proactive next checks and fixes...",
