@@ -150,8 +150,8 @@ public sealed partial class MainWindow : Window {
     private async Task PublishSessionStateAsync() {
         try {
             await QueueUiPublishAsync(requestSessionState: true, requestOptionsState: false).ConfigureAwait(false);
-        } catch (OperationCanceledException) when (_shutdownRequested) {
-            // Best-effort shutdown path: caller-facing publish APIs are non-throwing on close.
+        } catch (OperationCanceledException) {
+            // Caller-facing publish APIs are best-effort and non-throwing on queue cancellation.
         }
     }
 
@@ -229,8 +229,8 @@ public sealed partial class MainWindow : Window {
     private async Task PublishOptionsStateAsync() {
         try {
             await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
-        } catch (OperationCanceledException) when (_shutdownRequested) {
-            // Best-effort shutdown path: caller-facing publish APIs are non-throwing on close.
+        } catch (OperationCanceledException) {
+            // Caller-facing publish APIs are best-effort and non-throwing on queue cancellation.
         }
     }
 
