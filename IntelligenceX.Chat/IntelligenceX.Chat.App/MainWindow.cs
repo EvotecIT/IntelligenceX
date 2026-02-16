@@ -223,7 +223,7 @@ public sealed partial class MainWindow : Window {
     private CancellationTokenSource? _persistDebounceCts;
     private bool _persistDebounceWorkerRunning;
     private bool _persistDebounceRequested;
-    private bool _shutdownRequested;
+    private volatile bool _shutdownRequested;
 
     private Process? _serviceProcess;
     private string? _servicePipeName;
