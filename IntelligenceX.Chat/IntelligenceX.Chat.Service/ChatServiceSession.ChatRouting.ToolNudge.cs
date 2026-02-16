@@ -388,19 +388,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         var firstToken = FindFirstActionIntentVerb(tokens);
-        if (firstToken.Length > 0) {
-            if (ReadOnlyActionTokens.Contains(firstToken)) {
-                return false;
-            }
-            if (MutatingActionTokens.Contains(firstToken)) {
-                return true;
-            }
-        }
-
+        // Mutating verbs anywhere in the action intent must win over leading read-only verbs
+        // (for example: "check and disable user").
         for (var i = 0; i < tokens.Count; i++) {
             if (MutatingActionTokens.Contains(tokens[i])) {
                 return true;
             }
+        }
+
+        if (firstToken.Length > 0 && ReadOnlyActionTokens.Contains(firstToken)) {
+            return false;
         }
 
         return false;

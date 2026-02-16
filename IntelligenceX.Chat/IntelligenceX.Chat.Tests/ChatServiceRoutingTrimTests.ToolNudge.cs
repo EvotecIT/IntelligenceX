@@ -126,6 +126,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersWhenSelectionHasMixedReadAndMutatingIntent() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Check and disable user\",\"request\":\"Check stale state and disable user evotec\\\\john if needed.\"}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldEnforceExecuteOrExplainContract_DoesNotTriggerForPlainTextRequest() {
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { "run now" });
 
