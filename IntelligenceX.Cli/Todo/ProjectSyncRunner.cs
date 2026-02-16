@@ -51,10 +51,12 @@ internal static class ProjectSyncRunner {
         double? MatchedIssueConfidence,
         string? VisionFit,
         double? VisionConfidence,
+        string? MatchedIssueReason = null,
         IReadOnlyList<RelatedIssueCandidate>? RelatedIssues = null,
         string? SuggestedDecision = null,
         string? MatchedPullRequestUrl = null,
         double? MatchedPullRequestConfidence = null,
+        string? MatchedPullRequestReason = null,
         IReadOnlyList<RelatedPullRequestCandidate>? RelatedPullRequests = null,
         IReadOnlyList<string>? ExistingLabels = null
     );
@@ -534,10 +536,12 @@ internal static class ProjectSyncRunner {
                 var existingLabels = ReadStringArray(item, "labels");
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
+                var matchedIssueReason = ReadNullableString(item, "matchedIssueReason");
                 var relatedIssues = ParseRelatedIssueCandidates(item);
                 if (string.IsNullOrWhiteSpace(matchedIssueUrl) && relatedIssues.Count > 0) {
                     matchedIssueUrl = relatedIssues[0].Url;
                     matchedIssueConfidence = relatedIssues[0].Confidence;
+                    matchedIssueReason = relatedIssues[0].Reason;
                 } else if (!string.IsNullOrWhiteSpace(matchedIssueUrl) && !matchedIssueConfidence.HasValue) {
                     var confidenceFromRelated = relatedIssues
                         .Where(candidate => candidate.Number > 0 &&
@@ -547,14 +551,36 @@ internal static class ProjectSyncRunner {
                         .FirstOrDefault();
                     if (confidenceFromRelated is not null) {
                         matchedIssueConfidence = confidenceFromRelated.Confidence;
+                        if (string.IsNullOrWhiteSpace(matchedIssueReason)) {
+                            matchedIssueReason = confidenceFromRelated.Reason;
+                        }
                     }
                 }
                 var matchedPullRequestUrl = ReadNullableString(item, "matchedPullRequestUrl");
                 var matchedPullRequestConfidence = ReadNullableDouble(item, "matchedPullRequestConfidence");
+                var matchedPullRequestReason = ReadNullableString(item, "matchedPullRequestReason");
                 var relatedPullRequests = ParseRelatedPullRequestCandidates(item);
                 if (string.IsNullOrWhiteSpace(matchedPullRequestUrl) && relatedPullRequests.Count > 0) {
                     matchedPullRequestUrl = relatedPullRequests[0].Url;
                     matchedPullRequestConfidence = relatedPullRequests[0].Confidence;
+                    matchedPullRequestReason = relatedPullRequests[0].Reason;
+                } else if (!string.IsNullOrWhiteSpace(matchedPullRequestUrl) &&
+                           (string.IsNullOrWhiteSpace(matchedPullRequestReason) || !matchedPullRequestConfidence.HasValue)) {
+                    var candidate = relatedPullRequests
+                        .Where(itemCandidate => itemCandidate.Number > 0 &&
+                                                !string.IsNullOrWhiteSpace(itemCandidate.Url) &&
+                                                itemCandidate.Url.Equals(matchedPullRequestUrl, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(itemCandidate => itemCandidate.Confidence)
+                        .ThenBy(itemCandidate => itemCandidate.Number)
+                        .FirstOrDefault();
+                    if (candidate is not null) {
+                        if (!matchedPullRequestConfidence.HasValue) {
+                            matchedPullRequestConfidence = candidate.Confidence;
+                        }
+                        if (string.IsNullOrWhiteSpace(matchedPullRequestReason)) {
+                            matchedPullRequestReason = candidate.Reason;
+                        }
+                    }
                 }
                 var decisionSignals = ParsePullRequestSignals(item);
                 if (decisionSignals is not null) {
@@ -579,12 +605,14 @@ internal static class ProjectSyncRunner {
                     Tags: tags,
                     MatchedIssueUrl: matchedIssueUrl,
                     MatchedIssueConfidence: matchedIssueConfidence,
+                    MatchedIssueReason: matchedIssueReason,
                     VisionFit: null,
                     VisionConfidence: null,
                     RelatedIssues: relatedIssues,
                     SuggestedDecision: null,
                     MatchedPullRequestUrl: matchedPullRequestUrl,
                     MatchedPullRequestConfidence: matchedPullRequestConfidence,
+                    MatchedPullRequestReason: matchedPullRequestReason,
                     RelatedPullRequests: relatedPullRequests,
                     ExistingLabels: existingLabels
                 );
@@ -662,7 +690,8 @@ internal static class ProjectSyncRunner {
 
                 entriesByUrl[pair.Key] = pair.Value with {
                     MatchedPullRequestUrl = byUrlMatch.Url,
-                    MatchedPullRequestConfidence = byUrlMatch.Confidence
+                    MatchedPullRequestConfidence = byUrlMatch.Confidence,
+                    MatchedPullRequestReason = byUrlMatch.Reason
                 };
             }
         }
@@ -968,6 +997,16 @@ internal static class ProjectSyncRunner {
             updated++;
         }
 
+        if (isPullRequest && fields.TryGetValue("Matched Issue Reason", out var matchedIssueReasonField)) {
+            var matchReasonValue = BuildMatchReasonFieldValue(entry.MatchedIssueReason);
+            if (!string.IsNullOrWhiteSpace(matchReasonValue)) {
+                await client.SetTextFieldAsync(projectId, itemId, matchedIssueReasonField.Id, matchReasonValue).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, matchedIssueReasonField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
         if (isPullRequest && fields.TryGetValue("Related Issues", out var relatedIssuesField)) {
             var relatedIssuesValue = BuildRelatedIssuesFieldValue(entry, maxIssues: 3);
             if (!string.IsNullOrWhiteSpace(relatedIssuesValue)) {
@@ -993,6 +1032,16 @@ internal static class ProjectSyncRunner {
                 await client.SetNumberFieldAsync(projectId, itemId, matchedPullRequestConfidenceField.Id, entry.MatchedPullRequestConfidence.Value).ConfigureAwait(false);
             } else {
                 await client.ClearFieldAsync(projectId, itemId, matchedPullRequestConfidenceField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (isIssue && fields.TryGetValue("Matched Pull Request Reason", out var matchedPullRequestReasonField)) {
+            var matchReasonValue = BuildMatchReasonFieldValue(entry.MatchedPullRequestReason);
+            if (!string.IsNullOrWhiteSpace(matchReasonValue)) {
+                await client.SetTextFieldAsync(projectId, itemId, matchedPullRequestReasonField.Id, matchReasonValue).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, matchedPullRequestReasonField.Id).ConfigureAwait(false);
             }
             updated++;
         }
@@ -1144,6 +1193,14 @@ internal static class ProjectSyncRunner {
 
         return string.Join(Environment.NewLine, related.Select(candidate =>
             $"#{candidate.Number.ToString(CultureInfo.InvariantCulture)} | {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} | {candidate.Url}"));
+    }
+
+    internal static string BuildMatchReasonFieldValue(string? reason) {
+        if (string.IsNullOrWhiteSpace(reason)) {
+            return string.Empty;
+        }
+
+        return NormalizeCommentReason(reason);
     }
 
     internal static string BuildRelatedPullRequestsFieldValue(ProjectSyncEntry entry, int maxPullRequests) {
@@ -1588,7 +1645,7 @@ internal static class ProjectSyncRunner {
         }
 
         var compact = string.Join(" ", reason
-            .Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             .Trim();
         if (compact.Length <= 140) {
             return compact;
