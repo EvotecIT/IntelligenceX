@@ -183,6 +183,48 @@ internal static partial class Program {
         }
     }
 
+    private static void TestVisionCheckParseDocumentSupportsBacktickedPolicyPrefixes() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-policy-backticks-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var visionPath = Path.Combine(tempDir, "VISION.md");
+            var visionContent = string.Join('\n', new[] {
+                "# Vision",
+                string.Empty,
+                "## Goals",
+                "- Keep delivery quality high",
+                string.Empty,
+                "## Non-Goals",
+                "- Ignore unrelated website redesign work",
+                string.Empty,
+                "## In Scope",
+                "- API stability and security hardening",
+                string.Empty,
+                "## Out Of Scope",
+                "- Marketing campaign redesign",
+                string.Empty,
+                "## Decision Principles",
+                "- `aligned`: security hardening",
+                "- `likely-out-of-scope`: marketing redesign",
+                "- `needs-human-review`: migration rollout"
+            }) + "\n";
+            File.WriteAllText(visionPath, visionContent);
+
+            var result = IntelligenceX.Cli.Todo.VisionCheckRunner.ParseVisionDocument(visionPath);
+            AssertEqual(true, result.Contract.IsValid, "backticked policy prefixes should satisfy strict contract");
+            AssertEqual(true, result.Contract.ExplicitAcceptBullets >= 1, "aligned policy bullet detected with backticks");
+            AssertEqual(true, result.Contract.ExplicitRejectBullets >= 1, "reject policy bullet detected with backticks");
+            AssertEqual(true, result.Contract.ExplicitReviewBullets >= 1, "review policy bullet detected with backticks");
+        } finally {
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best effort
+            }
+        }
+    }
+
     private static void TestVisionCheckParseDocumentSupportsLegacyDecisionHeading() {
         var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-heading-legacy-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);

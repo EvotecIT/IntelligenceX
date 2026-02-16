@@ -14,7 +14,7 @@ internal static class VisionCheckRunner {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly Regex NumberedBullet = new(@"^\d+\.\s+", RegexOptions.Compiled);
     private static readonly Regex PolicyPrefix = new(
-        @"^(aligned|accept|approve|likely-out-of-scope|reject|deny|needs-human-review|human-review|review|required-review)\s*:\s*(.+)$",
+        @"^`?\s*(aligned|accept|approve|likely-out-of-scope|reject|deny|needs-human-review|human-review|review|required-review)\s*`?\s*:\s*(.+)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
     private static readonly string[] RequiredSectionNames = {
