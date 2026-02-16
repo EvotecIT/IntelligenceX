@@ -59,6 +59,9 @@ jobs:
             --vision VISION.md \
             --no-refresh-index \
             --index artifacts/triage/ix-triage-index.json \
+            --enforce-contract \
+            --fail-on-drift \
+            --drift-threshold 0.70 \
             --out artifacts/triage/ix-vision-check.json \
             --summary artifacts/triage/ix-vision-check.md
 
