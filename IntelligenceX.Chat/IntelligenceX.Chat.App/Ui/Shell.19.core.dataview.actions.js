@@ -1,3 +1,144 @@
+  var toolDataViewRowsByTableId = Object.create(null);
+  var toolDataViewTableIdCounter = 0;
+
+  function clearToolDataViewRowsCache() {
+    toolDataViewRowsByTableId = Object.create(null);
+  }
+
+  function getOrCreateTableId(table) {
+    if (!table) {
+      return "";
+    }
+
+    var current = String(table.dataset.ixTableId || "").trim();
+    if (current) {
+      return current;
+    }
+
+    toolDataViewTableIdCounter += 1;
+    var next = "ix-table-" + toolDataViewTableIdCounter.toString(36);
+    table.dataset.ixTableId = next;
+    return next;
+  }
+
+  function findPayloadTargetTable(pre) {
+    if (!pre) {
+      return null;
+    }
+
+    var cursor = pre.nextElementSibling;
+    while (cursor) {
+      if (cursor.tagName === "TABLE") {
+        return cursor;
+      }
+      if (cursor.querySelector) {
+        var nested = cursor.querySelector("table");
+        if (nested) {
+          return nested;
+        }
+      }
+      cursor = cursor.nextElementSibling;
+    }
+
+    cursor = pre.previousElementSibling;
+    while (cursor) {
+      if (cursor.tagName === "TABLE") {
+        return cursor;
+      }
+      if (cursor.querySelector) {
+        var nestedPrev = cursor.querySelector("table");
+        if (nestedPrev) {
+          return nestedPrev;
+        }
+      }
+      cursor = cursor.previousElementSibling;
+    }
+
+    return null;
+  }
+
+  function parseToolDataViewPayload(raw) {
+    var text = String(raw || "").trim();
+    if (!text) {
+      return null;
+    }
+
+    try {
+      var payload = JSON.parse(text);
+      if (!payload || String(payload.kind || "").toLowerCase() !== "ix_tool_dataview_v1") {
+        return null;
+      }
+
+      var rows = normalizeDataRows(Array.isArray(payload.rows) ? payload.rows : []);
+      if (!rows || rows.length === 0) {
+        return null;
+      }
+
+      return rows;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isDataViewPayloadCodeBlock(code) {
+    if (!code) {
+      return false;
+    }
+
+    var className = String(code.className || "").toLowerCase();
+    return className.indexOf("language-ix-dataview") >= 0 || className.indexOf("ix-dataview") >= 0;
+  }
+
+  window.ixExtractToolDataViewPayloads = function(root) {
+    clearToolDataViewRowsCache();
+    if (!root) {
+      return;
+    }
+
+    var codes = root.querySelectorAll(".bubble .markdown-body pre code");
+    for (var i = 0; i < codes.length; i++) {
+      var code = codes[i];
+      var declaredPayload = isDataViewPayloadCodeBlock(code);
+      if (!declaredPayload) {
+        continue;
+      }
+
+      var pre = code.closest ? code.closest("pre") : null;
+      var payloadRows = parseToolDataViewPayload(code.textContent || "");
+
+      if (payloadRows && pre) {
+        var targetTable = findPayloadTargetTable(pre);
+        if (targetTable) {
+          var tableId = getOrCreateTableId(targetTable);
+          if (tableId) {
+            toolDataViewRowsByTableId[tableId] = payloadRows;
+          }
+        }
+      }
+
+      if (pre && pre.parentElement) {
+        pre.parentElement.removeChild(pre);
+      }
+    }
+  };
+
+  window.ixGetDataViewRowsForTable = function(table) {
+    if (!table) {
+      return null;
+    }
+
+    var tableId = String(table.dataset.ixTableId || "").trim();
+    if (!tableId) {
+      return null;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(toolDataViewRowsByTableId, tableId)) {
+      return null;
+    }
+
+    return normalizeDataRows(toolDataViewRowsByTableId[tableId] || []);
+  };
+
   function openDataView(rows, title, metaText) {
     dataViewState.rows = normalizeDataRows(rows);
     if (!dataViewState.rows || dataViewState.rows.length === 0) {
@@ -196,7 +337,10 @@
       return;
     }
 
-    var rows = window.ixBuildTableMatrix ? window.ixBuildTableMatrix(table) : null;
+    var rows = window.ixGetDataViewRowsForTable ? window.ixGetDataViewRowsForTable(table) : null;
+    if (!rows || rows.length === 0) {
+      rows = window.ixBuildTableMatrix ? window.ixBuildTableMatrix(table) : null;
+    }
     rows = normalizeDataRows(rows || []);
     if (rows.length === 0) {
       return;

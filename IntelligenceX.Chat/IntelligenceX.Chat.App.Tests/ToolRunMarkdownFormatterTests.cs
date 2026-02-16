@@ -99,4 +99,34 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.Contains("|---|", markdown);
         Assert.Contains("```", markdown);
     }
+
+    /// <summary>
+    /// Ensures tool table render hints emit an ix-dataview payload with full rows.
+    /// </summary>
+    [Fact]
+    public void Format_EmbedsDataViewPayloadFenceForTableRenderHints() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c4",
+                    Name = "testimox_rules_list"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c4",
+                    Output = "{\"ok\":true,\"rules_view\":[{\"rule_name\":\"rule_a\",\"enabled\":true},{\"rule_name\":\"rule_b\",\"enabled\":false}]}",
+                    RenderJson = "{\"kind\":\"table\",\"rows_path\":\"rules_view\",\"columns\":[{\"key\":\"rule_name\",\"label\":\"Rule\"},{\"key\":\"enabled\",\"label\":\"Enabled\"}]}",
+                    SummaryMarkdown = "### TestimoX rules (preview)\n\n| Rule | Enabled |\n| --- | --- |\n| rule_a | true |"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "TestimoX Rules List");
+
+        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("\"kind\":\"ix_tool_dataview_v1\"", markdown);
+        Assert.Contains("\"rows\":[[\"Rule\",\"Enabled\"],[\"rule_a\",\"true\"],[\"rule_b\",\"false\"]]", markdown);
+        Assert.Contains("### TestimoX rules (preview)", markdown);
+    }
 }
