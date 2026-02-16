@@ -71,6 +71,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResponseQualityReviewEval_AllowsLongDraftWithUnicodeQuestionSignal() {
+        var draft =
+            "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty " +
+            "twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo " +
+            "thirtythree thirtyfour thirtyfive thirtysix thirtyseven thirtyeight thirtynine forty？";
+
+        var result = ChatServiceSession.ShouldAttemptResponseQualityReview(
+            "show latest failed logons",
+            draft,
+            executionContractApplies: false,
+            hasToolActivity: false,
+            reviewPassesUsed: 0,
+            maxReviewPasses: 1);
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void BuildResponseQualityReviewPrompt_EmitsStableMarkerAndPassMetadata() {
         var text = ChatServiceSession.BuildResponseQualityReviewPrompt("run diagnostics on dc01", "ok", false, 1, 2);
 

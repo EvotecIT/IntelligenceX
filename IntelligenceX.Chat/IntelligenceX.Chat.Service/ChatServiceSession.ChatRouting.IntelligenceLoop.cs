@@ -150,7 +150,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        return draft.Contains('?', StringComparison.Ordinal) && tokenCount <= 48 && draft.Length <= 360;
+        return ContainsQuestionSignal(draft) && tokenCount <= 48 && draft.Length <= 360;
     }
 
     internal static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
