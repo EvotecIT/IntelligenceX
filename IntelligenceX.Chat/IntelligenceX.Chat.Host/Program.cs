@@ -906,8 +906,8 @@ internal static partial class Program {
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
-        Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
-        Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
+        Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
+        Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
         Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 24).");
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible.");

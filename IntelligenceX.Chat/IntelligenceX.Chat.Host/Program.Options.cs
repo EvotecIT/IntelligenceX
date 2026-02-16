@@ -51,8 +51,8 @@ internal static partial class Program {
         public int MaxConsoleToolOutputChars { get; set; } = 2000;
         public bool ShowToolIds { get; set; }
         public bool LiveProgress { get; set; } = true;
-        public int MaxTableRows { get; set; } = 20;
-        public int MaxSample { get; set; } = 10;
+        public int MaxTableRows { get; set; }
+        public int MaxSample { get; set; }
         public bool Redact { get; set; }
         public string? AuthPath { get; set; }
         public string? InstructionsFile { get; set; }
