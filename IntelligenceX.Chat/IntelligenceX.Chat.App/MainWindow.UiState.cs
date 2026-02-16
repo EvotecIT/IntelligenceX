@@ -522,6 +522,8 @@ public sealed partial class MainWindow : Window {
         CancellationTokenSource? pumpCts;
 
         lock (_uiPublishSync) {
+            // Queue teardown is a terminal shutdown boundary and must be self-contained.
+            _shutdownRequested = true;
             pendingSession = _pendingSessionStatePublishTcs;
             pendingOptions = _pendingOptionsStatePublishTcs;
             activeSession = _activeSessionStatePublishTcs;
