@@ -74,24 +74,49 @@ public sealed partial class MainWindow : Window {
     }
 
     private void QueuePersistAppState() {
-        if (!_appStateLoaded) {
+        if (!_appStateLoaded || _shutdownRequested) {
             return;
         }
 
-        CancellationTokenSource cts;
+        var shouldStartWorker = false;
         lock (_persistDebounceSync) {
             _persistDebounceCts?.Cancel();
             _persistDebounceCts?.Dispose();
             _persistDebounceCts = new CancellationTokenSource();
-            cts = _persistDebounceCts;
+            _persistDebounceRequested = true;
+            if (!_persistDebounceWorkerRunning) {
+                _persistDebounceWorkerRunning = true;
+                shouldStartWorker = true;
+            }
         }
 
-        _ = Task.Run(async () => {
+        if (shouldStartWorker) {
+            _ = Task.Run(PersistDebounceWorkerAsync);
+        }
+    }
+
+    private async Task PersistDebounceWorkerAsync() {
+        while (true) {
+            CancellationToken token;
+            lock (_persistDebounceSync) {
+                if (!_persistDebounceRequested || _shutdownRequested) {
+                    _persistDebounceWorkerRunning = false;
+                    return;
+                }
+
+                token = _persistDebounceCts?.Token ?? CancellationToken.None;
+                _persistDebounceRequested = false;
+            }
+
             try {
-                await Task.Delay(PersistDebounceInterval, cts.Token).ConfigureAwait(false);
-                await PersistAppStateAsync().ConfigureAwait(false);
+                await Task.Delay(PersistDebounceInterval, token).ConfigureAwait(false);
             } catch (OperationCanceledException) {
-                // Expected when a newer update supersedes this queued save.
+                // A newer queued request superseded this delay window.
+                continue;
+            }
+
+            try {
+                await PersistAppStateAsync().ConfigureAwait(false);
             } catch (ObjectDisposedException) {
                 // Best-effort background save path during shutdown.
             } catch (Exception ex) {
@@ -106,7 +131,7 @@ public sealed partial class MainWindow : Window {
                     }
                 }
             }
-        });
+        }
     }
 
     private void CancelQueuedPersistAppState() {
@@ -114,6 +139,7 @@ public sealed partial class MainWindow : Window {
         lock (_persistDebounceSync) {
             cts = _persistDebounceCts;
             _persistDebounceCts = null;
+            _persistDebounceRequested = false;
         }
 
         if (cts is null) {

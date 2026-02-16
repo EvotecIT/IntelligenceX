@@ -46,8 +46,6 @@
         // Ignore capture failures.
       }
     }
-
-    e.preventDefault();
   });
 
   dragBar.addEventListener("pointermove", function(e) {
@@ -66,6 +64,7 @@
       return;
     }
 
+    e.preventDefault();
     clearPendingWindowDrag(e.pointerId);
     post("window_drag");
   });

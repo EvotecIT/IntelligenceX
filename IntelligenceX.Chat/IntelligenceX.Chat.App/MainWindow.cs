@@ -218,8 +218,12 @@ public sealed partial class MainWindow : Window {
     private bool _pendingOptionsStatePublish;
     private TaskCompletionSource<object?>? _pendingSessionStatePublishTcs;
     private TaskCompletionSource<object?>? _pendingOptionsStatePublishTcs;
+    private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
     private CancellationTokenSource? _persistDebounceCts;
+    private bool _persistDebounceWorkerRunning;
+    private bool _persistDebounceRequested;
+    private bool _shutdownRequested;
 
     private Process? _serviceProcess;
     private string? _servicePipeName;
@@ -323,6 +327,8 @@ public sealed partial class MainWindow : Window {
         };
 
         Closed += async (_, _) => {
+            _shutdownRequested = true;
+            CancelQueuedUiPublishes();
             StopAutoReconnectLoop();
             CancelQueuedPersistAppState();
             await PersistAppStateAsync().ConfigureAwait(false);

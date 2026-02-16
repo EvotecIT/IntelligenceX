@@ -99,7 +99,7 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            var messagesSnapshot = _messages.ToArray();
+            var messagesSnapshot = SnapshotMessagesForRender(_messages);
             var timestampFormat = _timestampFormat;
             var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat)).ConfigureAwait(false);
             latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
@@ -112,6 +112,16 @@ public sealed partial class MainWindow : Window {
         } finally {
             _transcriptRenderGate.Release();
         }
+    }
+
+    private static (string Role, string Text, DateTime Time)[] SnapshotMessagesForRender(IReadOnlyList<(string Role, string Text, DateTime Time)> messages) {
+        var snapshot = new (string Role, string Text, DateTime Time)[messages.Count];
+        for (var i = 0; i < messages.Count; i++) {
+            var message = messages[i];
+            snapshot[i] = (message.Role ?? string.Empty, message.Text ?? string.Empty, message.Time);
+        }
+
+        return snapshot;
     }
 
     private async Task SetStatusAsync(string text, SessionStatusTone? tone = null, bool? usageLimitSwitchRecommended = null) {
@@ -300,6 +310,10 @@ public sealed partial class MainWindow : Window {
     }
 
     private Task QueueUiPublishAsync(bool requestSessionState, bool requestOptionsState) {
+        if (_shutdownRequested) {
+            return Task.CompletedTask;
+        }
+
         if (!requestSessionState && !requestOptionsState) {
             return Task.CompletedTask;
         }
@@ -307,6 +321,7 @@ public sealed partial class MainWindow : Window {
         Task sessionTask = Task.CompletedTask;
         Task optionsTask = Task.CompletedTask;
         var shouldStartPump = false;
+        CancellationToken pumpToken = CancellationToken.None;
 
         lock (_uiPublishSync) {
             if (requestSessionState) {
@@ -321,14 +336,17 @@ public sealed partial class MainWindow : Window {
                 optionsTask = _pendingOptionsStatePublishTcs.Task;
             }
 
-            if (!_uiPublishPumpRunning) {
+            if (!_uiPublishPumpRunning || _uiPublishPumpCts is null || _uiPublishPumpCts.IsCancellationRequested) {
+                _uiPublishPumpCts?.Dispose();
+                _uiPublishPumpCts = new CancellationTokenSource();
+                pumpToken = _uiPublishPumpCts.Token;
                 _uiPublishPumpRunning = true;
                 shouldStartPump = true;
             }
         }
 
         if (shouldStartPump) {
-            _ = Task.Run(ProcessUiPublishQueueAsync);
+            _ = Task.Run(() => ProcessUiPublishQueueAsync(pumpToken));
         }
 
         if (requestSessionState && requestOptionsState) {
@@ -338,48 +356,123 @@ public sealed partial class MainWindow : Window {
         return requestSessionState ? sessionTask : optionsTask;
     }
 
-    private async Task ProcessUiPublishQueueAsync() {
-        while (true) {
-            bool publishSession;
-            bool publishOptions;
-            TaskCompletionSource<object?>? sessionTcs;
-            TaskCompletionSource<object?>? optionsTcs;
+    private async Task ProcessUiPublishQueueAsync(CancellationToken cancellationToken) {
+        try {
+            while (true) {
+                bool publishSession;
+                bool publishOptions;
+                TaskCompletionSource<object?>? sessionTcs;
+                TaskCompletionSource<object?>? optionsTcs;
 
-            lock (_uiPublishSync) {
-                publishSession = _pendingSessionStatePublish;
-                publishOptions = _pendingOptionsStatePublish;
-                sessionTcs = _pendingSessionStatePublishTcs;
-                optionsTcs = _pendingOptionsStatePublishTcs;
-                _pendingSessionStatePublish = false;
-                _pendingOptionsStatePublish = false;
-                _pendingSessionStatePublishTcs = null;
-                _pendingOptionsStatePublishTcs = null;
+                lock (_uiPublishSync) {
+                    publishSession = _pendingSessionStatePublish;
+                    publishOptions = _pendingOptionsStatePublish;
+                    sessionTcs = _pendingSessionStatePublishTcs;
+                    optionsTcs = _pendingOptionsStatePublishTcs;
+                    _pendingSessionStatePublish = false;
+                    _pendingOptionsStatePublish = false;
+                    _pendingSessionStatePublishTcs = null;
+                    _pendingOptionsStatePublishTcs = null;
+                }
 
                 if (!publishSession && !publishOptions) {
-                    _uiPublishPumpRunning = false;
                     return;
                 }
-            }
 
-            await Task.Delay(UiPublishCoalesceInterval).ConfigureAwait(false);
-
-            if (publishSession) {
                 try {
-                    await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
-                    sessionTcs?.TrySetResult(null);
-                } catch (Exception ex) {
-                    sessionTcs?.TrySetException(ex);
+                    await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    TryCancelUiPublishAwaiter(sessionTcs);
+                    TryCancelUiPublishAwaiter(optionsTcs);
+                    return;
+                }
+
+                if (publishSession) {
+                    try {
+                        await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
+                        sessionTcs?.TrySetResult(null);
+                    } catch (OperationCanceledException) {
+                        TryCancelUiPublishAwaiter(sessionTcs);
+                    } catch (Exception ex) {
+                        sessionTcs?.TrySetException(ex);
+                    }
+                }
+
+                if (publishOptions) {
+                    try {
+                        await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
+                        optionsTcs?.TrySetResult(null);
+                    } catch (OperationCanceledException) {
+                        TryCancelUiPublishAwaiter(optionsTcs);
+                    } catch (Exception ex) {
+                        optionsTcs?.TrySetException(ex);
+                    }
+                }
+            }
+        } finally {
+            var shouldRestart = false;
+            CancellationToken restartToken = CancellationToken.None;
+
+            lock (_uiPublishSync) {
+                _uiPublishPumpRunning = false;
+
+                if (!_shutdownRequested && (_pendingSessionStatePublish || _pendingOptionsStatePublish)) {
+                    if (_uiPublishPumpCts is null || _uiPublishPumpCts.IsCancellationRequested) {
+                        _uiPublishPumpCts?.Dispose();
+                        _uiPublishPumpCts = new CancellationTokenSource();
+                    }
+
+                    restartToken = _uiPublishPumpCts.Token;
+                    _uiPublishPumpRunning = true;
+                    shouldRestart = true;
+                } else {
+                    _uiPublishPumpCts?.Dispose();
+                    _uiPublishPumpCts = null;
                 }
             }
 
-            if (publishOptions) {
-                try {
-                    await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
-                    optionsTcs?.TrySetResult(null);
-                } catch (Exception ex) {
-                    optionsTcs?.TrySetException(ex);
-                }
+            if (shouldRestart) {
+                _ = Task.Run(() => ProcessUiPublishQueueAsync(restartToken));
             }
+        }
+    }
+
+    private static void TryCancelUiPublishAwaiter(TaskCompletionSource<object?>? tcs) {
+        if (tcs is null) {
+            return;
+        }
+
+        tcs.TrySetCanceled();
+    }
+
+    private void CancelQueuedUiPublishes() {
+        TaskCompletionSource<object?>? pendingSession;
+        TaskCompletionSource<object?>? pendingOptions;
+        CancellationTokenSource? pumpCts;
+
+        lock (_uiPublishSync) {
+            pendingSession = _pendingSessionStatePublishTcs;
+            pendingOptions = _pendingOptionsStatePublishTcs;
+            pumpCts = _uiPublishPumpCts;
+            _pendingSessionStatePublish = false;
+            _pendingOptionsStatePublish = false;
+            _pendingSessionStatePublishTcs = null;
+            _pendingOptionsStatePublishTcs = null;
+            _uiPublishPumpCts = null;
+            _uiPublishPumpRunning = false;
+        }
+
+        TryCancelUiPublishAwaiter(pendingSession);
+        TryCancelUiPublishAwaiter(pendingOptions);
+
+        if (pumpCts is null) {
+            return;
+        }
+
+        try {
+            pumpCts.Cancel();
+        } finally {
+            pumpCts.Dispose();
         }
     }
 
