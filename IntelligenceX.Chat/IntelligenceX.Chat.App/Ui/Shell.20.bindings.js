@@ -1,11 +1,92 @@
+  var pendingWindowDrag = null;
+  var windowDragThresholdPx = 6;
+
+  function isNoDragTarget(target) {
+    if (!target || !target.closest) {
+      return false;
+    }
+    return !!target.closest("[data-no-drag],button,input,textarea,a,select");
+  }
+
+  function clearPendingWindowDrag(pointerId) {
+    if (!pendingWindowDrag) {
+      return;
+    }
+
+    if (typeof pointerId === "number" && pendingWindowDrag.pointerId !== pointerId) {
+      return;
+    }
+
+    if (dragBar && dragBar.hasPointerCapture && dragBar.hasPointerCapture(pendingWindowDrag.pointerId)) {
+      try {
+        dragBar.releasePointerCapture(pendingWindowDrag.pointerId);
+      } catch (_) {
+        // Ignore release failures.
+      }
+    }
+
+    pendingWindowDrag = null;
+  }
+
   dragBar.addEventListener("pointerdown", function(e) {
-    if (e.button !== 0) {
+    if (e.button !== 0 || isNoDragTarget(e.target)) {
       return;
     }
-    if (e.target.closest("[data-no-drag],button,input,textarea,a,select")) {
+
+    pendingWindowDrag = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY
+    };
+
+    if (dragBar && dragBar.setPointerCapture) {
+      try {
+        dragBar.setPointerCapture(e.pointerId);
+      } catch (_) {
+        // Ignore capture failures.
+      }
+    }
+
+    e.preventDefault();
+  });
+
+  dragBar.addEventListener("pointermove", function(e) {
+    if (!pendingWindowDrag || pendingWindowDrag.pointerId !== e.pointerId) {
       return;
     }
+
+    if ((e.buttons & 1) !== 1) {
+      clearPendingWindowDrag(e.pointerId);
+      return;
+    }
+
+    var dx = e.clientX - pendingWindowDrag.startX;
+    var dy = e.clientY - pendingWindowDrag.startY;
+    if ((dx * dx + dy * dy) < (windowDragThresholdPx * windowDragThresholdPx)) {
+      return;
+    }
+
+    clearPendingWindowDrag(e.pointerId);
     post("window_drag");
+  });
+
+  dragBar.addEventListener("pointerup", function(e) {
+    clearPendingWindowDrag(e.pointerId);
+  });
+
+  dragBar.addEventListener("pointercancel", function(e) {
+    clearPendingWindowDrag(e.pointerId);
+  });
+
+  dragBar.addEventListener("lostpointercapture", function(e) {
+    clearPendingWindowDrag(e.pointerId);
+  });
+
+  dragBar.addEventListener("dblclick", function(e) {
+    if (isNoDragTarget(e.target)) {
+      return;
+    }
+    post("window_maximize");
   });
 
   byId("btnWinMin").addEventListener("click", function() { post("window_minimize"); });

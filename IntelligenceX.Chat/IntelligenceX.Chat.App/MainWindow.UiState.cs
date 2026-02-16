@@ -99,7 +99,13 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            var html = BuildMessagesHtml(_messages, _timestampFormat);
+            var messagesSnapshot = _messages.ToArray();
+            var timestampFormat = _timestampFormat;
+            var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat)).ConfigureAwait(false);
+            latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
+            if (requestedGeneration < latestGeneration) {
+                return;
+            }
             var json = JsonSerializer.Serialize(html);
             await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask()).ConfigureAwait(false);
             Interlocked.Exchange(ref _transcriptLastRenderUtcTicks, DateTime.UtcNow.Ticks);
