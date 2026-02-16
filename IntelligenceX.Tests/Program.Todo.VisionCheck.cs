@@ -225,6 +225,77 @@ internal static partial class Program {
         }
     }
 
+    private static void TestVisionCheckRunEnforceContractSupportsBacktickedPolicyPrefixes() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-backticks-enforce-run-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var visionPath = Path.Combine(tempDir, "VISION.md");
+            var indexPath = Path.Combine(tempDir, "ix-triage-index.json");
+            var outputPath = Path.Combine(tempDir, "ix-vision-check.json");
+            var summaryPath = Path.Combine(tempDir, "ix-vision-check.md");
+
+            var visionContent = string.Join('\n', new[] {
+                "# Vision",
+                string.Empty,
+                "## Goals",
+                "- Keep delivery quality high",
+                string.Empty,
+                "## Non-Goals",
+                "- Ignore unrelated website redesign work",
+                string.Empty,
+                "## In Scope",
+                "- API stability and security hardening",
+                string.Empty,
+                "## Out Of Scope",
+                "- Marketing campaign redesign",
+                string.Empty,
+                "## Decision Principles",
+                "- `aligned`: security hardening",
+                "- `likely-out-of-scope`: marketing redesign",
+                "- `needs-human-review`: migration rollout"
+            }) + "\n";
+            File.WriteAllText(visionPath, visionContent);
+
+            var indexJson = """
+{
+  "items": [
+    {
+      "kind": "pull_request",
+      "id": "pr#203",
+      "number": 203,
+      "title": "API security hardening",
+      "url": "https://example/pr/203",
+      "score": 81.1,
+      "labels": [ "security" ]
+    }
+  ]
+}
+""";
+            File.WriteAllText(indexPath, indexJson);
+
+            var exitCode = IntelligenceX.Cli.Todo.VisionCheckRunner.RunAsync(new[] {
+                "--repo", "EvotecIT/IntelligenceX",
+                "--vision", visionPath,
+                "--no-refresh-index",
+                "--index", indexPath,
+                "--enforce-contract",
+                "--out", outputPath,
+                "--summary", summaryPath
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exitCode, "enforce contract should pass with backticked policy prefixes");
+            AssertEqual(true, File.Exists(outputPath), "output json written");
+            AssertEqual(true, File.Exists(summaryPath), "summary markdown written");
+        } finally {
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best effort
+            }
+        }
+    }
+
     private static void TestVisionCheckParseDocumentSupportsLegacyDecisionHeading() {
         var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-heading-legacy-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
