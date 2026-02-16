@@ -38,7 +38,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var invokeTask = InvokePhaseProgressLoopAsync(session, writer, "phase_review", "Reviewing...", "Reviewing response", 1, completion.Task);
-        await Task.Delay(TimeSpan.FromMilliseconds(1200));
+        await WaitForStatusAsync(memory, "phase_heartbeat", TimeSpan.FromSeconds(5));
         completion.TrySetResult(null);
         await invokeTask;
 
@@ -95,6 +95,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         return statuses;
+    }
+
+    private static async Task WaitForStatusAsync(MemoryStream stream, string status, TimeSpan timeout) {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline) {
+            var statuses = ParseStatuses(stream);
+            if (statuses.Contains(status, StringComparer.OrdinalIgnoreCase)) {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        throw new TimeoutException($"Timed out waiting for status '{status}'.");
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement obj, string name, out JsonElement value) {
