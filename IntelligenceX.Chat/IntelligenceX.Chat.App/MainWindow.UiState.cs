@@ -899,6 +899,10 @@ public sealed partial class MainWindow : Window {
             "tool_batch_recovering" => "Recovering transient tool failures...",
             "tool_batch_recovered" => "Recovery pass complete",
             "tool_batch_completed" => "Parallel tool batch complete",
+            "phase_plan" => "Planning...",
+            "phase_execute" => "Executing plan...",
+            "phase_review" => "Reviewing...",
+            "phase_heartbeat" => "Still working...",
             _ => string.IsNullOrWhiteSpace(status.Status)
                 ? "Working..."
                 : char.ToUpperInvariant(status.Status[0]) + status.Status[1..]
@@ -978,6 +982,10 @@ public sealed partial class MainWindow : Window {
             "tool_batch_recovering" => "batch recovery",
             "tool_batch_recovered" => "batch recovered",
             "tool_batch_completed" => "batch completed",
+            "phase_plan" => "plan",
+            "phase_execute" => "execute",
+            "phase_review" => "review",
+            "phase_heartbeat" => "phase wait",
             "completed" => "completed",
             "finished" => "finished",
             "done" => "done",

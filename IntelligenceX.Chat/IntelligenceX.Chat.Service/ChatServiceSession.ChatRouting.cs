@@ -28,6 +28,11 @@ internal sealed partial class ChatServiceSession {
     private const string ParallelToolModeAuto = "auto";
     private const string ParallelToolModeForceSerial = "force_serial";
     private const string ParallelToolModeAllowParallel = "allow_parallel";
+    private const string ResponseReviewMarker = "ix:response-review:v1";
+    private const int DefaultMaxReviewPasses = 1;
+    private const int MaxReviewPassesLimit = 3;
+    private const int DefaultModelHeartbeatSeconds = 8;
+    private const int MaxModelHeartbeatSeconds = 60;
 
     private sealed record ChatTurnRunResult(
         ChatResultMessage Result,
@@ -62,6 +67,141 @@ internal sealed partial class ChatServiceSession {
             "off" => ParallelToolModeForceSerial,
             _ => ParallelToolModeAuto
         };
+    }
+
+    private static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
+        var configured = options?.MaxReviewPasses;
+        if (!configured.HasValue || configured.Value <= 0) {
+            return DefaultMaxReviewPasses;
+        }
+
+        return Math.Clamp(configured.Value, 0, MaxReviewPassesLimit);
+    }
+
+    private static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
+        var configured = options?.ModelHeartbeatSeconds;
+        if (!configured.HasValue) {
+            return DefaultModelHeartbeatSeconds;
+        }
+
+        return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
+    }
+
+    private static bool ShouldAttemptResponseQualityReview(
+        string userRequest,
+        string assistantDraft,
+        bool executionContractApplies,
+        bool hasToolActivity,
+        int reviewPassesUsed,
+        int maxReviewPasses) {
+        if (maxReviewPasses <= 0 || reviewPassesUsed >= maxReviewPasses) {
+            return false;
+        }
+
+        if (executionContractApplies && !hasToolActivity) {
+            return false;
+        }
+
+        var request = (userRequest ?? string.Empty).Trim();
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (request.Length == 0 || draft.Length == 0 || draft.Length > 2400) {
+            return false;
+        }
+
+        if (draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionCorrectionMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionWatchdogMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(draft, maxTokens: 96);
+        if (tokenCount <= 0) {
+            return false;
+        }
+
+        if (tokenCount <= 18 && draft.Length <= 220) {
+            return true;
+        }
+
+        if (!hasToolActivity && tokenCount <= 36 && draft.Length <= 320) {
+            return true;
+        }
+
+        return draft.Contains('?', StringComparison.Ordinal) && tokenCount <= 48 && draft.Length <= 360;
+    }
+
+    private static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
+        int maxReviewPasses) {
+        var requestText = TrimForPrompt(userRequest, 520);
+        var draftText = TrimForPrompt(assistantDraft, 1600);
+        var toolActivityHint = hasToolActivity ? "present" : "none";
+        var pass = Math.Max(1, reviewPassNumber);
+        var maxPasses = Math.Max(pass, maxReviewPasses);
+        return $$"""
+            [Response quality review]
+            {{ResponseReviewMarker}}
+            Review pass {{pass}}/{{maxPasses}}.
+
+            User request:
+            {{requestText}}
+
+            Current assistant draft:
+            {{draftText}}
+
+            Tool activity this turn: {{toolActivityHint}}.
+
+            Rewrite the assistant response so it is helpful, direct, and action-oriented.
+            Do not invent tool outputs.
+            If a blocker exists, state the exact blocker and the minimal missing input.
+            Return only the revised assistant response text.
+            """;
+    }
+
+    private async Task<TurnInfo> RunModelPhaseWithProgressAsync(
+        IntelligenceXClient client,
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        ChatInput input,
+        ChatOptions options,
+        CancellationToken cancellationToken,
+        string phaseStatus,
+        string phaseMessage,
+        string heartbeatLabel,
+        int heartbeatSeconds) {
+        var status = string.IsNullOrWhiteSpace(phaseStatus) ? "thinking" : phaseStatus.Trim();
+        if (!string.IsNullOrWhiteSpace(phaseMessage)) {
+            await TryWriteStatusAsync(writer, requestId, threadId, status: status, message: phaseMessage).ConfigureAwait(false);
+        }
+
+        var chatTask = ChatWithToolSchemaRecoveryAsync(client, input, options, cancellationToken);
+        if (heartbeatSeconds <= 0) {
+            return await chatTask.ConfigureAwait(false);
+        }
+
+        var heartbeatInterval = TimeSpan.FromSeconds(Math.Max(1, heartbeatSeconds));
+        var sw = Stopwatch.StartNew();
+        var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        while (!chatTask.IsCompleted) {
+            var heartbeatDelayTask = Task.Delay(heartbeatInterval);
+            var completedTask = await Task.WhenAny(chatTask, heartbeatDelayTask, cancellationTask).ConfigureAwait(false);
+            if (ReferenceEquals(completedTask, chatTask) || ReferenceEquals(completedTask, cancellationTask)) {
+                break;
+            }
+
+            var elapsedSeconds = Math.Max(1, (int)Math.Round(sw.Elapsed.TotalSeconds));
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: "phase_heartbeat",
+                    durationMs: sw.ElapsedMilliseconds,
+                    message: $"{heartbeatLabel}... ({elapsedSeconds}s)")
+                .ConfigureAwait(false);
+        }
+
+        return await chatTask.ConfigureAwait(false);
     }
 
     private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {
@@ -154,6 +294,9 @@ internal sealed partial class ChatServiceSession {
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
         };
+        var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? true;
+        var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
+        var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
 
         if (!string.Equals(parallelToolMode, ParallelToolModeAuto, StringComparison.Ordinal)) {
             await TryWriteStatusAsync(
@@ -176,10 +319,20 @@ internal sealed partial class ChatServiceSession {
             await EmitRoutingInsightsAsync(writer, request.RequestId, threadId, routingInsights).ConfigureAwait(false);
         }
 
-        await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking", message: "Reasoning with available tools...")
+        TurnInfo turn = await RunModelPhaseWithProgressAsync(
+                client,
+                writer,
+                request.RequestId,
+                threadId,
+                ChatInput.FromText(request.Text),
+                CopyChatOptions(options),
+                turnToken,
+                phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                phaseMessage: planExecuteReviewLoop ? "Planning next steps with available tools..." : "Reasoning with available tools...",
+                heartbeatLabel: planExecuteReviewLoop ? "Planning next steps" : "Reasoning",
+                heartbeatSeconds: modelHeartbeatSeconds)
             .ConfigureAwait(false);
-        TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), CopyChatOptions(options), turnToken)
-            .ConfigureAwait(false);
+        var reviewPassesUsed = 0;
         var executionNudgeUsed = false;
         var toolReceiptCorrectionUsed = false;
         var noToolExecutionWatchdogUsed = false;
@@ -201,18 +354,18 @@ internal sealed partial class ChatServiceSession {
                     routedUserRequest = autoSelectionPayload;
                     executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
 
-                    await TryWriteStatusAsync(
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
                             writer,
                             request.RequestId,
                             threadId,
-                            status: "thinking",
-                            message: $"Executing follow-up action {autoActionId} directly.")
-                        .ConfigureAwait(false);
-                    turn = await ChatWithToolSchemaRecoveryAsync(
-                            client,
                             ChatInput.FromText(autoSelectionPayload),
                             CopyChatOptions(options, newThreadOverride: false),
-                            turnToken)
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? "phase_execute" : "thinking",
+                            phaseMessage: $"Executing follow-up action {autoActionId} directly.",
+                            heartbeatLabel: "Executing selected action",
+                            heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;
                 }
@@ -244,18 +397,18 @@ internal sealed partial class ChatServiceSession {
                         reason: executionNudgeReason);
                     executionNudgeUsed = true;
                     var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text);
-                    await TryWriteStatusAsync(
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
                             writer,
                             request.RequestId,
                             threadId,
-                            status: "thinking",
-                            message: "Re-planning to execute available tools in this turn.")
-                        .ConfigureAwait(false);
-                    turn = await ChatWithToolSchemaRecoveryAsync(
-                            client,
                             ChatInput.FromText(nudgePrompt),
                             CopyChatOptions(options, newThreadOverride: false),
-                            turnToken)
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseMessage: "Re-planning to execute available tools in this turn.",
+                            heartbeatLabel: "Re-planning execution",
+                            heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;
                 }
@@ -280,18 +433,18 @@ internal sealed partial class ChatServiceSession {
                         assistantDraftToolCalls: extracted.Count)) {
                     toolReceiptCorrectionUsed = true;
                     var correctionPrompt = BuildToolReceiptCorrectionPrompt(routedUserRequest, text);
-                    await TryWriteStatusAsync(
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
                             writer,
                             request.RequestId,
                             threadId,
-                            status: "thinking",
-                            message: "Re-planning to correct an inconsistent tool receipt in this turn.")
-                        .ConfigureAwait(false);
-                    turn = await ChatWithToolSchemaRecoveryAsync(
-                            client,
                             ChatInput.FromText(correctionPrompt),
                             CopyChatOptions(options, newThreadOverride: false),
-                            turnToken)
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseMessage: "Re-planning to correct an inconsistent tool receipt in this turn.",
+                            heartbeatLabel: "Re-planning tool receipt",
+                            heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;
                 }
@@ -322,18 +475,18 @@ internal sealed partial class ChatServiceSession {
                 if (shouldAttemptWatchdog) {
                     noToolExecutionWatchdogUsed = true;
                     var watchdogPrompt = BuildNoToolExecutionWatchdogPrompt(routedUserRequest, text);
-                    await TryWriteStatusAsync(
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
                             writer,
                             request.RequestId,
                             threadId,
-                            status: "thinking",
-                            message: "Re-validating tool execution for this turn.")
-                        .ConfigureAwait(false);
-                    turn = await ChatWithToolSchemaRecoveryAsync(
-                            client,
                             ChatInput.FromText(watchdogPrompt),
                             CopyChatOptions(options, newThreadOverride: false),
-                            turnToken)
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? "phase_review" : "thinking",
+                            phaseMessage: "Re-validating tool execution for this turn.",
+                            heartbeatLabel: "Re-validating execution",
+                            heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;
                 }
@@ -351,18 +504,18 @@ internal sealed partial class ChatServiceSession {
                     RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
 
                     var escapePrompt = BuildExecutionContractEscapePrompt(routedUserRequest, text);
-                    await TryWriteStatusAsync(
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
                             writer,
                             request.RequestId,
                             threadId,
-                            status: "thinking",
-                            message: "Selected action had no tool activity; retrying with full tool availability.")
-                        .ConfigureAwait(false);
-                    turn = await ChatWithToolSchemaRecoveryAsync(
-                            client,
                             ChatInput.FromText(escapePrompt),
                             CopyChatOptions(options, newThreadOverride: false),
-                            turnToken)
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseMessage: "Selected action had no tool activity; retrying with full tool availability.",
+                            heartbeatLabel: "Re-planning with full tools",
+                            heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;
                 }
@@ -384,18 +537,18 @@ internal sealed partial class ChatServiceSession {
                     RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
 
                     var subsetEscapePrompt = BuildContinuationSubsetEscapePrompt(routedUserRequest, text);
-                    await TryWriteStatusAsync(
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
                             writer,
                             request.RequestId,
                             threadId,
-                            status: "thinking",
-                            message: "Follow-up subset had no tool activity; retrying with full tool availability.")
-                        .ConfigureAwait(false);
-                    turn = await ChatWithToolSchemaRecoveryAsync(
-                            client,
                             ChatInput.FromText(subsetEscapePrompt),
                             CopyChatOptions(options, newThreadOverride: false),
-                            turnToken)
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseMessage: "Follow-up subset had no tool activity; retrying with full tool availability.",
+                            heartbeatLabel: "Expanding follow-up tools",
+                            heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;
                 }
@@ -408,6 +561,37 @@ internal sealed partial class ChatServiceSession {
                         userRequest: routedUserRequest,
                         assistantDraft: text,
                         reason: blockerReason);
+                }
+
+                if (planExecuteReviewLoop
+                    && ShouldAttemptResponseQualityReview(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        executionContractApplies: executionContractApplies,
+                        hasToolActivity: hasToolActivity,
+                        reviewPassesUsed: reviewPassesUsed,
+                        maxReviewPasses: maxReviewPasses)) {
+                    reviewPassesUsed++;
+                    var reviewPrompt = BuildResponseQualityReviewPrompt(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        hasToolActivity: hasToolActivity,
+                        reviewPassNumber: reviewPassesUsed,
+                        maxReviewPasses: maxReviewPasses);
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            ChatInput.FromText(reviewPrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: "phase_review",
+                            phaseMessage: $"Reviewing response quality ({reviewPassesUsed}/{maxReviewPasses})...",
+                            heartbeatLabel: "Reviewing response",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
                 }
 
                 text = AppendTurnCompletionNotice(text, turn);
@@ -439,6 +623,15 @@ internal sealed partial class ChatServiceSession {
             }
 
             toolRounds++;
+            if (planExecuteReviewLoop) {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: "phase_execute",
+                        message: $"Executing {extracted.Count} planned tool call(s)...")
+                    .ConfigureAwait(false);
+            }
 
             foreach (var call in extracted) {
                 await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "tool_call", toolName: call.Name, toolCallId: call.CallId)
@@ -479,14 +672,21 @@ internal sealed partial class ChatServiceSession {
             foreach (var output in executed) {
                 next.AddToolOutput(output.CallId, output.Output);
             }
-            await TryWriteStatusAsync(
+            turn = await RunModelPhaseWithProgressAsync(
+                    client,
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "thinking",
-                    message: $"Analyzing {executed.Count} tool result(s)...")
+                    next,
+                    CopyChatOptions(options, newThreadOverride: false),
+                    turnToken,
+                    phaseStatus: planExecuteReviewLoop ? "phase_review" : "thinking",
+                    phaseMessage: planExecuteReviewLoop
+                        ? $"Reviewing {executed.Count} tool result(s) and deciding next steps..."
+                        : $"Analyzing {executed.Count} tool result(s)...",
+                    heartbeatLabel: "Reviewing tool results",
+                    heartbeatSeconds: modelHeartbeatSeconds)
                 .ConfigureAwait(false);
-            turn = await ChatWithToolSchemaRecoveryAsync(client, next, CopyChatOptions(options, newThreadOverride: false), turnToken).ConfigureAwait(false);
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
