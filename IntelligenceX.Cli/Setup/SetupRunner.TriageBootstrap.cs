@@ -65,7 +65,8 @@ internal static partial class SetupRunner {
             workflowTemplate,
             projectOwner,
             projectNumber,
-            maxItems: 500);
+            maxItems: 500,
+            visionDriftThreshold: 0.70);
 
         var visionTemplate = ProjectBootstrapRunner.LoadVisionTemplate();
         var visionContent = ProjectBootstrapRunner.RenderVisionTemplate(

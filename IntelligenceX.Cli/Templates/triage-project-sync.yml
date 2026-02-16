@@ -17,6 +17,10 @@ on:
         description: "Max entries to sync"
         required: false
         default: "{{MaxItems}}"
+      drift_threshold:
+        description: "Vision drift threshold for fail-on-drift gate (0-1)"
+        required: false
+        default: "{{VisionDriftThreshold}}"
 
 permissions:
   contents: read
@@ -53,6 +57,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          DRIFT_THRESHOLD="${{ github.event.inputs.drift_threshold }}"
+          if [ -z "$DRIFT_THRESHOLD" ]; then DRIFT_THRESHOLD="{{VisionDriftThreshold}}"; fi
+
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
             todo vision-check \
             --repo "${{ github.repository }}" \
@@ -61,7 +68,7 @@ jobs:
             --index artifacts/triage/ix-triage-index.json \
             --enforce-contract \
             --fail-on-drift \
-            --drift-threshold 0.70 \
+            --drift-threshold "$DRIFT_THRESHOLD" \
             --out artifacts/triage/ix-vision-check.json \
             --summary artifacts/triage/ix-vision-check.md
 

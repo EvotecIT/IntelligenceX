@@ -7,20 +7,24 @@ internal static partial class Program {
 owner={{Owner}}
 project={{ProjectNumber}}
 max={{MaxItems}}
+drift={{VisionDriftThreshold}}
 """;
 
         var rendered = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.RenderWorkflowTemplate(
             template,
             "EvotecIT",
             321,
-            750);
+            750,
+            0.85);
 
         AssertContainsText(rendered, "owner=EvotecIT", "owner token replaced");
         AssertContainsText(rendered, "project=321", "project token replaced");
         AssertContainsText(rendered, "max=750", "max items token replaced");
+        AssertContainsText(rendered, "drift=0.85", "drift threshold token replaced");
         AssertEqual(false, rendered.Contains("{{Owner}}", StringComparison.Ordinal), "owner placeholder removed");
         AssertEqual(false, rendered.Contains("{{ProjectNumber}}", StringComparison.Ordinal), "project placeholder removed");
         AssertEqual(false, rendered.Contains("{{MaxItems}}", StringComparison.Ordinal), "max items placeholder removed");
+        AssertEqual(false, rendered.Contains("{{VisionDriftThreshold}}", StringComparison.Ordinal), "drift threshold placeholder removed");
     }
 
     private static void TestProjectBootstrapRenderWorkflowTemplateClampsMaxItems() {
@@ -30,7 +34,8 @@ max={{MaxItems}}
             template,
             "EvotecIT",
             123,
-            0);
+            0,
+            0.70);
 
         AssertContainsText(rendered, "max=1", "max items clamped to minimum");
     }
@@ -75,14 +80,17 @@ project={{ProjectNumber}}
             template,
             "EvotecIT",
             654,
-            300);
+            300,
+            0.70);
 
         AssertContainsText(rendered, "todo project-sync", "workflow contains project sync step");
         AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
         AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
         AssertContainsText(rendered, "--enforce-contract", "workflow enforces vision contract");
         AssertContainsText(rendered, "--fail-on-drift", "workflow enables vision drift gate");
-        AssertContainsText(rendered, "--drift-threshold 0.70", "workflow sets deterministic drift threshold");
+        AssertContainsText(rendered, "default: \"0.70\"", "workflow dispatch default includes drift threshold");
+        AssertContainsText(rendered, "DRIFT_THRESHOLD=\"${{ github.event.inputs.drift_threshold }}\"", "workflow reads drift threshold input");
+        AssertContainsText(rendered, "--drift-threshold \"$DRIFT_THRESHOLD\"", "workflow applies drift threshold input");
     }
 
     private static void TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment() {
@@ -91,7 +99,8 @@ project={{ProjectNumber}}
             template,
             "EvotecIT",
             654,
-            300);
+            300,
+            0.70);
 
         AssertContainsText(rendered, "intelligencex:triage-project-sync-summary", "workflow summary marker present");
         AssertContainsText(rendered, "intelligencex:triage-control-dashboard", "workflow dashboard marker present");
