@@ -438,9 +438,10 @@ public sealed partial class MainWindow : Window {
 
             if (removalIndex < 0) {
                 // Keep cap enforcement deterministic even if all remaining entries are currently protected.
-                removalIndex = userConversations.Count - 1;
-                while (removalIndex >= 0 && ReferenceEquals(userConversations[removalIndex], activeConversation)) {
-                    removalIndex--;
+                if (activeRequestConversation is not null && !ReferenceEquals(activeRequestConversation, activeConversation)) {
+                    removalIndex = userConversations.FindLastIndex(item => ReferenceEquals(item, activeRequestConversation));
+                } else {
+                    removalIndex = userConversations.FindLastIndex(item => !ReferenceEquals(item, activeConversation));
                 }
                 if (removalIndex < 0) {
                     removalIndex = userConversations.Count - 1;
