@@ -11,7 +11,7 @@ public sealed class ActionModelProtocolTests {
     /// Ensures pending action protocol blocks are removed from visible text and converted to a concise action summary.
     /// </summary>
     [Fact]
-    public void TryStripAndExtractPendingActions_StripsProtocolAndBuildsVisibleSummary() {
+    public void TryStripAndExtractPendingActions_StripsProtocolAndKeepsVisibleText() {
         const string text = """
                             I can retry this with safer defaults.
 
@@ -32,8 +32,31 @@ public sealed class ActionModelProtocolTests {
         Assert.Equal("act_ad0_sys_top5_bare", actions[0].Id);
 
         var visible = ActionModelProtocol.MergeVisibleTextWithPendingActions(cleaned, actions);
-        Assert.Contains("follow-up actions", visible, System.StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("`/act act_ad0_sys_top5_bare`", visible);
+        Assert.Equal("I can retry this with safer defaults.", visible);
+    }
+
+    /// <summary>
+    /// Ensures loose action blocks without the [Action]/marker envelope are still stripped and captured.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_StripsLooseActionBlockWithoutEnvelope() {
+        const string text = """
+                            id
+                            act_repl_now
+                            title
+                            Run fresh AD replication summary now
+                            request
+                            Execute ad_replication_summary for current forest/domain scope and return current health, failed edges, stale links, and top replication errors.
+                            reply
+                            /act act_repl_now
+                            """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.True(normalized);
+        Assert.Single(actions);
+        Assert.Equal("act_repl_now", actions[0].Id);
+        Assert.Equal(string.Empty, cleaned);
     }
 
     /// <summary>

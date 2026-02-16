@@ -12,6 +12,9 @@ internal static class ActionModelProtocol {
     private const string ActionHeader = "[Action]";
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
+    private static readonly Regex LooseActionBlockRegex = new(
+        @"(?is)(?:^|\n)\s*id\s*:?\s*(?<id>[^\r\n]+)\s*\r?\n\s*title\s*:?\s*(?<title>[^\r\n]*)\s*\r?\n\s*request\s*:?\s*(?<request>.*?)\r?\n\s*reply\s*:?\s*(?<reply>[^\r\n]+)",
+        RegexOptions.CultureInvariant);
 
     public static bool TryStripAndExtractPendingActions(
         string? assistantText,
@@ -77,6 +80,7 @@ internal static class ActionModelProtocol {
             for (var j = markerIndex + 1; j < lines.Length; j++) {
                 var current = lines[j] ?? string.Empty;
                 var trimmedCurrent = current.Trim();
+                endExclusive = j + 1;
                 if (IsFenceBoundary(trimmedCurrent)) {
                     endExclusive = j;
                     break;
@@ -146,7 +150,16 @@ internal static class ActionModelProtocol {
         }
 
         if (!markerSeen) {
-            return false;
+            if (!TryStripLoosePendingActions(normalized, out var looseActions, out var looseCleanedText)) {
+                return false;
+            }
+
+            actions = looseActions
+                .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToArray();
+            cleanedText = looseCleanedText;
+            return true;
         }
 
         var kept = new List<string>(lines.Length);
@@ -185,17 +198,7 @@ internal static class ActionModelProtocol {
         !string.IsNullOrWhiteSpace(line) && line.StartsWith("```", StringComparison.Ordinal);
 
     public static string MergeVisibleTextWithPendingActions(string cleanedText, IReadOnlyList<AssistantPendingAction> actions) {
-        var text = (cleanedText ?? string.Empty).Trim();
-        if (actions is null || actions.Count == 0) {
-            return text;
-        }
-
-        var summary = BuildPendingActionSummary(actions);
-        if (summary.Length == 0) {
-            return text;
-        }
-
-        return text.Length == 0 ? summary : text + "\n\n" + summary;
+        return (cleanedText ?? string.Empty).Trim();
     }
 
     private static string BuildPendingActionSummary(IReadOnlyList<AssistantPendingAction> actions) {
@@ -246,6 +249,89 @@ internal static class ActionModelProtocol {
 
         value = line[(idx + 1)..].Trim();
         return true;
+    }
+
+    private static bool TryStripLoosePendingActions(
+        string normalizedText,
+        out IReadOnlyList<AssistantPendingAction> actions,
+        out string cleanedText) {
+        cleanedText = normalizedText;
+        actions = Array.Empty<AssistantPendingAction>();
+        if (string.IsNullOrWhiteSpace(normalizedText) || normalizedText.Length > MaxActionParsingChars) {
+            return false;
+        }
+
+        var matches = LooseActionBlockRegex.Matches(normalizedText);
+        if (matches.Count == 0) {
+            return false;
+        }
+
+        var extracted = new List<AssistantPendingAction>();
+        var removeRanges = new List<(int Start, int EndExclusive)>();
+
+        for (var i = 0; i < matches.Count && extracted.Count < 6; i++) {
+            var match = matches[i];
+            if (!match.Success) {
+                continue;
+            }
+            if (IsInsideCodeFence(normalizedText, match.Index)) {
+                continue;
+            }
+
+            var id = (match.Groups["id"].Value ?? string.Empty).Trim();
+            var title = (match.Groups["title"].Value ?? string.Empty).Trim();
+            var request = Regex.Replace((match.Groups["request"].Value ?? string.Empty).Trim(), @"\s+", " ");
+            var reply = (match.Groups["reply"].Value ?? string.Empty).Trim();
+            if (id.Length == 0 || !LooksLikeValidActionReply(reply, id)) {
+                continue;
+            }
+
+            extracted.Add(new AssistantPendingAction(id, title, request, reply));
+            removeRanges.Add((match.Index, match.Index + match.Length));
+        }
+
+        if (extracted.Count == 0) {
+            return false;
+        }
+
+        var sb = new StringBuilder(normalizedText.Length);
+        var cursor = 0;
+        for (var i = 0; i < removeRanges.Count; i++) {
+            var (start, endExclusive) = removeRanges[i];
+            if (start > cursor) {
+                sb.Append(normalizedText, cursor, start - cursor);
+            }
+            cursor = Math.Max(cursor, endExclusive);
+        }
+        if (cursor < normalizedText.Length) {
+            sb.Append(normalizedText, cursor, normalizedText.Length - cursor);
+        }
+
+        cleanedText = Regex.Replace(sb.ToString().Trim(), @"\n{3,}", "\n\n");
+        actions = extracted
+            .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToArray();
+        return true;
+    }
+
+    private static bool IsInsideCodeFence(string text, int index) {
+        var value = text ?? string.Empty;
+        if (value.Length == 0 || index <= 0) {
+            return false;
+        }
+
+        var prefixLength = Math.Min(index, value.Length);
+        var prefix = value[..prefixLength].Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = prefix.Split('\n');
+        var inFence = false;
+        for (var i = 0; i < lines.Length; i++) {
+            if (IsFenceBoundary((lines[i] ?? string.Empty).Trim())) {
+                inFence = !inFence;
+            }
+        }
+
+        return inFence;
     }
 
     private static bool LooksLikeValidActionReply(string reply, string id) {

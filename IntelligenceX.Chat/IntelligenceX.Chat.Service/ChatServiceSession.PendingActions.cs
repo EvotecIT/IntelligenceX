@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -12,6 +13,9 @@ internal sealed partial class ChatServiceSession {
     private const int MaxActionParsingChars = 64 * 1024;
     private const int MaxPendingActionAssistantContextChars = 4096;
     private const int MaxFallbackChoiceActionTitleChars = 96;
+    private static readonly Regex LooseActionBlockRegex = new(
+        @"(?is)(?:^|\n)\s*id\s*:?\s*(?<id>[^\r\n]+)\s*\r?\n\s*title\s*:?\s*(?<title>[^\r\n]*)\s*\r?\n\s*request\s*:?\s*(?<request>.*?)\r?\n\s*reply\s*:?\s*(?<reply>[^\r\n]+)",
+        RegexOptions.CultureInvariant);
     private static readonly char[] PendingActionConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
     private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
     private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
@@ -56,9 +60,16 @@ internal sealed partial class ChatServiceSession {
 
         var text = assistantText ?? string.Empty;
         var markerIdx = text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase);
-        bool fromFallbackChoices;
-        List<PendingAction> actions;
-        if (markerIdx < 0) {
+        if (markerIdx >= 0 && text.Length > MaxActionParsingChars) {
+            // Keep a window around the first marker to cap worst-case parsing work.
+            var start = Math.Max(0, markerIdx - 256);
+            var len = Math.Min(MaxActionParsingChars, text.Length - start);
+            text = text.Substring(start, len);
+        }
+
+        var actions = ExtractPendingActions(text);
+        var fromFallbackChoices = false;
+        if (actions.Count == 0 && markerIdx < 0) {
             // Fallback: allow compact assistant choice lists (for example bullet options) to be
             // selected naturally on the next user turn, even when the model omitted ix:action blocks.
             actions = ExtractFallbackChoicePendingActions(text);
@@ -69,16 +80,6 @@ internal sealed partial class ChatServiceSession {
             }
 
             fromFallbackChoices = true;
-        } else {
-            if (text.Length > MaxActionParsingChars) {
-                // Keep a window around the first marker to cap worst-case parsing work.
-                var start = Math.Max(0, markerIdx - 256);
-                var len = Math.Min(MaxActionParsingChars, text.Length - start);
-                text = text.Substring(start, len);
-            }
-
-            actions = ExtractPendingActions(text);
-            fromFallbackChoices = false;
         }
 
         var assistantContext = text.Length <= MaxPendingActionAssistantContextChars
@@ -290,6 +291,40 @@ internal sealed partial class ChatServiceSession {
             outcome: "match",
             reason: matchReason,
             selectedActionId: selected.Value.Id);
+        return true;
+    }
+
+    private static bool TryBuildSinglePendingActionSelectionPayload(string assistantDraft, out string payloadJson, out string actionId) {
+        payloadJson = string.Empty;
+        actionId = string.Empty;
+
+        var actions = ExtractPendingActions(assistantDraft);
+        if (actions.Count == 0) {
+            actions = ExtractFallbackChoicePendingActions(assistantDraft);
+        }
+        if (actions.Count != 1) {
+            return false;
+        }
+
+        var action = actions[0];
+        actionId = (action.Id ?? string.Empty).Trim();
+        if (actionId.Length == 0) {
+            return false;
+        }
+
+        var title = (action.Title ?? string.Empty).Trim();
+        var request = string.IsNullOrWhiteSpace(action.Request) ? title : action.Request.Trim();
+        if (request.Length == 0) {
+            return false;
+        }
+
+        payloadJson = JsonSerializer.Serialize(new {
+            ix_action_selection = new {
+                id = actionId,
+                title,
+                request = CollapseWhitespace(request).Trim()
+            }
+        });
         return true;
     }
 
@@ -839,8 +874,9 @@ internal sealed partial class ChatServiceSession {
             return new List<PendingAction>();
         }
 
-        // Cheap precheck to avoid parsing when the marker isn't present.
-        if (text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+        // Cheap precheck to avoid parsing when neither the standard marker nor a loose action shape is present.
+        if (text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase) < 0
+            && !LooksLikeLooseActionBlockCandidate(text)) {
             return new List<PendingAction>();
         }
 
@@ -959,7 +995,94 @@ internal sealed partial class ChatServiceSession {
             actions = actions.Where(a => a.Id.Length > 0 && seen.Add(a.Id)).ToList();
         }
 
+        if (actions.Count == 0 && text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            actions = ExtractLoosePendingActions(text);
+        }
+
         return actions;
+    }
+
+    private static bool LooksLikeLooseActionBlockCandidate(string text) {
+        var value = text ?? string.Empty;
+        if (value.Length == 0) {
+            return false;
+        }
+
+        if (value.IndexOf("/act", StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        return value.IndexOf("id", StringComparison.OrdinalIgnoreCase) >= 0
+               && value.IndexOf("request", StringComparison.OrdinalIgnoreCase) >= 0
+               && value.IndexOf("reply", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static List<PendingAction> ExtractLoosePendingActions(string assistantText) {
+        var text = assistantText ?? string.Empty;
+        if (text.Length == 0) {
+            return new List<PendingAction>();
+        }
+
+        var actions = new List<PendingAction>();
+        var matches = LooseActionBlockRegex.Matches(text);
+        for (var i = 0; i < matches.Count && actions.Count < 6; i++) {
+            var match = matches[i];
+            if (!match.Success) {
+                continue;
+            }
+            if (IsInsideCodeFence(text, match.Index)) {
+                continue;
+            }
+
+            var id = (match.Groups["id"].Value ?? string.Empty).Trim();
+            var title = (match.Groups["title"].Value ?? string.Empty).Trim();
+            var request = CollapseWhitespace((match.Groups["request"].Value ?? string.Empty).Trim());
+            var reply = (match.Groups["reply"].Value ?? string.Empty).Trim();
+
+            if (id.Length == 0) {
+                continue;
+            }
+            if (!LooksLikeValidActionReply(reply, id)) {
+                continue;
+            }
+            if (id.Length > 64) {
+                id = id[..64];
+            }
+            if (title.Length > 200) {
+                title = title[..200];
+            }
+            if (request.Length > 600) {
+                request = request[..600];
+            }
+
+            actions.Add(new PendingAction(Id: id, Title: title, Request: request));
+        }
+
+        if (actions.Count > 1) {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            actions = actions.Where(a => a.Id.Length > 0 && seen.Add(a.Id)).ToList();
+        }
+
+        return actions;
+    }
+
+    private static bool IsInsideCodeFence(string text, int index) {
+        var value = text ?? string.Empty;
+        if (value.Length == 0 || index <= 0) {
+            return false;
+        }
+
+        var prefixLength = Math.Min(index, value.Length);
+        var lines = SplitLines(value[..prefixLength]);
+        var inFence = false;
+        for (var i = 0; i < lines.Count; i++) {
+            var trimmed = (lines[i] ?? string.Empty).Trim();
+            if (trimmed.StartsWith("```", StringComparison.Ordinal)) {
+                inFence = !inFence;
+            }
+        }
+
+        return inFence;
     }
 
     private static bool LooksLikeValidActionReply(string reply, string id) {

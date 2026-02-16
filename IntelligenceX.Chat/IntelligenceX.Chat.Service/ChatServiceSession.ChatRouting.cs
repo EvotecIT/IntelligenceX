@@ -144,11 +144,38 @@ internal sealed partial class ChatServiceSession {
         var toolReceiptCorrectionUsed = false;
         var noToolExecutionWatchdogUsed = false;
         var executionContractEscapeUsed = false;
+        var autoPendingActionReplayUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+
+                if (!autoPendingActionReplayUsed
+                    && toolCalls.Count == 0
+                    && toolOutputs.Count == 0
+                    && LooksLikeContinuationFollowUp(userRequest)
+                    && TryBuildSinglePendingActionSelectionPayload(text, out var autoSelectionPayload, out var autoActionId)) {
+                    autoPendingActionReplayUsed = true;
+                    routedUserRequest = autoSelectionPayload;
+                    executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
+
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: $"Executing follow-up action {autoActionId} directly.")
+                        .ConfigureAwait(false);
+                    turn = await ChatWithToolSchemaRecoveryAsync(
+                            client,
+                            ChatInput.FromText(autoSelectionPayload),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 var shouldAttemptExecutionNudge = false;
                 var executionNudgeReason = executionNudgeUsed
                     ? "execution_nudge_already_used"
