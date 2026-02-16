@@ -42,69 +42,71 @@
     pendingWindowDrag = null;
   }
 
-  dragBar.addEventListener("pointerdown", function(e) {
-    if (e.button !== 0 || isNoDragTarget(e.target)) {
-      return;
-    }
-
-    // Reset any stale candidate before tracking a new pointer sequence.
-    clearPendingWindowDrag(undefined, true);
-
-    pendingWindowDrag = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY
-    };
-
-    if (dragBar && dragBar.setPointerCapture) {
-      try {
-        dragBar.setPointerCapture(e.pointerId);
-      } catch (_) {
-        // Ignore capture failures.
+  if (dragBar) {
+    dragBar.addEventListener("pointerdown", function(e) {
+      if (e.button !== 0 || isNoDragTarget(e.target)) {
+        return;
       }
-    }
-  });
 
-  dragBar.addEventListener("pointermove", function(e) {
-    if (!pendingWindowDrag || pendingWindowDrag.pointerId !== e.pointerId) {
-      return;
-    }
+      // Reset any stale candidate before tracking a new pointer sequence.
+      clearPendingWindowDrag(undefined, true);
 
-    if ((e.buttons & 1) !== 1) {
+      pendingWindowDrag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY
+      };
+
+      if (dragBar.setPointerCapture) {
+        try {
+          dragBar.setPointerCapture(e.pointerId);
+        } catch (_) {
+          // Ignore capture failures.
+        }
+      }
+    });
+
+    dragBar.addEventListener("pointermove", function(e) {
+      if (!pendingWindowDrag || pendingWindowDrag.pointerId !== e.pointerId) {
+        return;
+      }
+
+      if ((e.buttons & 1) !== 1) {
+        clearPendingWindowDrag(e.pointerId);
+        return;
+      }
+
+      var dx = e.clientX - pendingWindowDrag.startX;
+      var dy = e.clientY - pendingWindowDrag.startY;
+      if ((dx * dx + dy * dy) < (windowDragThresholdPx * windowDragThresholdPx)) {
+        return;
+      }
+
+      e.preventDefault();
       clearPendingWindowDrag(e.pointerId);
-      return;
-    }
+      post("window_drag");
+    });
 
-    var dx = e.clientX - pendingWindowDrag.startX;
-    var dy = e.clientY - pendingWindowDrag.startY;
-    if ((dx * dx + dy * dy) < (windowDragThresholdPx * windowDragThresholdPx)) {
-      return;
-    }
+    dragBar.addEventListener("pointerup", function(e) {
+      clearPendingWindowDrag(e.pointerId);
+    });
 
-    e.preventDefault();
-    clearPendingWindowDrag(e.pointerId);
-    post("window_drag");
-  });
+    dragBar.addEventListener("pointercancel", function(e) {
+      clearPendingWindowDrag(e.pointerId);
+    });
 
-  dragBar.addEventListener("pointerup", function(e) {
-    clearPendingWindowDrag(e.pointerId);
-  });
+    dragBar.addEventListener("lostpointercapture", function(e) {
+      var hasPointerId = typeof e.pointerId === "number";
+      clearPendingWindowDrag(hasPointerId ? e.pointerId : undefined, !hasPointerId);
+    });
 
-  dragBar.addEventListener("pointercancel", function(e) {
-    clearPendingWindowDrag(e.pointerId);
-  });
-
-  dragBar.addEventListener("lostpointercapture", function(e) {
-    var hasPointerId = typeof e.pointerId === "number";
-    clearPendingWindowDrag(hasPointerId ? e.pointerId : undefined, !hasPointerId);
-  });
-
-  dragBar.addEventListener("dblclick", function(e) {
-    if (isNoDragTarget(e.target)) {
-      return;
-    }
-    post("window_maximize");
-  });
+    dragBar.addEventListener("dblclick", function(e) {
+      if (isNoDragTarget(e.target)) {
+        return;
+      }
+      post("window_maximize");
+    });
+  }
 
   byId("btnWinMin").addEventListener("click", function() { post("window_minimize"); });
   byId("btnWinMax").addEventListener("click", function() { post("window_maximize"); });
