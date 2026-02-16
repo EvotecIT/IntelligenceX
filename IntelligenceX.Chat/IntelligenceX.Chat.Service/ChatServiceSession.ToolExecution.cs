@@ -875,7 +875,9 @@ internal sealed partial class ChatServiceSession {
                || code.Contains("forbidden", StringComparison.OrdinalIgnoreCase)
                || code.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
                || code.Contains("access_denied", StringComparison.OrdinalIgnoreCase)
-               || code.Contains("auth", StringComparison.OrdinalIgnoreCase);
+               || string.Equals(code, "auth_failed", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(code, "authentication_failed", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(code, "authorization_failed", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildToolFailureSearchText(ToolOutputDto output) {

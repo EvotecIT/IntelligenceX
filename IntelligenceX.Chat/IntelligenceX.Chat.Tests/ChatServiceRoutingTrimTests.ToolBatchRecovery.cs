@@ -109,6 +109,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldRetryToolCall_DoesNotTreatAmbiguousAuthSubstringCodeAsPermanent() {
+        var resolveRetryProfileMethod = typeof(ChatServiceSession).GetMethod(
+            "ResolveRetryProfile",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolveRetryProfileMethod);
+        var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
+            "ShouldRetryToolCall",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(shouldRetryToolCallMethod);
+
+        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { "ad_replication_summary" });
+        var output = new ToolOutputDto {
+            CallId = "call_004",
+            Output = "{\"ok\":false,\"error_code\":\"oauth_refresh_transient\",\"error\":\"token refresh race\"}",
+            Ok = false,
+            ErrorCode = "oauth_refresh_transient",
+            Error = "token refresh race",
+            IsTransient = true
+        };
+
+        var result = shouldRetryToolCallMethod!.Invoke(null, new[] { output, profile, (object)0 });
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void HasLikelyMutatingToolCalls_FalseWithoutStructuredHints() {
         var calls = new List<ToolCall> {
             new("call_1", "ad_replication_summary", null, null, new JsonObject()),
