@@ -71,7 +71,7 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
-    private static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
+    internal static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
         var configured = options?.MaxReviewPasses;
         if (!configured.HasValue || configured.Value <= 0) {
             return DefaultMaxReviewPasses;
@@ -80,7 +80,7 @@ internal sealed partial class ChatServiceSession {
         return Math.Clamp(configured.Value, DefaultMaxReviewPasses, MaxReviewPassesLimit);
     }
 
-    private static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
+    internal static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
         var configured = options?.ModelHeartbeatSeconds;
         if (!configured.HasValue) {
             return DefaultModelHeartbeatSeconds;
@@ -89,7 +89,7 @@ internal sealed partial class ChatServiceSession {
         return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
     }
 
-    private static bool TryReadProactiveModeFromRequestText(string requestText, out bool enabled) {
+    internal static bool TryReadProactiveModeFromRequestText(string requestText, out bool enabled) {
         enabled = false;
         var text = requestText ?? string.Empty;
         if (text.Length == 0) {
@@ -120,7 +120,7 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ShouldAttemptResponseQualityReview(
+    internal static bool ShouldAttemptResponseQualityReview(
         string userRequest,
         string assistantDraft,
         bool executionContractApplies,
@@ -164,7 +164,7 @@ internal sealed partial class ChatServiceSession {
         return draft.Contains('?', StringComparison.Ordinal) && tokenCount <= 48 && draft.Length <= 360;
     }
 
-    private static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
+    internal static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
         int maxReviewPasses) {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(assistantDraft, 1600);
@@ -191,7 +191,7 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
-    private static bool ShouldAttemptProactiveFollowUpReview(
+    internal static bool ShouldAttemptProactiveFollowUpReview(
         bool proactiveModeEnabled,
         bool hasToolActivity,
         bool proactiveFollowUpUsed,
@@ -214,7 +214,7 @@ internal sealed partial class ChatServiceSession {
         return ExtractPendingActions(draft).Count == 0;
     }
 
-    private static string BuildProactiveFollowUpReviewPrompt(string userRequest, string assistantDraft) {
+    internal static string BuildProactiveFollowUpReviewPrompt(string userRequest, string assistantDraft) {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(assistantDraft, 1800);
         return $$"""
@@ -237,7 +237,7 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
-    private async Task RunPhaseProgressLoopAsync(
+    internal async Task RunPhaseProgressLoopAsync(
         StreamWriter writer,
         string requestId,
         string threadId,
@@ -299,7 +299,7 @@ internal sealed partial class ChatServiceSession {
         await phaseTask.ConfigureAwait(false);
     }
 
-    private async Task<TurnInfo> RunModelPhaseWithProgressAsync(
+    internal async Task<TurnInfo> RunModelPhaseWithProgressAsync(
         IntelligenceXClient client,
         StreamWriter writer,
         string requestId,
@@ -326,7 +326,7 @@ internal sealed partial class ChatServiceSession {
         return await chatTask.ConfigureAwait(false);
     }
 
-    private Task<TurnInfo> RunReviewOnlyModelPhaseWithProgressAsync(
+    internal Task<TurnInfo> RunReviewOnlyModelPhaseWithProgressAsync(
         IntelligenceXClient client,
         StreamWriter writer,
         string requestId,
@@ -365,7 +365,7 @@ internal sealed partial class ChatServiceSession {
         return copy;
     }
 
-    private static ChatOptions CopyChatOptionsWithoutTools(ChatOptions options, bool? newThreadOverride = null) {
+    internal static ChatOptions CopyChatOptionsWithoutTools(ChatOptions options, bool? newThreadOverride = null) {
         var copy = CopyChatOptions(options, newThreadOverride);
         copy.Tools = null;
         copy.ToolChoice = null;

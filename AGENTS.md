@@ -98,6 +98,8 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 **Testing**
 - Run targeted `dotnet build` or tests if a change touches runtime behavior.
 - Note any skipped tests and why.
+- For Chat routing tests, prefer direct calls to `internal` helpers (via existing `InternalsVisibleTo`) instead of reflection against private methods.
+- For streaming/status tests, avoid reading from actively-written streams; use synchronized snapshots or another thread-safe capture approach.
 
 **Repo-Local Skills**
 - Use repo skills from `/.agents/skills/README.md` for repeatable task execution.
