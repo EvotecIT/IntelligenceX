@@ -14,6 +14,7 @@ internal sealed partial class ChatServiceSession {
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
     private const string ExecutionWatchdogMarker = "ix:execution-watchdog:v1";
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
+    private const string ExecutionContractEscapeMarker = "ix:execution-contract-escape:v1";
     private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
         MaxDepth = 16,
         CommentHandling = JsonCommentHandling.Disallow,
@@ -789,6 +790,28 @@ internal sealed partial class ChatServiceSession {
 
             Please retry this action. Reply `continue` to retry in this context, or use the action command below.
             {{replayActionBlock}}
+            """;
+    }
+
+    private static string BuildExecutionContractEscapePrompt(string userRequest, string assistantDraft) {
+        var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
+        var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        return $$"""
+            [Execution contract escape]
+            {{ExecutionContractEscapeMarker}}
+            This action-selection turn still has zero tool calls.
+
+            Selected action request:
+            {{requestText}}
+
+            Previous assistant draft:
+            {{draftText}}
+
+            Retry now with full tool availability for this turn.
+            Requirements:
+            - Call at least one relevant tool in this turn if any registered tool can satisfy the request.
+            - If no tool can satisfy the request, do not claim execution. Explain the exact blocker and the minimal missing input.
+            - Keep the response concise and execution-focused.
             """;
     }
 

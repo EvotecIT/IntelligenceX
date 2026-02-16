@@ -55,7 +55,9 @@ public sealed partial class MainWindow : Window {
                     }
 
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
-                    _ = SetActivityAsync(IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status));
+                    var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
+                    _latestServiceActivityText = activityText ?? string.Empty;
+                    _ = SetActivityAsync(activityText);
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
                     }

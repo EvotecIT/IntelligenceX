@@ -47,6 +47,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildExecutionContractBlockerTextMethod =
         typeof(ChatServiceSession).GetMethod("BuildExecutionContractBlockerText", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildExecutionContractBlockerText not found.");
+    private static readonly MethodInfo BuildExecutionContractEscapePromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildExecutionContractEscapePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildExecutionContractEscapePrompt not found.");
     private static readonly MethodInfo BuildToolReceiptCorrectionPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolReceiptCorrectionPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolReceiptCorrectionPrompt not found.");

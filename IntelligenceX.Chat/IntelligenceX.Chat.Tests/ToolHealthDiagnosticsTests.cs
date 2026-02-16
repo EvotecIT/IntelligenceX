@@ -55,6 +55,31 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
+    public async Task ProbeAsync_RunsOperationalSmokeTool_WhenAvailable() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool("system_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_FailsWhenOperationalSmokeToolFails() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool("system_info", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"WMI not available."}""")));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal("smoke_access_denied", result.ErrorCode);
+        Assert.Contains("system_info", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ProbeAsync_ReturnsTimeout_WhenProbeExceedsDeadline() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("ad_pack_info", static async (_, token) => {

@@ -10,6 +10,7 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
+    private const int MaxExecutionContractHistoryScan = 12;
     private sealed record ChatTurnContext(
         ConversationRuntime Conversation,
         string ConversationId,
@@ -208,44 +209,17 @@ public sealed partial class MainWindow : Window {
         return false;
     }
 
-    private static bool TryGetPreviousAssistantText(ConversationRuntime conversation, out string text) {
-        var seenCurrentAssistant = false;
-        for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
-            var entry = conversation.Messages[i];
-            if (!string.Equals(entry.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            if (!seenCurrentAssistant) {
-                seenCurrentAssistant = true;
-                continue;
-            }
-
-            text = entry.Text ?? string.Empty;
-            return true;
-        }
-
-        text = string.Empty;
-        return false;
-    }
-
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {
         if (!TryParseExecutionContractBlocker(assistantText, out var reasonCode, out var actionId)) {
             return assistantText;
         }
 
-        if (!TryGetPreviousAssistantText(conversation, out var previousAssistantText)
-            || !TryParseExecutionContractBlocker(previousAssistantText, out var previousReasonCode, out var previousActionId)) {
-            return assistantText;
-        }
-
-        if (actionId.Length > 0 && previousActionId.Length > 0
-            && !string.Equals(actionId, previousActionId, StringComparison.OrdinalIgnoreCase)) {
-            return assistantText;
-        }
-
-        if (actionId.Length == 0 && previousActionId.Length == 0
-            && !string.Equals(reasonCode, previousReasonCode, StringComparison.OrdinalIgnoreCase)) {
+        if (!TryFindRecentExecutionContractBlocker(
+                conversation,
+                actionIdHint: actionId,
+                reasonHint: reasonCode,
+                previousReasonCode: out var previousReasonCode,
+                previousActionId: out var previousActionId)) {
             return assistantText;
         }
 
@@ -268,8 +242,52 @@ public sealed partial class MainWindow : Window {
 
             {{actionHint}}Reason code: {{reasonCode}}
 
-            Try again after narrowing scope (single DC/domain) or after enabling required tools.
+            Retry with narrower scope (single DC/domain), or use Stop if this turn is looping without new tool output.
             """;
+    }
+
+    private static bool TryFindRecentExecutionContractBlocker(ConversationRuntime conversation, string? actionIdHint, string? reasonHint,
+        out string previousReasonCode, out string previousActionId) {
+        previousReasonCode = string.Empty;
+        previousActionId = string.Empty;
+
+        var normalizedActionHint = (actionIdHint ?? string.Empty).Trim();
+        var normalizedReasonHint = (reasonHint ?? string.Empty).Trim();
+
+        var scanned = 0;
+        for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
+            var entry = conversation.Messages[i];
+            if (!string.Equals(entry.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            scanned++;
+            if (scanned > MaxExecutionContractHistoryScan) {
+                break;
+            }
+
+            if (!TryParseExecutionContractBlocker(entry.Text, out var candidateReason, out var candidateAction)) {
+                continue;
+            }
+
+            var normalizedCandidateAction = (candidateAction ?? string.Empty).Trim();
+            var normalizedCandidateReason = (candidateReason ?? string.Empty).Trim();
+            if (normalizedActionHint.Length > 0) {
+                if (!string.Equals(normalizedActionHint, normalizedCandidateAction, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+            } else if (normalizedReasonHint.Length > 0 && normalizedCandidateAction.Length == 0) {
+                if (!string.Equals(normalizedReasonHint, normalizedCandidateReason, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+            }
+
+            previousReasonCode = normalizedCandidateReason;
+            previousActionId = normalizedCandidateAction;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryParseExecutionContractBlocker(string text, out string reasonCode, out string actionId) {

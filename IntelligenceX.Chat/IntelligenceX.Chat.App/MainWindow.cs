@@ -50,6 +50,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan PersistDebounceInterval = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
+    private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -196,6 +198,10 @@ public sealed partial class MainWindow : Window {
     private string? _activeTurnRequestId;
     private string? _activeKickoffRequestId;
     private string? _cancelRequestedTurnRequestId;
+    private long _activeTurnStartedUtcTicks;
+    private readonly object _turnWatchdogSync = new();
+    private CancellationTokenSource? _turnWatchdogCts;
+    private string _latestServiceActivityText = string.Empty;
     private bool _activeTurnReceivedDelta;
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;
