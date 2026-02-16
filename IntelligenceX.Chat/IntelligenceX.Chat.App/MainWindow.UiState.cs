@@ -385,68 +385,84 @@ public sealed partial class MainWindow : Window {
                     _pendingOptionsStatePublish = false;
                     _pendingSessionStatePublishTcs = null;
                     _pendingOptionsStatePublishTcs = null;
+                    _activeSessionStatePublishTcs = sessionTcs;
+                    _activeOptionsStatePublishTcs = optionsTcs;
                 }
 
-                var coalesceDelayApplied = false;
-                if (!publishSession && !publishOptions) {
-                    // Re-check after one coalesce window so requests arriving during idle transition are not dropped.
-                    try {
-                        await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
-                        coalesceDelayApplied = true;
-                    } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
-                        break;
-                    }
-
-                    lock (_uiPublishSync) {
-                        publishSession = _pendingSessionStatePublish;
-                        publishOptions = _pendingOptionsStatePublish;
-                        sessionTcs = _pendingSessionStatePublishTcs;
-                        optionsTcs = _pendingOptionsStatePublishTcs;
-                        _pendingSessionStatePublish = false;
-                        _pendingOptionsStatePublish = false;
-                        _pendingSessionStatePublishTcs = null;
-                        _pendingOptionsStatePublishTcs = null;
-                    }
-
+                try {
+                    var coalesceDelayApplied = false;
                     if (!publishSession && !publishOptions) {
-                        // Idle transition: no-op publish requests should complete rather than cancel.
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: false);
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: false);
-                        break;
-                    }
-                }
+                        // Re-check after one coalesce window so requests arriving during idle transition are not dropped.
+                        try {
+                            await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                            coalesceDelayApplied = true;
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
+                            break;
+                        }
 
-                if (!coalesceDelayApplied) {
-                    try {
-                        await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
-                    } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
-                        break;
-                    }
-                }
+                        lock (_uiPublishSync) {
+                            publishSession = _pendingSessionStatePublish;
+                            publishOptions = _pendingOptionsStatePublish;
+                            sessionTcs = _pendingSessionStatePublishTcs;
+                            optionsTcs = _pendingOptionsStatePublishTcs;
+                            _pendingSessionStatePublish = false;
+                            _pendingOptionsStatePublish = false;
+                            _pendingSessionStatePublishTcs = null;
+                            _pendingOptionsStatePublishTcs = null;
+                            _activeSessionStatePublishTcs = sessionTcs;
+                            _activeOptionsStatePublishTcs = optionsTcs;
+                        }
 
-                if (publishSession) {
-                    try {
-                        await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
-                        sessionTcs?.TrySetResult(null);
-                    } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
-                    } catch (Exception ex) {
-                        sessionTcs?.TrySetException(ex);
+                        if (!publishSession && !publishOptions) {
+                            // Idle transition: no-op publish requests should complete rather than cancel.
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: false);
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: false);
+                            break;
+                        }
                     }
-                }
 
-                if (publishOptions) {
-                    try {
-                        await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
-                        optionsTcs?.TrySetResult(null);
-                    } catch (OperationCanceledException) {
-                        FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
-                    } catch (Exception ex) {
-                        optionsTcs?.TrySetException(ex);
+                    if (!coalesceDelayApplied) {
+                        try {
+                            await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
+                            break;
+                        }
+                    }
+
+                    if (publishSession) {
+                        try {
+                            await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
+                            sessionTcs?.TrySetResult(null);
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                        } catch (Exception ex) {
+                            sessionTcs?.TrySetException(ex);
+                        }
+                    }
+
+                    if (publishOptions) {
+                        try {
+                            await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
+                            optionsTcs?.TrySetResult(null);
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
+                        } catch (Exception ex) {
+                            optionsTcs?.TrySetException(ex);
+                        }
+                    }
+                } finally {
+                    lock (_uiPublishSync) {
+                        if (ReferenceEquals(_activeSessionStatePublishTcs, sessionTcs)) {
+                            _activeSessionStatePublishTcs = null;
+                        }
+
+                        if (ReferenceEquals(_activeOptionsStatePublishTcs, optionsTcs)) {
+                            _activeOptionsStatePublishTcs = null;
+                        }
                     }
                 }
             }
@@ -502,16 +518,22 @@ public sealed partial class MainWindow : Window {
     private void CancelQueuedUiPublishes() {
         TaskCompletionSource<object?>? pendingSession;
         TaskCompletionSource<object?>? pendingOptions;
+        TaskCompletionSource<object?>? activeSession;
+        TaskCompletionSource<object?>? activeOptions;
         CancellationTokenSource? pumpCts;
 
         lock (_uiPublishSync) {
             pendingSession = _pendingSessionStatePublishTcs;
             pendingOptions = _pendingOptionsStatePublishTcs;
+            activeSession = _activeSessionStatePublishTcs;
+            activeOptions = _activeOptionsStatePublishTcs;
             pumpCts = _uiPublishPumpCts;
             _pendingSessionStatePublish = false;
             _pendingOptionsStatePublish = false;
             _pendingSessionStatePublishTcs = null;
             _pendingOptionsStatePublishTcs = null;
+            _activeSessionStatePublishTcs = null;
+            _activeOptionsStatePublishTcs = null;
             _uiPublishPumpCts = null;
             _uiPublishPumpRunning = false;
         }
@@ -519,6 +541,8 @@ public sealed partial class MainWindow : Window {
         // Queue teardown is a cancellation boundary: pending awaiters should observe cancellation.
         CancelUiPublishAwaiter(pendingSession);
         CancelUiPublishAwaiter(pendingOptions);
+        CancelUiPublishAwaiter(activeSession);
+        CancelUiPublishAwaiter(activeOptions);
 
         if (pumpCts is null) {
             return;

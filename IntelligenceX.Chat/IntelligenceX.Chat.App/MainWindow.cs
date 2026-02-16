@@ -218,6 +218,8 @@ public sealed partial class MainWindow : Window {
     private bool _pendingOptionsStatePublish;
     private TaskCompletionSource<object?>? _pendingSessionStatePublishTcs;
     private TaskCompletionSource<object?>? _pendingOptionsStatePublishTcs;
+    private TaskCompletionSource<object?>? _activeSessionStatePublishTcs;
+    private TaskCompletionSource<object?>? _activeOptionsStatePublishTcs;
     private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
     private CancellationTokenSource? _persistDebounceCts;
