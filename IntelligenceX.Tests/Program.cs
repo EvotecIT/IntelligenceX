@@ -490,6 +490,8 @@ internal static partial class Program {
         failed += Run("Todo project sync derives issue pull-request matches", TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches);
         failed += Run("Todo project sync preserves higher-confidence issue-side pull-request matches", TestProjectSyncBuildEntriesPreservesHigherConfidenceIssueSidePullRequestMatch);
         failed += Run("Todo project sync uses issue related pull-request fallback", TestProjectSyncBuildEntriesUsesIssueRelatedPullRequestFallback);
+        failed += Run("Todo project sync uses pull-request related issue fallback", TestProjectSyncBuildEntriesUsesPullRequestRelatedIssueFallback);
+        failed += Run("Todo project sync derives missing matched issue confidence from related issues", TestProjectSyncBuildEntriesDerivesMissingMatchedIssueConfidenceFromRelatedIssues);
         failed += Run("Todo project sync comment filters by confidence", TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence);
         failed += Run("Todo project sync PR comments include issue-side candidates", TestProjectSyncBuildPullRequestIssueSuggestionCommentsIncludesIssueSideCandidates);
         failed += Run("Todo project sync stale comment targets for pull requests", TestProjectSyncBuildStaleSuggestionCommentTargetsForPullRequests);

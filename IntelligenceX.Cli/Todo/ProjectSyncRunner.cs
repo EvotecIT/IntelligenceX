@@ -535,6 +535,20 @@ internal static class ProjectSyncRunner {
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
                 var relatedIssues = ParseRelatedIssueCandidates(item);
+                if (string.IsNullOrWhiteSpace(matchedIssueUrl) && relatedIssues.Count > 0) {
+                    matchedIssueUrl = relatedIssues[0].Url;
+                    matchedIssueConfidence = relatedIssues[0].Confidence;
+                } else if (!string.IsNullOrWhiteSpace(matchedIssueUrl) && !matchedIssueConfidence.HasValue) {
+                    var confidenceFromRelated = relatedIssues
+                        .Where(candidate => candidate.Number > 0 &&
+                                            !string.IsNullOrWhiteSpace(candidate.Url) &&
+                                            candidate.Url.Equals(matchedIssueUrl, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(candidate => candidate.Confidence)
+                        .FirstOrDefault();
+                    if (confidenceFromRelated is not null) {
+                        matchedIssueConfidence = confidenceFromRelated.Confidence;
+                    }
+                }
                 var matchedPullRequestUrl = ReadNullableString(item, "matchedPullRequestUrl");
                 var matchedPullRequestConfidence = ReadNullableDouble(item, "matchedPullRequestConfidence");
                 var relatedPullRequests = ParseRelatedPullRequestCandidates(item);
