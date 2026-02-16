@@ -16,6 +16,9 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
         AssertEqual(true, names.Contains("Matched Issue Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Issue Confidence");
         AssertEqual(true, names.Contains("Related Issues", StringComparer.OrdinalIgnoreCase), "has Related Issues");
+        AssertEqual(true, names.Contains("Matched Pull Request", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request");
+        AssertEqual(true, names.Contains("Matched Pull Request Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request Confidence");
+        AssertEqual(true, names.Contains("Related Pull Requests", StringComparer.OrdinalIgnoreCase), "has Related Pull Requests");
         AssertEqual(true, names.Contains("Triage Score", StringComparer.OrdinalIgnoreCase), "has Triage Score");
         AssertEqual(true, names.Contains("IX Suggested Decision", StringComparer.OrdinalIgnoreCase), "has IX Suggested Decision");
         AssertEqual(true, names.Contains("Maintainer Decision", StringComparer.OrdinalIgnoreCase), "has Maintainer Decision");
@@ -356,6 +359,32 @@ internal static partial class Program {
         AssertEqual(false, lowLabels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "low confidence issue does not get linked-pr label");
     }
 
+    private static void TestProjectSyncBuildLabelsUsesIssueRelatedPullRequestFallbackWhenMatchedPullRequestMissing() {
+        var issue = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 122,
+            Url: "https://github.com/EvotecIT/IntelligenceX/issues/122",
+            Kind: "issue",
+            TriageScore: null,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            MatchedPullRequestUrl: null,
+            MatchedPullRequestConfidence: null,
+            RelatedPullRequests: new[] {
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(83, "https://github.com/EvotecIT/IntelligenceX/pull/83", 0.86, "explicit pull request reference in issue title/body")
+            }
+        );
+
+        var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(issue);
+        AssertEqual(true, labels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "fallback related pull request adds linked-pr label");
+        AssertEqual(false, labels.Contains("ix/match:needs-review-pr", StringComparer.OrdinalIgnoreCase), "high confidence fallback should not need review label");
+    }
+
     private static void TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches() {
         const string triageJson = """
 {
@@ -576,6 +605,42 @@ internal static partial class Program {
         AssertContainsText(issue15, "PR #71", "second PR included");
     }
 
+    private static void TestProjectSyncBuildIssueBacklinkSuggestionCommentsIncludesIssueSideCandidates() {
+        var entries = new[] {
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 160,
+                Url: "https://github.com/EvotecIT/IntelligenceX/issues/160",
+                Kind: "issue",
+                TriageScore: null,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                VisionFit: null,
+                VisionConfidence: null,
+                MatchedPullRequestUrl: "https://github.com/EvotecIT/IntelligenceX/pull/92",
+                MatchedPullRequestConfidence: 0.77,
+                RelatedPullRequests: new[] {
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(91, "https://github.com/EvotecIT/IntelligenceX/pull/91", 0.88, "explicit pull request reference"),
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(90, "https://github.com/EvotecIT/IntelligenceX/pull/90", 0.43, "weak overlap")
+                }
+            )
+        };
+
+        var comments = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildIssueBacklinkSuggestionComments(
+            entries,
+            minConfidence: 0.55,
+            maxPullRequestsPerIssue: 3);
+
+        AssertEqual(true, comments.ContainsKey(160), "issue-side suggestions produce comment");
+        var issue160 = comments[160];
+        AssertContainsText(issue160, "PR #91", "high-confidence issue-side candidate included");
+        AssertContainsText(issue160, "PR #92", "matched pull request fallback included");
+        AssertEqual(false, issue160.Contains("PR #90", StringComparison.OrdinalIgnoreCase), "below-threshold candidate excluded");
+    }
+
     private static void TestProjectSyncBuildIssueBacklinkSuggestionCommentRespectsThresholdAndLimit() {
         var candidates = new[] {
             new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(81, "https://github.com/EvotecIT/IntelligenceX/pull/81", 0.91, "explicit"),
@@ -622,6 +687,35 @@ internal static partial class Program {
         AssertContainsText(value, "#19 | 0.61", "second candidate");
         AssertContainsText(value, "#18 | 0.58", "third candidate");
         AssertEqual(false, value.Contains("#20", StringComparison.OrdinalIgnoreCase), "limited to top three");
+    }
+
+    private static void TestProjectSyncBuildRelatedPullRequestsFieldValueOrdersAndLimitsCandidates() {
+        var issue = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 161,
+            Url: "https://github.com/EvotecIT/IntelligenceX/issues/161",
+            Kind: "issue",
+            TriageScore: null,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            RelatedPullRequests: new[] {
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(20, "https://github.com/EvotecIT/IntelligenceX/pull/20", 0.52, "token overlap"),
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(11, "https://github.com/EvotecIT/IntelligenceX/pull/11", 0.93, "explicit"),
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(19, "https://github.com/EvotecIT/IntelligenceX/pull/19", 0.61, "token overlap"),
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(18, "https://github.com/EvotecIT/IntelligenceX/pull/18", 0.58, "token overlap")
+            }
+        );
+
+        var value = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildRelatedPullRequestsFieldValue(issue, maxPullRequests: 3);
+        AssertContainsText(value, "PR #11 | 0.93", "top pull request candidate first");
+        AssertContainsText(value, "PR #19 | 0.61", "second pull request candidate");
+        AssertContainsText(value, "PR #18 | 0.58", "third pull request candidate");
+        AssertEqual(false, value.Contains("PR #20", StringComparison.OrdinalIgnoreCase), "limited to top three pull request candidates");
     }
 #endif
 }

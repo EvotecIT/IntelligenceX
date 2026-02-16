@@ -484,6 +484,7 @@ internal static partial class Program {
         failed += Run("Todo project sync labels mark low-confidence match for review", TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch);
         failed += Run("Todo project sync labels use related-issue fallback", TestProjectSyncBuildLabelsUsesRelatedIssueFallbackWhenMatchedIssueMissing);
         failed += Run("Todo project sync labels issue pull-request matches", TestProjectSyncBuildLabelsUsesIssuePullRequestMatchSignals);
+        failed += Run("Todo project sync labels use issue related pull-request fallback", TestProjectSyncBuildLabelsUsesIssueRelatedPullRequestFallbackWhenMatchedPullRequestMissing);
         failed += Run("Todo project sync decision suggests merge-candidate", TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr);
         failed += Run("Todo project sync decision suggests defer for blocked PR", TestProjectSyncBuildEntriesSuggestsDeferForBlockedPr);
         failed += Run("Todo project sync derives issue pull-request matches", TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches);
@@ -492,8 +493,10 @@ internal static partial class Program {
         failed += Run("Todo project sync comment filters by confidence", TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence);
         failed += Run("Todo project sync comment omitted for weak candidates", TestProjectSyncBuildIssueMatchSuggestionCommentReturnsNullWithoutQualifiedCandidates);
         failed += Run("Todo project sync issue backlink comments aggregate PRs", TestProjectSyncBuildIssueBacklinkSuggestionCommentsAggregatesPullRequests);
+        failed += Run("Todo project sync issue backlink comments include issue-side candidates", TestProjectSyncBuildIssueBacklinkSuggestionCommentsIncludesIssueSideCandidates);
         failed += Run("Todo project sync issue backlink comment threshold and limit", TestProjectSyncBuildIssueBacklinkSuggestionCommentRespectsThresholdAndLimit);
         failed += Run("Todo project sync related issues field value", TestProjectSyncBuildRelatedIssuesFieldValueOrdersAndLimitsCandidates);
+        failed += Run("Todo project sync related pull requests field value", TestProjectSyncBuildRelatedPullRequestsFieldValueOrdersAndLimitsCandidates);
         failed += Run("Todo repository label sync plan add/remove managed labels", TestRepositoryLabelManagerBuildManagedLabelSyncPlanAddsAndRemovesManagedOnly);
         failed += Run("Todo repository label sync plan no-op when aligned", TestRepositoryLabelManagerBuildManagedLabelSyncPlanNoChangesWhenAligned);
         failed += Run("Todo project bootstrap renders project target", TestProjectBootstrapRenderWorkflowTemplateInjectsProjectTarget);
