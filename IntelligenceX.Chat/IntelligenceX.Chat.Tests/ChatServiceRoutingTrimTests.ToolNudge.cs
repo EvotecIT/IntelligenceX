@@ -110,11 +110,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldEnforceExecuteOrExplainContract_TriggersForActionSelectionPayload() {
-        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
+    public void ShouldEnforceExecuteOrExplainContract_TriggersForMutatingActionSelectionPayload() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Reset account password\",\"request\":\"Reset password for user evotec\\\\john.\"}}";
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
 
         Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_DoesNotTriggerForReadOnlyActionSelectionPayload() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report for the last 24 hours.\"}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.False(Assert.IsType<bool>(result));
     }
 
     [Fact]
@@ -127,7 +135,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldAttemptNoToolExecutionWatchdog_TriggersForStrictNoToolTurnAfterRecoveryAttempt() {
         var args = new object?[] {
-            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}",
+            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Disable account\",\"request\":\"Disable user evotec\\\\john and return confirmation.\"}}",
             "Ok, doing it now.",
             true,
             0,
@@ -148,7 +156,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldAttemptNoToolExecutionWatchdog_DoesNotTriggerWhenToolsUnavailable() {
         var args = new object?[] {
-            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}",
+            "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Disable account\",\"request\":\"Disable user evotec\\\\john and return confirmation.\"}}",
             "Ok, doing it now.",
             false,
             0,
