@@ -147,8 +147,12 @@ public sealed partial class MainWindow : Window {
             status.Kind == SessionStatusKind.UsageLimitReached);
     }
 
-    private Task PublishSessionStateAsync() {
-        return QueueUiPublishAsync(requestSessionState: true, requestOptionsState: false);
+    private async Task PublishSessionStateAsync() {
+        try {
+            await QueueUiPublishAsync(requestSessionState: true, requestOptionsState: false).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (_shutdownRequested) {
+            // Best-effort shutdown path: caller-facing publish APIs are non-throwing on close.
+        }
     }
 
     private async Task PublishSessionStateCoreAsync() {
@@ -222,8 +226,12 @@ public sealed partial class MainWindow : Window {
                || normalized.Contains("switch account", StringComparison.OrdinalIgnoreCase);
     }
 
-    private Task PublishOptionsStateAsync() {
-        return QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true);
+    private async Task PublishOptionsStateAsync() {
+        try {
+            await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (_shutdownRequested) {
+            // Best-effort shutdown path: caller-facing publish APIs are non-throwing on close.
+        }
     }
 
     private async Task PublishOptionsStateCoreAsync() {
