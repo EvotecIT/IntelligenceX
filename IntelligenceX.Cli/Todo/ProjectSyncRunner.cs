@@ -55,6 +55,7 @@ internal static class ProjectSyncRunner {
         string? SuggestedDecision = null,
         string? MatchedPullRequestUrl = null,
         double? MatchedPullRequestConfidence = null,
+        IReadOnlyList<RelatedPullRequestCandidate>? RelatedPullRequests = null,
         IReadOnlyList<string>? ExistingLabels = null
     );
 
@@ -526,6 +527,7 @@ internal static class ProjectSyncRunner {
                     SuggestedDecision: null,
                     MatchedPullRequestUrl: matchedPullRequestUrl,
                     MatchedPullRequestConfidence: matchedPullRequestConfidence,
+                    RelatedPullRequests: relatedPullRequests,
                     ExistingLabels: existingLabels
                 );
             }
@@ -566,6 +568,7 @@ internal static class ProjectSyncRunner {
                         VisionConfidence: confidence,
                         RelatedIssues: Array.Empty<RelatedIssueCandidate>(),
                         SuggestedDecision: null,
+                        RelatedPullRequests: Array.Empty<RelatedPullRequestCandidate>(),
                         ExistingLabels: Array.Empty<string>()
                     );
                 }
@@ -905,6 +908,25 @@ internal static class ProjectSyncRunner {
             }
         }
 
+        if (fields.TryGetValue("Matched Pull Request", out var matchedPullRequestField) && !string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl)) {
+            await client.SetTextFieldAsync(projectId, itemId, matchedPullRequestField.Id, entry.MatchedPullRequestUrl).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Matched Pull Request Confidence", out var matchedPullRequestConfidenceField) &&
+            entry.MatchedPullRequestConfidence.HasValue) {
+            await client.SetNumberFieldAsync(projectId, itemId, matchedPullRequestConfidenceField.Id, entry.MatchedPullRequestConfidence.Value).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Related Pull Requests", out var relatedPullRequestsField)) {
+            var relatedPullRequestsValue = BuildRelatedPullRequestsFieldValue(entry, maxPullRequests: 3);
+            if (!string.IsNullOrWhiteSpace(relatedPullRequestsValue)) {
+                await client.SetTextFieldAsync(projectId, itemId, relatedPullRequestsField.Id, relatedPullRequestsValue).ConfigureAwait(false);
+                updated++;
+            }
+        }
+
         if (fields.TryGetValue("Duplicate Cluster", out var duplicateField) && !string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
             await client.SetTextFieldAsync(projectId, itemId, duplicateField.Id, entry.DuplicateCluster).ConfigureAwait(false);
             updated++;
@@ -992,9 +1014,21 @@ internal static class ProjectSyncRunner {
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl) && isIssue) {
-            if (entry.MatchedPullRequestConfidence.HasValue &&
-                entry.MatchedPullRequestConfidence.Value >= HighConfidencePullRequestMatchLabelThreshold) {
+        var relatedPullRequestTopCandidate = (entry.RelatedPullRequests ?? Array.Empty<RelatedPullRequestCandidate>())
+            .Where(candidate => candidate.Number > 0 && !string.IsNullOrWhiteSpace(candidate.Url))
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .FirstOrDefault();
+
+        var effectiveMatchedPullRequestUrl = !string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl)
+            ? entry.MatchedPullRequestUrl
+            : relatedPullRequestTopCandidate?.Url;
+        var effectiveMatchedPullRequestConfidence = entry.MatchedPullRequestConfidence ??
+                                                    relatedPullRequestTopCandidate?.Confidence;
+
+        if (!string.IsNullOrWhiteSpace(effectiveMatchedPullRequestUrl) && isIssue) {
+            if (effectiveMatchedPullRequestConfidence.HasValue &&
+                effectiveMatchedPullRequestConfidence.Value >= HighConfidencePullRequestMatchLabelThreshold) {
                 labels.Add("ix/match:linked-pr");
             } else {
                 labels.Add("ix/match:needs-review-pr");
@@ -1030,6 +1064,37 @@ internal static class ProjectSyncRunner {
 
         return string.Join(Environment.NewLine, related.Select(candidate =>
             $"#{candidate.Number.ToString(CultureInfo.InvariantCulture)} | {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} | {candidate.Url}"));
+    }
+
+    internal static string BuildRelatedPullRequestsFieldValue(ProjectSyncEntry entry, int maxPullRequests) {
+        var limit = Math.Max(1, Math.Min(maxPullRequests, 10));
+        var related = (entry.RelatedPullRequests ?? Array.Empty<RelatedPullRequestCandidate>())
+            .Where(candidate => candidate.Number > 0 && !string.IsNullOrWhiteSpace(candidate.Url))
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .Take(limit)
+            .ToList();
+
+        if (related.Count == 0 &&
+            !string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl) &&
+            entry.MatchedPullRequestConfidence.HasValue) {
+            var (_, matchedNumber) = ParseKindAndNumberFromUrl(entry.MatchedPullRequestUrl);
+            if (matchedNumber > 0) {
+                related.Add(new RelatedPullRequestCandidate(
+                    Number: matchedNumber,
+                    Url: entry.MatchedPullRequestUrl,
+                    Confidence: entry.MatchedPullRequestConfidence.Value,
+                    Reason: "issue-side matched pull request"
+                ));
+            }
+        }
+
+        if (related.Count == 0) {
+            return string.Empty;
+        }
+
+        return string.Join(Environment.NewLine, related.Select(candidate =>
+            $"PR #{candidate.Number.ToString(CultureInfo.InvariantCulture)} | {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} | {candidate.Url}"));
     }
 
     internal static string? BuildIssueMatchSuggestionComment(ProjectSyncEntry entry, double minConfidence, int maxIssues) {
@@ -1072,37 +1137,76 @@ internal static class ProjectSyncRunner {
         var threshold = Math.Clamp(minConfidence, 0.0, 1.0);
         var issueToCandidates = new Dictionary<int, Dictionary<int, RelatedPullRequestCandidate>>();
 
+        static void AddIssueCandidate(
+            IDictionary<int, Dictionary<int, RelatedPullRequestCandidate>> issueMap,
+            int issueNumber,
+            RelatedPullRequestCandidate candidate) {
+            if (issueNumber <= 0 || candidate.Number <= 0 || string.IsNullOrWhiteSpace(candidate.Url)) {
+                return;
+            }
+
+            if (!issueMap.TryGetValue(issueNumber, out var pullRequestMap)) {
+                pullRequestMap = new Dictionary<int, RelatedPullRequestCandidate>();
+                issueMap[issueNumber] = pullRequestMap;
+            }
+
+            if (pullRequestMap.TryGetValue(candidate.Number, out var existing) &&
+                existing.Confidence >= candidate.Confidence) {
+                return;
+            }
+
+            pullRequestMap[candidate.Number] = candidate;
+        }
+
         foreach (var entry in entries) {
-            if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+            if (entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) && entry.Number > 0) {
+                var related = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+                    .Where(candidate => candidate.Number > 0 &&
+                                        candidate.Confidence >= threshold &&
+                                        !string.IsNullOrWhiteSpace(candidate.Url))
+                    .ToList();
+                foreach (var candidate in related) {
+                    AddIssueCandidate(issueToCandidates, candidate.Number, new RelatedPullRequestCandidate(
+                        Number: entry.Number,
+                        Url: entry.Url,
+                        Confidence: candidate.Confidence,
+                        Reason: candidate.Reason
+                    ));
+                }
                 continue;
             }
 
-            var related = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+            if (!entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+                continue;
+            }
+
+            var relatedPullRequests = (entry.RelatedPullRequests ?? Array.Empty<RelatedPullRequestCandidate>())
                 .Where(candidate => candidate.Number > 0 &&
                                     candidate.Confidence >= threshold &&
                                     !string.IsNullOrWhiteSpace(candidate.Url))
                 .ToList();
-            if (related.Count == 0) {
-                continue;
-            }
 
-            foreach (var candidate in related) {
-                if (!issueToCandidates.TryGetValue(candidate.Number, out var prMap)) {
-                    prMap = new Dictionary<int, RelatedPullRequestCandidate>();
-                    issueToCandidates[candidate.Number] = prMap;
-                }
-
-                if (prMap.TryGetValue(entry.Number, out var existing) &&
-                    existing.Confidence >= candidate.Confidence) {
-                    continue;
-                }
-
-                prMap[entry.Number] = new RelatedPullRequestCandidate(
-                    Number: entry.Number,
-                    Url: entry.Url,
+            foreach (var candidate in relatedPullRequests) {
+                AddIssueCandidate(issueToCandidates, entry.Number, new RelatedPullRequestCandidate(
+                    Number: candidate.Number,
+                    Url: candidate.Url,
                     Confidence: candidate.Confidence,
                     Reason: candidate.Reason
-                );
+                ));
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl) &&
+                entry.MatchedPullRequestConfidence.HasValue &&
+                entry.MatchedPullRequestConfidence.Value >= threshold) {
+                var (kind, pullRequestNumber) = ParseKindAndNumberFromUrl(entry.MatchedPullRequestUrl);
+                if (kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) && pullRequestNumber > 0) {
+                    AddIssueCandidate(issueToCandidates, entry.Number, new RelatedPullRequestCandidate(
+                        Number: pullRequestNumber,
+                        Url: entry.MatchedPullRequestUrl,
+                        Confidence: entry.MatchedPullRequestConfidence.Value,
+                        Reason: "issue-side matched pull request"
+                    ));
+                }
             }
         }
 
