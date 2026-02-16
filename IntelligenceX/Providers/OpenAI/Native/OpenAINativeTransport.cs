@@ -315,6 +315,11 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
         state.UpdatePreview(TruncatePreview(assistantText));
 
+        var responseStatus = completedResponse?.GetString("status") ?? status;
+        if (string.IsNullOrWhiteSpace(responseStatus)) {
+            responseStatus = completedResponse is null ? "incomplete_stream" : "completed";
+        }
+
         var outputArray = new JsonArray();
         foreach (var output in outputs) {
             outputArray.Add(output);
@@ -324,8 +329,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var usage = completedResponse?.GetObject("usage");
         var rawTurn = new JsonObject()
             .Add("id", turnId)
-            .Add("status", status ?? "completed")
-            .Add("response", completedResponse ?? new JsonObject().Add("status", status ?? "completed"))
+            .Add("status", responseStatus)
+            .Add("response", completedResponse ?? new JsonObject().Add("status", responseStatus))
             .Add("output", outputArray);
         if (!string.IsNullOrWhiteSpace(responseId)) {
             rawTurn.Add("responseId", responseId);

@@ -61,6 +61,8 @@ internal static partial class Program {
         public int AdMaxResults { get; set; } = 1000;
         public bool EnablePowerShellPack { get; set; }
         public bool EnableTestimoXPack { get; set; } = true;
+        public bool EnableDefaultPluginPaths { get; set; } = true;
+        public List<string> PluginPaths { get; } = new();
 
         public static ReplOptions Parse(string[] args, out string? error) {
             error = null;
@@ -230,6 +232,15 @@ internal static partial class Program {
                         break;
                     case "--disable-testimox-pack":
                         options.EnableTestimoXPack = false;
+                        break;
+                    case "--plugin-path":
+                        if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
+                            return options;
+                        }
+                        options.PluginPaths.Add(pluginPath);
+                        break;
+                    case "--no-default-plugin-paths":
+                        options.EnableDefaultPluginPaths = false;
                         break;
                     case "--max-table-rows":
                         if (!TryGetValue(args, ref i, out var maxRows, out error)) {
@@ -419,6 +430,11 @@ internal static partial class Program {
             AdMaxResults = profile.AdMaxResults;
             EnablePowerShellPack = profile.EnablePowerShellPack;
             EnableTestimoXPack = profile.EnableTestimoXPack;
+            EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
+            PluginPaths.Clear();
+            if (profile.PluginPaths is { Count: > 0 }) {
+                PluginPaths.AddRange(profile.PluginPaths);
+            }
 
             InstructionsFile = profile.InstructionsFile;
             MaxTableRows = profile.MaxTableRows;
@@ -460,11 +476,15 @@ internal static partial class Program {
                 AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
                 AdMaxResults = AdMaxResults,
                 EnablePowerShellPack = EnablePowerShellPack,
-                EnableTestimoXPack = EnableTestimoXPack
+                EnableTestimoXPack = EnableTestimoXPack,
+                EnableDefaultPluginPaths = EnableDefaultPluginPaths
             };
 
             if (AllowedRoots.Count > 0) {
                 clone.AllowedRoots.AddRange(AllowedRoots);
+            }
+            if (PluginPaths.Count > 0) {
+                clone.PluginPaths.AddRange(PluginPaths);
             }
 
             return clone;

@@ -11,7 +11,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.Client;
@@ -111,6 +110,8 @@ public sealed partial class MainWindow : Window {
                     AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
                 }
             }
+
+            AppendStartupToolHealthWarningsFromPolicy();
 
             _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
             try {
@@ -347,6 +348,34 @@ public sealed partial class MainWindow : Window {
         return string.Equals(normalized, "completed", StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalized, "done", StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalized, "finished", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void AppendStartupToolHealthWarningsFromPolicy() {
+        var warnings = _sessionPolicy?.StartupWarnings;
+        if (warnings is not { Length: > 0 }) {
+            return;
+        }
+
+        var toolHealthWarnings = warnings
+            .Where(static warning => warning.Contains("[tool health]", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (toolHealthWarnings.Length == 0) {
+            return;
+        }
+
+        const int maxShown = 4;
+        var shown = toolHealthWarnings.Length <= maxShown
+            ? toolHealthWarnings
+            : toolHealthWarnings.Take(maxShown).ToArray();
+
+        var summary = string.Join("; ", shown.Select(static warning => warning.Trim()));
+        if (toolHealthWarnings.Length > shown.Length) {
+            summary += $"; +{toolHealthWarnings.Length - shown.Length} more";
+        }
+
+        AppendSystem("[warning] " + summary);
     }
 
 }

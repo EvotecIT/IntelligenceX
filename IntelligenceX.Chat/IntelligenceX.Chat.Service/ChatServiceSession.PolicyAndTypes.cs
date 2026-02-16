@@ -107,63 +107,24 @@ internal sealed partial class ChatServiceSession {
 
     private static string ResolvePackDisplayName(string? descriptorId, string? fallbackName) {
         var packId = NormalizePackId(descriptorId);
-        return packId switch {
-            "system" => "ComputerX",
-            "ad" => "ADPlayground",
-            "testimox" => "TestimoX",
-            _ => string.IsNullOrWhiteSpace(fallbackName) ? string.Empty : fallbackName.Trim()
-        };
+        if (!string.IsNullOrWhiteSpace(fallbackName)) {
+            return fallbackName.Trim();
+        }
+
+        return packId;
     }
 
     private static ToolPackSourceKind MapSourceKind(string? sourceKind, string descriptorId) {
-        var normalized = (sourceKind ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized is "builtin") {
-            return ToolPackSourceKind.Builtin;
-        }
-        if (normalized is "closed_source" or "closed" or "private" or "internal") {
-            return ToolPackSourceKind.ClosedSource;
-        }
-        if (normalized is "open_source" or "open" or "opensource" or "public") {
-            return ToolPackSourceKind.OpenSource;
-        }
-
-        var packId = NormalizePackId(descriptorId);
-        return packId switch {
-            "eventlog" => ToolPackSourceKind.Builtin,
-            "fs" => ToolPackSourceKind.Builtin,
-            "powershell" => ToolPackSourceKind.Builtin,
-            "reviewersetup" => ToolPackSourceKind.Builtin,
-            "email" => ToolPackSourceKind.Builtin,
-            "system" => ToolPackSourceKind.ClosedSource,
-            "ad" => ToolPackSourceKind.ClosedSource,
-            "testimox" => ToolPackSourceKind.ClosedSource,
+        var normalized = ToolPackBootstrap.NormalizeSourceKind(sourceKind, descriptorId);
+        return normalized switch {
+            "builtin" => ToolPackSourceKind.Builtin,
+            "closed_source" => ToolPackSourceKind.ClosedSource,
             _ => ToolPackSourceKind.OpenSource
         };
     }
 
     private static string NormalizePackId(string? descriptorId) {
-        var normalized = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        normalized = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace("_", string.Empty, StringComparison.Ordinal)
-            .Replace(".", string.Empty, StringComparison.Ordinal);
-
-        if (normalized.StartsWith("ix", StringComparison.Ordinal)) {
-            normalized = normalized[2..];
-        } else if (normalized.StartsWith("intelligencex", StringComparison.Ordinal)) {
-            normalized = normalized["intelligencex".Length..];
-        }
-
-        return normalized switch {
-            "computerx" => "system",
-            "adplayground" => "ad",
-            "activedirectory" => "ad",
-            "filesystem" => "fs",
-            _ => normalized
-        };
+        return ToolPackBootstrap.NormalizePackId(descriptorId);
     }
 
     private static string? LoadInstructions(ServiceOptions options) {

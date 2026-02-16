@@ -29,6 +29,14 @@ Supported:
 - `chatgpt_login_prompt_response`
 - `chatgpt_login_cancel`
 - `list_tools`
+- `check_tool_health`
+- `list_profiles`
+- `set_profile`
+- `list_models`
+- `list_model_favorites`
+- `set_model_favorite`
+- `invoke_tool`
+- `chat_cancel`
 - `chat`
 
 ## Messages
@@ -51,6 +59,14 @@ Chat execution messages:
 - `chat_status` (event; progress status such as `thinking`, `tool_call`, `tool_running`, `tool_completed`)
 - `chat_delta` (event; streaming text deltas)
 - `chat_result` (response; final text + optional tool trace)
+
+Tool health messages:
+
+- `tool_health` (response; per-pack `*_pack_info` probe status with `okCount`/`failedCount`)
+- On service startup, lightweight pack probes are also folded into `hello.policy.startupWarnings` with a `[tool health]` prefix.
+- `check_tool_health` supports optional filters:
+  - `sourceKinds`: array of `builtin|openSource|closedSource`
+  - `packIds`: array of pack IDs (for example `ad`, `system`, `testimox`)
 
 ## Example
 

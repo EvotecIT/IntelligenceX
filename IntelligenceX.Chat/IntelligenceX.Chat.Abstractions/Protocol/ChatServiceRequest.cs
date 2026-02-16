@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.Abstractions.Protocol;
 
@@ -12,6 +13,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptResponseRequest), "chatgpt_login_prompt_response")]
 [JsonDerivedType(typeof(CancelChatGptLoginRequest), "chatgpt_login_cancel")]
 [JsonDerivedType(typeof(ListToolsRequest), "list_tools")]
+[JsonDerivedType(typeof(CheckToolHealthRequest), "check_tool_health")]
 [JsonDerivedType(typeof(ListProfilesRequest), "list_profiles")]
 [JsonDerivedType(typeof(SetProfileRequest), "set_profile")]
 [JsonDerivedType(typeof(ListModelsRequest), "list_models")]
@@ -90,6 +92,26 @@ public sealed record CancelChatGptLoginRequest : ChatServiceRequest {
 /// Requests the list of registered tool definitions.
 /// </summary>
 public sealed record ListToolsRequest : ChatServiceRequest;
+
+/// <summary>
+/// Requests health probes for registered <c>*_pack_info</c> tools.
+/// </summary>
+public sealed record CheckToolHealthRequest : ChatServiceRequest {
+    /// <summary>
+    /// Optional per-probe timeout in seconds (null means service default; 0 means no explicit timeout).
+    /// </summary>
+    public int? ToolTimeoutSeconds { get; init; }
+
+    /// <summary>
+    /// Optional source-kind filters. When set, only probes whose pack source kind matches one of these values are included.
+    /// </summary>
+    public ToolPackSourceKind[]? SourceKinds { get; init; }
+
+    /// <summary>
+    /// Optional pack-id filters. When set, only probes for matching pack ids are included.
+    /// </summary>
+    public string[]? PackIds { get; init; }
+}
 
 /// <summary>
 /// Requests the list of saved runtime profiles.

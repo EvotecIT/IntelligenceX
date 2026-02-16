@@ -615,12 +615,11 @@ public sealed partial class MainWindow : Window {
 
     private static string ResolvePackDisplayName(string? id, string? fallbackName) {
         var normalized = NormalizePackId(id);
-        return normalized switch {
-            "system" => "ComputerX",
-            "ad" => "ADPlayground",
-            "testimox" => "TestimoX",
-            _ => string.IsNullOrWhiteSpace(fallbackName) ? string.Empty : fallbackName.Trim()
-        };
+        if (!string.IsNullOrWhiteSpace(fallbackName)) {
+            return fallbackName.Trim();
+        }
+
+        return normalized;
     }
 
     private object BuildMemoryState() {

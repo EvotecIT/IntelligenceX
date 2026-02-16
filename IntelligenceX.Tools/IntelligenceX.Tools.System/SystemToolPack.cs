@@ -24,7 +24,8 @@ public sealed class SystemToolPack : IToolPack {
         Name = "System",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
-        Description = "Local system read-only tools."
+        Description = "Local system read-only tools.",
+        SourceKind = "closed_source"
     };
 
     /// <inheritdoc />

@@ -24,7 +24,8 @@ public sealed class ActiveDirectoryToolPack : IToolPack {
         Name = "Active Directory",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
-        Description = "Active Directory read-only analysis (via ADPlayground engine)."
+        Description = "Active Directory read-only analysis (via ADPlayground engine).",
+        SourceKind = "closed_source"
     };
 
     /// <inheritdoc />

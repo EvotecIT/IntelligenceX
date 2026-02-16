@@ -463,14 +463,7 @@ internal sealed partial class ChatServiceSession {
         _startupWarnings = warnings;
         _registry = registry;
 
-        _packDisplayNamesById.Clear();
-        foreach (var descriptor in ToolPackBootstrap.GetDescriptors(_packs)) {
-            var normalizedPackId = NormalizePackId(descriptor.Id);
-            if (normalizedPackId.Length == 0) {
-                continue;
-            }
-            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
-        }
+        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
 
         // Tool sets may have changed; clear caches so routing doesn't assume removed tools.
         lock (_toolRoutingStatsLock) {

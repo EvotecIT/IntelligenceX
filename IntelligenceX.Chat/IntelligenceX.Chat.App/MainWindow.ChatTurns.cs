@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private sealed record ChatTurnContext(
         ConversationRuntime Conversation,
         string ConversationId,
@@ -51,7 +52,7 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        QueuePersistAppState();
+        await PersistAppStateAsync().ConfigureAwait(false);
         return new ChatTurnContext(
             conversation,
             conversationId,
@@ -128,6 +129,7 @@ public sealed partial class MainWindow : Window {
         }
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
+        assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
         ReplaceLastAssistantText(conversation, assistantText);
         _activeTurnReceivedDelta = false;
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
@@ -140,7 +142,7 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        QueuePersistAppState();
+        await PersistAppStateAsync().ConfigureAwait(false);
     }
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
@@ -155,7 +157,7 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        QueuePersistAppState();
+        await PersistAppStateAsync().ConfigureAwait(false);
     }
 
     private bool TryGetPartialTurnFailureNotice(ConversationRuntime conversation, AssistantTurnOutcome outcome, out string notice) {
@@ -204,6 +206,94 @@ public sealed partial class MainWindow : Window {
 
         text = string.Empty;
         return false;
+    }
+
+    private static bool TryGetPreviousAssistantText(ConversationRuntime conversation, out string text) {
+        var seenCurrentAssistant = false;
+        for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
+            var entry = conversation.Messages[i];
+            if (!string.Equals(entry.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (!seenCurrentAssistant) {
+                seenCurrentAssistant = true;
+                continue;
+            }
+
+            text = entry.Text ?? string.Empty;
+            return true;
+        }
+
+        text = string.Empty;
+        return false;
+    }
+
+    private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {
+        if (!TryParseExecutionContractBlocker(assistantText, out var reasonCode, out var actionId)) {
+            return assistantText;
+        }
+
+        if (!TryGetPreviousAssistantText(conversation, out var previousAssistantText)
+            || !TryParseExecutionContractBlocker(previousAssistantText, out var previousReasonCode, out var previousActionId)) {
+            return assistantText;
+        }
+
+        if (actionId.Length > 0 && previousActionId.Length > 0
+            && !string.Equals(actionId, previousActionId, StringComparison.OrdinalIgnoreCase)) {
+            return assistantText;
+        }
+
+        if (actionId.Length == 0 && previousActionId.Length == 0
+            && !string.Equals(reasonCode, previousReasonCode, StringComparison.OrdinalIgnoreCase)) {
+            return assistantText;
+        }
+
+        if (actionId.Length == 0) {
+            actionId = previousActionId;
+        }
+
+        if (reasonCode.Length == 0) {
+            reasonCode = previousReasonCode;
+        }
+        if (reasonCode.Length == 0) {
+            reasonCode = "no_tool_calls_after_retries";
+        }
+
+        var actionHint = actionId.Length > 0 ? $"Action: /act {actionId}" + Environment.NewLine + Environment.NewLine : string.Empty;
+        return $$"""
+            [Execution blocked]
+            {{ExecutionContractMarker}}
+            Still blocked; no new tool output was produced in this retry.
+
+            {{actionHint}}Reason code: {{reasonCode}}
+
+            Try again after narrowing scope (single DC/domain) or after enabling required tools.
+            """;
+    }
+
+    private static bool TryParseExecutionContractBlocker(string text, out string reasonCode, out string actionId) {
+        reasonCode = string.Empty;
+        actionId = string.Empty;
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        var lines = normalized.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i].Trim();
+            if (line.StartsWith("Reason code:", StringComparison.OrdinalIgnoreCase)) {
+                reasonCode = line["Reason code:".Length..].Trim();
+                continue;
+            }
+
+            if (line.StartsWith("id:", StringComparison.OrdinalIgnoreCase)) {
+                actionId = line["id:".Length..].Trim();
+            }
+        }
+
+        return true;
     }
 
     private static bool StartsWithOutcomeMarker(string text) {

@@ -24,7 +24,8 @@ public sealed class EventLogToolPack : IToolPack {
         Name = "Event Log",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
-        Description = "Windows Event Log and EVTX analysis (restricted to AllowedRoots for EVTX file access)."
+        Description = "Windows Event Log and EVTX analysis (restricted to AllowedRoots for EVTX file access).",
+        SourceKind = "builtin"
     };
 
     /// <inheritdoc />
