@@ -1,8 +1,17 @@
   function renderOptions() {
     loadDebugToolsEnabledForActiveProfile();
     var selector = byId("optTimeMode");
-    if (state.options.timestampMode === "minutes" || state.options.timestampMode === "seconds") {
-      selector.value = state.options.timestampMode;
+    var timestampMode = (state.options.timestampMode || "").toLowerCase();
+    if (timestampMode === "date_minutes") {
+      timestampMode = "date-minutes";
+    } else if (timestampMode === "date_seconds") {
+      timestampMode = "date-seconds";
+    }
+    if (timestampMode === "minutes"
+      || timestampMode === "seconds"
+      || timestampMode === "date-minutes"
+      || timestampMode === "date-seconds") {
+      selector.value = timestampMode;
     } else {
       selector.value = "seconds";
     }

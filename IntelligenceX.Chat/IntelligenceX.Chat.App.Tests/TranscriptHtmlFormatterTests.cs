@@ -40,6 +40,25 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures repeated system rows never collapse metadata visibility.
+    /// </summary>
+    [Fact]
+    public void Format_DoesNotHideMetaForSystemContinuations() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 17, 14, 22, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("System", "Restarting local runtime...", now),
+            ("System", "Could not connect to local runtime.", now.AddSeconds(3))
+        }, "yyyy-MM-dd HH:mm:ss", options);
+
+        Assert.Contains("msg-row system", html);
+        Assert.DoesNotContain("msg-row system cont", html);
+        Assert.DoesNotContain("class='meta hidden'", html);
+        Assert.Contains("System &middot; 2026-02-17 14:22:00", html);
+        Assert.Contains("System &middot; 2026-02-17 14:22:03", html);
+    }
+
+    /// <summary>
     /// Ensures blank transcript text is skipped while preserving index progression.
     /// </summary>
     [Fact]
