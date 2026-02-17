@@ -46,6 +46,8 @@ public sealed partial class MainWindow : Window {
     private const int MaxQueuedTurns = 8;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
+    private const string SystemConversationId = "chat-system";
+    private const string SystemConversationTitle = "System";
     private const string DefaultConversationTitle = "New Chat";
     private const string DefaultLocalModel = "gpt-5.3-codex";
     private const string TransportNative = "native";
@@ -57,6 +59,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
     private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -82,6 +85,9 @@ public sealed partial class MainWindow : Window {
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out PointNative lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RectNative lpRect);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -132,9 +138,22 @@ public sealed partial class MainWindow : Window {
     private bool _windowHookInstalled;
     private InputNonClientPointerSource? _nonClientPointerSource;
     private bool _nativeTitleBarRegionsActive;
+    private UiHostRect? _cachedTitleBarRect;
+    private readonly List<UiHostRect> _cachedNoDragRects = new();
+    private AppWindow? _trackedAppWindow;
+    private XamlRoot? _trackedXamlRoot;
+    private bool _titleBarMetricsRefreshScheduled;
+    private readonly object _wheelForwardSync = new();
+    private int _queuedWheelDelta;
+    private bool _queuedWheelFromGlobal;
+    private bool _queuedWheelFromPointer;
+    private bool _wheelForwardFlushScheduled;
+    private bool _windowIsActive;
+    private bool _nativeWheelObserved;
     private static readonly MarkdownRendererOptions MarkdownOptions = MarkdownRendererPresets.CreateChatStrictMinimal();
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
     private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
+    private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));
 
     private readonly string _pipeName = "intelligencex.chat";
     private readonly SemaphoreSlim _connectGate = new(1, 1);
@@ -163,6 +182,9 @@ public sealed partial class MainWindow : Window {
     private int? _autonomyToolTimeoutSeconds;
     private bool? _autonomyWeightedToolRouting;
     private int? _autonomyMaxCandidateTools;
+    private bool? _autonomyPlanExecuteReviewLoop;
+    private int? _autonomyMaxReviewPasses;
+    private int? _autonomyModelHeartbeatSeconds;
     private bool _proactiveModeEnabled = true;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
@@ -195,6 +217,7 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
     // Guards memory semantic cache + memory diagnostics snapshot/history across UI/async paths.
     private readonly object _memoryDiagnosticsSync = new();
@@ -336,6 +359,20 @@ public sealed partial class MainWindow : Window {
         public int Y;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectNative {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    private enum GlobalWheelHookMode {
+        Auto,
+        Always,
+        Off
+    }
+
     private readonly struct UiHostRect {
         public UiHostRect(double x, double y, double width, double height) {
             X = x;
@@ -373,8 +410,10 @@ public sealed partial class MainWindow : Window {
         Content = _webView;
         ConfigureWindowPlacement();
 
-        Activated += (_, _) => {
+        Activated += (_, args) => {
             StartupLog.Write("MainWindow.Activated");
+            _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
+            RefreshGlobalWheelHookPolicy();
             EnsureRestoredIfMinimized();
 
             if (Interlocked.CompareExchange(ref _startupFlowState, 1, 0) != 0) {
@@ -391,6 +430,7 @@ public sealed partial class MainWindow : Window {
             CancelQueuedUiPublishesForShutdown();
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
+            DetachNativeTitleBarEventSubscriptions();
             UninstallGlobalWheelHook();
             UninstallWindowMessageHook();
             _stateStore.Dispose();
@@ -470,7 +510,7 @@ public sealed partial class MainWindow : Window {
 
                 StartupLog.Write("EnsureWebViewInitializedAsync begin");
                 InstallWindowMessageHook();
-                InstallGlobalWheelHook();
+                RefreshGlobalWheelHookPolicy();
                 await _webView.EnsureCoreWebView2Async().AsTask().ConfigureAwait(false);
                 _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
@@ -483,8 +523,8 @@ public sealed partial class MainWindow : Window {
                     new Microsoft.UI.Xaml.Input.PointerEventHandler((_, e) => {
                         var delta = e.GetCurrentPoint(_webView).Properties.MouseWheelDelta;
                         if (delta != 0 && _webViewReady) {
-                            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
-                            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
+                            RecordNativeWheelObserved();
+                            QueueWheelForward(delta, fromGlobalHook: false);
                             // Keep native WebView wheel delivery as fallback for device-specific paths.
                             e.Handled = false;
                         }
@@ -499,12 +539,16 @@ public sealed partial class MainWindow : Window {
                 _webView.NavigateToString(BuildShellHtml());
                 navReadyTask = navTcs.Task;
                 _webViewReady = true;
+                EnsureNativeTitleBarEventSubscriptions();
+                RequestTitleBarMetricsRefresh();
             }).ConfigureAwait(false);
 
             await Task.WhenAny(navReadyTask, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
             await RunOnUiThreadAsync(() => {
                 InstallWindowMessageHook();
-                InstallGlobalWheelHook();
+                EnsureNativeTitleBarEventSubscriptions();
+                RequestTitleBarMetricsRefresh();
+                RefreshGlobalWheelHookPolicy();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
@@ -675,6 +719,10 @@ public sealed partial class MainWindow : Window {
             var isWheelMessage = message == WmMouseWheel || message == WmMouseHWheel;
             if (nCode >= 0 && _webViewReady && isWheelMessage && lParam != IntPtr.Zero && IsForegroundOwnedByCurrentProcess()) {
                 var hook = Marshal.PtrToStructure<MouseLowLevelHookStruct>(lParam);
+                if (!ShouldAcceptGlobalWheelEvent(hook.Point)) {
+                    return CallNextHookEx(_globalMouseHookHandle, nCode, wParam, lParam);
+                }
+
                 var delta = (short)((hook.MouseData >> 16) & 0xFFFF);
                 if (delta != 0) {
                     if (!_globalWheelObservedLogged) {
@@ -682,14 +730,7 @@ public sealed partial class MainWindow : Window {
                         StartupLog.Write("GlobalMouseHookProc observed first wheel event");
                     }
 
-                    _ = _dispatcher.TryEnqueue(() => {
-                        if (!_webViewReady) {
-                            return;
-                        }
-
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelGlobalDiagnosticRecordScript(delta));
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
-                    });
+                    QueueWheelForward(delta, fromGlobalHook: true);
                 }
             }
         } catch (Exception ex) {
@@ -718,14 +759,8 @@ public sealed partial class MainWindow : Window {
             if (_webViewReady && (msg == WmMouseWheel || msg == WmMouseHWheel || msg == WmPointerWheel || msg == WmPointerHWheel)) {
                 var delta = ExtractWheelDelta(wParam);
                 if (delta != 0) {
-                    _ = _dispatcher.TryEnqueue(() => {
-                        if (!_webViewReady) {
-                            return;
-                        }
-
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
-                    });
+                    RecordNativeWheelObserved();
+                    QueueWheelForward(delta, fromGlobalHook: false);
                 }
             }
         } catch (Exception ex) {
@@ -749,6 +784,225 @@ public sealed partial class MainWindow : Window {
     private static int ExtractWheelDelta(IntPtr wParam) {
         var value = wParam.ToInt64();
         return (short)((value >> 16) & 0xFFFF);
+    }
+
+    private void QueueWheelForward(int delta, bool fromGlobalHook) {
+        if (delta == 0) {
+            return;
+        }
+
+        bool shouldScheduleFlush;
+        lock (_wheelForwardSync) {
+            _queuedWheelDelta += delta;
+            _queuedWheelFromGlobal |= fromGlobalHook;
+            _queuedWheelFromPointer |= !fromGlobalHook;
+            shouldScheduleFlush = !_wheelForwardFlushScheduled;
+            if (shouldScheduleFlush) {
+                _wheelForwardFlushScheduled = true;
+            }
+        }
+
+        if (!shouldScheduleFlush) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(WheelForwardCoalesceInterval).ConfigureAwait(false);
+                await RunOnUiThreadAsync(() => {
+                    FlushQueuedWheelForward();
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Ignore.
+            } catch (Exception ex) {
+                StartupLog.Write("QueueWheelForward flush failed: " + ex.Message);
+            }
+        });
+    }
+
+    private void FlushQueuedWheelForward() {
+        int delta;
+        bool fromGlobal;
+        bool fromPointer;
+        lock (_wheelForwardSync) {
+            delta = _queuedWheelDelta;
+            fromGlobal = _queuedWheelFromGlobal;
+            fromPointer = _queuedWheelFromPointer;
+            _queuedWheelDelta = 0;
+            _queuedWheelFromGlobal = false;
+            _queuedWheelFromPointer = false;
+            _wheelForwardFlushScheduled = false;
+        }
+
+        if (!_webViewReady || delta == 0) {
+            return;
+        }
+
+        if (fromPointer) {
+            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
+        }
+
+        if (fromGlobal) {
+            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelGlobalDiagnosticRecordScript(delta));
+        }
+
+        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
+    }
+
+    private void RecordNativeWheelObserved() {
+        if (_nativeWheelObserved) {
+            return;
+        }
+
+        _nativeWheelObserved = true;
+        if (WheelHookMode == GlobalWheelHookMode.Auto) {
+            StartupLog.Write("Native wheel path observed; disabling global wheel hook (auto mode).");
+            RefreshGlobalWheelHookPolicy();
+        }
+    }
+
+    private void RefreshGlobalWheelHookPolicy() {
+        if (_shutdownRequested) {
+            UninstallGlobalWheelHook();
+            return;
+        }
+
+        switch (WheelHookMode) {
+            case GlobalWheelHookMode.Off:
+                UninstallGlobalWheelHook();
+                break;
+            case GlobalWheelHookMode.Always:
+                InstallGlobalWheelHook();
+                break;
+            case GlobalWheelHookMode.Auto:
+            default:
+                if (_webViewReady && _windowIsActive && !_nativeWheelObserved) {
+                    InstallGlobalWheelHook();
+                } else {
+                    UninstallGlobalWheelHook();
+                }
+                break;
+        }
+    }
+
+    private bool ShouldAcceptGlobalWheelEvent(PointNative point) {
+        if (!_windowIsActive || !_webViewReady) {
+            return false;
+        }
+
+        var hwnd = _windowHandle;
+        if (hwnd == IntPtr.Zero) {
+            hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            _windowHandle = hwnd;
+        }
+
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var rect)) {
+            return true;
+        }
+
+        return point.X >= rect.Left && point.X < rect.Right && point.Y >= rect.Top && point.Y < rect.Bottom;
+    }
+
+    private void EnsureNativeTitleBarEventSubscriptions() {
+        try {
+            var appWindow = AppWindow;
+            if (!ReferenceEquals(_trackedAppWindow, appWindow)) {
+                if (_trackedAppWindow is not null) {
+                    _trackedAppWindow.Changed -= OnAppWindowChanged;
+                }
+
+                _trackedAppWindow = appWindow;
+                if (_trackedAppWindow is not null) {
+                    _trackedAppWindow.Changed += OnAppWindowChanged;
+                }
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("EnsureNativeTitleBarEventSubscriptions(appWindow) failed: " + ex.Message);
+        }
+
+        try {
+            var xamlRoot = _webView.XamlRoot;
+            if (!ReferenceEquals(_trackedXamlRoot, xamlRoot)) {
+                if (_trackedXamlRoot is not null) {
+                    _trackedXamlRoot.Changed -= OnWebViewXamlRootChanged;
+                }
+
+                _trackedXamlRoot = xamlRoot;
+                if (_trackedXamlRoot is not null) {
+                    _trackedXamlRoot.Changed += OnWebViewXamlRootChanged;
+                }
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("EnsureNativeTitleBarEventSubscriptions(xamlRoot) failed: " + ex.Message);
+        }
+    }
+
+    private void DetachNativeTitleBarEventSubscriptions() {
+        try {
+            if (_trackedAppWindow is not null) {
+                _trackedAppWindow.Changed -= OnAppWindowChanged;
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("DetachNativeTitleBarEventSubscriptions(appWindow) failed: " + ex.Message);
+        } finally {
+            _trackedAppWindow = null;
+        }
+
+        try {
+            if (_trackedXamlRoot is not null) {
+                _trackedXamlRoot.Changed -= OnWebViewXamlRootChanged;
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("DetachNativeTitleBarEventSubscriptions(xamlRoot) failed: " + ex.Message);
+        } finally {
+            _trackedXamlRoot = null;
+        }
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args) {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (args.DidPositionChange || args.DidSizeChange || args.DidPresenterChange) {
+            RequestTitleBarMetricsRefresh();
+        }
+    }
+
+    private void OnWebViewXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        ReapplyCachedNativeTitleBarRegions();
+        RequestTitleBarMetricsRefresh();
+    }
+
+    private void RequestTitleBarMetricsRefresh() {
+        if (!_webViewReady || _shutdownRequested) {
+            return;
+        }
+
+        if (_titleBarMetricsRefreshScheduled) {
+            return;
+        }
+
+        _titleBarMetricsRefreshScheduled = true;
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(32).ConfigureAwait(false);
+                await RunOnUiThreadAsync(() => {
+                    _titleBarMetricsRefreshScheduled = false;
+                    if (_webViewReady) {
+                        _ = _webView.ExecuteScriptAsync("window.ixPostTitlebarMetrics && window.ixPostTitlebarMetrics();");
+                    }
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            } catch {
+                _titleBarMetricsRefreshScheduled = false;
+            }
+        });
     }
 
     private async Task EnsureStartupConnectedAsync() {

@@ -414,6 +414,28 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private static GlobalWheelHookMode ResolveGlobalWheelHookMode(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return GlobalWheelHookMode.Auto;
+        }
+
+        var normalized = value.Trim();
+        if (string.Equals(normalized, "always", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "on", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "1", StringComparison.OrdinalIgnoreCase)) {
+            return GlobalWheelHookMode.Always;
+        }
+
+        if (string.Equals(normalized, "off", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "false", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "0", StringComparison.OrdinalIgnoreCase)) {
+            return GlobalWheelHookMode.Off;
+        }
+
+        return GlobalWheelHookMode.Auto;
+    }
+
     private static int? NormalizeAutonomyInt(int? value, int min, int max) {
         if (!value.HasValue) {
             return null;
@@ -513,6 +535,54 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
+            var noDragRects = new List<UiHostRect>();
+            if (root.TryGetProperty("noDragRects", out var noDragRectsElement)
+                && noDragRectsElement.ValueKind == JsonValueKind.Array) {
+                foreach (var noDrag in noDragRectsElement.EnumerateArray()) {
+                    if (TryGetUiHostRect(noDrag, out var noDragRect)) {
+                        noDragRects.Add(noDragRect);
+                    }
+                }
+            }
+
+            _cachedTitleBarRect = titleBarRect;
+            _cachedNoDragRects.Clear();
+            _cachedNoDragRects.AddRange(noDragRects);
+
+            ApplyNativeTitleBarRegions(titleBarRect, noDragRects);
+        } catch (Exception ex) {
+            StartupLog.Write("UpdateNativeTitleBarRegions failed: " + ex.Message);
+            _nativeTitleBarRegionsActive = false;
+            if (_webViewReady) {
+                _ = _webView.ExecuteScriptAsync("window.ixSetNativeTitlebarEnabled && window.ixSetNativeTitlebarEnabled(false);");
+            }
+        }
+    }
+
+    private void ReapplyCachedNativeTitleBarRegions() {
+        if (!_cachedTitleBarRect.HasValue) {
+            return;
+        }
+
+        EnsureNativeTitleBarRegionSupport();
+        if (_nonClientPointerSource is null) {
+            return;
+        }
+
+        try {
+            ApplyNativeTitleBarRegions(_cachedTitleBarRect.Value, _cachedNoDragRects);
+        } catch (Exception ex) {
+            StartupLog.Write("ReapplyCachedNativeTitleBarRegions failed: " + ex.Message);
+        }
+    }
+
+    private void ApplyNativeTitleBarRegions(UiHostRect titleBarRect, List<UiHostRect> noDragRects) {
+        try {
+            var nonClientPointerSource = _nonClientPointerSource;
+            if (nonClientPointerSource is null) {
+                return;
+            }
+
             var scale = GetUiRasterizationScale();
             var captionRect = ScaleToRegionRect(titleBarRect, scale);
             if (captionRect.Width <= 0 || captionRect.Height <= 0) {
@@ -520,21 +590,14 @@ public sealed partial class MainWindow : Window {
             }
 
             var passthroughRects = new List<RectInt32>();
-            if (root.TryGetProperty("noDragRects", out var noDragRectsElement)
-                && noDragRectsElement.ValueKind == JsonValueKind.Array) {
-                foreach (var noDrag in noDragRectsElement.EnumerateArray()) {
-                    if (!TryGetUiHostRect(noDrag, out var noDragRect)) {
-                        continue;
-                    }
+            foreach (var noDragRect in noDragRects) {
+                var scaled = ScaleToRegionRect(noDragRect, scale);
+                if (!TryIntersectRect(captionRect, scaled, out var clipped)) {
+                    continue;
+                }
 
-                    var scaled = ScaleToRegionRect(noDragRect, scale);
-                    if (!TryIntersectRect(captionRect, scaled, out var clipped)) {
-                        continue;
-                    }
-
-                    if (clipped.Width > 0 && clipped.Height > 0) {
-                        passthroughRects.Add(clipped);
-                    }
+                if (clipped.Width > 0 && clipped.Height > 0) {
+                    passthroughRects.Add(clipped);
                 }
             }
 
@@ -546,8 +609,8 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            _nonClientPointerSource.SetRegionRects(NonClientRegionKind.Passthrough, passthroughRects.ToArray());
-            _nonClientPointerSource.SetRegionRects(NonClientRegionKind.Caption, captionRects.ToArray());
+            nonClientPointerSource.SetRegionRects(NonClientRegionKind.Passthrough, passthroughRects.ToArray());
+            nonClientPointerSource.SetRegionRects(NonClientRegionKind.Caption, captionRects.ToArray());
 
             if (!_nativeTitleBarRegionsActive) {
                 _nativeTitleBarRegionsActive = true;
@@ -556,7 +619,7 @@ public sealed partial class MainWindow : Window {
                 }
             }
         } catch (Exception ex) {
-            StartupLog.Write("UpdateNativeTitleBarRegions failed: " + ex.Message);
+            StartupLog.Write("ApplyNativeTitleBarRegions failed: " + ex.Message);
             _nativeTitleBarRegionsActive = false;
             if (_webViewReady) {
                 _ = _webView.ExecuteScriptAsync("window.ixSetNativeTitlebarEnabled && window.ixSetNativeTitlebarEnabled(false);");

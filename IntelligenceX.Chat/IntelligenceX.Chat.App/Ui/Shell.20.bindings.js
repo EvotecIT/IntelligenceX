@@ -78,6 +78,10 @@
     });
   }
 
+  window.ixPostTitlebarMetrics = function() {
+    scheduleTitlebarMetricsPost();
+  };
+
   if (dragBar) {
     scheduleTitlebarMetricsPost();
 
