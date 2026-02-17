@@ -7,7 +7,7 @@
 
     <div class="faq-list">
         <div class="pf-faq">
-            {{ for section in data.faq }}
+            {{ for section in data.faq.sections }}
             <div class="pf-faq-section">
                 {{ for item in section.items }}
                 <div class="pf-faq-item" id="faq-{{ item.id }}">
