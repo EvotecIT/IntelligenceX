@@ -50,6 +50,7 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         for (var i = 0; i < insights.Count; i++) {
             var insight = insights[i];
             var insightStrategy = ResolveRoutingInsightStrategy(insight, routingStrategy);
@@ -59,8 +60,8 @@ internal sealed partial class ChatServiceSession {
                 reason = insight.Reason,
                 strategy = insightStrategy,
                 rank = i + 1,
-                selectedToolCount = Math.Max(0, selectedToolCount),
-                totalToolCount = Math.Max(0, totalToolCount)
+                selectedToolCount = selected,
+                totalToolCount = total
             });
             await TryWriteStatusAsync(
                     writer,
@@ -114,8 +115,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildRoutingSelectionMessage(int selectedToolCount, int totalToolCount, string strategy) {
-        var selected = Math.Max(0, selectedToolCount);
-        var total = Math.Max(selected, totalToolCount);
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
 
         return strategy switch {
             "execution_contract_full_set" =>
@@ -146,17 +146,24 @@ internal sealed partial class ChatServiceSession {
         int totalToolCount,
         int insightCount,
         bool plannerInsightsDetected) {
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         return JsonSerializer.Serialize(new {
             strategy = (strategy ?? string.Empty).Trim(),
             weightedToolRouting,
             executionContractApplies,
             usedContinuationSubset,
-            selectedToolCount = Math.Max(0, selectedToolCount),
-            totalToolCount = Math.Max(0, totalToolCount),
-            reducedToolSet = selectedToolCount > 0 && selectedToolCount < totalToolCount,
+            selectedToolCount = selected,
+            totalToolCount = total,
+            reducedToolSet = selected > 0 && selected < total,
             insightCount = Math.Max(0, insightCount),
             plannerInsightsDetected
         });
+    }
+
+    private static (int SelectedToolCount, int TotalToolCount) NormalizeRoutingToolCounts(int selectedToolCount, int totalToolCount) {
+        var total = Math.Max(0, totalToolCount);
+        var selected = Math.Clamp(selectedToolCount, 0, total);
+        return (selected, total);
     }
 
     private static bool HasPlannerInsight(IReadOnlyList<ToolRoutingInsight> insights) {

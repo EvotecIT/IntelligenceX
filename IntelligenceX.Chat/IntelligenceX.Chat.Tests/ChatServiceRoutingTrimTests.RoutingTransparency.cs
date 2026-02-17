@@ -43,6 +43,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildRoutingSelectionMessage_NormalizesInconsistentCounts() {
+        var result = BuildRoutingSelectionMessageMethod.Invoke(null, new object?[] { 9, 4, "weighted_heuristic" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("4", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("9 of 4", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildRoutingMetaPayload_IncludesStructuredRoutingContext() {
         var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
             "semantic_planner",
@@ -64,5 +73,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(21, root.GetProperty("totalToolCount").GetInt32());
         Assert.Equal(5, root.GetProperty("insightCount").GetInt32());
         Assert.True(root.GetProperty("plannerInsightsDetected").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildRoutingMetaPayload_ClampsSelectedCountToTotal() {
+        var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            "weighted_heuristic",
+            true,
+            false,
+            false,
+            14,
+            6,
+            2,
+            false
+        });
+        var payload = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        Assert.Equal(6, root.GetProperty("selectedToolCount").GetInt32());
+        Assert.Equal(6, root.GetProperty("totalToolCount").GetInt32());
+        Assert.False(root.GetProperty("reducedToolSet").GetBoolean());
     }
 }
