@@ -118,22 +118,23 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        if (ShouldEmitRoutingTransparency(toolDefs.Count, originalToolCount)) {
+        var (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
+        if (ShouldEmitRoutingTransparency(routingSelectedToolCount, routingTotalToolCount)) {
             var plannerInsightsDetected = HasPlannerInsight(routingInsights);
             var routingStrategy = ResolveRoutingStrategy(
                 weightedToolRouting,
                 executionContractApplies,
                 usedContinuationSubset,
                 routingInsights,
-                toolDefs.Count,
-                originalToolCount);
+                routingSelectedToolCount,
+                routingTotalToolCount);
 
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
                     threadId,
                     status: "routing",
-                    message: BuildRoutingSelectionMessage(toolDefs.Count, originalToolCount, routingStrategy))
+                    message: BuildRoutingSelectionMessage(routingSelectedToolCount, routingTotalToolCount, routingStrategy))
                 .ConfigureAwait(false);
 
             var routingMetaPayload = BuildRoutingMetaPayload(
@@ -141,8 +142,8 @@ internal sealed partial class ChatServiceSession {
                 weightedToolRouting,
                 executionContractApplies,
                 usedContinuationSubset,
-                selectedToolCount: toolDefs.Count,
-                totalToolCount: originalToolCount,
+                selectedToolCount: routingSelectedToolCount,
+                totalToolCount: routingTotalToolCount,
                 insightCount: routingInsights.Count,
                 plannerInsightsDetected);
             await TryWriteStatusAsync(
@@ -159,8 +160,8 @@ internal sealed partial class ChatServiceSession {
                     threadId,
                     routingInsights,
                     routingStrategy,
-                    toolDefs.Count,
-                    originalToolCount)
+                    routingSelectedToolCount,
+                    routingTotalToolCount)
                 .ConfigureAwait(false);
         }
 

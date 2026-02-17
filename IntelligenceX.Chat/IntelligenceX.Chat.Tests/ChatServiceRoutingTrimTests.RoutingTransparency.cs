@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Xunit;
 
@@ -67,6 +68,47 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var strategy = Assert.IsType<string>(result);
 
         Assert.Equal("no_tools", strategy);
+    }
+
+    [Fact]
+    public void NormalizeRoutingToolCounts_KeepsRoutingStrategyAndMetaConsistentForDegenerateRawCounts() {
+        var normalizedObj = NormalizeRoutingToolCountsMethod.Invoke(null, new object?[] { 5, 0 });
+        var normalized = Assert.IsAssignableFrom<ITuple>(normalizedObj);
+        var selectedToolCount = Assert.IsType<int>(normalized[0]);
+        var totalToolCount = Assert.IsType<int>(normalized[1]);
+        Assert.Equal(0, selectedToolCount);
+        Assert.Equal(0, totalToolCount);
+
+        var insightsParameterType = ResolveRoutingStrategyMethod.GetParameters()[3].ParameterType;
+        var insightType = insightsParameterType.GetGenericArguments()[0];
+        var emptyInsights = Array.CreateInstance(insightType, 0);
+        var strategyResult = ResolveRoutingStrategyMethod.Invoke(null, new object?[] {
+            true,
+            false,
+            false,
+            emptyInsights,
+            selectedToolCount,
+            totalToolCount
+        });
+        var strategy = Assert.IsType<string>(strategyResult);
+        Assert.Equal("no_tools", strategy);
+
+        var payloadResult = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            strategy,
+            true,
+            false,
+            false,
+            selectedToolCount,
+            totalToolCount,
+            0,
+            false
+        });
+        var payload = Assert.IsType<string>(payloadResult);
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        Assert.Equal("no_tools", root.GetProperty("strategy").GetString());
+        Assert.Equal(0, root.GetProperty("selectedToolCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("totalToolCount").GetInt32());
     }
 
     [Fact]

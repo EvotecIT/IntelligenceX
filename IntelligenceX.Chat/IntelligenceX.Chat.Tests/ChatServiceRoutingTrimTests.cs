@@ -140,6 +140,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildRoutingMetaPayloadMethod =
         typeof(ChatServiceSession).GetMethod("BuildRoutingMetaPayload", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildRoutingMetaPayload not found.");
+    private static readonly MethodInfo NormalizeRoutingToolCountsMethod =
+        typeof(ChatServiceSession).GetMethod("NormalizeRoutingToolCounts", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("NormalizeRoutingToolCounts not found.");
     private static readonly FieldInfo ToolRoutingContextLockField =
         typeof(ChatServiceSession).GetField("_toolRoutingContextLock", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolRoutingContextLock not found.");
