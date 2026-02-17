@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,6 +42,42 @@ public class PowerShellExecutionPolicyTests {
         Assert.Equal("invalid_argument", doc.RootElement.GetProperty("error_code").GetString());
         var error = doc.RootElement.GetProperty("error").GetString() ?? string.Empty;
         Assert.Contains("Read-only intent rejected", error);
+    }
+
+    [Fact]
+    public async Task RunTool_ShouldRejectMutatingCmdPayloadInReadOnlyMode() {
+        var tool = new PowerShellRunTool(new PowerShellToolOptions {
+            Enabled = true
+        });
+
+        var json = await tool.InvokeAsync(
+            arguments: new JsonObject()
+                .Add("host", "cmd")
+                .Add("command", "del C:\\temp\\file.txt"),
+            cancellationToken: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", doc.RootElement.GetProperty("error_code").GetString());
+    }
+
+    [Fact]
+    public async Task RunTool_ShouldRejectInvalidHost() {
+        var tool = new PowerShellRunTool(new PowerShellToolOptions {
+            Enabled = true
+        });
+
+        var json = await tool.InvokeAsync(
+            arguments: new JsonObject()
+                .Add("host", "bash")
+                .Add("command", "echo test"),
+            cancellationToken: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", doc.RootElement.GetProperty("error_code").GetString());
+        var error = doc.RootElement.GetProperty("error").GetString() ?? string.Empty;
+        Assert.Contains("auto, pwsh, windows_powershell, cmd", error, StringComparison.Ordinal);
     }
 
     [Fact]

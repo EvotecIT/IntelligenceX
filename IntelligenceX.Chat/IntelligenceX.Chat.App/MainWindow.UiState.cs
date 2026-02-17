@@ -246,6 +246,7 @@ public sealed partial class MainWindow : Window {
             : Array.Empty<object>();
 
         var tools = BuildToolState();
+        var toolsLoading = _isConnected && _sessionPolicy is null;
         var conversations = BuildConversationState();
         var json = JsonSerializer.Serialize(new {
             timestampMode = _timestampMode,
@@ -311,6 +312,7 @@ public sealed partial class MainWindow : Window {
             },
             packs,
             tools,
+            toolsLoading,
             policy = _sessionPolicy is null ? null : new {
                 readOnly = _sessionPolicy.ReadOnly,
                 dangerousToolsEnabled = _sessionPolicy.DangerousToolsEnabled,

@@ -183,6 +183,9 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
+        var showPowerShellOnboardingHint = enabled
+                                           && string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)
+                                           && (pack is null || !pack.Enabled);
         var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
         _pendingServiceLaunchProfileOptions = BuildRuntimePackLaunchProfileOptions(normalizedPackId, enabled, profileSaved);
 
@@ -193,7 +196,29 @@ public sealed partial class MainWindow : Window {
             setProfileNewThread: false,
             appendWarnings: true).ConfigureAwait(false);
 
+        if (showPowerShellOnboardingHint) {
+            AppendPowerShellOnboardingHint();
+        }
+
         return true;
+    }
+
+    private void AppendPowerShellOnboardingHint() {
+        if (_powerShellOnboardingHintShownThisSession) {
+            return;
+        }
+
+        _powerShellOnboardingHintShownThisSession = true;
+        AppendSystem(GetActiveConversation(), """
+[info] PowerShell Runtime enabled.
+
+You can now run shell-backed diagnostics (including cmd host support) through `powershell_run`.
+
+Quick start prompts:
+- `Run powershell_environment_discover and summarize host availability + write policy.`
+- `Run powershell_run with host=cmd and command='ver' using read_only intent.`
+- `Run powershell_run with host=pwsh and command='Get-Service | Select-Object -First 20' using read_only intent.`
+""");
     }
 
     private ServiceLaunchProfileOptions BuildRuntimePackLaunchProfileOptions(string normalizedPackId, bool enabled, bool profileSaved) {
