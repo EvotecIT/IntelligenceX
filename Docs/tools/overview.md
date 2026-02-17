@@ -7,6 +7,12 @@ description: Real IntelligenceX tool packs, source model, and how they are loade
 
 IX Tools are tool packs used by IntelligenceX hosts (especially IX Chat) to expose local capabilities to AI models.
 
+## Production Safety Notice
+
+- Tool packs can expose sensitive read/write operations, command execution, and environment access.
+- Do not enable broad tool access directly against production assets without strict policy gates, approval controls, and audit requirements.
+- Start in isolated dev/staging environments with least-privilege identities and narrow allowlists.
+
 ## Source Model
 
 IntelligenceX.Chat classifies packs with a runtime `sourceKind`:

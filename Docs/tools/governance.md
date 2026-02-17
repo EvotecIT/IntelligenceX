@@ -7,6 +7,12 @@ description: Naming, metadata ownership, source semantics, and client delivery r
 
 This document defines how tool packs must declare metadata and how hosts should consume it.
 
+## Production Safety Notice
+
+- Tool-pack enablement can grant high-impact capabilities (for example command execution or sensitive data access).
+- Do not run permissive tool policies directly against production systems by default.
+- Require explicit approval workflows, least-privilege credentials, environment isolation, and audit logging before production rollout.
+
 ## 1. Metadata Ownership
 
 Tool-pack identity and presentation metadata must originate in the pack descriptor (`ToolPackDescriptor`) inside `IntelligenceX.Tools.*`.

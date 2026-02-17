@@ -7,6 +7,12 @@ description: Install and run IX Chat on Windows.
 
 Get IX Chat running on your Windows machine in a few minutes.
 
+## Production Safety Notice
+
+- This quickstart is intended for local development and evaluation workflows.
+- Do not point IX Chat at production systems or production credentials until you have explicit policy controls and approvals in place.
+- Use isolated test/staging environments first and keep a human approval step for any mutating tool actions.
+
 ## Prerequisites
 
 - Windows 10 (1809+) or Windows 11

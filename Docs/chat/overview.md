@@ -7,6 +7,12 @@ description: Windows desktop tray application for AI conversations with tool cal
 
 IX Chat is a Windows desktop application that lives in your system tray, providing instant access to AI-powered conversations. Built with WinUI 3 and WebView2, it combines a native desktop experience with a modern web-based chat interface.
 
+## Production Safety Notice
+
+- IX Chat and enabled tool packs can execute commands, read/write files, and call external services.
+- Do not attach IX Chat directly to production infrastructure, production secrets, or unattended auto-approval flows.
+- Validate behavior in isolated dev/staging first, keep human review in the loop, and use least-privilege credentials.
+
 ## Key Features
 
 - **System Tray Integration** -- Always accessible from your Windows taskbar via [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon)
