@@ -464,11 +464,25 @@ internal sealed partial class ChatServiceSession {
             string? outcomeCode = null;
             var threadIdForDelta = run.ThreadId ?? string.Empty;
             var usedModel = request.Options?.Model ?? _options.Model;
+            var bufferDraftDeltasForSmartReview = ShouldBufferDraftDeltasForSmartReview(request);
             try {
+                if (bufferDraftDeltasForSmartReview) {
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadIdForDelta,
+                            status: "phase_review",
+                            message: "Drafting response and applying quality review before display...")
+                        .ConfigureAwait(false);
+                }
+
                 deltaSubscription = client.SubscribeDelta(delta => {
                     // Best-effort TTFT tracking: latch the first delta timestamp once.
                     if (firstDeltaUtcTicks == 0) {
                         _ = Interlocked.CompareExchange(ref firstDeltaUtcTicks, DateTime.UtcNow.Ticks, 0);
+                    }
+                    if (bufferDraftDeltasForSmartReview) {
+                        return;
                     }
                     _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
                 });

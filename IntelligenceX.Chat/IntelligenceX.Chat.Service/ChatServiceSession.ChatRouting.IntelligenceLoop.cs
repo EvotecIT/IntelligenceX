@@ -19,7 +19,7 @@ internal sealed partial class ChatServiceSession {
     private const string ResponseReviewMarker = "ix:response-review:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
-    private const int DefaultMaxReviewPasses = 0;
+    private const int DefaultMaxReviewPasses = 1;
     private const int MaxReviewPassesLimit = 3;
     private const int DefaultModelHeartbeatSeconds = 8;
     private const int MaxModelHeartbeatSeconds = 60;
@@ -73,6 +73,43 @@ internal sealed partial class ChatServiceSession {
         return Math.Clamp(configured.Value, 0, MaxReviewPassesLimit);
     }
 
+    internal static bool IsComplexReviewCandidateRequest(string userRequest) {
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0) {
+            return false;
+        }
+
+        if (LooksLikeActionSelectionPayload(request)) {
+            return true;
+        }
+
+        if (request.IndexOf('\n', StringComparison.Ordinal) >= 0) {
+            return true;
+        }
+
+        return request.Length >= 72;
+    }
+
+    // Smart-mode guard: when we expect an analysis-style reviewed response, avoid exposing a draft
+    // that will be rewritten before completion.
+    internal static bool ShouldBufferDraftDeltasForSmartReview(ChatRequest request) {
+        if (request is null) {
+            return false;
+        }
+
+        var options = request.Options;
+        if (!(options?.PlanExecuteReviewLoop ?? true)) {
+            return false;
+        }
+
+        if (ResolveMaxReviewPasses(options) <= 0) {
+            return false;
+        }
+
+        var userRequest = ExtractPrimaryUserRequest(request.Text);
+        return IsComplexReviewCandidateRequest(userRequest);
+    }
+
     internal static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
         var configured = options?.ModelHeartbeatSeconds;
         if (!configured.HasValue) {
@@ -124,7 +161,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (executionContractApplies && !hasToolActivity) {
+        if (!hasToolActivity) {
             return false;
         }
 
@@ -141,20 +178,24 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (!IsComplexReviewCandidateRequest(request)) {
+            return false;
+        }
+
         var tokenCount = CountLetterDigitTokens(draft, maxTokens: 96);
         if (tokenCount <= 0) {
             return false;
         }
 
-        if (tokenCount <= 18 && draft.Length <= 220) {
+        if (tokenCount < 24 || draft.Length < 260) {
+            return false;
+        }
+
+        if (draft.Length <= 1800) {
             return true;
         }
 
-        if (!hasToolActivity && tokenCount <= 36 && draft.Length <= 320) {
-            return true;
-        }
-
-        return ContainsQuestionSignal(draft) && tokenCount <= 48 && draft.Length <= 360;
+        return ContainsQuestionSignal(draft) && draft.Length <= 2400;
     }
 
     internal static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
