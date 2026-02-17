@@ -64,10 +64,6 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?m)^(?<indent>\s*-\s)\*\*(?<label>[^*\r\n:]+):\*\*\s*(?<value>[^\r\n]*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex LeadingStrongMetricLineRegex = new(
-        @"(?m)^(?<indent>\s*)\*\*(?<label>[^*\r\n:][^*\r\n]*?):\s*(?<value>[^*\r\n]+)\*\*(?<suffix>[^\r\n]*)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     private static readonly Regex LegacyRepairSignalRegex = new(
         @"\*\*Status:\s|-\*\*|-\*[A-Za-z]|:\*\*\S",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -205,22 +201,8 @@ internal static class TranscriptMarkdownNormalizer {
                 return value.Length == 0 ? indent + "Status" : indent + "Status **" + value + "**";
             });
 
-        var strongMetricNormalized = LeadingStrongMetricLineRegex.Replace(
-            statusNormalized,
-            match => {
-                var indent = match.Groups["indent"].Value;
-                var label = match.Groups["label"].Value.Trim();
-                var value = match.Groups["value"].Value.Trim();
-                var suffix = match.Groups["suffix"].Value;
-                if (label.Length == 0 || value.Length == 0) {
-                    return match.Value;
-                }
-
-                return indent + label + " - **" + value + "**" + suffix;
-            });
-
         return LegacyBoldMetricBulletRegex.Replace(
-            strongMetricNormalized,
+            statusNormalized,
             match => {
                 var indent = match.Groups["indent"].Value;
                 var label = match.Groups["label"].Value.Trim();

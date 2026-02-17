@@ -249,33 +249,4 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("<strong>Replication + DC health snapshot</strong>", html);
         Assert.DoesNotContain("**", html);
     }
-
-    /// <summary>
-    /// Ensures kerberos catalog style assistant output renders list/code blocks without leaking literal markdown markers.
-    /// </summary>
-    [Fact]
-    public void Format_RendersKerberosCatalogWithoutLiteralStrongMarkers() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
-        var now = new DateTime(2026, 2, 17, 15, 40, 11, DateTimeKind.Local);
-        var text = """
-                   Perfect — I pulled the TestimoX Kerberos catalog for your domain context.
-
-                   **Available Kerberos-related rules: 12** (all enabled, built-in).
-                   Top ones to run first:
-
-                   1. `KerberosHealthCheck` (broad high-signal sweep)
-                   2. `DomainKerberosCryptoOverview`
-                   3. `DomainKerberosRc4Only`
-                   """;
-
-        var html = TranscriptHtmlFormatter.Format(new[] {
-            ("Assistant", text, now)
-        }, "HH:mm:ss", options);
-
-        Assert.Contains("Available Kerberos-related rules", html);
-        Assert.Contains("<strong>12</strong>", html);
-        Assert.Contains("<code>KerberosHealthCheck</code>", html);
-        Assert.DoesNotContain("**Available Kerberos-related rules: 12**", html);
-        Assert.DoesNotContain("<dl>", html);
-    }
 }
