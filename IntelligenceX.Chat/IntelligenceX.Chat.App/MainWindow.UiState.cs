@@ -1155,17 +1155,15 @@ public sealed partial class MainWindow : Window {
 
             var hasSelectedToolCount = false;
             if (root.TryGetProperty("selectedToolCount", out var selectedElement)
-                && selectedElement.ValueKind == JsonValueKind.Number
-                && selectedElement.TryGetInt32(out var parsedSelected)) {
-                selectedToolCount = Math.Max(0, parsedSelected);
+                && TryParseRoutingMetaCount(selectedElement, out var parsedSelected)) {
+                selectedToolCount = parsedSelected;
                 hasSelectedToolCount = true;
             }
 
             var hasTotalToolCount = false;
             if (root.TryGetProperty("totalToolCount", out var totalElement)
-                && totalElement.ValueKind == JsonValueKind.Number
-                && totalElement.TryGetInt32(out var parsedTotal)) {
-                totalToolCount = Math.Max(0, parsedTotal);
+                && TryParseRoutingMetaCount(totalElement, out var parsedTotal)) {
+                totalToolCount = parsedTotal;
                 hasTotalToolCount = true;
             }
 
@@ -1177,6 +1175,74 @@ public sealed partial class MainWindow : Window {
         } catch (JsonException) {
             return false;
         }
+    }
+
+    private static bool TryParseRoutingMetaCount(JsonElement element, out int value) {
+        value = 0;
+
+        switch (element.ValueKind) {
+            case JsonValueKind.Number:
+                if (element.TryGetInt32(out var parsedInt)) {
+                    value = Math.Max(0, parsedInt);
+                    return true;
+                }
+
+                if (element.TryGetInt64(out var parsedLong)) {
+                    value = ClampRoutingMetaCount(parsedLong);
+                    return true;
+                }
+
+                if (element.TryGetDecimal(out var parsedDecimal)) {
+                    value = ClampRoutingMetaCount(parsedDecimal);
+                    return true;
+                }
+
+                return false;
+            case JsonValueKind.String:
+                var text = (element.GetString() ?? string.Empty).Trim();
+                if (text.Length == 0) {
+                    return false;
+                }
+
+                if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intText)) {
+                    value = Math.Max(0, intText);
+                    return true;
+                }
+
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longText)) {
+                    value = ClampRoutingMetaCount(longText);
+                    return true;
+                }
+
+                if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalText)) {
+                    value = ClampRoutingMetaCount(decimalText);
+                    return true;
+                }
+
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private static int ClampRoutingMetaCount(long value) {
+        if (value <= 0) {
+            return 0;
+        }
+
+        return value >= int.MaxValue ? int.MaxValue : (int)value;
+    }
+
+    private static int ClampRoutingMetaCount(decimal value) {
+        if (value <= 0m) {
+            return 0;
+        }
+
+        if (value >= int.MaxValue) {
+            return int.MaxValue;
+        }
+
+        return (int)decimal.Truncate(value);
     }
 
     private string ResolveToolActivityName(string toolName) {
