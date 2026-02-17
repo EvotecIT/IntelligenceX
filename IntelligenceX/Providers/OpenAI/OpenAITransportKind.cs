@@ -15,5 +15,9 @@ public enum OpenAITransportKind {
     /// <summary>
     /// OpenAI-compatible HTTP transport (for example local providers such as Ollama/LM Studio).
     /// </summary>
-    CompatibleHttp
+    CompatibleHttp,
+    /// <summary>
+    /// GitHub Copilot CLI transport (subscription-backed).
+    /// </summary>
+    CopilotCli
 }

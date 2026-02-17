@@ -43,9 +43,14 @@ On first launch, IX Chat will:
 ## First Login
 
 1. Click the tray icon to open the chat window
-2. Select your AI provider (ChatGPT or Copilot)
-3. Complete the authentication flow in the browser
-4. Return to IX Chat -- you are now connected
+2. Open **Options -> Runtime**
+3. Pick a runtime mode:
+   - **Use ChatGPT Runtime** (native)
+   - **Use Copilot Subscription** (`copilot-cli`)
+   - **Use LM Studio Runtime** (compatible-http)
+4. Complete browser sign-in when prompted (ChatGPT or Copilot subscription path)
+5. For compatible-http providers, configure base URL/API key in **Show Advanced Runtime** if needed
+6. Click **Refresh Models** and verify the active runtime badge
 
 ## Status Indicators
 

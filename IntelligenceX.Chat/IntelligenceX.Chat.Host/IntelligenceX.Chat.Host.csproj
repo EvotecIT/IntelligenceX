@@ -11,11 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Local development: supports either a sibling checkout or an IntelligenceX worktree. -->
-    <ProjectReference Include="..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj" Condition="Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
-    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj" Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
-    <ProjectReference Include="..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj" Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
-    <ProjectReference Include="..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj" Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+    <!-- Always reference the repo-local IntelligenceX project to keep chat/runtime transport features in sync. -->
+    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
   </ItemGroup>
 
   <ItemGroup>

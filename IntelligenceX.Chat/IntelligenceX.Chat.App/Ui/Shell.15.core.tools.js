@@ -425,7 +425,14 @@
   }
 
   function normalizeLocalTransport(value) {
-    return String(value || "").toLowerCase() === "compatible-http" ? "compatible-http" : "native";
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "compatible-http" || normalized === "compatiblehttp" || normalized === "http" || normalized === "local" || normalized === "ollama" || normalized === "lmstudio" || normalized === "lm-studio") {
+      return "compatible-http";
+    }
+    if (normalized === "copilot-cli" || normalized === "copilot" || normalized === "github-copilot" || normalized === "githubcopilot") {
+      return "copilot-cli";
+    }
+    return "native";
   }
 
   function normalizeModelText(value) {
@@ -505,6 +512,14 @@
     return normalized.indexOf("127.0.0.1:11434") >= 0 || normalized.indexOf("localhost:11434") >= 0;
   }
 
+  function isCopilotBaseUrl(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return normalized.indexOf("api.githubcopilot.com") >= 0;
+  }
+
   function normalizeModelFilter(value) {
     return String(value || "").trim().toLowerCase();
   }
@@ -513,6 +528,8 @@
     var local = state.options.localModel || {};
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
+    var isCopilotCli = transport === "copilot-cli";
+    var supportsRuntimeModels = isCompatible || isCopilotCli;
     var baseUrl = String(local.baseUrl || "");
     var modelsEndpoint = normalizeModelText(local.modelsEndpoint || "");
     var model = normalizeModelText(local.model || "");
@@ -530,11 +547,17 @@
     var runtimeDetectedName = normalizeModelText(runtimeDetection.detectedName || "");
     var runtimeDetectionWarning = normalizeModelText(runtimeDetection.warning || "");
     var lmStudioConnected = isCompatible && isLmStudioBaseUrl(baseUrl);
+    var ollamaConnected = isCompatible && isOllamaBaseUrl(baseUrl);
+    var copilotConnected = isCompatible && isCopilotBaseUrl(baseUrl);
     var runtimeSummary = byId("optRuntimeSummary");
     if (runtimeSummary) {
-      if (isCompatible) {
+      if (isCopilotCli) {
+        runtimeSummary.textContent = "Current: GitHub Copilot subscription runtime (CLI transport).";
+      } else if (isCompatible) {
         var endpoint = baseUrl ? baseUrl : "(base URL not set)";
-        runtimeSummary.textContent = "Current: Local runtime (Compatible HTTP) via " + endpoint + ".";
+        runtimeSummary.textContent = copilotConnected
+          ? "Current: GitHub Copilot runtime (Compatible HTTP) via " + endpoint + "."
+          : "Current: Local runtime (Compatible HTTP) via " + endpoint + ".";
       } else {
         runtimeSummary.textContent = "Current: ChatGPT runtime (OpenAI native).";
       }
@@ -542,21 +565,28 @@
 
     var runtimeAuthHint = byId("optRuntimeAuthHint");
     if (runtimeAuthHint) {
-      if (isCompatible) {
+      if (isCopilotCli) {
+        runtimeAuthHint.textContent = "Copilot subscription runtime uses GitHub Copilot sign-in. API key is not used in this mode.";
+      } else if (copilotConnected) {
+        runtimeAuthHint.textContent = "Copilot runtime uses a GitHub token in API key. ChatGPT sign-in remains separate.";
+      } else if (isCompatible) {
         runtimeAuthHint.textContent = "You can stay signed in to ChatGPT while running local models.";
       } else {
         runtimeAuthHint.textContent = "ChatGPT sign-in and runtime provider are separate. You can switch to LM Studio any time.";
       }
     }
 
-    var ollamaConnected = isCompatible && isOllamaBaseUrl(baseUrl);
     var runtimeBadge = byId("optLocalRuntimeBadge");
     if (runtimeBadge) {
       var runtimeName = "ChatGPT Native";
-      if (lmStudioConnected) {
+      if (isCopilotCli) {
+        runtimeName = "GitHub Copilot Subscription";
+      } else if (lmStudioConnected) {
         runtimeName = "LM Studio";
       } else if (ollamaConnected) {
         runtimeName = "Ollama";
+      } else if (copilotConnected) {
+        runtimeName = "GitHub Copilot";
       } else if (isCompatible) {
         runtimeName = "Compatible HTTP";
       }
@@ -566,8 +596,12 @@
 
     var simpleHint = byId("optLocalSimpleHint");
     if (simpleHint) {
-      if (!isCompatible) {
+      if (transport === "native") {
         simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
+      } else if (isCopilotCli) {
+        simpleHint.textContent = "Copilot subscription runtime is active. Use Sign In to authenticate your GitHub Copilot account.";
+      } else if (copilotConnected) {
+        simpleHint.textContent = "GitHub Copilot runtime is active. Use a GitHub token in API key and refresh models.";
       } else if (lmStudioConnected) {
         simpleHint.textContent = "LM Studio runtime is active for this profile.";
       } else if (runtimeDetectionHasRun && !lmStudioAvailable) {
@@ -579,8 +613,9 @@
 
     var useOpenAiRuntimeButton = byId("btnUseOpenAiRuntime");
     if (useOpenAiRuntimeButton) {
-      useOpenAiRuntimeButton.textContent = isCompatible ? "Use ChatGPT Runtime" : "ChatGPT Runtime Active";
-      useOpenAiRuntimeButton.classList.toggle("options-btn-active", !isCompatible);
+      var isNative = transport === "native";
+      useOpenAiRuntimeButton.textContent = isNative ? "ChatGPT Runtime Active" : "Use ChatGPT Runtime";
+      useOpenAiRuntimeButton.classList.toggle("options-btn-active", isNative);
     }
 
     var connectLmStudioButton = byId("btnConnectLmStudio");
@@ -592,14 +627,23 @@
         : "";
     }
 
+    var useCopilotRuntimeButton = byId("btnUseCopilotRuntime");
+    if (useCopilotRuntimeButton) {
+      useCopilotRuntimeButton.textContent = isCopilotCli ? "Copilot Subscription Active" : "Use Copilot Subscription";
+      useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotCli);
+      useCopilotRuntimeButton.title = isCopilotCli
+        ? ""
+        : "Uses GitHub Copilot subscription sign-in (no API key required).";
+    }
+
     var refreshModelsButton = byId("btnRefreshModels");
     if (refreshModelsButton) {
-      refreshModelsButton.disabled = !isCompatible;
-      refreshModelsButton.title = isCompatible ? "" : "Switch to local runtime to refresh local models.";
+      refreshModelsButton.disabled = transport === "native";
+      refreshModelsButton.title = transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : "";
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();
-    if (!isCompatible && !advancedShouldBeOpen) {
+    if (transport === "native" && !advancedShouldBeOpen) {
       setRuntimeAdvancedOpen(false);
     } else {
       setRuntimeAdvancedOpen(advancedShouldBeOpen);
@@ -645,6 +689,11 @@
     var apiKeyHint = byId("optLocalApiKeyHint");
     if (apiKeyHint) {
       apiKeyHint.hidden = !isCompatible;
+      if (isCompatible && copilotConnected) {
+        apiKeyHint.textContent = "Required for Copilot endpoint. Use a GitHub OAuth app token or fine-grained PAT with Copilot Chat access.";
+      } else {
+        apiKeyHint.textContent = "Use Clear Saved API Key to remove the currently stored key.";
+      }
     }
 
     var apiKeyInput = byId("optLocalApiKey");
@@ -733,7 +782,7 @@
     var modelFilterRow = byId("optLocalModelFilterRow");
     var hasSelectableModels = selectableOptionCount > 0;
     var usingManualInput = !modelSelect || !hasSelectableModels || modelSelect.value === "";
-    var showModelSelect = isCompatible && (hasSelectableModels || modelFilterQuery.length > 0);
+    var showModelSelect = supportsRuntimeModels && (hasSelectableModels || modelFilterQuery.length > 0);
     if (modelSelectRow) {
       modelSelectRow.hidden = !showModelSelect;
     }
@@ -741,39 +790,49 @@
       modelFilterRow.hidden = !showModelSelect;
     }
     if (modelInputRow) {
-      modelInputRow.hidden = !isCompatible || (showModelSelect && !usingManualInput);
+      modelInputRow.hidden = !supportsRuntimeModels || (showModelSelect && !usingManualInput);
     }
     if (modelInput) {
-      modelInput.disabled = !isCompatible || (showModelSelect && !usingManualInput);
+      modelInput.disabled = !supportsRuntimeModels || (showModelSelect && !usingManualInput);
     }
 
     var stateNote = byId("optLocalModelsState");
     if (stateNote) {
       var parts = [];
-      if (!isCompatible) {
+      if (transport === "native") {
         parts.push("ChatGPT runtime active");
         if (models.length > 0) {
           parts.push(String(models.length) + " local models cached");
+        }
+      } else if (isCopilotCli) {
+        parts.push("GitHub Copilot subscription runtime active");
+        if (models.length > 0) {
+          parts.push(String(models.length) + " models returned");
+        } else {
+          parts.push("No discovered models yet");
+          parts.push("Use Sign In, then click Refresh Models");
         }
       } else {
         if (modelsEndpoint) {
           parts.push("model source: " + modelsEndpoint);
         }
-        if (runtimeDetectedName) {
+        if (!copilotConnected && runtimeDetectedName) {
           parts.push("runtime probe: " + runtimeDetectedName + " reachable");
-        } else if (runtimeDetectionHasRun && runtimeDetectionWarning) {
+        } else if (!copilotConnected && runtimeDetectionHasRun && runtimeDetectionWarning) {
           parts.push(runtimeDetectionWarning);
         }
         if (models.length > 0) {
           parts.push(String(models.length) + " models returned");
           var cloudHostedCount = countCloudHostedModelNames(models);
-          if (cloudHostedCount > 0 && cloudHostedCount >= Math.ceil(models.length * 0.6)) {
+          if (!copilotConnected && cloudHostedCount > 0 && cloudHostedCount >= Math.ceil(models.length * 0.6)) {
             parts.push("catalog looks cloud-hosted; load a local model in LM Studio to see local IDs");
           }
         } else {
           parts.push("No discovered models yet");
           if (lmStudioConnected) {
             parts.push("Load a model in LM Studio, then click Refresh Models");
+          } else if (copilotConnected) {
+            parts.push("Set a GitHub token in API key, then click Refresh Models");
           }
         }
       }

@@ -275,6 +275,39 @@ public sealed class EasySession : IDisposable
             clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback;
         }
 
+        if (options.TransportKind == OpenAITransportKind.CopilotCli) {
+            clientOptions.CopilotOptions.CliPath = options.CopilotOptions.CliPath;
+            clientOptions.CopilotOptions.CliUrl = options.CopilotOptions.CliUrl;
+            clientOptions.CopilotOptions.UseStdio = options.CopilotOptions.UseStdio;
+            clientOptions.CopilotOptions.Port = options.CopilotOptions.Port;
+            clientOptions.CopilotOptions.LogLevel = options.CopilotOptions.LogLevel;
+            clientOptions.CopilotOptions.WorkingDirectory = options.CopilotOptions.WorkingDirectory;
+            clientOptions.CopilotOptions.InheritEnvironment = options.CopilotOptions.InheritEnvironment;
+            clientOptions.CopilotOptions.AutoStart = options.CopilotOptions.AutoStart;
+            clientOptions.CopilotOptions.AutoInstallCli = options.CopilotOptions.AutoInstallCli;
+            clientOptions.CopilotOptions.AutoInstallMethod = options.CopilotOptions.AutoInstallMethod;
+            clientOptions.CopilotOptions.AutoInstallPrerelease = options.CopilotOptions.AutoInstallPrerelease;
+            clientOptions.CopilotOptions.ConnectTimeout = options.CopilotOptions.ConnectTimeout;
+            clientOptions.CopilotOptions.ConnectRetryCount = options.CopilotOptions.ConnectRetryCount;
+            clientOptions.CopilotOptions.ConnectRetryInitialDelay = options.CopilotOptions.ConnectRetryInitialDelay;
+            clientOptions.CopilotOptions.ConnectRetryMaxDelay = options.CopilotOptions.ConnectRetryMaxDelay;
+            clientOptions.CopilotOptions.ShutdownTimeout = options.CopilotOptions.ShutdownTimeout;
+
+            clientOptions.CopilotOptions.CliArgs.Clear();
+            for (var i = 0; i < options.CopilotOptions.CliArgs.Count; i++) {
+                clientOptions.CopilotOptions.CliArgs.Add(options.CopilotOptions.CliArgs[i]);
+            }
+
+            clientOptions.CopilotOptions.Environment.Clear();
+            foreach (var pair in options.CopilotOptions.Environment) {
+                clientOptions.CopilotOptions.Environment[pair.Key] = pair.Value;
+            }
+
+            clientOptions.CopilotOptions.RpcRetry.InitialDelay = options.CopilotOptions.RpcRetry.InitialDelay;
+            clientOptions.CopilotOptions.RpcRetry.MaxDelay = options.CopilotOptions.RpcRetry.MaxDelay;
+            clientOptions.CopilotOptions.RpcRetry.RetryCount = options.CopilotOptions.RpcRetry.RetryCount;
+        }
+
         return clientOptions;
     }
 

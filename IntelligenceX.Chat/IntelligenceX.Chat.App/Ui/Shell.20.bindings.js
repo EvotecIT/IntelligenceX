@@ -693,15 +693,71 @@
   });
 
   function normalizeLocalTransportValue(value) {
-    return String(value || "").toLowerCase() === "compatible-http" ? "compatible-http" : "native";
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "compatible-http" || normalized === "compatiblehttp" || normalized === "http" || normalized === "local" || normalized === "ollama" || normalized === "lmstudio" || normalized === "lm-studio") {
+      return "compatible-http";
+    }
+    if (normalized === "copilot-cli" || normalized === "copilot" || normalized === "github-copilot" || normalized === "githubcopilot") {
+      return "copilot-cli";
+    }
+    return "native";
+  }
+
+  function transportUsesCompatibleHttp(transport) {
+    return normalizeLocalTransportValue(transport) === "compatible-http";
+  }
+
+  function applyCompatiblePresetSelection(preset) {
+    var key = String(preset || "").toLowerCase();
+    var transport = byId("optLocalTransport");
+    var baseUrl = byId("optLocalBaseUrl");
+    var modelInput = byId("optLocalModelInput");
+    var baseUrlRow = byId("optLocalBaseUrlRow");
+    var apiKeyRow = byId("optLocalApiKeyRow");
+    var apiKeyHint = byId("optLocalApiKeyHint");
+    var apiKeyInput = byId("optLocalApiKey");
+
+    if (!transport || !baseUrl) {
+      return;
+    }
+
+    transport.value = "compatible-http";
+    syncCustomSelect(transport);
+
+    if (key === "lmstudio") {
+      baseUrl.value = "http://127.0.0.1:1234/v1";
+    } else if (key === "ollama") {
+      baseUrl.value = "http://127.0.0.1:11434";
+    } else if (key === "copilot") {
+      baseUrl.value = "https://api.githubcopilot.com/v1";
+    }
+
+    if (baseUrlRow) {
+      baseUrlRow.hidden = false;
+    }
+    baseUrl.disabled = false;
+    if (apiKeyRow) {
+      apiKeyRow.hidden = false;
+    }
+    if (apiKeyHint) {
+      apiKeyHint.hidden = false;
+    }
+    if (apiKeyInput) {
+      apiKeyInput.disabled = false;
+    }
+    if (modelInput) {
+      modelInput.value = "";
+    }
   }
 
   function applyLocalProviderSettings(forceRefresh, clearApiKey) {
     var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
-    var baseUrl = (byId("optLocalBaseUrl").value || "").trim();
+    var baseUrl = transportUsesCompatibleHttp(transport)
+      ? (byId("optLocalBaseUrl").value || "").trim()
+      : "";
     var model = (byId("optLocalModelInput").value || "").trim();
     var shouldClearApiKey = clearApiKey === true;
-    var apiKey = transport === "compatible-http"
+    var apiKey = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
     if (shouldClearApiKey) {
@@ -720,17 +776,17 @@
   function hasPendingLocalProviderChanges() {
     var local = state.options.localModel || {};
     var currentTransport = normalizeLocalTransportValue(local.transport || "native");
-    var currentBaseUrl = currentTransport === "compatible-http"
+    var currentBaseUrl = transportUsesCompatibleHttp(currentTransport)
       ? String(local.baseUrl || "").trim().toLowerCase()
       : "";
     var currentModel = String(local.model || "").trim();
 
     var draftTransport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
-    var draftBaseUrl = draftTransport === "compatible-http"
+    var draftBaseUrl = transportUsesCompatibleHttp(draftTransport)
       ? (byId("optLocalBaseUrl").value || "").trim().toLowerCase()
       : "";
     var draftModel = (byId("optLocalModelInput").value || "").trim();
-    var draftApiKey = draftTransport === "compatible-http"
+    var draftApiKey = transportUsesCompatibleHttp(draftTransport)
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
 
@@ -742,6 +798,7 @@
 
   byId("optLocalTransport").addEventListener("change", function(e) {
     var next = normalizeLocalTransportValue(e.target.value || "native");
+    var isCompatible = transportUsesCompatibleHttp(next);
     e.target.value = next;
     syncCustomSelect(e.target);
 
@@ -752,11 +809,11 @@
     var apiKeyInput = byId("optLocalApiKey");
     var autoDetectButton = byId("btnAutoDetectLocalRuntime");
     if (baseRow) {
-      baseRow.hidden = next !== "compatible-http";
+      baseRow.hidden = !isCompatible;
     }
     if (baseInput) {
-      baseInput.disabled = next !== "compatible-http";
-      if (next !== "compatible-http") {
+      baseInput.disabled = !isCompatible;
+      if (!isCompatible) {
         baseInput.value = "";
       } else if (!(baseInput.value || "").trim()) {
         var runtimeDetection = (((state.options || {}).localModel || {}).runtimeDetection || {});
@@ -770,19 +827,19 @@
       }
     }
     if (apiKeyRow) {
-      apiKeyRow.hidden = next !== "compatible-http";
+      apiKeyRow.hidden = !isCompatible;
     }
     if (apiKeyHint) {
-      apiKeyHint.hidden = next !== "compatible-http";
+      apiKeyHint.hidden = !isCompatible;
     }
     if (apiKeyInput) {
-      apiKeyInput.disabled = next !== "compatible-http";
-      if (next !== "compatible-http") {
+      apiKeyInput.disabled = !isCompatible;
+      if (!isCompatible) {
         apiKeyInput.value = "";
       }
     }
     if (autoDetectButton) {
-      autoDetectButton.hidden = next !== "compatible-http";
+      autoDetectButton.hidden = !isCompatible;
     }
   });
 
@@ -825,14 +882,16 @@
   });
 
   byId("btnConnectLmStudio").addEventListener("click", function() {
+    applyCompatiblePresetSelection("lmstudio");
+    applyLocalProviderSettings(true);
+  });
+
+  byId("btnUseCopilotRuntime").addEventListener("click", function() {
     var transport = byId("optLocalTransport");
-    var baseUrl = byId("optLocalBaseUrl");
-    var modelInput = byId("optLocalModelInput");
-    transport.value = "compatible-http";
-    syncCustomSelect(transport);
-    baseUrl.value = "http://127.0.0.1:1234/v1";
-    if (modelInput) {
-      modelInput.value = "";
+    if (transport) {
+      transport.value = "copilot-cli";
+      syncCustomSelect(transport);
+      transport.dispatchEvent(new Event("change"));
     }
     applyLocalProviderSettings(true);
   });
@@ -842,30 +901,17 @@
   });
 
   byId("btnLocalPresetOllama").addEventListener("click", function() {
-    var transport = byId("optLocalTransport");
-    var baseUrl = byId("optLocalBaseUrl");
-    transport.value = "compatible-http";
-    syncCustomSelect(transport);
-    baseUrl.value = "http://127.0.0.1:11434";
-    byId("optLocalBaseUrlRow").hidden = false;
-    baseUrl.disabled = false;
-    byId("optLocalApiKeyRow").hidden = false;
-    byId("optLocalApiKeyHint").hidden = false;
-    byId("optLocalApiKey").disabled = false;
+    applyCompatiblePresetSelection("ollama");
     applyLocalProviderSettings(true);
   });
 
   byId("btnLocalPresetLmStudio").addEventListener("click", function() {
-    var transport = byId("optLocalTransport");
-    var baseUrl = byId("optLocalBaseUrl");
-    transport.value = "compatible-http";
-    syncCustomSelect(transport);
-    baseUrl.value = "http://127.0.0.1:1234/v1";
-    byId("optLocalBaseUrlRow").hidden = false;
-    baseUrl.disabled = false;
-    byId("optLocalApiKeyRow").hidden = false;
-    byId("optLocalApiKeyHint").hidden = false;
-    byId("optLocalApiKey").disabled = false;
+    applyCompatiblePresetSelection("lmstudio");
+    applyLocalProviderSettings(true);
+  });
+
+  byId("btnLocalPresetCopilot").addEventListener("click", function() {
+    applyCompatiblePresetSelection("copilot");
     applyLocalProviderSettings(true);
   });
 
@@ -882,7 +928,7 @@
   });
 
   byId("btnClearLocalApiKey").addEventListener("click", function() {
-    if (normalizeLocalTransportValue(byId("optLocalTransport").value || "native") !== "compatible-http") {
+    if (!transportUsesCompatibleHttp(byId("optLocalTransport").value || "native")) {
       return;
     }
     byId("optLocalApiKey").value = "";

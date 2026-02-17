@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Chat.Tooling;
@@ -50,6 +51,15 @@ internal sealed partial class ChatServiceSession {
             opts.CompatibleHttpOptions.Streaming = _options.OpenAIStreaming;
             opts.CompatibleHttpOptions.AllowInsecureHttp = _options.OpenAIAllowInsecureHttp;
             opts.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = _options.OpenAIAllowInsecureHttpNonLoopback;
+        }
+
+        if (opts.TransportKind == OpenAITransportKind.CopilotCli) {
+            opts.CopilotOptions.AutoInstallCli = true;
+            opts.CopilotOptions.AutoInstallMethod = CopilotCliInstallMethod.Auto;
+            var cliPath = Environment.GetEnvironmentVariable("COPILOT_CLI_PATH");
+            if (!string.IsNullOrWhiteSpace(cliPath)) {
+                opts.CopilotOptions.CliPath = cliPath;
+            }
         }
 
         return opts;

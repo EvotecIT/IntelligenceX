@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.OpenAI;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -78,6 +79,19 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         var enabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack", "--enable-officeimo-pack" }, out var enabledError);
         Assert.True(string.IsNullOrWhiteSpace(enabledError));
         Assert.True(enabled.EnableOfficeImoPack);
+    }
+
+    [Theory]
+    [InlineData("copilot-cli")]
+    [InlineData("copilot")]
+    [InlineData("github-copilot")]
+    [InlineData("githubcopilot")]
+    public void Parse_AcceptsCopilotTransportAliases(string value) {
+        var options = ServiceOptions.Parse(new[] { "--openai-transport", value }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(OpenAITransportKind.CopilotCli, options.OpenAITransport);
     }
 
     private static void TryDelete(string path) {

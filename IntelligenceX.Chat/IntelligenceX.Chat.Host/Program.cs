@@ -887,7 +887,7 @@ internal static partial class Program {
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
-        Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http (default: native).");
+        Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
         Console.WriteLine("  --openai-stream         Request streaming responses (default: on).");

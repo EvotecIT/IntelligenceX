@@ -117,4 +117,32 @@ public sealed class ServiceLaunchArgumentsTests {
             parentProcessId: 12345,
             new ServiceLaunchArguments.ProfileOptions { OpenAITransport = "invalid" }));
     }
+
+    /// <summary>
+    /// Ensures Copilot transport aliases normalize to copilot-cli.
+    /// </summary>
+    [Theory]
+    [InlineData("copilot")]
+    [InlineData("copilot-cli")]
+    [InlineData("github-copilot")]
+    [InlineData("githubcopilot")]
+    public void Build_NormalizesCopilotTransportAliases(string inputTransport) {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions { OpenAITransport = inputTransport });
+
+        var transportIndex = -1;
+        for (var i = 0; i < args.Count; i++) {
+            if (!string.Equals(args[i], "--openai-transport", StringComparison.Ordinal)) {
+                continue;
+            }
+            transportIndex = i;
+            break;
+        }
+        Assert.True(transportIndex >= 0);
+        Assert.True(transportIndex + 1 < args.Count);
+        Assert.Equal("copilot-cli", args[transportIndex + 1]);
+    }
 }

@@ -132,7 +132,8 @@ public sealed partial class MainWindow : Window {
             var normalizedCurrentModel = (_localProviderModel ?? string.Empty).Trim();
             var shouldAutoSelectModel = _availableModels.Length > 0
                                         && (normalizedCurrentModel.Length == 0
-                                            || (string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                                            || ((string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                                                 || string.Equals(_localProviderTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase))
                                                 && !ContainsModel(_availableModels, normalizedCurrentModel)));
             if (shouldAutoSelectModel) {
                 _localProviderModel = _availableModels[0].Model;
@@ -372,6 +373,25 @@ public sealed partial class MainWindow : Window {
                 Warning: null);
         }
 
+        // If localhost runtimes are unavailable, still probe the currently configured compatible-http endpoint
+        // (for example external LM Studio, Azure OpenAI, or another OpenAI-compatible provider).
+        if (string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            var configuredBaseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
+            if (configuredBaseUrl.Length > 0
+                && !string.Equals(configuredBaseUrl, DefaultLmStudioBaseUrl, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(configuredBaseUrl, DefaultOllamaBaseUrl, StringComparison.OrdinalIgnoreCase)) {
+                var configuredAvailable = await ProbeModelsEndpointAsync(configuredBaseUrl, cts.Token).ConfigureAwait(false);
+                if (configuredAvailable) {
+                    return new LocalRuntimeDetectionSnapshot(
+                        LmStudioAvailable: false,
+                        OllamaAvailable: false,
+                        DetectedName: DescribeRuntimeFromBaseUrl(configuredBaseUrl),
+                        DetectedBaseUrl: configuredBaseUrl,
+                        Warning: null);
+                }
+            }
+        }
+
         return new LocalRuntimeDetectionSnapshot(
             LmStudioAvailable: false,
             OllamaAvailable: false,
@@ -432,5 +452,22 @@ public sealed partial class MainWindow : Window {
         };
 
         return builder.Uri.ToString();
+    }
+
+    private static string DescribeRuntimeFromBaseUrl(string baseUrl) {
+        var normalized = (baseUrl ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "Compatible HTTP runtime";
+        }
+
+        if (normalized.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase)) {
+            return "GitHub Copilot endpoint";
+        }
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host)) {
+            return uri.Host;
+        }
+
+        return "Compatible HTTP runtime";
     }
 }

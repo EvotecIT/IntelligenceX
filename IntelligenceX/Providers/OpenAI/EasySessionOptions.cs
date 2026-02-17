@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using IntelligenceX.Configuration;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
@@ -41,6 +42,10 @@ public sealed class EasySessionOptions {
     /// OpenAI-compatible HTTP transport options (for example local providers such as Ollama/LM Studio).
     /// </summary>
     public OpenAICompatibleHttpOptions CompatibleHttpOptions { get; } = new();
+    /// <summary>
+    /// Copilot CLI transport options.
+    /// </summary>
+    public CopilotClientOptions CopilotOptions { get; } = CreateDefaultCopilotOptions();
     /// <summary>
     /// Selected transport kind.
     /// </summary>
@@ -134,6 +139,9 @@ public sealed class EasySessionOptions {
         if (CompatibleHttpOptions is null) {
             throw new ArgumentNullException(nameof(CompatibleHttpOptions));
         }
+        if (CopilotOptions is null) {
+            throw new ArgumentNullException(nameof(CopilotOptions));
+        }
         if (string.IsNullOrWhiteSpace(DefaultModel)) {
             throw new ArgumentException("DefaultModel cannot be null or whitespace.", nameof(DefaultModel));
         }
@@ -146,6 +154,9 @@ public sealed class EasySessionOptions {
                 break;
             case OpenAITransportKind.CompatibleHttp:
                 CompatibleHttpOptions.Validate();
+                break;
+            case OpenAITransportKind.CopilotCli:
+                CopilotOptions.Validate();
                 break;
             default:
                 NativeOptions.Validate();
@@ -164,6 +175,7 @@ public sealed class EasySessionOptions {
             return false;
         }
         config.OpenAI.ApplyTo(this);
+        config.Copilot.ApplyTo(CopilotOptions);
         return true;
     }
 
@@ -176,5 +188,12 @@ public sealed class EasySessionOptions {
         var options = new EasySessionOptions();
         options.TryApplyConfig(path, baseDirectory);
         return options;
+    }
+
+    private static CopilotClientOptions CreateDefaultCopilotOptions() {
+        return new CopilotClientOptions {
+            AutoInstallCli = true,
+            AutoInstallMethod = CopilotCliInstallMethod.Auto
+        };
     }
 }

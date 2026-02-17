@@ -58,10 +58,23 @@ Notes:
 
 ## Copilot
 
-- Optional provider for users with GitHub Copilot
-- Uses Copilot CLI (experimental path)
-- Native Copilot client is planned
+- Optional provider for users with GitHub Copilot subscription
+- Supported in `IntelligenceXClient` via `OpenAITransportKind.CopilotCli`
+- Uses Copilot sign-in flow (subscription auth), not `compatible-http` API key fields
 - Experimental direct HTTP client is available for custom endpoints (unsupported)
+
+```csharp
+using IntelligenceX.OpenAI;
+
+var options = new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.CopilotCli,
+    DefaultModel = "gpt-5.3-codex"
+};
+
+await using var client = await IntelligenceXClient.ConnectAsync(options);
+var turn = await client.ChatAsync("Summarize the latest PR");
+Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
+```
 
 ```csharp
 using IntelligenceX.Copilot;

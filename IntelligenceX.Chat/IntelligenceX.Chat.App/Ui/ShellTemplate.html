@@ -160,6 +160,7 @@
           <div class="options-actions options-actions-wrap">
             <button id="btnUseOpenAiRuntime" class="options-btn options-btn-sm">Use ChatGPT Runtime</button>
             <button id="btnConnectLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio Runtime</button>
+            <button id="btnUseCopilotRuntime" class="options-btn options-btn-sm options-btn-ghost">Use Copilot Subscription</button>
             <button id="btnRefreshModels" class="options-btn options-btn-sm options-btn-ghost">Refresh Models</button>
             <button id="btnApplyLocalProvider" class="options-btn options-btn-sm options-btn-ghost">Apply Runtime</button>
             <button id="btnToggleLocalAdvancedRuntime" class="options-btn options-btn-sm options-btn-ghost">Show Advanced Runtime</button>
@@ -173,8 +174,9 @@
             <div class="options-row" id="optLocalTransportRow">
               <label class="options-label-inline" for="optLocalTransport">Provider transport</label>
               <select id="optLocalTransport" class="options-select">
-                <option value="native">OpenAI Native</option>
-                <option value="compatible-http">Compatible HTTP (Ollama / LM Studio)</option>
+                <option value="native">ChatGPT Native (OpenAI)</option>
+                <option value="copilot-cli">GitHub Copilot CLI (Subscription)</option>
+                <option value="compatible-http">Compatible HTTP (LM Studio / Ollama / Azure / Other)</option>
               </select>
             </div>
             <div class="options-row" id="optLocalBaseUrlRow">
@@ -190,11 +192,12 @@
               <label class="options-label-inline" for="optLocalModelInput">Model</label>
               <input id="optLocalModelInput" class="options-input options-input-sm" placeholder="e.g. gpt-5.3-codex or llama3.2" />
             </div>
-            <div class="options-note">Auto-detect picks an available local runtime and refreshes models.</div>
+            <div class="options-note">Auto Detect scans LM Studio/Ollama endpoints. Compatible HTTP also supports API key providers (Azure/OpenAI-compatible endpoints).</div>
             <div class="options-actions options-actions-wrap">
               <button id="btnAutoDetectLocalRuntime" class="options-btn options-btn-sm">Auto Detect Runtime</button>
               <button id="btnLocalPresetLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio Runtime</button>
               <button id="btnLocalPresetOllama" class="options-btn options-btn-sm options-btn-ghost">Use Ollama Runtime</button>
+              <button id="btnLocalPresetCopilot" class="options-btn options-btn-sm options-btn-ghost">Use Copilot Endpoint (API key)</button>
               <button id="btnClearLocalApiKey" class="options-btn options-btn-sm options-btn-ghost">Clear Saved API Key</button>
             </div>
           </div>

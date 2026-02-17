@@ -23,8 +23,13 @@ Token or app permissions are insufficient.
 ### Copilot Authentication Fails
 
 1. Verify Copilot access at [github.com/settings/copilot](https://github.com/settings/copilot)
-2. Install GitHub Copilot CLI (for example `brew install copilot-cli` or `winget install GitHub.Copilot`)
-3. Run `copilot` and use the `/login` slash command (first run), then retry the reviewer
+2. In IX Chat, select **Use Copilot Subscription** (transport `copilot-cli`)
+3. Use **Sign In** in the app and finish the browser flow
+4. Click **Refresh Models** after login
+
+Notes:
+- `copilot-cli` uses subscription login, not API key fields.
+- `compatible-http` + `https://api.githubcopilot.com/v1` is a different path and expects API-key style auth.
 
 ### Compatible HTTP (Local Providers)
 
@@ -40,6 +45,19 @@ Common issues when using `compatible-http` (local/self-hosted OpenAI-style endpo
 - Tools not being called
   - Your provider may ignore `tools` or not return `message.tool_calls`
   - Chat still works, but tool execution won't trigger
+
+### Runtime Mode Is Confusing / Wrong Runtime Active
+
+In **Options -> Runtime**, use this mapping:
+- **Use ChatGPT Runtime** -> `native`
+- **Use Copilot Subscription** -> `copilot-cli`
+- **Use LM Studio Runtime** -> `compatible-http`
+
+Then:
+1. Open **Show Advanced Runtime** and confirm transport/base URL.
+2. Click **Apply Runtime**.
+3. Click **Refresh Models**.
+4. Verify **Active runtime** badge text before sending prompts.
 
 ## Rate Limits
 

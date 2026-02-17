@@ -1,4 +1,5 @@
 using IntelligenceX.Configuration;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
@@ -29,6 +30,10 @@ public sealed class IntelligenceXClientOptions {
     /// Options for OpenAI-compatible HTTP transports (for example local providers such as Ollama/LM Studio).
     /// </summary>
     public OpenAICompatibleHttpOptions CompatibleHttpOptions { get; } = new();
+    /// <summary>
+    /// Options for the Copilot CLI transport.
+    /// </summary>
+    public CopilotClientOptions CopilotOptions { get; } = CreateDefaultCopilotOptions();
     /// <summary>
     /// Selected transport for API calls.
     /// </summary>
@@ -74,6 +79,9 @@ public sealed class IntelligenceXClientOptions {
         if (CompatibleHttpOptions is null) {
             throw new ArgumentNullException(nameof(CompatibleHttpOptions));
         }
+        if (CopilotOptions is null) {
+            throw new ArgumentNullException(nameof(CopilotOptions));
+        }
         if (string.IsNullOrWhiteSpace(DefaultModel)) {
             throw new ArgumentException("DefaultModel cannot be null or whitespace.", nameof(DefaultModel));
         }
@@ -83,6 +91,9 @@ public sealed class IntelligenceXClientOptions {
                 break;
             case OpenAITransportKind.CompatibleHttp:
                 CompatibleHttpOptions.Validate();
+                break;
+            case OpenAITransportKind.CopilotCli:
+                CopilotOptions.Validate();
                 break;
             default:
                 NativeOptions.Validate();
@@ -101,6 +112,14 @@ public sealed class IntelligenceXClientOptions {
             return false;
         }
         config.OpenAI.ApplyTo(this);
+        config.Copilot.ApplyTo(CopilotOptions);
         return true;
+    }
+
+    private static CopilotClientOptions CreateDefaultCopilotOptions() {
+        return new CopilotClientOptions {
+            AutoInstallCli = true,
+            AutoInstallMethod = CopilotCliInstallMethod.Auto
+        };
     }
 }
