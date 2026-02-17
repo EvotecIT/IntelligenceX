@@ -107,6 +107,14 @@ internal sealed partial class ChatServiceSession {
         return "full_toolset";
     }
 
+    private static bool ShouldEmitRoutingTransparency(bool weightedToolRouting, int selectedToolCount, int totalToolCount) {
+        if (!weightedToolRouting) {
+            return false;
+        }
+
+        return selectedToolCount > 0 && totalToolCount > 0;
+    }
+
     private static string BuildRoutingSelectionMessage(int selectedToolCount, int totalToolCount, string strategy) {
         var selected = Math.Max(0, selectedToolCount);
         var total = Math.Max(selected, totalToolCount);

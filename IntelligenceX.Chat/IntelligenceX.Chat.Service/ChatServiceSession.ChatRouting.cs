@@ -118,7 +118,7 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        if (originalToolCount > 0 && toolDefs.Count > 0) {
+        if (ShouldEmitRoutingTransparency(weightedToolRouting, toolDefs.Count, originalToolCount)) {
             var plannerInsightsDetected = HasPlannerInsight(routingInsights);
             var routingStrategy = ResolveRoutingStrategy(
                 weightedToolRouting,

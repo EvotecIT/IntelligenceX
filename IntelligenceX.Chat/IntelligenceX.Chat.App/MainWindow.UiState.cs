@@ -1151,20 +1151,24 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
+            var hasSelectedToolCount = false;
             if (root.TryGetProperty("selectedToolCount", out var selectedElement)
                 && selectedElement.ValueKind == JsonValueKind.Number
                 && selectedElement.TryGetInt32(out var parsedSelected)) {
                 selectedToolCount = Math.Max(0, parsedSelected);
+                hasSelectedToolCount = true;
             }
 
+            var hasTotalToolCount = false;
             if (root.TryGetProperty("totalToolCount", out var totalElement)
                 && totalElement.ValueKind == JsonValueKind.Number
                 && totalElement.TryGetInt32(out var parsedTotal)) {
                 totalToolCount = Math.Max(0, parsedTotal);
+                hasTotalToolCount = true;
             }
 
-            return true;
-        } catch {
+            return hasSelectedToolCount && hasTotalToolCount;
+        } catch (JsonException) {
             return false;
         }
     }

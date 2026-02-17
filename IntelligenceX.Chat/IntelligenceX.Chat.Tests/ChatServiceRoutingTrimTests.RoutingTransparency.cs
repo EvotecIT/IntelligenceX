@@ -6,6 +6,23 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
+    [InlineData(true, 6, 12, true)]
+    [InlineData(true, 0, 12, false)]
+    [InlineData(true, 6, 0, false)]
+    [InlineData(false, 6, 12, false)]
+    public void ShouldEmitRoutingTransparency_RequiresWeightedRoutingAndValidCounts(
+        bool weightedToolRouting,
+        int selectedToolCount,
+        int totalToolCount,
+        bool expected) {
+        var result = ShouldEmitRoutingTransparencyMethod.Invoke(
+            null,
+            new object?[] { weightedToolRouting, selectedToolCount, totalToolCount });
+
+        Assert.Equal(expected, Assert.IsType<bool>(result));
+    }
+
+    [Theory]
     [InlineData("semantic_planner", "semantic planning")]
     [InlineData("weighted_heuristic", "weighted relevance")]
     [InlineData("continuation_subset", "continuation context")]

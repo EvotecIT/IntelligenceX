@@ -131,6 +131,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildRoutingSelectionMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildRoutingSelectionMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildRoutingSelectionMessage not found.");
+    private static readonly MethodInfo ShouldEmitRoutingTransparencyMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldEmitRoutingTransparency", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldEmitRoutingTransparency not found.");
     private static readonly MethodInfo BuildRoutingMetaPayloadMethod =
         typeof(ChatServiceSession).GetMethod("BuildRoutingMetaPayload", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildRoutingMetaPayload not found.");
