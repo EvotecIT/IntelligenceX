@@ -168,16 +168,7 @@ public sealed partial class MainWindow : Window {
                         var planExecuteReviewLoop = TryGetString(root, "planExecuteReviewLoop");
                         var maxReviewPasses = TryGetString(root, "maxReviewPasses");
                         var modelHeartbeatSeconds = TryGetString(root, "modelHeartbeatSeconds");
-                        await SetAutonomyOverridesAsync(
-                                maxRounds,
-                                parallelMode,
-                                turnTimeout,
-                                toolTimeout,
-                                weightedRouting,
-                                maxCandidates,
-                                planExecuteReviewLoop,
-                                maxReviewPasses,
-                                modelHeartbeatSeconds)
+                        await SetAutonomyOverridesAsync(maxRounds, parallelMode, turnTimeout, toolTimeout, weightedRouting, maxCandidates, planExecuteReviewLoop, maxReviewPasses, modelHeartbeatSeconds)
                             .ConfigureAwait(true);
                         break;
                     }
@@ -339,6 +330,9 @@ public sealed partial class MainWindow : Window {
                     break;
                 case "window_drag":
                     BeginDragMoveWindow();
+                    break;
+                case "window_titlebar_metrics":
+                    UpdateNativeTitleBarRegions(root);
                     break;
                 case "login_prompt":
                     {

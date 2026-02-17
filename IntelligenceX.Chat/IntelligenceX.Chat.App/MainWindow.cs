@@ -16,6 +16,7 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
+using Microsoft.UI.Input;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -32,6 +33,8 @@ namespace IntelligenceX.Chat.App;
 /// </summary>
 public sealed partial class MainWindow : Window {
     private const uint WmNcLButtonDown = 0x00A1;
+    private const uint WmNcLButtonUp = 0x00A2;
+    private const uint WmLButtonUp = 0x0202;
     private const uint WmMouseWheel = 0x020A;
     private const uint WmMouseHWheel = 0x020E;
     private const uint WmPointerWheel = 0x024E;
@@ -39,14 +42,15 @@ public sealed partial class MainWindow : Window {
     private const int WhMouseLl = 14;
     private const int GwlWndProc = -4;
     private const int HtCaption = 0x0002;
+    private const int VkLButton = 0x0001;
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
     private const int MaxQueuedTurns = 8;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
-    private const string DefaultConversationTitle = "New Chat";
     private const string SystemConversationId = "chat-system";
     private const string SystemConversationTitle = "System";
+    private const string DefaultConversationTitle = "New Chat";
     private const string DefaultLocalModel = "gpt-5.3-codex";
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
@@ -57,6 +61,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
     private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
+    private static readonly TimeSpan DragMoveWatchdogInterval = TimeSpan.FromMilliseconds(1200);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -76,6 +82,18 @@ public sealed partial class MainWindow : Window {
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out PointNative lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RectNative lpRect);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -124,9 +142,38 @@ public sealed partial class MainWindow : Window {
     private readonly object _windowHookSync = new();
     private readonly Dictionary<IntPtr, IntPtr> _hookedWindowProcs = new();
     private bool _windowHookInstalled;
+    private InputNonClientPointerSource? _nonClientPointerSource;
+    private bool _nativeTitleBarRegionsActive;
+    private UiHostRect? _cachedTitleBarRect;
+    private readonly List<UiHostRect> _cachedNoDragRects = new();
+    private AppWindow? _trackedAppWindow;
+    private XamlRoot? _trackedXamlRoot;
+    private bool _titleBarMetricsRefreshScheduled;
+    private readonly object _wheelForwardSync = new();
+    private int _queuedWheelDelta;
+    private bool _queuedWheelFromGlobal;
+    private bool _queuedWheelFromPointer;
+    private bool _wheelForwardFlushScheduled;
+    private readonly object _dragMoveWatchdogSync = new();
+    private int _dragMoveWatchdogSequence;
+    private bool _dragMoveWatchdogInFlight;
+    private bool _windowIsActive;
+    private bool _nativeWheelObserved;
+    private long _wheelPointerQueuedEvents;
+    private long _wheelGlobalQueuedEvents;
+    private long _wheelGlobalRejectedEvents;
+    private long _wheelZeroDeltaIgnoredEvents;
+    private long _wheelDroppedNotReadyEvents;
+    private long _wheelForwardedBatches;
+    private long _wheelForwardedPointerBatches;
+    private long _wheelForwardedGlobalBatches;
+    private long _wheelForwardedAbsDelta;
+    private long _dragMoveWatchdogArmCount;
+    private long _dragMoveWatchdogForcedReleaseCount;
     private static readonly MarkdownRendererOptions MarkdownOptions = MarkdownRendererPresets.CreateChatStrictMinimal();
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
     private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
+    private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));
 
     private readonly string _pipeName = "intelligencex.chat";
     private readonly SemaphoreSlim _connectGate = new(1, 1);
@@ -190,6 +237,7 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
     // Guards memory semantic cache + memory diagnostics snapshot/history across UI/async paths.
     private readonly object _memoryDiagnosticsSync = new();
@@ -230,7 +278,6 @@ public sealed partial class MainWindow : Window {
     private string? _activeRequestConversationId;
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
-    private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private List<(string Role, string Text, DateTime Time)> _messages = new();
     private readonly StringBuilder _assistantStreaming = new();
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
@@ -333,6 +380,34 @@ public sealed partial class MainWindow : Window {
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct RectNative {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    private enum GlobalWheelHookMode {
+        Auto,
+        Always,
+        Off
+    }
+
+    private readonly struct UiHostRect {
+        public UiHostRect(double x, double y, double width, double height) {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
+
+        public double X { get; }
+        public double Y { get; }
+        public double Width { get; }
+        public double Height { get; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct MouseLowLevelHookStruct {
         public PointNative Point;
         public uint MouseData;
@@ -355,8 +430,10 @@ public sealed partial class MainWindow : Window {
         Content = _webView;
         ConfigureWindowPlacement();
 
-        Activated += (_, _) => {
+        Activated += (_, args) => {
             StartupLog.Write("MainWindow.Activated");
+            _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
+            RefreshGlobalWheelHookPolicy();
             EnsureRestoredIfMinimized();
 
             if (Interlocked.CompareExchange(ref _startupFlowState, 1, 0) != 0) {
@@ -373,6 +450,8 @@ public sealed partial class MainWindow : Window {
             CancelQueuedUiPublishesForShutdown();
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
+            DetachNativeTitleBarEventSubscriptions();
+            LogInputReliabilityTelemetry("shutdown");
             UninstallGlobalWheelHook();
             UninstallWindowMessageHook();
             _stateStore.Dispose();
@@ -431,6 +510,8 @@ public sealed partial class MainWindow : Window {
             if (appWindow.Presenter is OverlappedPresenter overlapped) {
                 overlapped.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: false);
             }
+
+            EnsureNativeTitleBarRegionSupport();
         } catch (Exception ex) {
             StartupLog.Write("ConfigureWindowPlacement failed: " + ex.Message);
         }
@@ -450,7 +531,7 @@ public sealed partial class MainWindow : Window {
 
                 StartupLog.Write("EnsureWebViewInitializedAsync begin");
                 InstallWindowMessageHook();
-                InstallGlobalWheelHook();
+                RefreshGlobalWheelHookPolicy();
                 await _webView.EnsureCoreWebView2Async().AsTask().ConfigureAwait(false);
                 _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
@@ -463,8 +544,8 @@ public sealed partial class MainWindow : Window {
                     new Microsoft.UI.Xaml.Input.PointerEventHandler((_, e) => {
                         var delta = e.GetCurrentPoint(_webView).Properties.MouseWheelDelta;
                         if (delta != 0 && _webViewReady) {
-                            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
-                            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
+                            RecordNativeWheelObserved();
+                            QueueWheelForward(delta, fromGlobalHook: false);
                             // Keep native WebView wheel delivery as fallback for device-specific paths.
                             e.Handled = false;
                         }
@@ -479,12 +560,16 @@ public sealed partial class MainWindow : Window {
                 _webView.NavigateToString(BuildShellHtml());
                 navReadyTask = navTcs.Task;
                 _webViewReady = true;
+                EnsureNativeTitleBarEventSubscriptions();
+                RequestTitleBarMetricsRefresh();
             }).ConfigureAwait(false);
 
             await Task.WhenAny(navReadyTask, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
             await RunOnUiThreadAsync(() => {
                 InstallWindowMessageHook();
-                InstallGlobalWheelHook();
+                EnsureNativeTitleBarEventSubscriptions();
+                RequestTitleBarMetricsRefresh();
+                RefreshGlobalWheelHookPolicy();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
@@ -655,6 +740,11 @@ public sealed partial class MainWindow : Window {
             var isWheelMessage = message == WmMouseWheel || message == WmMouseHWheel;
             if (nCode >= 0 && _webViewReady && isWheelMessage && lParam != IntPtr.Zero && IsForegroundOwnedByCurrentProcess()) {
                 var hook = Marshal.PtrToStructure<MouseLowLevelHookStruct>(lParam);
+                if (!ShouldAcceptGlobalWheelEvent(hook.Point)) {
+                    Interlocked.Increment(ref _wheelGlobalRejectedEvents);
+                    return CallNextHookEx(_globalMouseHookHandle, nCode, wParam, lParam);
+                }
+
                 var delta = (short)((hook.MouseData >> 16) & 0xFFFF);
                 if (delta != 0) {
                     if (!_globalWheelObservedLogged) {
@@ -662,14 +752,7 @@ public sealed partial class MainWindow : Window {
                         StartupLog.Write("GlobalMouseHookProc observed first wheel event");
                     }
 
-                    _ = _dispatcher.TryEnqueue(() => {
-                        if (!_webViewReady) {
-                            return;
-                        }
-
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelGlobalDiagnosticRecordScript(delta));
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
-                    });
+                    QueueWheelForward(delta, fromGlobalHook: true);
                 }
             }
         } catch (Exception ex) {
@@ -698,14 +781,8 @@ public sealed partial class MainWindow : Window {
             if (_webViewReady && (msg == WmMouseWheel || msg == WmMouseHWheel || msg == WmPointerWheel || msg == WmPointerHWheel)) {
                 var delta = ExtractWheelDelta(wParam);
                 if (delta != 0) {
-                    _ = _dispatcher.TryEnqueue(() => {
-                        if (!_webViewReady) {
-                            return;
-                        }
-
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
-                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
-                    });
+                    RecordNativeWheelObserved();
+                    QueueWheelForward(delta, fromGlobalHook: false);
                 }
             }
         } catch (Exception ex) {
@@ -729,6 +806,351 @@ public sealed partial class MainWindow : Window {
     private static int ExtractWheelDelta(IntPtr wParam) {
         var value = wParam.ToInt64();
         return (short)((value >> 16) & 0xFFFF);
+    }
+
+    private void QueueWheelForward(int delta, bool fromGlobalHook) {
+        if (delta == 0) {
+            Interlocked.Increment(ref _wheelZeroDeltaIgnoredEvents);
+            return;
+        }
+
+        if (fromGlobalHook) {
+            Interlocked.Increment(ref _wheelGlobalQueuedEvents);
+        } else {
+            Interlocked.Increment(ref _wheelPointerQueuedEvents);
+        }
+
+        bool shouldScheduleFlush;
+        lock (_wheelForwardSync) {
+            _queuedWheelDelta += delta;
+            _queuedWheelFromGlobal |= fromGlobalHook;
+            _queuedWheelFromPointer |= !fromGlobalHook;
+            shouldScheduleFlush = !_wheelForwardFlushScheduled;
+            if (shouldScheduleFlush) {
+                _wheelForwardFlushScheduled = true;
+            }
+        }
+
+        if (!shouldScheduleFlush) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(WheelForwardCoalesceInterval).ConfigureAwait(false);
+                await RunOnUiThreadAsync(() => {
+                    FlushQueuedWheelForward();
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Ignore.
+            } catch (Exception ex) {
+                StartupLog.Write("QueueWheelForward flush failed: " + ex.Message);
+            }
+        });
+    }
+
+    private void FlushQueuedWheelForward() {
+        int delta;
+        bool fromGlobal;
+        bool fromPointer;
+        lock (_wheelForwardSync) {
+            delta = _queuedWheelDelta;
+            fromGlobal = _queuedWheelFromGlobal;
+            fromPointer = _queuedWheelFromPointer;
+            _queuedWheelDelta = 0;
+            _queuedWheelFromGlobal = false;
+            _queuedWheelFromPointer = false;
+            _wheelForwardFlushScheduled = false;
+        }
+
+        if (!_webViewReady || delta == 0) {
+            Interlocked.Increment(ref _wheelDroppedNotReadyEvents);
+            return;
+        }
+
+        Interlocked.Increment(ref _wheelForwardedBatches);
+        Interlocked.Add(ref _wheelForwardedAbsDelta, Math.Abs((long)delta));
+        if (fromPointer) {
+            Interlocked.Increment(ref _wheelForwardedPointerBatches);
+        }
+
+        if (fromGlobal) {
+            Interlocked.Increment(ref _wheelForwardedGlobalBatches);
+        }
+
+        if (fromPointer) {
+            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
+        }
+
+        if (fromGlobal) {
+            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelGlobalDiagnosticRecordScript(delta));
+        }
+
+        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
+    }
+
+    private void RecordNativeWheelObserved() {
+        if (_nativeWheelObserved) {
+            return;
+        }
+
+        _nativeWheelObserved = true;
+        if (WheelHookMode == GlobalWheelHookMode.Auto) {
+            StartupLog.Write("Native wheel path observed; disabling global wheel hook (auto mode).");
+            RefreshGlobalWheelHookPolicy();
+        }
+    }
+
+    private void RefreshGlobalWheelHookPolicy() {
+        if (_shutdownRequested) {
+            UninstallGlobalWheelHook();
+            return;
+        }
+
+        switch (WheelHookMode) {
+            case GlobalWheelHookMode.Off:
+                UninstallGlobalWheelHook();
+                break;
+            case GlobalWheelHookMode.Always:
+                InstallGlobalWheelHook();
+                break;
+            case GlobalWheelHookMode.Auto:
+            default:
+                if (_webViewReady && _windowIsActive && !_nativeWheelObserved) {
+                    InstallGlobalWheelHook();
+                } else {
+                    UninstallGlobalWheelHook();
+                }
+                break;
+        }
+    }
+
+    private bool ShouldAcceptGlobalWheelEvent(PointNative point) {
+        if (!_windowIsActive || !_webViewReady) {
+            return false;
+        }
+
+        var hwnd = _windowHandle;
+        if (hwnd == IntPtr.Zero) {
+            hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            _windowHandle = hwnd;
+        }
+
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var rect)) {
+            return true;
+        }
+
+        return point.X >= rect.Left && point.X < rect.Right && point.Y >= rect.Top && point.Y < rect.Bottom;
+    }
+
+    private int ArmDragMoveWatchdog(IntPtr hwnd) {
+        if (hwnd == IntPtr.Zero) {
+            return 0;
+        }
+
+        int sequence;
+        lock (_dragMoveWatchdogSync) {
+            sequence = unchecked(_dragMoveWatchdogSequence + 1);
+            if (sequence == 0) {
+                sequence = 1;
+            }
+
+            _dragMoveWatchdogSequence = sequence;
+            _dragMoveWatchdogInFlight = true;
+        }
+
+        Interlocked.Increment(ref _dragMoveWatchdogArmCount);
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(DragMoveWatchdogInterval).ConfigureAwait(false);
+                TryForceEndDragMove(hwnd, sequence);
+            } catch (Exception ex) {
+                StartupLog.Write("ArmDragMoveWatchdog failed: " + ex.Message);
+            }
+        });
+
+        return sequence;
+    }
+
+    private void CompleteDragMoveWatchdog(int sequence) {
+        if (sequence == 0) {
+            return;
+        }
+
+        lock (_dragMoveWatchdogSync) {
+            if (_dragMoveWatchdogSequence == sequence) {
+                _dragMoveWatchdogInFlight = false;
+            }
+        }
+    }
+
+    private void TryForceEndDragMove(IntPtr hwnd, int sequence) {
+        lock (_dragMoveWatchdogSync) {
+            if (!_dragMoveWatchdogInFlight || _dragMoveWatchdogSequence != sequence) {
+                return;
+            }
+        }
+
+        // If the button is still physically pressed, user is actively dragging.
+        if ((GetAsyncKeyState(VkLButton) & unchecked((short)0x8000)) != 0) {
+            return;
+        }
+
+        lock (_dragMoveWatchdogSync) {
+            if (!_dragMoveWatchdogInFlight || _dragMoveWatchdogSequence != sequence) {
+                return;
+            }
+
+            _dragMoveWatchdogInFlight = false;
+        }
+
+        try {
+            ReleaseCapture();
+            if (hwnd != IntPtr.Zero) {
+                _ = PostMessage(hwnd, WmLButtonUp, IntPtr.Zero, IntPtr.Zero);
+                _ = PostMessage(hwnd, WmNcLButtonUp, (IntPtr)HtCaption, IntPtr.Zero);
+            }
+
+            var forced = Interlocked.Increment(ref _dragMoveWatchdogForcedReleaseCount);
+            StartupLog.Write("DragMove watchdog forced release #" + forced.ToString(CultureInfo.InvariantCulture));
+        } catch (Exception ex) {
+            StartupLog.Write("TryForceEndDragMove failed: " + ex.Message);
+        }
+    }
+
+    private void LogInputReliabilityTelemetry(string phase) {
+        try {
+            var pointerQueued = Interlocked.Read(ref _wheelPointerQueuedEvents);
+            var globalQueued = Interlocked.Read(ref _wheelGlobalQueuedEvents);
+            var globalRejected = Interlocked.Read(ref _wheelGlobalRejectedEvents);
+            var zeroDeltaIgnored = Interlocked.Read(ref _wheelZeroDeltaIgnoredEvents);
+            var droppedNotReady = Interlocked.Read(ref _wheelDroppedNotReadyEvents);
+            var forwardedBatches = Interlocked.Read(ref _wheelForwardedBatches);
+            var forwardedPointerBatches = Interlocked.Read(ref _wheelForwardedPointerBatches);
+            var forwardedGlobalBatches = Interlocked.Read(ref _wheelForwardedGlobalBatches);
+            var forwardedAbsDelta = Interlocked.Read(ref _wheelForwardedAbsDelta);
+            var dragWatchdogArmed = Interlocked.Read(ref _dragMoveWatchdogArmCount);
+            var dragWatchdogForced = Interlocked.Read(ref _dragMoveWatchdogForcedReleaseCount);
+
+            StartupLog.Write(
+                "InputTelemetry(" + phase + "): " +
+                "wheel.pointerQueued=" + pointerQueued.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.globalQueued=" + globalQueued.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.globalRejected=" + globalRejected.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.zeroDeltaIgnored=" + zeroDeltaIgnored.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.droppedNotReady=" + droppedNotReady.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedBatches=" + forwardedBatches.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedPointerBatches=" + forwardedPointerBatches.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedGlobalBatches=" + forwardedGlobalBatches.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedAbsDelta=" + forwardedAbsDelta.ToString(CultureInfo.InvariantCulture) +
+                ", drag.watchdogArmed=" + dragWatchdogArmed.ToString(CultureInfo.InvariantCulture) +
+                ", drag.watchdogForced=" + dragWatchdogForced.ToString(CultureInfo.InvariantCulture));
+        } catch (Exception ex) {
+            StartupLog.Write("LogInputReliabilityTelemetry failed: " + ex.Message);
+        }
+    }
+
+    private void EnsureNativeTitleBarEventSubscriptions() {
+        try {
+            var appWindow = AppWindow;
+            if (!ReferenceEquals(_trackedAppWindow, appWindow)) {
+                if (_trackedAppWindow is not null) {
+                    _trackedAppWindow.Changed -= OnAppWindowChanged;
+                }
+
+                _trackedAppWindow = appWindow;
+                if (_trackedAppWindow is not null) {
+                    _trackedAppWindow.Changed += OnAppWindowChanged;
+                }
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("EnsureNativeTitleBarEventSubscriptions(appWindow) failed: " + ex.Message);
+        }
+
+        try {
+            var xamlRoot = _webView.XamlRoot;
+            if (!ReferenceEquals(_trackedXamlRoot, xamlRoot)) {
+                if (_trackedXamlRoot is not null) {
+                    _trackedXamlRoot.Changed -= OnWebViewXamlRootChanged;
+                }
+
+                _trackedXamlRoot = xamlRoot;
+                if (_trackedXamlRoot is not null) {
+                    _trackedXamlRoot.Changed += OnWebViewXamlRootChanged;
+                }
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("EnsureNativeTitleBarEventSubscriptions(xamlRoot) failed: " + ex.Message);
+        }
+    }
+
+    private void DetachNativeTitleBarEventSubscriptions() {
+        try {
+            if (_trackedAppWindow is not null) {
+                _trackedAppWindow.Changed -= OnAppWindowChanged;
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("DetachNativeTitleBarEventSubscriptions(appWindow) failed: " + ex.Message);
+        } finally {
+            _trackedAppWindow = null;
+        }
+
+        try {
+            if (_trackedXamlRoot is not null) {
+                _trackedXamlRoot.Changed -= OnWebViewXamlRootChanged;
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("DetachNativeTitleBarEventSubscriptions(xamlRoot) failed: " + ex.Message);
+        } finally {
+            _trackedXamlRoot = null;
+        }
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args) {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (args.DidPositionChange || args.DidSizeChange || args.DidPresenterChange) {
+            RequestTitleBarMetricsRefresh();
+        }
+    }
+
+    private void OnWebViewXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        ReapplyCachedNativeTitleBarRegions();
+        RequestTitleBarMetricsRefresh();
+    }
+
+    private void RequestTitleBarMetricsRefresh() {
+        if (!_webViewReady || _shutdownRequested) {
+            return;
+        }
+
+        if (_titleBarMetricsRefreshScheduled) {
+            return;
+        }
+
+        _titleBarMetricsRefreshScheduled = true;
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(32).ConfigureAwait(false);
+                await RunOnUiThreadAsync(() => {
+                    _titleBarMetricsRefreshScheduled = false;
+                    if (_webViewReady) {
+                        _ = _webView.ExecuteScriptAsync("window.ixPostTitlebarMetrics && window.ixPostTitlebarMetrics();");
+                    }
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            } catch {
+                _titleBarMetricsRefreshScheduled = false;
+            }
+        });
     }
 
     private async Task EnsureStartupConnectedAsync() {
@@ -811,24 +1233,7 @@ public sealed partial class MainWindow : Window {
             _timestampMode = ResolveTimestampMode(_appState.TimestampMode);
             _timestampFormat = ResolveTimestampFormat(_appState.TimestampMode);
         }
-        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: 64);
-        _autonomyParallelTools = _appState.AutonomyParallelTools;
-        _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyTurnTimeoutSeconds, min: 0, max: 3600);
-        _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
-        _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
-        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
-        _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
-        _autonomyMaxReviewPasses = NormalizeAutonomyInt(_appState.AutonomyMaxReviewPasses, min: 0, max: 3);
-        _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(_appState.AutonomyModelHeartbeatSeconds, min: 0, max: 60);
-        _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
-        _appState.AutonomyParallelTools = _autonomyParallelTools;
-        _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
-        _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
-        _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
-        _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
-        _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
-        _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
-        _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
+        RestoreAutonomyOverridesFromAppState();
         _exportSaveMode = ExportPreferencesContract.NormalizeSaveMode(_appState.ExportSaveMode);
         _appState.ExportSaveMode = _exportSaveMode;
         _exportDefaultFormat = ExportPreferencesContract.NormalizeFormat(_appState.ExportDefaultFormat);
