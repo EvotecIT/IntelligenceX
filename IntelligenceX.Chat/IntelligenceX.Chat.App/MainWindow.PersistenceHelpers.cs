@@ -51,6 +51,7 @@ public sealed partial class MainWindow : Window {
             _appState.LocalProviderTransport = _localProviderTransport;
             _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
             _appState.LocalProviderModel = _localProviderModel;
+            CaptureModelCatalogCacheIntoAppState();
             _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
             _appState.ActiveConversationId = _activeConversationId;
             _appState.ThreadId = activeConversation.ThreadId;

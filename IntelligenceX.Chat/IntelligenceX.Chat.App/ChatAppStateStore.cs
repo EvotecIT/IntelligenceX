@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
+using IntelligenceX.Chat.Abstractions.Protocol;
 
 namespace IntelligenceX.Chat.App;
 
@@ -104,6 +105,24 @@ internal sealed class ChatAppStateStore : IDisposable {
                 .ToList();
         }
 
+        if (payload.CachedModels is { Count: > 250 }) {
+            payload.CachedModels = payload.CachedModels
+                .Take(250)
+                .ToList();
+        }
+
+        if (payload.CachedFavoriteModels is { Count: > 100 }) {
+            payload.CachedFavoriteModels = payload.CachedFavoriteModels
+                .Take(100)
+                .ToList();
+        }
+
+        if (payload.CachedRecentModels is { Count: > 100 }) {
+            payload.CachedRecentModels = payload.CachedRecentModels
+                .Take(100)
+                .ToList();
+        }
+
         var json = JsonSerializer.Serialize(payload, _json);
 
         _db.ExecuteNonQuery(
@@ -181,6 +200,14 @@ internal sealed class ChatAppState {
     public bool ProactiveModeEnabled { get; set; } = true;
     public bool PersistentMemoryEnabled { get; set; } = true;
     public List<ChatMemoryFactState> MemoryFacts { get; set; } = new();
+    public string CachedModelsTransport { get; set; } = "native";
+    public string? CachedModelsBaseUrl { get; set; }
+    public List<ModelInfoDto> CachedModels { get; set; } = new();
+    public List<string> CachedFavoriteModels { get; set; } = new();
+    public List<string> CachedRecentModels { get; set; } = new();
+    public bool CachedModelListIsStale { get; set; }
+    public string? CachedModelListWarning { get; set; }
+    public DateTime? CachedModelsUpdatedUtc { get; set; }
     public bool OnboardingCompleted { get; set; }
     public string? ActiveConversationId { get; set; }
     public string? ThreadId { get; set; }
