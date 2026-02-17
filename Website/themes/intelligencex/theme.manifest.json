@@ -8,7 +8,7 @@
   "partialsPath": "partials",
   "scriptsPath": "scripts",
   "defaultLayout": "home",
-  "features": ["docs", "apiDocs", "search", "notFound"],
+  "features": ["docs", "apiDocs", "blog", "search", "notFound"],
   "slots": {
     "header": "header",
     "footer": "footer",
@@ -36,6 +36,10 @@
     "docs": {
       "requiredLayouts": ["docs"],
       "requiredPartials": ["header", "footer", "sidebar", "toc", "theme-tokens"]
+    },
+    "blog": {
+      "requiredLayouts": ["page"],
+      "requiredSurfaces": ["blog"]
     },
     "notFound": {
       "requiredSurfaces": ["notFound"]
