@@ -60,19 +60,19 @@ public sealed partial class MainWindow : Window {
 
                 if (await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false)) {
                     Exception? sidecarConnectException = null;
-                    var startupConnectTimeouts = new[] {
-                        TimeSpan.FromSeconds(15),
-                        TimeSpan.FromSeconds(30)
-                    };
-                    for (var attempt = 0; attempt < startupConnectTimeouts.Length; attempt++) {
+                    for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
                         try {
-                            await ConnectClientWithTimeoutAsync(client, pipeName, startupConnectTimeouts[attempt]).ConfigureAwait(false);
+                            await ConnectClientWithTimeoutAsync(client, pipeName, StartupConnectRetryTimeouts[attempt]).ConfigureAwait(false);
                             sidecarConnectException = null;
                             break;
                         } catch (Exception ex2) {
                             sidecarConnectException = ex2;
-                            if (attempt + 1 < startupConnectTimeouts.Length) {
-                                await Task.Delay(TimeSpan.FromMilliseconds(350)).ConfigureAwait(false);
+                            if (_serviceProcess is { HasExited: true }) {
+                                break;
+                            }
+
+                            if (attempt + 1 < StartupConnectRetryTimeouts.Length) {
+                                await Task.Delay(StartupConnectRetryDelay).ConfigureAwait(false);
                             }
                         }
                     }

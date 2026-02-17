@@ -30,6 +30,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxTrackedPendingActionContexts = 256;
     private static readonly TimeSpan UserIntentContextMaxAge = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan StartupToolHealthPrimeBudget = TimeSpan.FromSeconds(6);
     private readonly ServiceOptions _options;
     private readonly Stream _stream;
     private ToolRegistry _registry;
@@ -123,7 +124,10 @@ internal sealed partial class ChatServiceSession {
     public async Task RunAsync(CancellationToken cancellationToken) {
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
-        await PrimeStartupToolHealthWarningsAsync(cancellationToken).ConfigureAwait(false);
+        using (var startupToolHealthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
+            startupToolHealthCts.CancelAfter(StartupToolHealthPrimeBudget);
+            await PrimeStartupToolHealthWarningsAsync(startupToolHealthCts.Token).ConfigureAwait(false);
+        }
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };

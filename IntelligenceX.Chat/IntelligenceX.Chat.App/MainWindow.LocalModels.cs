@@ -146,9 +146,13 @@ public sealed partial class MainWindow : Window {
                 _appState.LocalProviderModel = _localProviderModel;
                 await PersistAppStateAsync().ConfigureAwait(false);
             }
+
+            CaptureModelCatalogCacheIntoAppState();
+            QueuePersistAppState();
         } catch (Exception ex) {
             _modelListIsStale = true;
             _modelListWarning = "Model discovery failed: " + ex.Message;
+            CaptureModelCatalogCacheIntoAppState();
             if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
                 AppendSystem(_modelListWarning);
             }
@@ -160,73 +164,124 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? apiKeyValue, bool clearApiKey, bool forceModelRefresh) {
+        var request = new LocalProviderApplyRequest(
+            Transport: transportValue,
+            BaseUrl: baseUrlValue,
+            Model: modelValue,
+            ApiKey: apiKeyValue,
+            ClearApiKey: clearApiKey,
+            ForceModelRefresh: forceModelRefresh);
+
         if (Interlocked.CompareExchange(ref _localProviderApplyInFlight, 1, 0) != 0) {
-            await SetStatusAsync("Runtime switch already in progress.").ConfigureAwait(false);
+            QueuePendingLocalProviderApply(request);
+            await SetStatusAsync("Runtime switch already in progress. Queued latest settings.").ConfigureAwait(false);
             return;
         }
 
         try {
-            await SetStatusAsync("Applying runtime settings...").ConfigureAwait(false);
-            await PublishOptionsStateAsync().ConfigureAwait(false);
+            var current = request;
+            while (true) {
+                await ApplyLocalProviderCoreAsync(current).ConfigureAwait(false);
+                if (!TryTakePendingLocalProviderApply(out var pending)) {
+                    break;
+                }
 
-            if (_isSending) {
-                await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
-                return;
+                if (pending == current) {
+                    continue;
+                }
+
+                current = pending;
             }
-
-            var rawTransport = (transportValue ?? string.Empty).Trim();
-            var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
-            var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(baseUrlValue, normalizedTransport, rawTransport);
-            var normalizedModel = NormalizeLocalProviderModel(modelValue, normalizedTransport);
-            var clearApiKeyRequested = clearApiKey && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
-            var normalizedApiKey = NormalizeLocalProviderApiKey(apiKeyValue, normalizedTransport);
-            var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
-
-            var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
-                          || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                          || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal)
-                          || hasApiKeyUpdate;
-
-            _localProviderTransport = normalizedTransport;
-            _localProviderBaseUrl = normalizedBaseUrl;
-            _localProviderModel = normalizedModel;
-            _appState.LocalProviderTransport = _localProviderTransport;
-            _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-            _appState.LocalProviderModel = _localProviderModel;
-
-            var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
-            await PersistAppStateAsync().ConfigureAwait(false);
-            await PublishOptionsStateAsync().ConfigureAwait(false);
-
-            if (!changed && profileSaved) {
-                await RefreshModelsFromUiAsync(forceModelRefresh).ConfigureAwait(false);
-                return;
-            }
-
-            ClearConversationThreadIds();
-            await PersistAppStateAsync().ConfigureAwait(false);
-
-            _pendingServiceLaunchProfileOptions = new ServiceLaunchProfileOptions {
-                LoadProfileName = profileSaved ? _appProfileName : null,
-                SaveProfileName = _appProfileName,
-                Model = _localProviderModel,
-                OpenAITransport = _localProviderTransport,
-                OpenAIBaseUrl = _localProviderBaseUrl,
-                OpenAIApiKey = normalizedApiKey,
-                ClearOpenAIApiKey = clearApiKeyRequested,
-                OpenAIStreaming = true,
-                OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
-            };
-
-            await RestartSidecarAsync().ConfigureAwait(false);
-            await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
-            await SyncConnectedServiceProfileAndModelsAsync(
-                forceModelRefresh: true,
-                setProfileNewThread: false,
-                appendWarnings: true).ConfigureAwait(false);
         } finally {
             Interlocked.Exchange(ref _localProviderApplyInFlight, 0);
             await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task ApplyLocalProviderCoreAsync(LocalProviderApplyRequest request) {
+        await SetStatusAsync("Applying runtime settings...").ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+
+        if (_isSending) {
+            await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
+            return;
+        }
+
+        var rawTransport = (request.Transport ?? string.Empty).Trim();
+        var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
+        var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(request.BaseUrl, normalizedTransport, rawTransport);
+        var normalizedModel = NormalizeLocalProviderModel(request.Model, normalizedTransport);
+        var clearApiKeyRequested = request.ClearApiKey && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
+        var normalizedApiKey = NormalizeLocalProviderApiKey(request.ApiKey, normalizedTransport);
+        var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
+
+        var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
+                      || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                      || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal)
+                      || hasApiKeyUpdate;
+
+        _localProviderTransport = normalizedTransport;
+        _localProviderBaseUrl = normalizedBaseUrl;
+        _localProviderModel = normalizedModel;
+        _appState.LocalProviderTransport = _localProviderTransport;
+        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
+        _appState.LocalProviderModel = _localProviderModel;
+
+        var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
+        CaptureModelCatalogCacheIntoAppState();
+        await PersistAppStateAsync().ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+
+        if (!changed && profileSaved) {
+            await RefreshModelsFromUiAsync(request.ForceModelRefresh).ConfigureAwait(false);
+            return;
+        }
+
+        ClearConversationThreadIds();
+        await PersistAppStateAsync().ConfigureAwait(false);
+
+        _pendingServiceLaunchProfileOptions = new ServiceLaunchProfileOptions {
+            LoadProfileName = profileSaved ? _appProfileName : null,
+            SaveProfileName = _appProfileName,
+            Model = _localProviderModel,
+            OpenAITransport = _localProviderTransport,
+            OpenAIBaseUrl = _localProviderBaseUrl,
+            OpenAIApiKey = normalizedApiKey,
+            ClearOpenAIApiKey = clearApiKeyRequested,
+            OpenAIStreaming = true,
+            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
+        };
+
+        await RestartSidecarAsync().ConfigureAwait(false);
+        await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
+        await SyncConnectedServiceProfileAndModelsAsync(
+            forceModelRefresh: true,
+            setProfileNewThread: false,
+            appendWarnings: true).ConfigureAwait(false);
+    }
+
+    private void QueuePendingLocalProviderApply(LocalProviderApplyRequest request) {
+        lock (_localProviderApplySync) {
+            _pendingLocalProviderApply = request;
+        }
+    }
+
+    private bool TryTakePendingLocalProviderApply(out LocalProviderApplyRequest request) {
+        lock (_localProviderApplySync) {
+            if (_pendingLocalProviderApply is null) {
+                request = new LocalProviderApplyRequest(
+                    Transport: null,
+                    BaseUrl: null,
+                    Model: null,
+                    ApiKey: null,
+                    ClearApiKey: false,
+                    ForceModelRefresh: false);
+                return false;
+            }
+
+            request = _pendingLocalProviderApply;
+            _pendingLocalProviderApply = null;
+            return true;
         }
     }
 
@@ -361,6 +416,87 @@ public sealed partial class MainWindow : Window {
         }
 
         return false;
+    }
+
+    private void RestoreCachedModelCatalogFromAppState() {
+        var cacheTransport = NormalizeLocalProviderTransport(_appState.CachedModelsTransport);
+        var cacheBaseUrl = NormalizeLocalProviderBaseUrl(_appState.CachedModelsBaseUrl, cacheTransport, cacheTransport);
+        var sameRuntime = string.Equals(cacheTransport, _localProviderTransport, StringComparison.OrdinalIgnoreCase)
+                          && string.Equals(cacheBaseUrl ?? string.Empty, _localProviderBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        if (!sameRuntime) {
+            _availableModels = Array.Empty<ModelInfoDto>();
+            _favoriteModels = Array.Empty<string>();
+            _recentModels = Array.Empty<string>();
+            _modelListIsStale = false;
+            _modelListWarning = null;
+            return;
+        }
+
+        _availableModels = _appState.CachedModels is { Count: > 0 }
+            ? NormalizeModelList(_appState.CachedModels.ToArray())
+            : Array.Empty<ModelInfoDto>();
+        _favoriteModels = _appState.CachedFavoriteModels is { Count: > 0 }
+            ? NormalizeModelNames(_appState.CachedFavoriteModels.ToArray())
+            : Array.Empty<string>();
+        _recentModels = _appState.CachedRecentModels is { Count: > 0 }
+            ? NormalizeModelNames(_appState.CachedRecentModels.ToArray())
+            : Array.Empty<string>();
+        _modelListIsStale = _availableModels.Length > 0 || _appState.CachedModelListIsStale;
+        _modelListWarning = string.IsNullOrWhiteSpace(_appState.CachedModelListWarning)
+            ? (_availableModels.Length > 0 ? "Showing cached models while runtime connects." : null)
+            : _appState.CachedModelListWarning.Trim();
+    }
+
+    private void CaptureModelCatalogCacheIntoAppState() {
+        _appState.CachedModelsTransport = _localProviderTransport;
+        _appState.CachedModelsBaseUrl = _localProviderBaseUrl;
+        _appState.CachedModels = CloneModelList(_availableModels);
+        _appState.CachedFavoriteModels = new List<string>(_favoriteModels);
+        _appState.CachedRecentModels = new List<string>(_recentModels);
+        _appState.CachedModelListIsStale = _modelListIsStale;
+        _appState.CachedModelListWarning = _modelListWarning;
+        _appState.CachedModelsUpdatedUtc = DateTime.UtcNow;
+    }
+
+    private static List<ModelInfoDto> CloneModelList(ModelInfoDto[] models) {
+        if (models is null || models.Length == 0) {
+            return new List<ModelInfoDto>();
+        }
+
+        const int maxCachedModels = 250;
+        var limit = Math.Min(models.Length, maxCachedModels);
+        var clone = new List<ModelInfoDto>(limit);
+        for (var i = 0; i < limit; i++) {
+            var model = models[i];
+            if (model is null || string.IsNullOrWhiteSpace(model.Model)) {
+                continue;
+            }
+
+            clone.Add(new ModelInfoDto {
+                Id = model.Id,
+                Model = model.Model,
+                DisplayName = model.DisplayName,
+                Description = model.Description,
+                IsDefault = model.IsDefault,
+                OwnedBy = model.OwnedBy,
+                Publisher = model.Publisher,
+                Architecture = model.Architecture,
+                Quantization = model.Quantization,
+                CompatibilityType = model.CompatibilityType,
+                RuntimeState = model.RuntimeState,
+                ModelType = model.ModelType,
+                MaxContextLength = model.MaxContextLength,
+                LoadedContextLength = model.LoadedContextLength,
+                Capabilities = model.Capabilities is { Length: > 0 } ? NormalizeModelNames(model.Capabilities) : Array.Empty<string>(),
+                DefaultReasoningEffort = model.DefaultReasoningEffort,
+                SupportedReasoningEfforts = model.SupportedReasoningEfforts is { Length: > 0 }
+                    ? model.SupportedReasoningEfforts
+                    : Array.Empty<ReasoningEffortOptionDto>()
+            });
+        }
+
+        return clone;
     }
 
     private static bool ShouldAllowInsecureHttp(string transport, string? baseUrl) {

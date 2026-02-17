@@ -86,4 +86,52 @@ public sealed class StartupToolHealthTimeoutPolicyTests {
 
         Assert.Equal(expected, result);
     }
+
+    [Fact]
+    public void ShouldSkipStartupToolHealthProbe_TrueWhenNextProbeIsInFuture() {
+        var now = new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc);
+        var nextProbe = now.AddMinutes(5);
+
+        var result = ChatServiceSession.ShouldSkipStartupToolHealthProbe(now, nextProbe);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldSkipStartupToolHealthProbe_FalseWhenNextProbeIsDue() {
+        var now = new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc);
+        var nextProbe = now.AddMinutes(-1);
+
+        var result = ChatServiceSession.ShouldSkipStartupToolHealthProbe(now, nextProbe);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ComputeNextStartupToolHealthProbeUtc_UsesLongerBackoffForTestimoXTimeouts() {
+        var now = new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc);
+
+        var next = ChatServiceSession.ComputeNextStartupToolHealthProbeUtc(
+            nowUtc: now,
+            sourceKind: ToolPackSourceKind.ClosedSource,
+            packId: "testimox",
+            errorCode: "tool_timeout",
+            consecutiveFailures: 1);
+
+        Assert.Equal(now.AddMinutes(20), next);
+    }
+
+    [Fact]
+    public void ComputeNextStartupToolHealthProbeUtc_ExponentiallyBacksOffOnRepeatedFailures() {
+        var now = new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc);
+
+        var next = ChatServiceSession.ComputeNextStartupToolHealthProbeUtc(
+            nowUtc: now,
+            sourceKind: ToolPackSourceKind.OpenSource,
+            packId: "system",
+            errorCode: "tool_timeout",
+            consecutiveFailures: 3);
+
+        Assert.Equal(now.AddMinutes(20), next);
+    }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -12,6 +13,13 @@ using IntelligenceX.Tools;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int StartupToolHealthBackoffMaxExponent = 6;
+    private const string StartupToolHealthCacheFileName = "startup-tool-health-cache-v1.json";
+    private static readonly JsonSerializerOptions StartupToolHealthCacheJson = new() {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = false
+    };
+
     private async Task HandleToolHealthAsync(StreamWriter writer, CheckToolHealthRequest request, CancellationToken cancellationToken) {
         var timeoutSeconds = request.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
         if (timeoutSeconds < 0 || timeoutSeconds > 3600) {
@@ -87,34 +95,71 @@ internal sealed partial class ChatServiceSession {
 
         var warnings = new List<string>(_startupWarnings);
         var hasNewWarnings = false;
+        var cache = LoadStartupToolHealthCache();
+        var cacheUpdated = false;
 
-        foreach (var definition in packInfoDefinitions) {
-            var metadata = ResolvePackMetadata(definition);
-            var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind, metadata.PackId);
-            var probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-            if (!probe.Ok && IsToolTimeoutProbe(probe)) {
-                var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind, metadata.PackId);
-                if (retryTimeoutSeconds > timeoutSeconds) {
-                    probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, retryTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+        try {
+            foreach (var definition in packInfoDefinitions) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var metadata = ResolvePackMetadata(definition);
+                var cacheKey = BuildStartupToolHealthCacheKey(metadata.SourceKind, metadata.PackId, definition.Name);
+                var nowUtc = DateTime.UtcNow;
+                if (cache.TryGetValue(cacheKey, out var cachedFailure)
+                    && ShouldSkipStartupToolHealthProbe(nowUtc, cachedFailure.NextProbeUtc)) {
+                    continue;
                 }
-            }
-            if (probe.Ok) {
-                continue;
-            }
 
-            var sourceLabel = ToSourceLabel(metadata.SourceKind);
-            var packLabel = metadata.PackId.Length == 0 ? "unknown" : metadata.PackId;
-            var prefix = ShouldDowngradeStartupToolHealthFailure(metadata.SourceKind, probe.ErrorCode)
-                ? "[tool health notice]"
-                : "[tool health]";
-            var warning = $"{prefix}[{sourceLabel}][{packLabel}] {probe.ToolName} failed ({NormalizeHealthErrorCode(probe.ErrorCode)}): {NormalizeHealthError(probe.Error)}";
-            if (warnings.Any(existing => string.Equals(existing, warning, StringComparison.OrdinalIgnoreCase))) {
-                continue;
-            }
+                var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind, metadata.PackId);
+                var probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+                if (!probe.Ok && IsToolTimeoutProbe(probe)) {
+                    var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind, metadata.PackId);
+                    if (retryTimeoutSeconds > timeoutSeconds) {
+                        probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, retryTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+                    }
+                }
 
-            warnings.Add(warning);
-            hasNewWarnings = true;
-            Console.Error.WriteLine($"[pack warning] {warning}");
+                if (probe.Ok) {
+                    if (cache.Remove(cacheKey)) {
+                        cacheUpdated = true;
+                    }
+                    continue;
+                }
+
+                var sourceLabel = ToSourceLabel(metadata.SourceKind);
+                var packLabel = metadata.PackId.Length == 0 ? "unknown" : metadata.PackId;
+                var prefix = ShouldDowngradeStartupToolHealthFailure(metadata.SourceKind, probe.ErrorCode)
+                    ? "[tool health notice]"
+                    : "[tool health]";
+                var warning = $"{prefix}[{sourceLabel}][{packLabel}] {probe.ToolName} failed ({NormalizeHealthErrorCode(probe.ErrorCode)}): {NormalizeHealthError(probe.Error)}";
+                if (!warnings.Any(existing => string.Equals(existing, warning, StringComparison.OrdinalIgnoreCase))) {
+                    warnings.Add(warning);
+                    hasNewWarnings = true;
+                    Console.Error.WriteLine($"[pack warning] {warning}");
+                }
+
+                var errorCode = NormalizeHealthErrorCode(probe.ErrorCode);
+                var nextFailureCount = ResolveNextFailureCount(cachedFailure, errorCode);
+                var nextProbeUtc = ComputeNextStartupToolHealthProbeUtc(
+                    nowUtc,
+                    metadata.SourceKind,
+                    metadata.PackId,
+                    errorCode,
+                    nextFailureCount);
+                cache[cacheKey] = new StartupToolHealthCacheEntry(
+                    ErrorCode: errorCode,
+                    Error: NormalizeHealthError(probe.Error),
+                    LastFailedUtc: nowUtc,
+                    NextProbeUtc: nextProbeUtc,
+                    ConsecutiveFailures: nextFailureCount);
+                cacheUpdated = true;
+            }
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // Startup priming is best-effort and bounded by the startup budget.
+        } finally {
+            if (cacheUpdated) {
+                SaveStartupToolHealthCache(cache);
+            }
         }
 
         if (hasNewWarnings) {
@@ -226,6 +271,28 @@ internal sealed partial class ChatServiceSession {
                && string.Equals((errorCode ?? string.Empty).Trim(), "tool_timeout", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool ShouldSkipStartupToolHealthProbe(DateTime nowUtc, DateTime nextProbeUtc) {
+        return nextProbeUtc > nowUtc;
+    }
+
+    internal static DateTime ComputeNextStartupToolHealthProbeUtc(
+        DateTime nowUtc,
+        ToolPackSourceKind sourceKind,
+        string? packId,
+        string? errorCode,
+        int consecutiveFailures) {
+        var floor = ResolveStartupToolHealthBackoffFloorMinutes(sourceKind, packId, errorCode);
+        var ceiling = ResolveStartupToolHealthBackoffCeilingMinutes(sourceKind, packId, errorCode);
+        var exponent = Math.Clamp(consecutiveFailures - 1, 0, StartupToolHealthBackoffMaxExponent);
+        var multiplier = 1 << exponent;
+        var delayMinutes = Math.Min(ceiling, floor * multiplier);
+        if (delayMinutes <= 0) {
+            delayMinutes = floor;
+        }
+
+        return nowUtc.AddMinutes(delayMinutes);
+    }
+
     private static bool IsToolTimeoutProbe(ToolHealthDiagnostics.ProbeResult probe) {
         return string.Equals(probe.ErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase);
     }
@@ -247,5 +314,154 @@ internal sealed partial class ChatServiceSession {
             ToolPackSourceKind.OpenSource => "open_source",
             _ => "unknown"
         };
+    }
+
+    private static int ResolveStartupToolHealthBackoffFloorMinutes(ToolPackSourceKind sourceKind, string? packId, string? errorCode) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        var normalizedErrorCode = NormalizeHealthErrorCode(errorCode);
+        var isTimeout = string.Equals(normalizedErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase);
+        var isTestimoX = string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase);
+
+        if (isTimeout) {
+            if (isTestimoX) {
+                return 20;
+            }
+
+            return sourceKind == ToolPackSourceKind.ClosedSource ? 10 : 5;
+        }
+
+        return sourceKind == ToolPackSourceKind.ClosedSource ? 4 : 2;
+    }
+
+    private static int ResolveStartupToolHealthBackoffCeilingMinutes(ToolPackSourceKind sourceKind, string? packId, string? errorCode) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        var normalizedErrorCode = NormalizeHealthErrorCode(errorCode);
+        var isTimeout = string.Equals(normalizedErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase);
+        var isTestimoX = string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase);
+
+        if (isTimeout) {
+            if (isTestimoX) {
+                return 180;
+            }
+
+            return sourceKind == ToolPackSourceKind.ClosedSource ? 120 : 45;
+        }
+
+        return sourceKind == ToolPackSourceKind.ClosedSource ? 30 : 20;
+    }
+
+    private static string BuildStartupToolHealthCacheKey(ToolPackSourceKind sourceKind, string packId, string toolName) {
+        return ToSourceLabel(sourceKind)
+               + "|"
+               + ToolPackBootstrap.NormalizePackId(packId)
+               + "|"
+               + (toolName ?? string.Empty).Trim().ToLowerInvariant();
+    }
+
+    private static int ResolveNextFailureCount(StartupToolHealthCacheEntry? previous, string nextErrorCode) {
+        if (previous is null) {
+            return 1;
+        }
+
+        if (string.Equals(previous.ErrorCode, nextErrorCode, StringComparison.OrdinalIgnoreCase)) {
+            return Math.Clamp(previous.ConsecutiveFailures + 1, 1, 64);
+        }
+
+        return 1;
+    }
+
+    private static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache() {
+        var path = ResolveStartupToolHealthCachePath();
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+            return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try {
+            var json = File.ReadAllText(path);
+            var payload = JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson);
+            if (payload?.Entries is null || payload.Entries.Count == 0) {
+                return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var map = new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < payload.Entries.Count; i++) {
+                var entry = payload.Entries[i];
+                if (string.IsNullOrWhiteSpace(entry.Key)) {
+                    continue;
+                }
+
+                map[entry.Key] = new StartupToolHealthCacheEntry(
+                    ErrorCode: NormalizeHealthErrorCode(entry.ErrorCode),
+                    Error: NormalizeHealthError(entry.Error),
+                    LastFailedUtc: entry.LastFailedUtc,
+                    NextProbeUtc: entry.NextProbeUtc,
+                    ConsecutiveFailures: Math.Clamp(entry.ConsecutiveFailures, 1, 64));
+            }
+
+            return map;
+        } catch {
+            return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void SaveStartupToolHealthCache(Dictionary<string, StartupToolHealthCacheEntry> cache) {
+        var path = ResolveStartupToolHealthCachePath();
+        if (string.IsNullOrWhiteSpace(path)) {
+            return;
+        }
+
+        try {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
+                Directory.CreateDirectory(directory);
+            }
+
+            var payload = new StartupToolHealthCachePayload {
+                Entries = cache
+                    .Select(static pair => new StartupToolHealthCachePayloadEntry {
+                        Key = pair.Key,
+                        ErrorCode = pair.Value.ErrorCode,
+                        Error = pair.Value.Error,
+                        LastFailedUtc = pair.Value.LastFailedUtc,
+                        NextProbeUtc = pair.Value.NextProbeUtc,
+                        ConsecutiveFailures = pair.Value.ConsecutiveFailures
+                    })
+                    .ToList()
+            };
+
+            var json = JsonSerializer.Serialize(payload, StartupToolHealthCacheJson);
+            File.WriteAllText(path, json);
+        } catch {
+            // Ignore cache write failures.
+        }
+    }
+
+    private static string ResolveStartupToolHealthCachePath() {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData)) {
+            return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", StartupToolHealthCacheFileName);
+        }
+
+        return Path.Combine(localAppData, "IntelligenceX.Chat", StartupToolHealthCacheFileName);
+    }
+
+    private sealed record StartupToolHealthCacheEntry(
+        string ErrorCode,
+        string Error,
+        DateTime LastFailedUtc,
+        DateTime NextProbeUtc,
+        int ConsecutiveFailures);
+
+    private sealed class StartupToolHealthCachePayload {
+        public List<StartupToolHealthCachePayloadEntry> Entries { get; set; } = new();
+    }
+
+    private sealed class StartupToolHealthCachePayloadEntry {
+        public string Key { get; set; } = string.Empty;
+        public string? ErrorCode { get; set; }
+        public string? Error { get; set; }
+        public DateTime LastFailedUtc { get; set; }
+        public DateTime NextProbeUtc { get; set; }
+        public int ConsecutiveFailures { get; set; } = 1;
     }
 }

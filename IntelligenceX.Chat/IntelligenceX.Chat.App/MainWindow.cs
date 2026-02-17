@@ -64,6 +64,12 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
     private static readonly TimeSpan DragMoveWatchdogInterval = TimeSpan.FromMilliseconds(1200);
+    private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan[] StartupConnectRetryTimeouts = {
+        TimeSpan.FromSeconds(6),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(14)
+    };
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -312,6 +318,8 @@ public sealed partial class MainWindow : Window {
     private CancellationTokenSource? _autoReconnectCts;
     private Task? _autoReconnectTask;
     private int _localProviderApplyInFlight;
+    private readonly object _localProviderApplySync = new();
+    private LocalProviderApplyRequest? _pendingLocalProviderApply;
 
     private sealed class ConversationRuntime {
         public required string Id { get; init; }
@@ -322,6 +330,13 @@ public sealed partial class MainWindow : Window {
     }
 
     private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc);
+    private sealed record LocalProviderApplyRequest(
+        string? Transport,
+        string? BaseUrl,
+        string? Model,
+        string? ApiKey,
+        bool ClearApiKey,
+        bool ForceModelRefresh);
 
     private sealed record TurnMetricsSnapshot(
         DateTime CompletedUtc,
@@ -1202,11 +1217,7 @@ public sealed partial class MainWindow : Window {
         _localRuntimeDetectedName = null;
         _localRuntimeDetectedBaseUrl = null;
         _localRuntimeDetectionWarning = null;
-        _availableModels = Array.Empty<ModelInfoDto>();
-        _favoriteModels = Array.Empty<string>();
-        _recentModels = Array.Empty<string>();
-        _modelListIsStale = false;
-        _modelListWarning = null;
+        RestoreCachedModelCatalogFromAppState();
         _serviceProfileNames = Array.Empty<string>();
 
         if (!string.IsNullOrWhiteSpace(_appState.TimestampMode)) {
