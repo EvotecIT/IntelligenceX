@@ -9,7 +9,8 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Requests user input through the app-server.</para>
-/// <para type="description">Prompts for one to three questions and returns the responses.</para>
+/// <para type="description">Prompts for one to three questions and returns collected answers in order.
+/// Useful for interactive script checkpoints that need explicit user confirmation or values.</para>
 /// <example>
 ///  <para>Ask for two inputs</para>
 ///  <code>Request-IntelligenceXUserInput -Questions "Repo name?", "Branch?"</code>
@@ -17,6 +18,10 @@ namespace IntelligenceX.PowerShell;
 /// <example>
 ///  <para>Return raw JSON response</para>
 ///  <code>Request-IntelligenceXUserInput -Questions "Continue?" -Raw</code>
+/// </example>
+/// <example>
+///  <para>Use responses in script flow</para>
+///  <code>$response = Request-IntelligenceXUserInput -Questions "PR number?", "Merge now?"; $response.Answers</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Request, "IntelligenceXUserInput")]
@@ -29,13 +34,13 @@ public sealed class CmdletRequestIntelligenceXUserInput : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Questions to ask (1-3).</para>
+    /// <para type="description">Questions to ask (minimum 1, maximum 3).</para>
     /// </summary>
     [Parameter(Mandatory = true)]
     public string[] Questions { get; set; } = [];
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed response data.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

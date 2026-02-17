@@ -5,7 +5,7 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a list of MCP server statuses.
+/// Represents one page of MCP server status results.
 /// </summary>
 public sealed class McpServerStatusListResult {
     /// <summary>
@@ -20,15 +20,15 @@ public sealed class McpServerStatusListResult {
     }
 
     /// <summary>
-    /// Gets the server status list.
+    /// Gets MCP server entries for the current page.
     /// </summary>
     public IReadOnlyList<McpServerStatus> Servers { get; }
     /// <summary>
-    /// Gets the pagination cursor for the next page.
+    /// Gets the pagination cursor for the next page, or <see langword="null"/> when no further pages exist.
     /// </summary>
     public string? NextCursor { get; }
     /// <summary>
-    /// Gets the raw JSON object.
+    /// Gets the original raw JSON payload returned by app-server.
     /// </summary>
     public JsonObject Raw { get; }
     /// <summary>
@@ -60,7 +60,7 @@ public sealed class McpServerStatusListResult {
 }
 
 /// <summary>
-/// Represents the status of a single MCP server.
+/// Represents the status and capabilities of a single MCP server.
 /// </summary>
 public sealed class McpServerStatus {
     /// <summary>
@@ -78,27 +78,27 @@ public sealed class McpServerStatus {
     }
 
     /// <summary>
-    /// Gets the server name.
+    /// Gets the MCP server name.
     /// </summary>
     public string Name { get; }
     /// <summary>
-    /// Gets the available tools.
+    /// Gets available tools keyed by tool name.
     /// </summary>
     public IReadOnlyDictionary<string, McpToolInfo> Tools { get; }
     /// <summary>
-    /// Gets the available resources.
+    /// Gets currently exposed resources.
     /// </summary>
     public IReadOnlyList<McpResourceInfo> Resources { get; }
     /// <summary>
-    /// Gets the resource templates.
+    /// Gets available resource templates.
     /// </summary>
     public IReadOnlyList<McpResourceTemplateInfo> ResourceTemplates { get; }
     /// <summary>
-    /// Gets the auth status.
+    /// Gets server authentication status.
     /// </summary>
     public McpAuthStatus AuthStatus { get; }
     /// <summary>
-    /// Gets the raw JSON object.
+    /// Gets the original raw JSON payload for this server.
     /// </summary>
     public JsonObject Raw { get; }
     /// <summary>
@@ -184,19 +184,19 @@ public sealed class McpToolInfo {
     /// </summary>
     public string Name { get; }
     /// <summary>
-    /// Gets the tool title.
+    /// Gets the optional tool title.
     /// </summary>
     public string? Title { get; }
     /// <summary>
-    /// Gets the tool description.
+    /// Gets the optional tool description.
     /// </summary>
     public string? Description { get; }
     /// <summary>
-    /// Gets the input schema.
+    /// Gets the input schema (when provided by the server).
     /// </summary>
     public JsonObject? InputSchema { get; }
     /// <summary>
-    /// Gets the output schema.
+    /// Gets the output schema (when provided by the server).
     /// </summary>
     public JsonObject? OutputSchema { get; }
     /// <summary>
@@ -278,7 +278,7 @@ public sealed class McpResourceInfo {
     /// </summary>
     public string? MimeType { get; }
     /// <summary>
-    /// Gets the resource size in bytes.
+    /// Gets the resource size in bytes when the server provides it.
     /// </summary>
     public long? Size { get; }
     /// <summary>
@@ -339,7 +339,7 @@ public sealed class McpResourceTemplateInfo {
     }
 
     /// <summary>
-    /// Gets the URI template.
+    /// Gets the URI template (for example <c>repo://{owner}/{name}</c>).
     /// </summary>
     public string? UriTemplate { get; }
     /// <summary>
@@ -415,7 +415,7 @@ public enum McpAuthStatus {
     /// </summary>
     BearerToken,
     /// <summary>
-    /// OAuth authentication.
+    /// OAuth authentication is available.
     /// </summary>
     OAuth
 }

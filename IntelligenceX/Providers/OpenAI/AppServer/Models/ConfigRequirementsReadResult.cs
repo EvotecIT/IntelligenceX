@@ -4,7 +4,7 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents the response containing configuration requirements.
+/// Represents the response containing server-side configuration constraints.
 /// </summary>
 public sealed class ConfigRequirementsReadResult {
     /// <summary>
@@ -17,7 +17,7 @@ public sealed class ConfigRequirementsReadResult {
     }
 
     /// <summary>
-    /// Gets the configuration requirements.
+    /// Gets the configuration requirements returned by app-server.
     /// </summary>
     public ConfigRequirements? Requirements { get; }
     /// <summary>
@@ -43,7 +43,7 @@ public sealed class ConfigRequirementsReadResult {
 }
 
 /// <summary>
-/// Describes allowed configuration values.
+/// Describes allowed values for selected configuration keys.
 /// </summary>
 public sealed class ConfigRequirements {
     /// <summary>
@@ -58,11 +58,11 @@ public sealed class ConfigRequirements {
     }
 
     /// <summary>
-    /// Gets the allowed approval policies.
+    /// Gets allowed values for approval policy settings.
     /// </summary>
     public IReadOnlyList<string>? AllowedApprovalPolicies { get; }
     /// <summary>
-    /// Gets the allowed sandbox modes.
+    /// Gets allowed values for sandbox mode settings.
     /// </summary>
     public IReadOnlyList<string>? AllowedSandboxModes { get; }
     /// <summary>

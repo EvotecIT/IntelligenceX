@@ -7,7 +7,8 @@
       <command:verb>Connect</command:verb>
       <command:noun>IntelligenceX</command:noun>
       <maml:description>
-        <maml:para>Starts the Codex app-server and returns a client instance.</maml:para>
+        <maml:para>Connects to IntelligenceX (native or app-server) and returns a client instance.</maml:para>
+        <maml:para>Use Native for ChatGPT OAuth login (no local Codex binary). Use AppServer to talk to a locally running Codex app-server process. The cmdlet sets the active default client, so subsequent cmdlets can omit -Client.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -52,6 +53,31 @@
           </dev:type>
           <dev:defaultValue>False</dev:defaultValue>
         </command:parameter>
+        <!-- Parameter: OpenAIAccountId -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>OpenAIAccountId</maml:name>
+          <command:parameterValue required="true">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+            <maml:uri />
+          </dev:type>
+        </command:parameter>
+        <!-- Parameter: Transport -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>Transport</maml:name>
+          <command:parameterValue required="true">OpenAITransportKind</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.OpenAITransportKind</maml:name>
+            <maml:uri />
+          </dev:type>
+          <dev:defaultValue>Native</dev:defaultValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Native</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">AppServer</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">CompatibleHttp</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">CopilotCli</command:parameterValue>
+          </command:parameterValueGroup>
+        </command:parameter>
         <!-- Parameter: WorkingDirectory -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
           <maml:name>WorkingDirectory</maml:name>
@@ -64,6 +90,26 @@
       </command:syntaxItem>
     </command:syntax>
     <command:parameters>
+      <!-- Parameter: Transport -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>Transport</maml:name>
+        <maml:description>
+          <maml:para>Transport to use (Native or AppServer). Native uses ChatGPT OAuth directly.</maml:para>
+          <maml:para>Possible values: Native, AppServer, CompatibleHttp, CopilotCli</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">OpenAITransportKind</command:parameterValue>
+        <dev:type>
+          <maml:name>IntelligenceX.OpenAI.OpenAITransportKind</maml:name>
+          <maml:uri />
+        </dev:type>
+        <dev:defaultValue>Native</dev:defaultValue>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Native</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">AppServer</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">CompatibleHttp</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">CopilotCli</command:parameterValue>
+        </command:parameterValueGroup>
+      </command:parameter>
       <!-- Parameter: ExecutablePath -->
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>ExecutablePath</maml:name>
@@ -126,17 +172,66 @@
         </dev:type>
         <dev:defaultValue>False</dev:defaultValue>
       </command:parameter>
+      <!-- Parameter: OpenAIAccountId -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>OpenAIAccountId</maml:name>
+        <maml:description>
+          <maml:para>Optional ChatGPT account id to use when multiple auth bundles are present.</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">string</command:parameterValue>
+        <dev:type>
+          <maml:name>System.String</maml:name>
+          <maml:uri />
+        </dev:type>
+      </command:parameter>
     </command:parameters>
     <command:inputTypes />
     <command:returnValues>
-      <!-- OutputType: AppServerClient -->
+      <!-- OutputType: IntelligenceXClient -->
       <command:returnValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Connect-IntelligenceX -Transport Native</dev:code>
+        <dev:remarks>
+          <maml:para>Native transport (ChatGPT OAuth)</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Connect-IntelligenceX -Transport AppServer -ExecutablePath "C:\tools\codex.exe"</dev:code>
+        <dev:remarks>
+          <maml:para>App-server transport with explicit executable path</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Connect-IntelligenceX -Transport AppServer -WorkingDirectory "C:\repo" -Arguments "app-server --verbose"</dev:code>
+        <dev:remarks>
+          <maml:para>App-server transport with custom working directory and args</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Connect-IntelligenceX -Transport Native -Diagnostics</dev:code>
+        <dev:remarks>
+          <maml:para>Enable diagnostics output</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 5  ----------</maml:title>
+        <dev:code>Connect-IntelligenceX -Transport Native -OpenAIAccountId "user-123"</dev:code>
+        <dev:remarks>
+          <maml:para>Pin a specific OpenAI account id when multiple bundles are present</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Disconnect-IntelligenceX -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -145,7 +240,8 @@
       <command:verb>Disconnect</command:verb>
       <command:noun>IntelligenceX</command:noun>
       <maml:description>
-        <maml:para>Stops the Codex app-server client and releases resources.</maml:para>
+        <maml:para>Disconnects the active IntelligenceX client and clears local session context.</maml:para>
+        <maml:para>Releases app-server/native client resources, clears diagnostics subscriptions, and resets default thread/initialization state. If no client is active, the cmdlet exits without error.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -155,9 +251,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -170,9 +266,9 @@
         <maml:description>
           <maml:para>Client instance to disconnect. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -180,12 +276,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Disconnect-IntelligenceX</dev:code>
+        <dev:remarks>
+          <maml:para>Disconnect the active client</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Disconnect-IntelligenceX -Client $client</dev:code>
+        <dev:remarks>
+          <maml:para>Disconnect a specific client object</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>try { Invoke-IntelligenceXChat -Text "Summarize changes" } finally { Disconnect-IntelligenceX }</dev:code>
+        <dev:remarks>
+          <maml:para>Clean up at the end of a script</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Initialize-IntelligenceX -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -195,6 +314,7 @@
       <command:noun>IntelligenceX</command:noun>
       <maml:description>
         <maml:para>Initializes the client handshake with the app-server.</maml:para>
+        <maml:para>Sends client identity metadata (name, title, version) to app-server. Some flows require initialization before login, chat, or review operations.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -234,9 +354,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -249,9 +369,9 @@
         <maml:description>
           <maml:para>Client instance to initialize. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -259,7 +379,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Name</maml:name>
         <maml:description>
-          <maml:para>Client name sent to the app-server.</maml:para>
+          <maml:para>Client identifier sent to the app-server (machine-friendly).</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -272,7 +392,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Title</maml:name>
         <maml:description>
-          <maml:para>Client title sent to the app-server.</maml:para>
+          <maml:para>Client display title sent to the app-server (human-friendly).</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -285,7 +405,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Version</maml:name>
         <maml:description>
-          <maml:para>Client version sent to the app-server.</maml:para>
+          <maml:para>Client version sent to the app-server for telemetry/capability context.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -298,12 +418,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Initialize-IntelligenceX -Name "ix-cli" -Title "IntelligenceX CLI" -Version "0.1.0"</dev:code>
+        <dev:remarks>
+          <maml:para>Initialize the app-server session</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$client = Connect-IntelligenceX; Initialize-IntelligenceX -Client $client -Name "Automation" -Title "Build Runner" -Version "1.0.0"</dev:code>
+        <dev:remarks>
+          <maml:para>Initialize a specific client instance</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$client = Connect-IntelligenceX; Initialize-IntelligenceX -Client $client -Name "Repo.Tooling" -Title "Repo Tooling" -Version "0.2.0"</dev:code>
+        <dev:remarks>
+          <maml:para>Initialize immediately after connect in a script bootstrap</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXAccount -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -313,6 +456,7 @@
       <command:noun>IntelligenceXAccount</command:noun>
       <maml:description>
         <maml:para>Returns the current account details.</maml:para>
+        <maml:para>Returns the account identity for the active session, such as email and account id. Useful to confirm which credential bundle is currently active.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -322,9 +466,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -347,9 +491,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -357,7 +501,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed account info.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -370,7 +514,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -391,6 +535,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXAccount</dev:code>
+        <dev:remarks>
+          <maml:para>Get account info</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXAccount -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Get raw JSON account payload</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$login = Start-IntelligenceXChatGptLogin; Wait-IntelligenceXLogin -LoginId $login.LoginId; Get-IntelligenceXAccount</dev:code>
+        <dev:remarks>
+          <maml:para>Verify account after login in a script</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Start-IntelligenceXApiKeyLogin -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -399,7 +566,8 @@
       <command:verb>Start</command:verb>
       <command:noun>IntelligenceXApiKeyLogin</command:noun>
       <maml:description>
-        <maml:para>Authenticates using an OpenAI API key.</maml:para>
+        <maml:para>Authenticates the active client with an OpenAI API key.</maml:para>
+        <maml:para>Stores the API key in the active client for API-based requests. Use only if ChatGPT OAuth is not desired or available.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -419,9 +587,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -434,9 +602,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -444,7 +612,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>ApiKey</maml:name>
         <maml:description>
-          <maml:para>API key to authenticate with.</maml:para>
+          <maml:para>OpenAI API key used for authentication.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -457,12 +625,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Start-IntelligenceXApiKeyLogin -ApiKey $env:OPENAI_API_KEY</dev:code>
+        <dev:remarks>
+          <maml:para>Log in with an API key</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$client = Connect-IntelligenceX; Start-IntelligenceXApiKeyLogin -Client $client -ApiKey $env:OPENAI_API_KEY; Get-IntelligenceXAccount -Client $client</dev:code>
+        <dev:remarks>
+          <maml:para>Log in with an explicit client and verify account access</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Start-IntelligenceXApiKeyLogin -ApiKey (Get-Item Env:OPENAI_API_KEY).Value</dev:code>
+        <dev:remarks>
+          <maml:para>Use API key auth in non-interactive CI flows</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Invoke-IntelligenceXChat -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -472,6 +663,7 @@
       <command:noun>IntelligenceXChat</command:noun>
       <maml:description>
         <maml:para>Super-easy chat command that handles connect, init, login, thread, and send.</maml:para>
+        <maml:para>Convenience entry point for quick chat: it connects, logs in (if needed), creates or reuses a thread, sends input, and returns the resulting turn. Supports streaming output and a simple DSL for text/image inputs.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -611,6 +803,15 @@
             <maml:uri />
           </dev:type>
         </command:parameter>
+        <!-- Parameter: Instructions -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>Instructions</maml:name>
+          <command:parameterValue required="true">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+            <maml:uri />
+          </dev:type>
+        </command:parameter>
         <!-- Parameter: Login -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
           <maml:name>Login</maml:name>
@@ -629,7 +830,7 @@
             <maml:name>System.String</maml:name>
             <maml:uri />
           </dev:type>
-          <dev:defaultValue>gpt-5.1-codex</dev:defaultValue>
+          <dev:defaultValue>gpt-5.3-codex</dev:defaultValue>
         </command:parameter>
         <!-- Parameter: NewThread -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
@@ -671,6 +872,37 @@
           </dev:type>
           <dev:defaultValue>False</dev:defaultValue>
         </command:parameter>
+        <!-- Parameter: ReasoningEffort -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>ReasoningEffort</maml:name>
+          <command:parameterValue required="true">ReasoningEffort</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.Chat.ReasoningEffort</maml:name>
+            <maml:uri />
+          </dev:type>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Minimal</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">XHigh</command:parameterValue>
+          </command:parameterValueGroup>
+        </command:parameter>
+        <!-- Parameter: ReasoningSummary -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>ReasoningSummary</maml:name>
+          <command:parameterValue required="true">ReasoningSummary</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.Chat.ReasoningSummary</maml:name>
+            <maml:uri />
+          </dev:type>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Concise</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Detailed</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Off</command:parameterValue>
+          </command:parameterValueGroup>
+        </command:parameter>
         <!-- Parameter: SaveImagesTo -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
           <maml:name>SaveImagesTo</maml:name>
@@ -689,6 +921,29 @@
             <maml:uri />
           </dev:type>
           <dev:defaultValue>False</dev:defaultValue>
+        </command:parameter>
+        <!-- Parameter: Temperature -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>Temperature</maml:name>
+          <command:parameterValue required="true">double</command:parameterValue>
+          <dev:type>
+            <maml:name>System.Double</maml:name>
+            <maml:uri />
+          </dev:type>
+        </command:parameter>
+        <!-- Parameter: TextVerbosity -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>TextVerbosity</maml:name>
+          <command:parameterValue required="true">TextVerbosity</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.Chat.TextVerbosity</maml:name>
+            <maml:uri />
+          </dev:type>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+          </command:parameterValueGroup>
         </command:parameter>
         <!-- Parameter: WaitSeconds -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
@@ -854,6 +1109,15 @@
             <maml:uri />
           </dev:type>
         </command:parameter>
+        <!-- Parameter: Instructions -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>Instructions</maml:name>
+          <command:parameterValue required="true">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+            <maml:uri />
+          </dev:type>
+        </command:parameter>
         <!-- Parameter: Login -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
           <maml:name>Login</maml:name>
@@ -872,7 +1136,7 @@
             <maml:name>System.String</maml:name>
             <maml:uri />
           </dev:type>
-          <dev:defaultValue>gpt-5.1-codex</dev:defaultValue>
+          <dev:defaultValue>gpt-5.3-codex</dev:defaultValue>
         </command:parameter>
         <!-- Parameter: NewThread -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
@@ -914,6 +1178,37 @@
           </dev:type>
           <dev:defaultValue>False</dev:defaultValue>
         </command:parameter>
+        <!-- Parameter: ReasoningEffort -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>ReasoningEffort</maml:name>
+          <command:parameterValue required="true">ReasoningEffort</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.Chat.ReasoningEffort</maml:name>
+            <maml:uri />
+          </dev:type>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Minimal</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">XHigh</command:parameterValue>
+          </command:parameterValueGroup>
+        </command:parameter>
+        <!-- Parameter: ReasoningSummary -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>ReasoningSummary</maml:name>
+          <command:parameterValue required="true">ReasoningSummary</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.Chat.ReasoningSummary</maml:name>
+            <maml:uri />
+          </dev:type>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Concise</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Detailed</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Off</command:parameterValue>
+          </command:parameterValueGroup>
+        </command:parameter>
         <!-- Parameter: SaveImagesTo -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
           <maml:name>SaveImagesTo</maml:name>
@@ -932,6 +1227,29 @@
             <maml:uri />
           </dev:type>
           <dev:defaultValue>False</dev:defaultValue>
+        </command:parameter>
+        <!-- Parameter: Temperature -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>Temperature</maml:name>
+          <command:parameterValue required="true">double</command:parameterValue>
+          <dev:type>
+            <maml:name>System.Double</maml:name>
+            <maml:uri />
+          </dev:type>
+        </command:parameter>
+        <!-- Parameter: TextVerbosity -->
+        <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+          <maml:name>TextVerbosity</maml:name>
+          <command:parameterValue required="true">TextVerbosity</command:parameterValue>
+          <dev:type>
+            <maml:name>IntelligenceX.OpenAI.Chat.TextVerbosity</maml:name>
+            <maml:uri />
+          </dev:type>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+          </command:parameterValueGroup>
         </command:parameter>
         <!-- Parameter: WaitSeconds -->
         <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
@@ -1006,14 +1324,14 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Model</maml:name>
         <maml:description>
-          <maml:para>Model identifier. Defaults to gpt-5.1-codex.</maml:para>
+          <maml:para>Model identifier. Defaults to gpt-5.3-codex.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
           <maml:name>System.String</maml:name>
           <maml:uri />
         </dev:type>
-        <dev:defaultValue>gpt-5.1-codex</dev:defaultValue>
+        <dev:defaultValue>gpt-5.3-codex</dev:defaultValue>
       </command:parameter>
       <!-- Parameter: Login -->
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
@@ -1228,6 +1546,87 @@
           <maml:uri />
         </dev:type>
       </command:parameter>
+      <!-- Parameter: Instructions -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>Instructions</maml:name>
+        <maml:description>
+          <maml:para>System instructions for the assistant.</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">string</command:parameterValue>
+        <dev:type>
+          <maml:name>System.String</maml:name>
+          <maml:uri />
+        </dev:type>
+      </command:parameter>
+      <!-- Parameter: ReasoningEffort -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>ReasoningEffort</maml:name>
+        <maml:description>
+          <maml:para>Reasoning effort level.</maml:para>
+          <maml:para>Possible values: Minimal, Low, Medium, High, XHigh</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">ReasoningEffort</command:parameterValue>
+        <dev:type>
+          <maml:name>IntelligenceX.OpenAI.Chat.ReasoningEffort</maml:name>
+          <maml:uri />
+        </dev:type>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Minimal</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">XHigh</command:parameterValue>
+        </command:parameterValueGroup>
+      </command:parameter>
+      <!-- Parameter: ReasoningSummary -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>ReasoningSummary</maml:name>
+        <maml:description>
+          <maml:para>Reasoning summary level.</maml:para>
+          <maml:para>Possible values: Auto, Concise, Detailed, Off</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">ReasoningSummary</command:parameterValue>
+        <dev:type>
+          <maml:name>IntelligenceX.OpenAI.Chat.ReasoningSummary</maml:name>
+          <maml:uri />
+        </dev:type>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Concise</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Detailed</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Off</command:parameterValue>
+        </command:parameterValueGroup>
+      </command:parameter>
+      <!-- Parameter: TextVerbosity -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>TextVerbosity</maml:name>
+        <maml:description>
+          <maml:para>Response verbosity level.</maml:para>
+          <maml:para>Possible values: Low, Medium, High</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">TextVerbosity</command:parameterValue>
+        <dev:type>
+          <maml:name>IntelligenceX.OpenAI.Chat.TextVerbosity</maml:name>
+          <maml:uri />
+        </dev:type>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+        </command:parameterValueGroup>
+      </command:parameter>
+      <!-- Parameter: Temperature -->
+      <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
+        <maml:name>Temperature</maml:name>
+        <maml:description>
+          <maml:para>Sampling temperature.</maml:para>
+        </maml:description>
+        <command:parameterValue required="true">double</command:parameterValue>
+        <dev:type>
+          <maml:name>System.Double</maml:name>
+          <maml:uri />
+        </dev:type>
+      </command:parameter>
       <!-- Parameter: SaveImagesTo -->
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>SaveImagesTo</maml:name>
@@ -1316,6 +1715,46 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXChat -Text "Summarize these changes."</dev:code>
+        <dev:remarks>
+          <maml:para>Quick chat</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXChat -Text "List risks." -Stream -WaitSeconds 10</dev:code>
+        <dev:remarks>
+          <maml:para>Chat with streaming output</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>@"
+            text: Describe the image
+            image: C:\temp\diagram.png
+            "@ | Invoke-IntelligenceXChat -Dsl</dev:code>
+        <dev:remarks>
+          <maml:para>Use the DSL to mix text and an image</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXChat -Text "Hello" -Login ApiKey -ApiKey $env:OPENAI_API_KEY</dev:code>
+        <dev:remarks>
+          <maml:para>Use API key login</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 5  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXChat -Text "Run tests" -Workspace "C:\repo" -AllowNetwork</dev:code>
+        <dev:remarks>
+          <maml:para>Run with a workspace sandbox and network access</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Start-IntelligenceXChatGptLogin -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1325,6 +1764,7 @@
       <command:noun>IntelligenceXChatGptLogin</command:noun>
       <maml:description>
         <maml:para>Starts the ChatGPT login flow and returns the authorization URL.</maml:para>
+        <maml:para>Opens the browser to complete the ChatGPT OAuth flow. Pair with Wait-IntelligenceXLogin to poll for completion and store the resulting credentials.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1334,9 +1774,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1359,9 +1799,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -1369,7 +1809,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed login data.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -1382,7 +1822,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -1403,6 +1843,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Start-IntelligenceXChatGptLogin</dev:code>
+        <dev:remarks>
+          <maml:para>Start login and open the browser</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Start-IntelligenceXChatGptLogin -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return the raw JSON response for custom handling</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$login = Start-IntelligenceXChatGptLogin; Wait-IntelligenceXLogin -LoginId $login.LoginId</dev:code>
+        <dev:remarks>
+          <maml:para>Start login and explicitly wait for completion</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXCollaborationMode -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1411,7 +1874,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXCollaborationMode</command:noun>
       <maml:description>
-        <maml:para>Lists collaboration modes.</maml:para>
+        <maml:para>Lists collaboration modes available in the current app-server runtime.</maml:para>
+        <maml:para>Use this cmdlet to discover valid collaboration mode values before setting them in configuration or passing them to review/chat workflows.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1421,9 +1885,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1446,9 +1910,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -1456,7 +1920,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed mode models.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -1469,7 +1933,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -1490,6 +1954,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXCollaborationMode</dev:code>
+        <dev:remarks>
+          <maml:para>List collaboration modes</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>(Get-IntelligenceXCollaborationMode).Modes | Select-Object Name, Mode, Model</dev:code>
+        <dev:remarks>
+          <maml:para>Show mode names and mapped mode values</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Get-IntelligenceXCollaborationMode -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON response</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Invoke-IntelligenceXCommand -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1499,6 +1986,7 @@
       <command:noun>IntelligenceXCommand</command:noun>
       <maml:description>
         <maml:para>Executes a command through the app-server.</maml:para>
+        <maml:para>Runs a process via the app-server with optional sandbox settings and timeout.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1517,9 +2005,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1588,9 +2076,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -1684,7 +2172,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -1705,6 +2193,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXCommand -Command @("git","status") -WorkingDirectory "C:\repo"</dev:code>
+        <dev:remarks>
+          <maml:para>Run a command in the repository root</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXCommand -Command @("dotnet","test") -SandboxType "workspace" -WorkingDirectory "C:\repo"</dev:code>
+        <dev:remarks>
+          <maml:para>Run a command in a sandboxed workspace</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXCommand -Command @("git","status") -TimeoutMs 5000</dev:code>
+        <dev:remarks>
+          <maml:para>Run a command with a timeout</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXConfig -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1713,7 +2224,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXConfig</command:noun>
       <maml:description>
-        <maml:para>Reads the current configuration.</maml:para>
+        <maml:para>Reads the effective app-server configuration with layer metadata.</maml:para>
+        <maml:para>Returns merged config values plus metadata that explains where values come from (for example defaults, workspace files, or environment overrides).</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1723,9 +2235,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1746,11 +2258,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>Client instance to use. Defaults to the active client.</maml:para>
+          <maml:para>App-server client instance to query. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -1758,7 +2270,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed config models.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -1771,7 +2283,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -1792,6 +2304,36 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>$config = Get-IntelligenceXConfig; $config.Config</dev:code>
+        <dev:remarks>
+          <maml:para>Read effective config as structured output</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$config = Get-IntelligenceXConfig; $config.Origins["model"]</dev:code>
+        <dev:remarks>
+          <maml:para>Inspect where a specific setting comes from</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Get-IntelligenceXConfig | Select-Object -ExpandProperty Layers | Select-Object Version, DisabledReason</dev:code>
+        <dev:remarks>
+          <maml:para>Inspect active configuration layers</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Get-IntelligenceXConfig -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Read raw JSON for custom handling</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Set-IntelligenceXConfigBatch -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1800,7 +2342,8 @@
       <command:verb>Set</command:verb>
       <command:noun>IntelligenceXConfigBatch</command:noun>
       <maml:description>
-        <maml:para>Writes multiple configuration values.</maml:para>
+        <maml:para>Writes multiple app-server configuration values in one request.</maml:para>
+        <maml:para>Sends a batch of key/value updates. This is useful for related settings you want to apply together. Hashtable values are converted to JSON before sending.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1819,9 +2362,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1832,11 +2375,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>Client instance to use. Defaults to the active client.</maml:para>
+          <maml:para>App-server client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -1844,7 +2387,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Values</maml:name>
         <maml:description>
-          <maml:para>Hashtable of key/value pairs.</maml:para>
+          <maml:para>Hashtable of configuration key/value pairs to write.</maml:para>
         </maml:description>
         <command:parameterValue required="true">Hashtable</command:parameterValue>
         <dev:type>
@@ -1856,12 +2399,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.3-codex"; approvalPolicy = "auto" }</dev:code>
+        <dev:remarks>
+          <maml:para>Set multiple values at once</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Set-IntelligenceXConfigBatch -Values @{ stream = $true; responseFormat = @{ type = "json_object" } }</dev:code>
+        <dev:remarks>
+          <maml:para>Include booleans and nested objects</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.3-codex"; approvalPolicy = "on-failure" }; (Get-IntelligenceXConfig).Config</dev:code>
+        <dev:remarks>
+          <maml:para>Apply a batch, then inspect the effective config</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXConfigRequirements -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1870,7 +2436,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXConfigRequirements</command:noun>
       <maml:description>
-        <maml:para>Reads configuration requirements.</maml:para>
+        <maml:para>Reads server-defined constraints for supported configuration values.</maml:para>
+        <maml:para>Returns allowed values for key settings (for example approval policy and sandbox mode) so scripts can validate config before writing changes.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1880,9 +2447,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1905,9 +2472,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -1915,7 +2482,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed requirements models.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -1928,7 +2495,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -1949,6 +2516,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXConfigRequirements</dev:code>
+        <dev:remarks>
+          <maml:para>Get config requirements</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXConfigRequirements -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Get raw JSON output</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>(Get-IntelligenceXConfigRequirements).Requirements.AllowedApprovalPolicies</dev:code>
+        <dev:remarks>
+          <maml:para>Inspect allowed approval policies</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Set-IntelligenceXConfigValue -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -1957,7 +2547,8 @@
       <command:verb>Set</command:verb>
       <command:noun>IntelligenceXConfigValue</command:noun>
       <maml:description>
-        <maml:para>Writes a configuration value.</maml:para>
+        <maml:para>Writes a single app-server configuration value.</maml:para>
+        <maml:para>Updates one config key on the app-server. PowerShell values are converted to JSON before sending. Use Get-IntelligenceXConfig to verify the effective result and layer origin.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -1986,9 +2577,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -1999,11 +2590,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>Client instance to use. Defaults to the active client.</maml:para>
+          <maml:para>App-server client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2011,7 +2602,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Key</maml:name>
         <maml:description>
-          <maml:para>Configuration key.</maml:para>
+          <maml:para>Configuration key to write.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -2024,7 +2615,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Value</maml:name>
         <maml:description>
-          <maml:para>Configuration value.</maml:para>
+          <maml:para>Configuration value. Converted to JSON (string, number, boolean, array, object).</maml:para>
         </maml:description>
         <command:parameterValue required="true">object</command:parameterValue>
         <dev:type>
@@ -2036,12 +2627,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Set-IntelligenceXConfigValue -Key "model" -Value "gpt-5.3-codex"</dev:code>
+        <dev:remarks>
+          <maml:para>Set the model used by default</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Set-IntelligenceXConfigValue -Key "stream" -Value $true; Set-IntelligenceXConfigValue -Key "maxOutputTokens" -Value 4096</dev:code>
+        <dev:remarks>
+          <maml:para>Set a boolean or numeric value</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Set-IntelligenceXConfigValue -Key "responseFormat" -Value @{ type = "json_schema"; strict = $true }</dev:code>
+        <dev:remarks>
+          <maml:para>Write a nested object using a hashtable</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Install-IntelligenceXCopilotCli -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2050,7 +2664,8 @@
       <command:verb>Install</command:verb>
       <command:noun>IntelligenceXCopilotCli</command:noun>
       <maml:description>
-        <maml:para>Installs GitHub Copilot CLI (opt-in).</maml:para>
+        <maml:para>Installs GitHub Copilot CLI using a selected install strategy.</maml:para>
+        <maml:para>Executes the platform-specific installer command and optionally returns command metadata. Supports WhatIf/Confirm through ShouldProcess.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2101,7 +2716,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Method</maml:name>
         <maml:description>
-          <maml:para>Install method to use.</maml:para>
+          <maml:para>Install method to use (Auto, Winget, Brew, Apt, etc. depending on platform).</maml:para>
           <maml:para>Possible values: Auto, Winget, Homebrew, Npm, Script</maml:para>
         </maml:description>
         <command:parameterValue required="true">CopilotCliInstallMethod</command:parameterValue>
@@ -2122,7 +2737,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Prerelease</maml:name>
         <maml:description>
-          <maml:para>Install prerelease version.</maml:para>
+          <maml:para>Installs a prerelease build when available.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -2135,7 +2750,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>PassThru</maml:name>
         <maml:description>
-          <maml:para>Return the install command object.</maml:para>
+          <maml:para>Returns the resolved install command object after successful execution.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -2155,6 +2770,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Install-IntelligenceXCopilotCli</dev:code>
+        <dev:remarks>
+          <maml:para>Install Copilot CLI using the auto method</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Install-IntelligenceXCopilotCli -WhatIf</dev:code>
+        <dev:remarks>
+          <maml:para>Preview installation without executing changes</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Install-IntelligenceXCopilotCli -Prerelease -PassThru</dev:code>
+        <dev:remarks>
+          <maml:para>Install prerelease and return command metadata</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXCopilotInstall -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2163,7 +2801,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXCopilotInstall</command:noun>
       <maml:description>
-        <maml:para>Shows install commands for GitHub Copilot CLI.</maml:para>
+        <maml:para>Shows platform-specific installation commands for GitHub Copilot CLI.</maml:para>
+        <maml:para>This cmdlet does not install anything. It returns suggested install command metadata so you can preview, log, or execute it manually.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2187,7 +2826,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Prerelease</maml:name>
         <maml:description>
-          <maml:para>Show prerelease install commands.</maml:para>
+          <maml:para>Returns commands for installing prerelease builds.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -2207,6 +2846,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXCopilotInstall</dev:code>
+        <dev:remarks>
+          <maml:para>Show stable install commands</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXCopilotInstall -Prerelease</dev:code>
+        <dev:remarks>
+          <maml:para>Show prerelease install commands</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Get-IntelligenceXCopilotInstall | Select-Object Method, FileName, Arguments</dev:code>
+        <dev:remarks>
+          <maml:para>Inspect command and arguments for automation scripts</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Watch-IntelligenceXEvent -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2216,6 +2878,7 @@
       <command:noun>IntelligenceXEvent</command:noun>
       <maml:description>
         <maml:para>Watches JSON-RPC notifications from the app-server.</maml:para>
+        <maml:para>Streams notification events until cancelled. Use method filters to observe specific protocol events such as turn progress, login completion, or status changes.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2225,9 +2888,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2249,9 +2912,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2259,7 +2922,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Method</maml:name>
         <maml:description>
-          <maml:para>Optional method filter.</maml:para>
+          <maml:para>Optional JSON-RPC method filter list. Matching is case-insensitive.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string[]</command:parameterValue>
         <dev:type>
@@ -2271,7 +2934,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -2285,6 +2948,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Watch-IntelligenceXEvent</dev:code>
+        <dev:remarks>
+          <maml:para>Watch all events</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Watch-IntelligenceXEvent -Method "turn/delta"</dev:code>
+        <dev:remarks>
+          <maml:para>Watch only turn deltas</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Watch-IntelligenceXEvent -Method "turn/delta","turn/completed","account/login/completed"</dev:code>
+        <dev:remarks>
+          <maml:para>Watch multiple event types</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Send-IntelligenceXFeedback -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2293,7 +2979,8 @@
       <command:verb>Send</command:verb>
       <command:noun>IntelligenceXFeedback</command:noun>
       <maml:description>
-        <maml:para>Uploads feedback content.</maml:para>
+        <maml:para>Uploads textual feedback to the app-server feedback endpoint.</maml:para>
+        <maml:para>Use this cmdlet to send reproduction notes, quality feedback, or analyzer observations collected during reviews and local runs.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2313,9 +3000,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2328,9 +3015,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2338,7 +3025,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Content</maml:name>
         <maml:description>
-          <maml:para>Feedback content.</maml:para>
+          <maml:para>Feedback text content to upload.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -2351,12 +3038,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Send-IntelligenceXFeedback -Content "The review missed the nullable warning."</dev:code>
+        <dev:remarks>
+          <maml:para>Send feedback</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$note = "Reviewer suggestion: add timeout handling.`nObserved on Windows PS 7.5."; Send-IntelligenceXFeedback -Content $note</dev:code>
+        <dev:remarks>
+          <maml:para>Send feedback from a multi-line here-string</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Send-IntelligenceXFeedback -Client $client -Content "MCP OAuth instructions were unclear for first-time users."</dev:code>
+        <dev:remarks>
+          <maml:para>Send feedback with an explicit client</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXHealth -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2366,6 +3076,7 @@
       <command:noun>IntelligenceXHealth</command:noun>
       <maml:description>
         <maml:para>Runs health checks for OpenAI app-server and optional Copilot CLI.</maml:para>
+        <maml:para>Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI instance using explicit or config-derived options.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2375,9 +3086,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2472,11 +3183,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>OpenAI app-server client instance. Defaults to the active client.</maml:para>
+          <maml:para>OpenAI/app-server client instance. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2559,7 +3270,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>CopilotInstallMethod</maml:name>
         <maml:description>
-          <maml:para>Copilot auto-install method.</maml:para>
+          <maml:para>Copilot auto-install method to use when -CopilotAutoInstall is set.</maml:para>
           <maml:para>Possible values: Auto, Winget, Homebrew, Npm, Script</maml:para>
         </maml:description>
         <command:parameterValue required="true">CopilotCliInstallMethod</command:parameterValue>
@@ -2593,7 +3304,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -2607,6 +3318,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXHealth</dev:code>
+        <dev:remarks>
+          <maml:para>Check OpenAI app-server health</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXHealth -Copilot</dev:code>
+        <dev:remarks>
+          <maml:para>Check OpenAI and Copilot CLI health</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Get-IntelligenceXHealth -Copilot -CopilotCliPath "copilot" -CopilotAutoInstall</dev:code>
+        <dev:remarks>
+          <maml:para>Check Copilot with explicit path and auto-install enabled</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXLoadedThread -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2615,7 +3349,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXLoadedThread</command:noun>
       <maml:description>
-        <maml:para>Lists currently loaded threads.</maml:para>
+        <maml:para>Lists threads currently loaded in the app-server process.</maml:para>
+        <maml:para>Returns thread ids that are currently active in memory for the running app-server session. Useful for diagnostics and cleanup scripts.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2625,9 +3360,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2650,9 +3385,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2660,7 +3395,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed thread-id models.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -2673,7 +3408,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -2694,6 +3429,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXLoadedThread</dev:code>
+        <dev:remarks>
+          <maml:para>List loaded threads</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXLoadedThread -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Get raw JSON output</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>(Get-IntelligenceXLoadedThread).Data</dev:code>
+        <dev:remarks>
+          <maml:para>Expand loaded thread ids as plain values</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Wait-IntelligenceXLogin -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2703,6 +3461,7 @@
       <command:noun>IntelligenceXLogin</command:noun>
       <maml:description>
         <maml:para>Waits for the login flow to complete.</maml:para>
+        <maml:para>Polls the app-server for login completion. Use after Start-IntelligenceXChatGptLogin.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2712,9 +3471,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2746,9 +3505,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2768,7 +3527,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>TimeoutSeconds</maml:name>
         <maml:description>
-          <maml:para>Maximum wait time in seconds.</maml:para>
+          <maml:para>Maximum wait time in seconds before cancellation.</maml:para>
         </maml:description>
         <command:parameterValue required="true">int</command:parameterValue>
         <dev:type>
@@ -2781,12 +3540,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Wait-IntelligenceXLogin</dev:code>
+        <dev:remarks>
+          <maml:para>Wait for the current login to finish</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Wait-IntelligenceXLogin -LoginId $login.LoginId -TimeoutSeconds 120</dev:code>
+        <dev:remarks>
+          <maml:para>Wait for a specific login with a shorter timeout</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$login = Start-IntelligenceXChatGptLogin; Wait-IntelligenceXLogin -LoginId $login.LoginId</dev:code>
+        <dev:remarks>
+          <maml:para>Start and wait in one flow</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Start-IntelligenceXMcpOAuthLogin -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2795,7 +3577,8 @@
       <command:verb>Start</command:verb>
       <command:noun>IntelligenceXMcpOAuthLogin</command:noun>
       <maml:description>
-        <maml:para>Starts an OAuth login for an MCP server.</maml:para>
+        <maml:para>Starts an MCP OAuth login flow and returns the browser authorization URL.</maml:para>
+        <maml:para>Use this cmdlet when an MCP server reports OAuth auth status. The response includes a LoginId and AuthUrl you can open in a browser.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2805,9 +3588,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2846,11 +3629,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>Client instance to use. Defaults to the active client.</maml:para>
+          <maml:para>App-server client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2858,7 +3641,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>ServerId</maml:name>
         <maml:description>
-          <maml:para>MCP server identifier.</maml:para>
+          <maml:para>MCP server identifier to start login for.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -2870,7 +3653,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>ServerName</maml:name>
         <maml:description>
-          <maml:para>MCP server name.</maml:para>
+          <maml:para>MCP server name to start login for.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -2882,7 +3665,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of a typed model.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -2895,7 +3678,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -2916,6 +3699,36 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>$login = Start-IntelligenceXMcpOAuthLogin -ServerName "github"; Start-Process $login.AuthUrl; $login</dev:code>
+        <dev:remarks>
+          <maml:para>Start OAuth login by server name and open the browser</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Start-IntelligenceXMcpOAuthLogin -ServerId "srv_123"</dev:code>
+        <dev:remarks>
+          <maml:para>Start OAuth login by server id</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth; $server = (Get-IntelligenceXMcpServerStatus).Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1; Start-IntelligenceXMcpOAuthLogin -ServerName $server.Name</dev:code>
+        <dev:remarks>
+          <maml:para>Discover an OAuth server first, then start login</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Start-IntelligenceXMcpOAuthLogin -ServerName "github" -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON response for custom handling</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Invoke-IntelligenceXMcpServerConfigReload -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2924,7 +3737,8 @@
       <command:verb>Invoke</command:verb>
       <command:noun>IntelligenceXMcpServerConfigReload</command:noun>
       <maml:description>
-        <maml:para>Reloads MCP server configuration.</maml:para>
+        <maml:para>Reloads MCP server configuration in the running app-server.</maml:para>
+        <maml:para>Refreshes MCP configuration after file changes so newly added servers, tools, and auth settings are visible without restarting the app-server process.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2934,9 +3748,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -2947,11 +3761,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>Client instance to use. Defaults to the active client.</maml:para>
+          <maml:para>App-server client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -2959,12 +3773,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXMcpServerConfigReload</dev:code>
+        <dev:remarks>
+          <maml:para>Reload MCP server config after editing config files</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXMcpServerConfigReload; Get-IntelligenceXMcpServerStatus | Select-Object -ExpandProperty Servers | Select-Object Name, AuthStatus</dev:code>
+        <dev:remarks>
+          <maml:para>Reload config, then verify with server status</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$client = Connect-IntelligenceX; Invoke-IntelligenceXMcpServerConfigReload -Client $client</dev:code>
+        <dev:remarks>
+          <maml:para>Reload config for an explicit client instance</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXMcpServerStatus -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -2973,7 +3810,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXMcpServerStatus</command:noun>
       <maml:description>
-        <maml:para>Lists MCP server status entries.</maml:para>
+        <maml:para>Lists configured MCP servers with auth, tool, and resource status.</maml:para>
+        <maml:para>Queries the app-server MCP registry and returns one page of server status data. The result includes Servers (current page) and NextCursor (for pagination).</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -2983,9 +3821,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3024,11 +3862,11 @@
       <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>Client instance to use. Defaults to the active client.</maml:para>
+          <maml:para>App-server client instance to query. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3036,7 +3874,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Cursor</maml:name>
         <maml:description>
-          <maml:para>Cursor from a previous list response.</maml:para>
+          <maml:para>Pagination cursor from a previous response (NextCursor).</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -3048,7 +3886,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Limit</maml:name>
         <maml:description>
-          <maml:para>Maximum number of entries to return.</maml:para>
+          <maml:para>Maximum number of server entries to return in this page.</maml:para>
         </maml:description>
         <command:parameterValue required="true">int</command:parameterValue>
         <dev:type>
@@ -3060,7 +3898,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed models.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -3073,7 +3911,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -3094,6 +3932,36 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXMcpServerStatus</dev:code>
+        <dev:remarks>
+          <maml:para>List the first page of MCP server statuses</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$status = Get-IntelligenceXMcpServerStatus; $status.Servers | Select-Object Name, AuthStatus, @{Name='ToolCount';Expression={$_.Tools.Count}}</dev:code>
+        <dev:remarks>
+          <maml:para>Inspect server names, auth status, and available tool counts</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$page1 = Get-IntelligenceXMcpServerStatus -Limit 20; if ($page1.NextCursor) { Get-IntelligenceXMcpServerStatus -Cursor $page1.NextCursor -Limit 20 }</dev:code>
+        <dev:remarks>
+          <maml:para>Continue with a pagination cursor</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Get-IntelligenceXMcpServerStatus -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON when you need provider-specific fields</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Send-IntelligenceXMessage -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3103,6 +3971,7 @@
       <command:noun>IntelligenceXMessage</command:noun>
       <maml:description>
         <maml:para>Sends a message to a thread and starts a turn.</maml:para>
+        <maml:para>Queues a user message on an existing thread. Returns the created turn so you can poll for output with Get-IntelligenceXTurnOutput.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3141,9 +4010,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3212,9 +4081,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3334,7 +4203,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -3355,6 +4224,36 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Review this diff."</dev:code>
+        <dev:remarks>
+          <maml:para>Send a message in an existing thread</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Summarize changes." -Model "gpt-5.3-codex"</dev:code>
+        <dev:remarks>
+          <maml:para>Send a message with a temporary model override</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Run tests" -SandboxType "workspace" -NetworkAccess -WritableRoot "C:\repo"</dev:code>
+        <dev:remarks>
+          <maml:para>Send a message with a workspace sandbox</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Status?" -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON output</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXModel -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3363,7 +4262,8 @@
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXModel</command:noun>
       <maml:description>
-        <maml:para>Lists available models.</maml:para>
+        <maml:para>Lists models available for the current transport context.</maml:para>
+        <maml:para>Returns model metadata for the active client. Raw JSON mode is available only on app-server transport because native transport returns strongly typed models directly.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3373,9 +4273,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3398,9 +4298,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3408,7 +4308,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns raw JSON-RPC payload (app-server transport only).</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -3421,7 +4321,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -3442,6 +4342,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXModel</dev:code>
+        <dev:remarks>
+          <maml:para>List available models</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXModel -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>List models as raw JSON (app-server transport only)</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>(Get-IntelligenceXModel).Models | Select-Object Id</dev:code>
+        <dev:remarks>
+          <maml:para>Filter to model ids for selection prompts</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Start-IntelligenceXReview -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3451,6 +4374,7 @@
       <command:noun>IntelligenceXReview</command:noun>
       <maml:description>
         <maml:para>Starts a review flow for a thread.</maml:para>
+        <maml:para>Triggers the app-server review pipeline for a thread and target. Use TargetType to choose what to review (uncommitted changes, a branch, a commit, or custom text).</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3490,9 +4414,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3524,9 +4448,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3598,7 +4522,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -3619,6 +4543,36 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType uncommittedChanges</dev:code>
+        <dev:remarks>
+          <maml:para>Review uncommitted changes</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType commit -TargetValue 3f2a9c1</dev:code>
+        <dev:remarks>
+          <maml:para>Review a specific commit</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType baseBranch -TargetValue "main"</dev:code>
+        <dev:remarks>
+          <maml:para>Review a base branch</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 4  ----------</maml:title>
+        <dev:code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType commit -TargetValue 3f2a9c1 -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON output</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Invoke-IntelligenceXRpc -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3627,7 +4581,8 @@
       <command:verb>Invoke</command:verb>
       <command:noun>IntelligenceXRpc</command:noun>
       <maml:description>
-        <maml:para>Invokes a raw JSON-RPC method on the app-server.</maml:para>
+        <maml:para>Invokes a raw JSON-RPC method directly against app-server.</maml:para>
+        <maml:para>Low-level escape hatch for advanced scenarios not covered by high-level cmdlets. Parameters are converted from PowerShell objects/hashtables to JSON payloads.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3647,9 +4602,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3671,9 +4626,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3681,7 +4636,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Method</maml:name>
         <maml:description>
-          <maml:para>JSON-RPC method name.</maml:para>
+          <maml:para>JSON-RPC method name (for example thread/list).</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -3694,7 +4649,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Params</maml:name>
         <maml:description>
-          <maml:para>Optional parameters as a hashtable.</maml:para>
+          <maml:para>Optional method parameters supplied as a PowerShell object/hashtable.</maml:para>
         </maml:description>
         <command:parameterValue required="true">object</command:parameterValue>
         <dev:type>
@@ -3706,7 +4661,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -3720,6 +4675,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXRpc -Method "thread/list" -Params @{ limit = 10 }</dev:code>
+        <dev:remarks>
+          <maml:para>Call a raw RPC method</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXRpc -Method "config/read"</dev:code>
+        <dev:remarks>
+          <maml:para>Read config using raw JSON-RPC</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Invoke-IntelligenceXRpc -Method "command/exec" -Params @{ command = "dotnet --info"; cwd = (Get-Location).Path }</dev:code>
+        <dev:remarks>
+          <maml:para>Call an RPC method with nested parameters</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXSkill -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3729,6 +4707,7 @@
       <command:noun>IntelligenceXSkill</command:noun>
       <maml:description>
         <maml:para>Lists available skills.</maml:para>
+        <maml:para>Scans for skills in the provided working directories and returns the resolved list.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3738,9 +4717,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3782,9 +4761,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3830,7 +4809,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -3851,6 +4830,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXSkill -Cwd "C:\repo"</dev:code>
+        <dev:remarks>
+          <maml:para>List skills in the current workspace</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXSkill -Cwd "C:\repo" -ForceReload</dev:code>
+        <dev:remarks>
+          <maml:para>Force reload skills</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Get-IntelligenceXSkill -Cwd "C:\repo" -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON output</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Set-IntelligenceXSkill -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3859,7 +4861,8 @@
       <command:verb>Set</command:verb>
       <command:noun>IntelligenceXSkill</command:noun>
       <maml:description>
-        <maml:para>Enables or disables a skill.</maml:para>
+        <maml:para>Enables or disables a skill entry in app-server skill configuration.</maml:para>
+        <maml:para>Updates the persisted skill config for a specific skill path so future tool runs include or exclude that skill.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3889,9 +4892,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3904,9 +4907,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3914,7 +4917,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Path</maml:name>
         <maml:description>
-          <maml:para>Path to the skill configuration.</maml:para>
+          <maml:para>Path to the skill configuration entry.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -3927,7 +4930,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Enabled</maml:name>
         <maml:description>
-          <maml:para>Enable the skill.</maml:para>
+          <maml:para>Set to $true to enable, $false to disable.</maml:para>
         </maml:description>
         <command:parameterValue required="true">bool</command:parameterValue>
         <dev:type>
@@ -3940,12 +4943,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Set-IntelligenceXSkill -Path ".intelligencex/skills/my-skill/skill.json" -Enabled $false</dev:code>
+        <dev:remarks>
+          <maml:para>Disable a skill by config path</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Set-IntelligenceXSkill -Path ".intelligencex/skills/my-skill/skill.json" -Enabled $true</dev:code>
+        <dev:remarks>
+          <maml:para>Enable a skill again</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>@(".intelligencex/skills/analysis/skill.json", ".intelligencex/skills/review/skill.json") | ForEach-Object { Set-IntelligenceXSkill -Path $_ -Enabled $true }</dev:code>
+        <dev:remarks>
+          <maml:para>Enable multiple known skill config files in a loop</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Backup-IntelligenceXThread -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -3954,7 +4980,8 @@
       <command:verb>Backup</command:verb>
       <command:noun>IntelligenceXThread</command:noun>
       <maml:description>
-        <maml:para>Archives a thread.</maml:para>
+        <maml:para>Archives an existing thread so it no longer appears in active workflows.</maml:para>
+        <maml:para>Use this cmdlet to hide completed or obsolete conversations from normal thread listings while preserving history. The archive operation is non-destructive and can be used for housekeeping.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -3974,9 +5001,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -3989,9 +5016,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -3999,7 +5026,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>ThreadId</maml:name>
         <maml:description>
-          <maml:para>Thread identifier.</maml:para>
+          <maml:para>Identifier of the thread to archive.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4012,12 +5039,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Backup-IntelligenceXThread -ThreadId $thread.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Archive a thread</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$review = Start-IntelligenceXReview -ThreadId $thread.Id -Delivery immediate -TargetType uncommittedChanges; Backup-IntelligenceXThread -ThreadId $thread.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Archive a thread after a completed review</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$client = Connect-IntelligenceX; Backup-IntelligenceXThread -Client $client -ThreadId $thread.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Archive using an explicit client instance</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXThread -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4027,6 +5077,7 @@
       <command:noun>IntelligenceXThread</command:noun>
       <maml:description>
         <maml:para>Lists available threads.</maml:para>
+        <maml:para>Returns paged threads with optional filtering by model provider.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -4036,9 +5087,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -4097,9 +5148,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -4168,7 +5219,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -4189,6 +5240,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Get-IntelligenceXThread -Limit 20 -SortKey updated_at</dev:code>
+        <dev:remarks>
+          <maml:para>List recent threads</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Get-IntelligenceXThread -Cursor $result.cursor -Limit 20</dev:code>
+        <dev:remarks>
+          <maml:para>Continue a previous page</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Get-IntelligenceXThread -ModelProvider "openai","anthropic"</dev:code>
+        <dev:remarks>
+          <maml:para>Filter by model provider</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Restore-IntelligenceXThread -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4198,6 +5272,7 @@
       <command:noun>IntelligenceXThread</command:noun>
       <maml:description>
         <maml:para>Rolls back the last N turns from a thread.</maml:para>
+        <maml:para>Removes recent turns from a thread so you can re-run, correct, or branch from an earlier conversation state.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -4227,9 +5302,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -4252,9 +5327,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -4262,7 +5337,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>ThreadId</maml:name>
         <maml:description>
-          <maml:para>Thread identifier.</maml:para>
+          <maml:para>Identifier of the thread to modify.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4275,7 +5350,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Turns</maml:name>
         <maml:description>
-          <maml:para>Number of turns to roll back.</maml:para>
+          <maml:para>Number of most recent turns to remove.</maml:para>
         </maml:description>
         <command:parameterValue required="true">int</command:parameterValue>
         <dev:type>
@@ -4288,7 +5363,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed thread info.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -4301,7 +5376,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -4322,6 +5397,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Restore-IntelligenceXThread -ThreadId $thread.Id -Turns 2</dev:code>
+        <dev:remarks>
+          <maml:para>Rollback the last two turns</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Restore-IntelligenceXThread -ThreadId $thread.Id -Turns 1; Send-IntelligenceXMessage -ThreadId $thread.Id -Text "Use a shorter summary."</dev:code>
+        <dev:remarks>
+          <maml:para>Rollback one turn and resend an adjusted message</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Restore-IntelligenceXThread -ThreadId $thread.Id -Turns 1 -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON response</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Resume-IntelligenceXThread -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4330,7 +5428,8 @@
       <command:verb>Resume</command:verb>
       <command:noun>IntelligenceXThread</command:noun>
       <maml:description>
-        <maml:para>Resumes an existing thread.</maml:para>
+        <maml:para>Resumes an existing thread so new messages can be sent to it.</maml:para>
+        <maml:para>Loads thread context back into the active app-server session and returns thread metadata. Useful after reconnecting or when switching between multiple threads.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -4350,9 +5449,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -4375,9 +5474,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -4385,7 +5484,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>ThreadId</maml:name>
         <maml:description>
-          <maml:para>Thread identifier.</maml:para>
+          <maml:para>Identifier of the thread to resume.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4398,7 +5497,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed thread info.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -4411,7 +5510,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -4432,6 +5531,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Resume-IntelligenceXThread -ThreadId $thread.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Resume a thread by id</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$active = Resume-IntelligenceXThread -ThreadId $thread.Id; Send-IntelligenceXMessage -ThreadId $active.Id -Text "Continue from previous context."</dev:code>
+        <dev:remarks>
+          <maml:para>Resume and send a follow-up message</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Resume-IntelligenceXThread -ThreadId $thread.Id -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON response</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Start-IntelligenceXThread -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4441,6 +5563,7 @@
       <command:noun>IntelligenceXThread</command:noun>
       <maml:description>
         <maml:para>Creates a new conversation thread.</maml:para>
+        <maml:para>Starts a fresh thread on the app-server with a selected model and optional execution settings like sandbox and approval policy.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -4469,9 +5592,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -4512,9 +5635,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -4522,7 +5645,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Model</maml:name>
         <maml:description>
-          <maml:para>Model identifier to use (for example gpt-5.1-codex).</maml:para>
+          <maml:para>Model identifier to use (for example gpt-5.3-codex).</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4584,7 +5707,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -4605,6 +5728,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Start-IntelligenceXThread -Model "gpt-5.3-codex"</dev:code>
+        <dev:remarks>
+          <maml:para>Start a thread with the default model</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Start-IntelligenceXThread -Model "gpt-5.3-codex" -CurrentDirectory "C:\repo" -Sandbox "workspace"</dev:code>
+        <dev:remarks>
+          <maml:para>Start a thread scoped to a repo and sandboxed</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Start-IntelligenceXThread -Model "gpt-5.3-codex" -ApprovalPolicy "auto"</dev:code>
+        <dev:remarks>
+          <maml:para>Start a thread with an approval policy</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: New-IntelligenceXThreadFork -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4613,7 +5759,8 @@
       <command:verb>New</command:verb>
       <command:noun>IntelligenceXThreadFork</command:noun>
       <maml:description>
-        <maml:para>Forks an existing thread.</maml:para>
+        <maml:para>Creates a new thread fork from an existing thread's history.</maml:para>
+        <maml:para>Use this when you want to branch a conversation without mutating the original thread. The fork inherits prior context and gets a new thread id.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -4633,9 +5780,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -4658,9 +5805,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -4668,7 +5815,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>ThreadId</maml:name>
         <maml:description>
-          <maml:para>Thread identifier.</maml:para>
+          <maml:para>Identifier of the source thread to fork.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4681,7 +5828,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed thread info.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -4694,7 +5841,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -4715,6 +5862,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>New-IntelligenceXThreadFork -ThreadId $thread.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Fork a thread</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$fork = New-IntelligenceXThreadFork -ThreadId $thread.Id; Send-IntelligenceXMessage -ThreadId $fork.Id -Text "Take a different approach."</dev:code>
+        <dev:remarks>
+          <maml:para>Fork and continue conversation in the new thread</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>New-IntelligenceXThreadFork -ThreadId $thread.Id -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON response</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Stop-IntelligenceXTurn -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4723,7 +5893,8 @@
       <command:verb>Stop</command:verb>
       <command:noun>IntelligenceXTurn</command:noun>
       <maml:description>
-        <maml:para>Interrupts a running turn.</maml:para>
+        <maml:para>Interrupts a running turn for a thread.</maml:para>
+        <maml:para>Requests cancellation for an in-progress turn. Use this for long-running responses, accidental prompts, or when you need to restart execution with different instructions.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -4753,9 +5924,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -4768,9 +5939,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -4778,7 +5949,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>ThreadId</maml:name>
         <maml:description>
-          <maml:para>Thread identifier.</maml:para>
+          <maml:para>Identifier of the thread that owns the running turn.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4791,7 +5962,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>TurnId</maml:name>
         <maml:description>
-          <maml:para>Turn identifier.</maml:para>
+          <maml:para>Identifier of the turn to interrupt.</maml:para>
         </maml:description>
         <command:parameterValue required="true">string</command:parameterValue>
         <dev:type>
@@ -4804,12 +5975,35 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
     </command:inputTypes>
     <command:returnValues />
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Stop-IntelligenceXTurn -ThreadId $thread.Id -TurnId $turn.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Stop a running turn</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$turn = Send-IntelligenceXMessage -ThreadId $thread.Id -Text "Generate a long report"; Stop-IntelligenceXTurn -ThreadId $thread.Id -TurnId $turn.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Stop the turn returned by Send-IntelligenceXMessage</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>Stop-IntelligenceXTurn -Client $client -ThreadId $thread.Id -TurnId $turn.Id</dev:code>
+        <dev:remarks>
+          <maml:para>Interrupt with an explicit client</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Get-IntelligenceXTurnOutput -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -4819,6 +6013,7 @@
       <command:noun>IntelligenceXTurnOutput</command:noun>
       <maml:description>
         <maml:para>Extracts outputs from a turn.</maml:para>
+        <maml:para>Filters and saves outputs from a completed turn, including images and text.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -5047,6 +6242,29 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>$turn | Get-IntelligenceXTurnOutput</dev:code>
+        <dev:remarks>
+          <maml:para>Get all outputs</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>$turn | Get-IntelligenceXTurnOutput -Images -SaveImagesTo "C:\temp\ix"</dev:code>
+        <dev:remarks>
+          <maml:para>Save image outputs to disk</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$turn | Get-IntelligenceXTurnOutput -Text -First 1</dev:code>
+        <dev:remarks>
+          <maml:para>Return only the first text output</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
   <!-- Cmdlet: Request-IntelligenceXUserInput -->
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10">
@@ -5056,6 +6274,7 @@
       <command:noun>IntelligenceXUserInput</command:noun>
       <maml:description>
         <maml:para>Requests user input through the app-server.</maml:para>
+        <maml:para>Prompts for one to three questions and returns collected answers in order. Useful for interactive script checkpoints that need explicit user confirmation or values.</maml:para>
       </maml:description>
     </command:details>
     <command:syntax>
@@ -5074,9 +6293,9 @@
         <!-- Parameter: Client -->
         <command:parameter required="false" globbing="false" pipelineInput="true (ByValue)" position="named">
           <maml:name>Client</maml:name>
-          <command:parameterValue required="true">AppServerClient</command:parameterValue>
+          <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
           <dev:type>
-            <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+            <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
             <maml:uri />
           </dev:type>
         </command:parameter>
@@ -5099,9 +6318,9 @@
         <maml:description>
           <maml:para>Client instance to use. Defaults to the active client.</maml:para>
         </maml:description>
-        <command:parameterValue required="true">AppServerClient</command:parameterValue>
+        <command:parameterValue required="true">IntelligenceXClient</command:parameterValue>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:parameter>
@@ -5109,7 +6328,7 @@
       <command:parameter required="true" globbing="false" pipelineInput="false" position="named">
         <maml:name>Questions</maml:name>
         <maml:description>
-          <maml:para>Questions to ask (1-3).</maml:para>
+          <maml:para>Questions to ask (minimum 1, maximum 3).</maml:para>
         </maml:description>
         <command:parameterValue required="true">string[]</command:parameterValue>
         <dev:type>
@@ -5121,7 +6340,7 @@
       <command:parameter required="false" globbing="false" pipelineInput="false" position="named">
         <maml:name>Raw</maml:name>
         <maml:description>
-          <maml:para>Return raw JSON response.</maml:para>
+          <maml:para>Returns the raw JSON-RPC payload instead of typed response data.</maml:para>
         </maml:description>
         <command:parameterValue required="true">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -5134,7 +6353,7 @@
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>IntelligenceX.OpenAI.AppServer.AppServerClient</maml:name>
+          <maml:name>IntelligenceX.OpenAI.IntelligenceXClient</maml:name>
           <maml:uri />
         </dev:type>
       </command:inputType>
@@ -5155,5 +6374,28 @@
         </dev:type>
       </command:returnValue>
     </command:returnValues>
+    <command:examples>
+      <command:example>
+        <maml:title>----------  Example 1  ----------</maml:title>
+        <dev:code>Request-IntelligenceXUserInput -Questions "Repo name?", "Branch?"</dev:code>
+        <dev:remarks>
+          <maml:para>Ask for two inputs</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 2  ----------</maml:title>
+        <dev:code>Request-IntelligenceXUserInput -Questions "Continue?" -Raw</dev:code>
+        <dev:remarks>
+          <maml:para>Return raw JSON response</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>----------  Example 3  ----------</maml:title>
+        <dev:code>$response = Request-IntelligenceXUserInput -Questions "PR number?", "Merge now?"; $response.Answers</dev:code>
+        <dev:remarks>
+          <maml:para>Use responses in script flow</maml:para>
+        </dev:remarks>
+      </command:example>
+    </command:examples>
   </command:command>
 </helpItems>

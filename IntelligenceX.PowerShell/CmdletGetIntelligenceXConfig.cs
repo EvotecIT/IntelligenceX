@@ -8,11 +8,20 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Reads the current configuration.</para>
-/// <para type="description">Retrieves the app-server configuration currently in effect.</para>
+/// <para type="synopsis">Reads the effective app-server configuration with layer metadata.</para>
+/// <para type="description">Returns merged config values plus metadata that explains where values come from
+/// (for example defaults, workspace files, or environment overrides).</para>
 /// <example>
-///  <para>Read config as structured output</para>
-///  <code>Get-IntelligenceXConfig</code>
+///  <para>Read effective config as structured output</para>
+///  <code>$config = Get-IntelligenceXConfig; $config.Config</code>
+/// </example>
+/// <example>
+///  <para>Inspect where a specific setting comes from</para>
+///  <code>$config = Get-IntelligenceXConfig; $config.Origins["model"]</code>
+/// </example>
+/// <example>
+///  <para>Inspect active configuration layers</para>
+///  <code>Get-IntelligenceXConfig | Select-Object -ExpandProperty Layers | Select-Object Version, DisabledReason</code>
 /// </example>
 /// <example>
 ///  <para>Read raw JSON for custom handling</para>
@@ -23,13 +32,13 @@ namespace IntelligenceX.PowerShell;
 [OutputType(typeof(ConfigReadResult), typeof(JsonValue))]
 public sealed class CmdletGetIntelligenceXConfig : IntelligenceXCmdlet {
     /// <summary>
-    /// <para type="description">Client instance to use. Defaults to the active client.</para>
+    /// <para type="description">App-server client instance to query. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed config models.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

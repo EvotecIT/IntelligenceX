@@ -8,8 +8,9 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Lists currently loaded threads.</para>
-/// <para type="description">Shows threads currently loaded in the app-server process.</para>
+/// <para type="synopsis">Lists threads currently loaded in the app-server process.</para>
+/// <para type="description">Returns thread ids that are currently active in memory for the running app-server session.
+/// Useful for diagnostics and cleanup scripts.</para>
 /// <example>
 ///  <para>List loaded threads</para>
 ///  <code>Get-IntelligenceXLoadedThread</code>
@@ -17,6 +18,10 @@ namespace IntelligenceX.PowerShell;
 /// <example>
 ///  <para>Get raw JSON output</para>
 ///  <code>Get-IntelligenceXLoadedThread -Raw</code>
+/// </example>
+/// <example>
+///  <para>Expand loaded thread ids as plain values</para>
+///  <code>(Get-IntelligenceXLoadedThread).Data</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXLoadedThread")]
@@ -29,7 +34,7 @@ public sealed class CmdletGetIntelligenceXLoadedThread : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed thread-id models.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

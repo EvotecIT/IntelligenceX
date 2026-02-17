@@ -19,6 +19,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Return the raw JSON response for custom handling</para>
 ///  <code>Start-IntelligenceXChatGptLogin -Raw</code>
 /// </example>
+/// <example>
+///  <para>Start login and explicitly wait for completion</para>
+///  <code>$login = Start-IntelligenceXChatGptLogin; Wait-IntelligenceXLogin -LoginId $login.LoginId</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXChatGptLogin")]
 [OutputType(typeof(ChatGptLoginStart), typeof(JsonValue))]
@@ -30,7 +34,7 @@ public sealed class CmdletStartIntelligenceXChatGptLogin : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed login data.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

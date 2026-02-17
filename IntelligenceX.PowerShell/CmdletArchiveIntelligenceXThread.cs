@@ -6,11 +6,20 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Archives a thread.</para>
-/// <para type="description">Marks a thread as archived so it is no longer active in listings.</para>
+/// <para type="synopsis">Archives an existing thread so it no longer appears in active workflows.</para>
+/// <para type="description">Use this cmdlet to hide completed or obsolete conversations from normal thread listings while
+/// preserving history. The archive operation is non-destructive and can be used for housekeeping.</para>
 /// <example>
 ///  <para>Archive a thread</para>
-///  <code>Backup-IntelligenceXThread -ThreadId $thread.id</code>
+///  <code>Backup-IntelligenceXThread -ThreadId $thread.Id</code>
+/// </example>
+/// <example>
+///  <para>Archive a thread after a completed review</para>
+///  <code>$review = Start-IntelligenceXReview -ThreadId $thread.Id -Delivery immediate -TargetType uncommittedChanges; Backup-IntelligenceXThread -ThreadId $thread.Id</code>
+/// </example>
+/// <example>
+///  <para>Archive using an explicit client instance</para>
+///  <code>$client = Connect-IntelligenceX; Backup-IntelligenceXThread -Client $client -ThreadId $thread.Id</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsData.Backup, "IntelligenceXThread")]
@@ -22,7 +31,7 @@ public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Thread identifier.</para>
+    /// <para type="description">Identifier of the thread to archive.</para>
     /// </summary>
     [Parameter(Mandatory = true)]
     public string ThreadId { get; set; } = string.Empty;

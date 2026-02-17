@@ -8,11 +8,20 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Forks an existing thread.</para>
-/// <para type="description">Creates a new thread using the current thread history as a starting point.</para>
+/// <para type="synopsis">Creates a new thread fork from an existing thread's history.</para>
+/// <para type="description">Use this when you want to branch a conversation without mutating the original thread.
+/// The fork inherits prior context and gets a new thread id.</para>
 /// <example>
 ///  <para>Fork a thread</para>
-///  <code>New-IntelligenceXThreadFork -ThreadId $thread.id</code>
+///  <code>New-IntelligenceXThreadFork -ThreadId $thread.Id</code>
+/// </example>
+/// <example>
+///  <para>Fork and continue conversation in the new thread</para>
+///  <code>$fork = New-IntelligenceXThreadFork -ThreadId $thread.Id; Send-IntelligenceXMessage -ThreadId $fork.Id -Text "Take a different approach."</code>
+/// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>New-IntelligenceXThreadFork -ThreadId $thread.Id -Raw</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.New, "IntelligenceXThreadFork")]
@@ -25,13 +34,13 @@ public sealed class CmdletForkIntelligenceXThread : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Thread identifier.</para>
+    /// <para type="description">Identifier of the source thread to fork.</para>
     /// </summary>
     [Parameter(Mandatory = true)]
     public string ThreadId { get; set; } = string.Empty;
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed thread info.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

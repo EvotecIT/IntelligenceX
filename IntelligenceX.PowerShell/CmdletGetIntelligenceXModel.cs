@@ -9,8 +9,9 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Lists available models.</para>
-/// <para type="description">Returns the models available for the current transport (Native or AppServer).</para>
+/// <para type="synopsis">Lists models available for the current transport context.</para>
+/// <para type="description">Returns model metadata for the active client. Raw JSON mode is available only on app-server
+/// transport because native transport returns strongly typed models directly.</para>
 /// <example>
 ///  <para>List available models</para>
 ///  <code>Get-IntelligenceXModel</code>
@@ -18,6 +19,10 @@ namespace IntelligenceX.PowerShell;
 /// <example>
 ///  <para>List models as raw JSON (app-server transport only)</para>
 ///  <code>Get-IntelligenceXModel -Raw</code>
+/// </example>
+/// <example>
+///  <para>Filter to model ids for selection prompts</para>
+///  <code>(Get-IntelligenceXModel).Models | Select-Object Id</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXModel")]
@@ -30,7 +35,7 @@ public sealed class CmdletGetIntelligenceXModel : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns raw JSON-RPC payload (app-server transport only).</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

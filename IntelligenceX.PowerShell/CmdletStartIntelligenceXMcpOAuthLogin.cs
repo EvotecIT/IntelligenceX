@@ -8,40 +8,49 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Starts an OAuth login for an MCP server.</para>
-/// <para type="description">Initiates the OAuth flow for a configured MCP server by id or name.</para>
+/// <para type="synopsis">Starts an MCP OAuth login flow and returns the browser authorization URL.</para>
+/// <para type="description">Use this cmdlet when an MCP server reports <c>OAuth</c> auth status. The response includes a
+/// <c>LoginId</c> and <c>AuthUrl</c> you can open in a browser.</para>
 /// <example>
-///  <para>Start login by server name</para>
-///  <code>Start-IntelligenceXMcpOAuthLogin -ServerName "my-mcp-server"</code>
+///  <para>Start OAuth login by server name and open the browser</para>
+///  <code>$login = Start-IntelligenceXMcpOAuthLogin -ServerName "github"; Start-Process $login.AuthUrl; $login</code>
 /// </example>
 /// <example>
-///  <para>Return raw JSON response</para>
-///  <code>Start-IntelligenceXMcpOAuthLogin -ServerId "srv_123" -Raw</code>
+///  <para>Start OAuth login by server id</para>
+///  <code>Start-IntelligenceXMcpOAuthLogin -ServerId "srv_123"</code>
+/// </example>
+/// <example>
+///  <para>Discover an OAuth server first, then start login</para>
+///  <code>$oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth; $server = (Get-IntelligenceXMcpServerStatus).Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1; Start-IntelligenceXMcpOAuthLogin -ServerName $server.Name</code>
+/// </example>
+/// <example>
+///  <para>Return raw JSON response for custom handling</para>
+///  <code>Start-IntelligenceXMcpOAuthLogin -ServerName "github" -Raw</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXMcpOAuthLogin")]
 [OutputType(typeof(McpOauthLoginStart), typeof(JsonValue))]
 public sealed class CmdletStartIntelligenceXMcpOAuthLogin : IntelligenceXCmdlet {
     /// <summary>
-    /// <para type="description">Client instance to use. Defaults to the active client.</para>
+    /// <para type="description">App-server client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">MCP server identifier.</para>
+    /// <para type="description">MCP server identifier to start login for.</para>
     /// </summary>
     [Parameter]
     public string? ServerId { get; set; }
 
     /// <summary>
-    /// <para type="description">MCP server name.</para>
+    /// <para type="description">MCP server name to start login for.</para>
     /// </summary>
     [Parameter]
     public string? ServerName { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of a typed model.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

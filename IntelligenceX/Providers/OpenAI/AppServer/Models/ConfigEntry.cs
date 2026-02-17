@@ -3,14 +3,14 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a key/value configuration entry.
+/// Represents a single configuration key/value pair sent to app-server write APIs.
 /// </summary>
 public sealed class ConfigEntry {
     /// <summary>
     /// Initializes a new configuration entry.
     /// </summary>
-    /// <param name="key">Configuration key.</param>
-    /// <param name="value">Configuration value.</param>
+    /// <param name="key">Configuration key (for example <c>model</c>).</param>
+    /// <param name="value">Configuration value as <see cref="JsonValue"/>.</param>
     public ConfigEntry(string key, JsonValue value) {
         Key = key;
         Value = value;
@@ -21,7 +21,7 @@ public sealed class ConfigEntry {
     /// </summary>
     public string Key { get; }
     /// <summary>
-    /// Gets the configuration value.
+    /// Gets the JSON configuration value.
     /// </summary>
     public JsonValue Value { get; }
 }

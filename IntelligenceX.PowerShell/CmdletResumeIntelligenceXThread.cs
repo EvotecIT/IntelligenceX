@@ -8,11 +8,20 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Resumes an existing thread.</para>
-/// <para type="description">Reopens an existing thread so you can continue sending messages.</para>
+/// <para type="synopsis">Resumes an existing thread so new messages can be sent to it.</para>
+/// <para type="description">Loads thread context back into the active app-server session and returns thread metadata.
+/// Useful after reconnecting or when switching between multiple threads.</para>
 /// <example>
 ///  <para>Resume a thread by id</para>
-///  <code>Resume-IntelligenceXThread -ThreadId $thread.id</code>
+///  <code>Resume-IntelligenceXThread -ThreadId $thread.Id</code>
+/// </example>
+/// <example>
+///  <para>Resume and send a follow-up message</para>
+///  <code>$active = Resume-IntelligenceXThread -ThreadId $thread.Id; Send-IntelligenceXMessage -ThreadId $active.Id -Text "Continue from previous context."</code>
+/// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>Resume-IntelligenceXThread -ThreadId $thread.Id -Raw</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Resume, "IntelligenceXThread")]
@@ -25,13 +34,13 @@ public sealed class CmdletResumeIntelligenceXThread : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Thread identifier.</para>
+    /// <para type="description">Identifier of the thread to resume.</para>
     /// </summary>
     [Parameter(Mandatory = true)]
     public string ThreadId { get; set; } = string.Empty;
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed thread info.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }
