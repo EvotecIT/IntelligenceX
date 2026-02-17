@@ -28,6 +28,12 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    internal enum ModelsProbeAvailability {
+        Unavailable = 0,
+        Available = 1,
+        ReachableAuthRequired = 2
+    }
+
     private sealed record LocalRuntimeDetectionSnapshot(
         bool LmStudioAvailable,
         bool OllamaAvailable,
@@ -355,16 +361,16 @@ public sealed partial class MainWindow : Window {
         var lmStudio = await ProbeModelsEndpointAsync(DefaultLmStudioBaseUrl, cts.Token).ConfigureAwait(false);
         var ollama = await ProbeModelsEndpointAsync(DefaultOllamaBaseUrl, cts.Token).ConfigureAwait(false);
 
-        if (lmStudio) {
+        if (lmStudio == ModelsProbeAvailability.Available) {
             return new LocalRuntimeDetectionSnapshot(
                 LmStudioAvailable: true,
-                OllamaAvailable: ollama,
+                OllamaAvailable: ollama == ModelsProbeAvailability.Available,
                 DetectedName: "LM Studio",
                 DetectedBaseUrl: DefaultLmStudioBaseUrl,
                 Warning: null);
         }
 
-        if (ollama) {
+        if (ollama == ModelsProbeAvailability.Available) {
             return new LocalRuntimeDetectionSnapshot(
                 LmStudioAvailable: false,
                 OllamaAvailable: true,
@@ -380,8 +386,8 @@ public sealed partial class MainWindow : Window {
             if (configuredBaseUrl.Length > 0
                 && !string.Equals(configuredBaseUrl, DefaultLmStudioBaseUrl, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(configuredBaseUrl, DefaultOllamaBaseUrl, StringComparison.OrdinalIgnoreCase)) {
-                var configuredAvailable = await ProbeModelsEndpointAsync(configuredBaseUrl, cts.Token).ConfigureAwait(false);
-                if (configuredAvailable) {
+                var configuredAvailability = await ProbeModelsEndpointAsync(configuredBaseUrl, cts.Token).ConfigureAwait(false);
+                if (IsConfiguredCompatibleEndpointDetected(configuredAvailability)) {
                     return new LocalRuntimeDetectionSnapshot(
                         LmStudioAvailable: false,
                         OllamaAvailable: false,
@@ -409,7 +415,12 @@ public sealed partial class MainWindow : Window {
         _localRuntimeDetectionWarning = snapshot.Warning;
     }
 
-    private static async Task<bool> ProbeModelsEndpointAsync(string baseUrl, CancellationToken cancellationToken) {
+    internal static bool IsConfiguredCompatibleEndpointDetected(ModelsProbeAvailability availability) {
+        return availability == ModelsProbeAvailability.Available
+               || availability == ModelsProbeAvailability.ReachableAuthRequired;
+    }
+
+    private static async Task<ModelsProbeAvailability> ProbeModelsEndpointAsync(string baseUrl, CancellationToken cancellationToken) {
         var probeUrl = BuildModelsProbeUrl(baseUrl);
         using var handler = new HttpClientHandler {
             UseProxy = false
@@ -421,10 +432,22 @@ public sealed partial class MainWindow : Window {
         try {
             using var request = new HttpRequestMessage(HttpMethod.Get, probeUrl);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
+            return ClassifyModelsProbeResponse(response.StatusCode);
         } catch {
-            return false;
+            return ModelsProbeAvailability.Unavailable;
         }
+    }
+
+    internal static ModelsProbeAvailability ClassifyModelsProbeResponse(HttpStatusCode statusCode) {
+        if ((int)statusCode >= 200 && (int)statusCode <= 299) {
+            return ModelsProbeAvailability.Available;
+        }
+
+        if (statusCode == HttpStatusCode.Unauthorized || statusCode == HttpStatusCode.Forbidden) {
+            return ModelsProbeAvailability.ReachableAuthRequired;
+        }
+
+        return ModelsProbeAvailability.Unavailable;
     }
 
     private static string BuildModelsProbeUrl(string baseUrl) {
