@@ -546,16 +546,20 @@ p { color: var(--pf-muted); margin: 0 0 1rem; }
   display: block;
   width: 100%;
   margin: 0;
-  padding: 0.6rem 0.75rem;
+  padding: 0;
   overflow-x: auto;
-  background: var(--pf-code-bg);
-  border: 1px solid var(--pf-code-border);
-  border-radius: var(--pf-radius-sm);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .member-header pre.member-signature code {
   color: inherit;
   font-family: var(--pf-font-mono);
+  font-size: 0.85rem;
+  background: transparent;
+  padding: 0;
 }
 
 .member-anchor {
