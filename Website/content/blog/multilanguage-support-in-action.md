@@ -36,6 +36,14 @@ And when the user asks for English response, it switches again without friction.
 
 ![Conversation shifts back to English and IntelligenceX responds in English while continuing the same remediation guidance](/assets/screenshots/multilanguage-in-action/multilang-04-switch-to-english.png)
 
+## Demo Plot Twist (Yes, It Drifted)
+
+The demo did not follow the exact script on the first try, and that is honestly the best part.
+We asked for a language order, then corrected it mid-flight more than once.
+
+Instead of collapsing into confusion, the assistant accepted corrections, changed language immediately, and kept the technical thread intact.
+So yes, the demo got messy. Real conversations are messy too. That is exactly the point.
+
 ## Why This Is Actually Useful (Not Just a Demo Trick)
 
 Multilanguage support is not only about translation quality.
