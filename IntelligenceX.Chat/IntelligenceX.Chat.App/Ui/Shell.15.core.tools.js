@@ -63,6 +63,12 @@
   function createToolCard(tool) {
     var item = document.createElement("div");
     item.className = "options-item";
+    var packId = inferPackIdFromTool(tool);
+    var packUnavailable = !packIsAvailable(packId);
+    var packUnavailableReason = packDisabledReason(packId);
+    if (packUnavailable) {
+      item.classList.add("options-item-unavailable");
+    }
 
     var header = document.createElement("div");
     header.className = "options-item-header";
@@ -83,9 +89,16 @@
     toggle.className = "options-toggle";
     toggle.type = "checkbox";
     toggle.checked = normalizeBool(tool.enabled);
+    toggle.disabled = packUnavailable;
     toggle.setAttribute("aria-label", "Enable " + (tool.displayName || tool.name));
+    if (packUnavailable && packUnavailableReason) {
+      toggle.title = packUnavailableReason;
+    }
     toggle.dataset.toolName = tool.name;
     toggle.addEventListener("change", function(e) {
+      if (packUnavailable) {
+        return;
+      }
       var target = e.target;
       post("set_tool_enabled", { name: target.dataset.toolName, enabled: target.checked });
     });
@@ -105,6 +118,15 @@
       sub.className = "options-item-sub";
       sub.textContent = tool.description;
       item.appendChild(sub);
+    }
+
+    if (packUnavailable) {
+      var unavailable = document.createElement("div");
+      unavailable.className = "options-item-warning";
+      unavailable.textContent = packUnavailableReason
+        ? ("Unavailable: " + packUnavailableReason)
+        : "Unavailable in current runtime.";
+      item.appendChild(unavailable);
     }
 
     if (tool.tags && tool.tags.length > 0) {
@@ -170,9 +192,21 @@
   }
 
   function setPackEnabled(packId, groupTools, enabled) {
+    if (packId && !packIsAvailable(packId)) {
+      return;
+    }
+
+    if (!Array.isArray(groupTools) || groupTools.length === 0) {
+      return;
+    }
+
     var changed = false;
     for (var i = 0; i < groupTools.length; i++) {
       var tool = groupTools[i];
+      var toolPackId = inferPackIdFromTool(tool);
+      if (!packIsAvailable(toolPackId)) {
+        continue;
+      }
       if (normalizeBool(tool.enabled) === enabled) {
         continue;
       }
@@ -204,6 +238,7 @@
       return true;
     }
 
+    var toolPackId = inferPackIdFromTool(tool);
     var haystack = [
       tool.displayName || "",
       tool.name || "",
@@ -214,7 +249,8 @@
       tool.routingConfidence || "",
       tool.routingReason || "",
       typeof tool.routingScore === "number" ? String(tool.routingScore) : "",
-      packSourceLabel(packSourceKind(inferPackIdFromTool(tool))),
+      packSourceLabel(packSourceKind(toolPackId)),
+      packDisabledReason(toolPackId),
       (tool.tags || []).join(" "),
       Array.isArray(tool.parameters)
         ? tool.parameters.map(function(p) { return (p && p.name ? p.name : "") + " " + (p && p.description ? p.description : ""); }).join(" ")
@@ -228,19 +264,11 @@
     var toolsEl = byId("toolsList");
     toolsEl.innerHTML = "";
 
-    var tools = state.options.tools || [];
-    if (tools.length === 0) {
-      toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>No tools registered</div></div>";
-      return;
-    }
-
+    var allTools = state.options.tools || [];
+    var tools = allTools.slice();
     var filter = normalizeToolFilter(state.options.toolFilter);
     if (filter) {
-      tools = tools.filter(function(tool) { return toolMatchesFilter(tool, filter); });
-      if (tools.length === 0) {
-        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>No tools match filter</div></div>";
-        return;
-      }
+      tools = allTools.filter(function(tool) { return toolMatchesFilter(tool, filter); });
     }
 
     var groups = {};
@@ -253,7 +281,49 @@
       groups[packId].push(tool);
     }
 
+    function packMatchesFilter(packId, query) {
+      if (!query) {
+        return true;
+      }
+
+      var haystack = [
+        packId || "",
+        packDisplayName(packId),
+        packDescription(packId),
+        packSourceLabel(packSourceKind(packId)),
+        packDisabledReason(packId)
+      ].join(" ").toLowerCase();
+
+      return haystack.indexOf(query) >= 0;
+    }
+
+    var packs = state.options.packs || [];
+    for (var p = 0; p < packs.length; p++) {
+      var policyPack = packs[p] || {};
+      var policyPackId = normalizePackId(policyPack.id);
+      if (!policyPackId) {
+        continue;
+      }
+
+      if (filter && !groups[policyPackId] && !packMatchesFilter(policyPackId, filter)) {
+        continue;
+      }
+
+      if (!groups[policyPackId]) {
+        groups[policyPackId] = [];
+      }
+    }
+
     var order = Object.keys(groups);
+    if (order.length === 0) {
+      if (filter) {
+        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>No tools match filter</div></div>";
+      } else {
+        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>No tools registered</div></div>";
+      }
+      return;
+    }
+
     order.sort(function(a, b) {
       var aUncategorized = a === "uncategorized";
       var bUncategorized = b === "uncategorized";
@@ -275,9 +345,14 @@
       groupTools.sort(function(a, b) {
         return String(a.displayName || a.name).localeCompare(String(b.displayName || b.name));
       });
+      var packAvailable = packIsAvailable(currentPackId);
+      var packUnavailableReason = packDisabledReason(currentPackId);
 
       var details = document.createElement("details");
       details.className = "options-accordion";
+      if (!packAvailable) {
+        details.classList.add("unavailable");
+      }
       details.open = ensureAccordionState(currentPackId);
       details.dataset.packId = currentPackId;
       details.addEventListener("toggle", function(e) {
@@ -303,6 +378,14 @@
         subtitle.textContent = packDesc;
         heading.appendChild(subtitle);
       }
+
+      if (packUnavailableReason) {
+        var reason = document.createElement("span");
+        reason.className = "options-accordion-reason";
+        reason.textContent = "Unavailable: " + packUnavailableReason;
+        reason.title = packUnavailableReason;
+        heading.appendChild(reason);
+      }
       summary.appendChild(heading);
 
       var summaryRight = document.createElement("div");
@@ -320,26 +403,47 @@
       meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
       summaryRight.appendChild(meta);
 
+      var actionableTools = [];
+      for (var a = 0; a < groupTools.length; a++) {
+        if (packIsAvailable(inferPackIdFromTool(groupTools[a]))) {
+          actionableTools.push(groupTools[a]);
+        }
+      }
+
       var enabledCount = 0;
-      for (var c = 0; c < groupTools.length; c++) {
-        if (normalizeBool(groupTools[c].enabled)) {
+      for (var c = 0; c < actionableTools.length; c++) {
+        if (normalizeBool(actionableTools[c].enabled)) {
           enabledCount++;
         }
       }
-      var allEnabled = enabledCount === groupTools.length;
+      var allEnabled = actionableTools.length > 0 && enabledCount === actionableTools.length;
       var someEnabled = enabledCount > 0;
 
       var pill = document.createElement("span");
-      pill.className = "options-pill" + (allEnabled ? "" : " off");
-      pill.textContent = allEnabled ? "Loaded" : (someEnabled ? "Partial" : "Disabled");
+      var packHasTools = actionableTools.length > 0;
+      var isPackLoaded = packHasTools && allEnabled;
+      pill.className = "options-pill" + (isPackLoaded && packAvailable ? "" : " off");
+      if (!packAvailable) {
+        pill.textContent = "Unavailable";
+      } else if (!packHasTools) {
+        pill.textContent = "No tools";
+      } else {
+        pill.textContent = allEnabled ? "Loaded" : (someEnabled ? "Partial" : "Disabled");
+      }
       summaryRight.appendChild(pill);
 
       var packToggle = document.createElement("input");
       packToggle.className = "options-toggle options-toggle-pack";
       packToggle.type = "checkbox";
-      packToggle.checked = allEnabled;
-      packToggle.indeterminate = !allEnabled && someEnabled;
+      packToggle.checked = packHasTools && allEnabled;
+      packToggle.indeterminate = packHasTools && !allEnabled && someEnabled;
+      packToggle.disabled = !packAvailable || !packHasTools;
       packToggle.setAttribute("aria-label", "Enable pack " + packDisplayName(currentPackId));
+      if (!packAvailable && packUnavailableReason) {
+        packToggle.title = packUnavailableReason;
+      } else if (!packHasTools) {
+        packToggle.title = "No tools are currently registered for this pack.";
+      }
       packToggle.addEventListener("click", function(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -358,8 +462,29 @@
 
       var body = document.createElement("div");
       body.className = "options-accordion-body";
-      for (var t = 0; t < groupTools.length; t++) {
-        body.appendChild(createToolCard(groupTools[t]));
+      if (groupTools.length === 0) {
+        var emptyCard = document.createElement("div");
+        emptyCard.className = "options-item";
+
+        var emptyTitle = document.createElement("div");
+        emptyTitle.className = "options-item-title";
+        emptyTitle.textContent = !packAvailable
+          ? "Pack unavailable"
+          : "No tools registered in this pack";
+        emptyCard.appendChild(emptyTitle);
+
+        var emptyBody = document.createElement("div");
+        emptyBody.className = "options-item-sub";
+        emptyBody.textContent = packUnavailableReason
+          ? packUnavailableReason
+          : "This pack is present in policy metadata but did not register any tool definitions.";
+        emptyCard.appendChild(emptyBody);
+
+        body.appendChild(emptyCard);
+      } else {
+        for (var t = 0; t < groupTools.length; t++) {
+          body.appendChild(createToolCard(groupTools[t]));
+        }
       }
       details.appendChild(body);
       toolsEl.appendChild(details);
