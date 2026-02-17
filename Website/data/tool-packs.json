@@ -1,58 +1,65 @@
 [
   {
-    "id": "email",
-    "name": "Email",
-    "description": "Compose, search, and manage emails via Exchange Web Services and Microsoft Graph API.",
-    "platform": "cross-platform",
-    "tools": ["SendEmail", "SearchEmail", "GetMailboxInfo"]
-  },
-  {
-    "id": "active-directory",
-    "name": "Active Directory",
-    "description": "Query and manage AD users, groups, computers, and organizational units.",
+    "id": "eventlog",
+    "name": "Event Log (EventViewerX)",
+    "description": "Windows event channels, live queries, and EVTX parsing helpers for diagnostics workflows.",
     "platform": "windows",
-    "tools": ["GetADUser", "GetADGroup", "GetADComputer", "SearchAD"]
+    "tools": ["eventlog_pack_info", "eventlog_channels_list", "eventlog_live_query", "eventlog_evtx_query"]
   },
   {
     "id": "file-system",
     "name": "File System",
-    "description": "Read, write, search, and manage files and directories with safety controls.",
+    "description": "Cross-platform file listing, read, and search primitives with AI-friendly output contracts.",
     "platform": "cross-platform",
-    "tools": ["ReadFile", "WriteFile", "SearchFiles", "ListDirectory"]
+    "tools": ["fs_pack_info", "fs_list", "fs_read", "fs_search"]
   },
   {
-    "id": "web",
-    "name": "Web",
-    "description": "HTTP requests, web scraping, and API interaction with configurable auth.",
+    "id": "reviewer-setup",
+    "name": "Reviewer Setup",
+    "description": "Onboarding contract metadata and verification tools for setup/autodetect parity.",
     "platform": "cross-platform",
-    "tools": ["HttpRequest", "FetchPage", "ParseHtml"]
+    "tools": ["reviewer_setup_pack_info", "reviewer_setup_contract_verify"]
   },
   {
-    "id": "database",
-    "name": "Database",
-    "description": "Execute queries and manage connections for SQL Server, PostgreSQL, and SQLite.",
+    "id": "email",
+    "name": "Email (Mailozaurr)",
+    "description": "IMAP search/get and SMTP send tools (runtime dependency-gated).",
     "platform": "cross-platform",
-    "tools": ["ExecuteQuery", "GetSchema", "ListTables"]
+    "tools": ["email_pack_info", "email_imap_search", "email_imap_get", "email_smtp_send"]
   },
   {
-    "id": "azure",
-    "name": "Azure",
-    "description": "Manage Azure resources, subscriptions, and services through AI-driven commands.",
+    "id": "officeimo",
+    "name": "Office Documents (OfficeIMO)",
+    "description": "Read-only ingestion for Word/Excel/PowerPoint/Markdown (runtime dependency-gated).",
     "platform": "cross-platform",
-    "tools": ["GetAzureResource", "ListSubscriptions", "GetAzureStatus"]
+    "tools": ["officeimo_pack_info", "officeimo_read"]
   },
   {
-    "id": "office",
-    "name": "Office",
-    "description": "Create and manipulate Word, Excel, and PowerPoint documents programmatically.",
-    "platform": "cross-platform",
-    "tools": ["CreateDocument", "ReadSpreadsheet", "GenerateReport"]
+    "id": "powershell",
+    "name": "PowerShell Runtime",
+    "description": "Opt-in host runtime execution tools with explicit intent and policy gates.",
+    "platform": "windows",
+    "tools": ["powershell_pack_info", "powershell_environment_discover", "powershell_hosts", "powershell_run"]
+  },
+  {
+    "id": "ad",
+    "name": "ADPlayground (closed_source)",
+    "description": "Private/licensed Active Directory pack. Available in private builds; external host usage requires separate license.",
+    "platform": "windows",
+    "tools": ["ad_pack_info", "ad_domain_info", "ad_group_members", "ad_search"]
+  },
+  {
+    "id": "testimox",
+    "name": "TestimoX (closed_source)",
+    "description": "Private/licensed diagnostics pack. Available in private builds; external host usage requires separate license.",
+    "platform": "windows",
+    "tools": ["testimox_pack_info", "testimox_rules_list", "testimox_rules_run"]
   },
   {
     "id": "system",
-    "name": "System",
-    "description": "System information, process management, and Windows service monitoring.",
+    "name": "ComputerX (closed_source)",
+    "description": "Private/licensed system diagnostics pack. Available in private builds; external host usage requires separate license.",
     "platform": "windows",
-    "tools": ["GetSystemInfo", "GetProcess", "GetService", "GetEventLog"]
+    "tools": ["system_pack_info", "system_info", "system_process_list", "system_service_list"]
   }
 ]

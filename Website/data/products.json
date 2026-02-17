@@ -23,7 +23,7 @@
   },
   {
     "title": "IX Tools",
-    "description": "Tool packs that power tool calling in IX Chat and custom .NET integrations. Enable packs in setup, then use them during conversations.",
+    "description": "Tool packs that power tool calling in IX Chat and custom .NET integrations. Closed-source packs are private/licensed by default for IX Chat usage.",
     "icon": "tools",
     "link": "/docs/tools/overview/",
     "tag": "Tool Packs",
@@ -39,7 +39,7 @@
     "link": "/docs/cli/overview/",
     "tag": "Setup",
     "featured": false,
-    "install": "dotnet tool install --global IntelligenceX.Cli",
+    "install": "dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup wizard",
     "screenshot": "/assets/screenshots/product-cli.svg"
   },
   {

@@ -22,11 +22,9 @@ Status: Active development | APIs in flux | Actions in beta
 
 ## Repo layout
 
-- `EvotecIT/IntelligenceX` (this repo): core library + reviewer + CLI
-- `IntelligenceX.Tools/`: in-repo tool packs snapshot (source of current migration work)
-- `IntelligenceX.Chat/`: in-repo chat host/service snapshot (source of current migration work)
-
-Standalone `EvotecIT/IntelligenceX.Tools` and `EvotecIT/IntelligenceX.Chat` remain as separate repos temporarily during migration.
+- `EvotecIT/IntelligenceX` (this monorepo): core library + reviewer + CLI + tool packs + chat projects
+- `IntelligenceX.Tools/`: in-repo tool packs
+- `IntelligenceX.Chat/`: in-repo chat host/service/app
 
 ## Choose your path
 

@@ -1,26 +1,23 @@
 # CLI Install
 
-> Placeholder commands below will be updated once packages are published.
+The CLI package-manager channels are not published yet.
+Use source-based execution for now.
 
-## Windows (winget)
+## Run from source (recommended)
 
 ```powershell
-winget install IntelligenceX
+git clone https://github.com/EvotecIT/IntelligenceX.git
+cd IntelligenceX
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup wizard
 ```
 
-## macOS (Homebrew)
+## Build a local CLI binary
 
-```bash
-brew install evotecit/tap/intelligencex
+```powershell
+pwsh ./Build/Publish-Cli.ps1 -Runtime win-x64 -Configuration Release -Framework net8.0
 ```
 
-## Linux (curl installer)
-
-```bash
-curl -fsSL https://evotec.it/intelligencex/install.sh | bash
-```
-
-## After install
+After publishing locally, run:
 
 ```powershell
 intelligencex setup wizard

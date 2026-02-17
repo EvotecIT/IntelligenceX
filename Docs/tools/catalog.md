@@ -113,6 +113,7 @@ Representative tools:
 - `builtin` packs are OSS-oriented by source model; "optional" indicates runtime policy/dependency gating, not closed-source licensing.
 - `sourceKind` classification comes from `ToolPackBootstrap` normalization rules.
 - Closed-source packs may be enabled by default in config but still absent in OSS environments.
+- Closed-source packs are private/licensed by default for IX Chat usage. External/custom-host usage requires a separate license.
 
 ## Related
 

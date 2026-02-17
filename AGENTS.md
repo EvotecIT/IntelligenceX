@@ -85,6 +85,12 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 - Keep TODO entries accurate: mark items done only when verified in code.
 - When adding new items, include links to the originating comment or review.
 
+**Docs Placement Guardrails (Website vs Internal)**
+- Treat `Docs/` as public website content. If it should not appear on `https://intelligencex.dev/docs/`, do not place it in `Docs/`.
+- Keep internal trackers, backlogs, migration notes, rollout logs, and maintainer playbooks in `InternalDocs/` (or another non-website path), not `Docs/`.
+- Do not add draft/planning pages to `Docs/toc.json` unless maintainers explicitly requested that draft content be public.
+- When moving content from `Docs/` to `InternalDocs/`, update `Docs/toc.json`, `Docs/_index.md`, and any cross-links in the same change set.
+
 **Language-Neutral Routing Guardrails (Chat)**
 - Do not gate chat routing or safety behavior on hardcoded natural-language keyword lists (for example English-only verbs like "disable", "run", "can't").
 - Do not special-case compact follow-ups with literal phrases (for example "go ahead", "do it", "run it"). Continuation and nudge eligibility must be shape/context based.

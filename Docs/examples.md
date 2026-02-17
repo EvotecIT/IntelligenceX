@@ -78,7 +78,7 @@ Practical configuration examples for common IntelligenceX setups.
 }
 ```
 
-## Multi-Repo Setup
+## Multi-Repository Onboarding
 
 ```bash
 intelligencex setup wizard

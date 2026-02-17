@@ -16,7 +16,7 @@
   },
   {
     "title": "IX Tools",
-    "description": "Eight specialized tool packs for AI assistants. Email, Active Directory, file operations, database queries, and more. Register once, use across all providers.",
+    "description": "Tool packs for IX Chat and .NET integrations. OSS packs include file system, reviewer setup, event log, email, and Office docs; closed-source packs can be available in licensed private builds.",
     "icon": "tools",
     "link": "/docs/tools/overview/",
     "tag": "Tool Packs"
