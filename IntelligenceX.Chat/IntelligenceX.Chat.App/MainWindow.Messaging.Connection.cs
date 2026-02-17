@@ -112,6 +112,7 @@ public sealed partial class MainWindow : Window {
             }
 
             AppendStartupToolHealthWarningsFromPolicy();
+            AppendUnavailablePacksFromPolicy();
 
             _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
             try {
@@ -561,6 +562,61 @@ public sealed partial class MainWindow : Window {
         return string.Equals(normalized, "completed", StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalized, "done", StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalized, "finished", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void AppendUnavailablePacksFromPolicy() {
+        var packs = _sessionPolicy?.Packs;
+        if (packs is not { Length: > 0 }) {
+            return;
+        }
+
+        var unavailable = packs
+            .Where(static pack => !pack.Enabled && !string.IsNullOrWhiteSpace(pack.DisabledReason))
+            .Select(static pack => new {
+                Id = (pack.Id ?? string.Empty).Trim(),
+                Name = (pack.Name ?? string.Empty).Trim(),
+                Reason = (pack.DisabledReason ?? string.Empty).Trim()
+            })
+            .Where(static pack => pack.Reason.Length > 0)
+            .DistinctBy(static pack => pack.Id + "|" + pack.Reason, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (unavailable.Length == 0) {
+            return;
+        }
+
+        var signature = string.Join("|", unavailable
+            .Select(static pack => $"{pack.Id}:{pack.Reason}")
+            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        if (!_startupUnavailablePackSignatures.Add(signature)) {
+            return;
+        }
+
+        const int maxShown = 4;
+        var shown = unavailable.Length <= maxShown
+            ? unavailable
+            : unavailable.Take(maxShown).ToArray();
+
+        var lines = new List<string>(shown.Length + 6) {
+            "[warning] Some tool packs are unavailable",
+            string.Empty,
+            $"Found {unavailable.Length} unavailable pack(s):"
+        };
+
+        for (var i = 0; i < shown.Length; i++) {
+            var pack = shown[i];
+            var label = string.IsNullOrWhiteSpace(pack.Name) ? pack.Id : pack.Name;
+            lines.Add("- " + label + ": " + pack.Reason);
+        }
+
+        if (unavailable.Length > shown.Length) {
+            lines.Add($"- +{unavailable.Length - shown.Length} more");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Open Options > Tools to see pack availability details.");
+
+        AppendSystem(string.Join(Environment.NewLine, lines));
     }
 
     private void AppendStartupToolHealthWarningsFromPolicy() {

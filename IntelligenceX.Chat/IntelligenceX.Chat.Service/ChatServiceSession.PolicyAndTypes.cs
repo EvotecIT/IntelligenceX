@@ -25,18 +25,22 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
-    private static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<IToolPack> packs, IReadOnlyList<string> startupWarnings,
-        IReadOnlyList<string> pluginSearchPaths) {
+    private static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
+        IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var packList = new List<ToolPackInfoDto>();
-        foreach (var pack in ToolPackBootstrap.GetDescriptors(packs)) {
+        foreach (var pack in packAvailability) {
+            var normalizedDisabledReason = string.IsNullOrWhiteSpace(pack.DisabledReason)
+                ? null
+                : pack.DisabledReason.Trim();
             packList.Add(new ToolPackInfoDto {
                 Id = pack.Id,
                 Name = ResolvePackDisplayName(pack.Id, pack.Name),
                 Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
                 Tier = MapTier(pack.Tier),
-                Enabled = true,
+                Enabled = pack.Enabled,
+                DisabledReason = pack.Enabled ? null : normalizedDisabledReason,
                 IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
                 SourceKind = MapSourceKind(pack.SourceKind, pack.Id)
             });
@@ -50,7 +54,7 @@ internal sealed partial class ChatServiceSession {
             return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
         });
 
-        var dangerousEnabled = packList.Exists(static p => p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite);
+        var dangerousEnabled = packList.Exists(static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
 
         return new SessionPolicyDto {
             ReadOnly = !dangerousEnabled,

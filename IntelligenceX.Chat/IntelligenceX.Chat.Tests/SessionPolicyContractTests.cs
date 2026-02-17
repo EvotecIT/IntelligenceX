@@ -20,6 +20,18 @@ public sealed class SessionPolicyContractTests {
                 DangerousToolsEnabled = false,
                 MaxToolRounds = 3,
                 ParallelTools = true,
+                Packs = new[] {
+                    new ToolPackInfoDto {
+                        Id = "testimox",
+                        Name = "TestimoX",
+                        Description = "Test diagnostics",
+                        Tier = CapabilityTier.SensitiveRead,
+                        Enabled = false,
+                        DisabledReason = "License expired on 2026-03-31.",
+                        IsDangerous = false,
+                        SourceKind = ToolPackSourceKind.ClosedSource
+                    }
+                },
                 StartupWarnings = new[] {
                     "[plugin] path_not_found path='C:\\plugins\\missing'",
                     "[plugin] init_failed plugin='ix.mail' error='dependency missing'"
@@ -40,5 +52,8 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal("[plugin] path_not_found path='C:\\plugins\\missing'", policy.StartupWarnings[0]);
         Assert.Equal(2, policy.PluginSearchPaths.Length);
         Assert.Equal("C:\\Support\\GitHub\\IntelligenceX\\plugins", policy.PluginSearchPaths[1]);
+        Assert.Single(policy.Packs);
+        Assert.False(policy.Packs[0].Enabled);
+        Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);
     }
 }

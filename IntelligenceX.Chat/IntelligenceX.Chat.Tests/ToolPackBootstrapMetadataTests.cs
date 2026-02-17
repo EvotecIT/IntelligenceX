@@ -68,6 +68,47 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDisabledReason_WhenPackDisabledByConfiguration() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false,
+            EnableEmailPack = false,
+            EnableReviewerSetupPack = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        Assert.DoesNotContain(result.Packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+
+        var officeImo = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+        Assert.False(officeImo.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", officeImo.DisabledReason);
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ReportsEnabled_WhenPackLoaded() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableEmailPack = false,
+            EnableReviewerSetupPack = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        var officeImo = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+        Assert.True(officeImo.Enabled);
+        Assert.True(string.IsNullOrWhiteSpace(officeImo.DisabledReason));
+    }
+
+    [Fact]
     public void RegisterAll_AssignsPackIds_ForRegisteredTools() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             EnableFileSystemPack = false,

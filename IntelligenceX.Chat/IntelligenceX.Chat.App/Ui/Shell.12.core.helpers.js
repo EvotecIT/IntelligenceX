@@ -455,6 +455,24 @@
     return null;
   }
 
+  function packIsAvailable(packId) {
+    var pack = findPackById(packId);
+    if (!pack) {
+      return true;
+    }
+    return normalizeBool(pack.enabled);
+  }
+
+  function packDisabledReason(packId) {
+    var pack = findPackById(packId);
+    if (!pack || !pack.disabledReason) {
+      return "";
+    }
+
+    var reason = String(pack.disabledReason || "").trim();
+    return reason.length > 0 ? reason : "";
+  }
+
   function normalizePackSourceKind(value) {
     var normalized = String(value || "").trim().toLowerCase();
     if (normalized === "builtin" || normalized === "closed_source" || normalized === "open_source") {

@@ -126,6 +126,58 @@ public sealed record ToolPackBootstrapOptions {
 }
 
 /// <summary>
+/// Availability metadata for a known tool pack in the current runtime.
+/// </summary>
+public sealed record ToolPackAvailabilityInfo {
+    /// <summary>
+    /// Stable pack id.
+    /// </summary>
+    public required string Id { get; init; }
+    /// <summary>
+    /// Human-friendly pack name.
+    /// </summary>
+    public required string Name { get; init; }
+    /// <summary>
+    /// Optional pack description.
+    /// </summary>
+    public string? Description { get; init; }
+    /// <summary>
+    /// Capability tier.
+    /// </summary>
+    public ToolCapabilityTier Tier { get; init; }
+    /// <summary>
+    /// Whether this pack includes dangerous/write operations.
+    /// </summary>
+    public bool IsDangerous { get; init; }
+    /// <summary>
+    /// Normalized source kind.
+    /// </summary>
+    public required string SourceKind { get; init; }
+    /// <summary>
+    /// Whether the pack is available and loaded in this runtime.
+    /// </summary>
+    public bool Enabled { get; init; }
+    /// <summary>
+    /// Human-readable reason when the pack is unavailable.
+    /// </summary>
+    public string? DisabledReason { get; init; }
+}
+
+/// <summary>
+/// Result of bootstrapping default tool packs with pack availability metadata.
+/// </summary>
+public sealed record ToolPackBootstrapResult {
+    /// <summary>
+    /// Loaded tool packs.
+    /// </summary>
+    public IReadOnlyList<IToolPack> Packs { get; init; } = Array.Empty<IToolPack>();
+    /// <summary>
+    /// Runtime availability for known packs.
+    /// </summary>
+    public IReadOnlyList<ToolPackAvailabilityInfo> PackAvailability { get; init; } = Array.Empty<ToolPackAvailabilityInfo>();
+}
+
+/// <summary>
 /// Shared tool pack bootstrap for both Host and Service.
 /// </summary>
 public static class ToolPackBootstrap {
@@ -143,10 +195,76 @@ public static class ToolPackBootstrap {
     private const string OfficeImoOptionsTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolOptions, IntelligenceX.Tools.OfficeIMO";
     private const string EmailPackTypeName = "IntelligenceX.Tools.Email.EmailToolPack, IntelligenceX.Tools.Email";
     private const string EmailOptionsTypeName = "IntelligenceX.Tools.Email.EmailToolOptions, IntelligenceX.Tools.Email";
+    private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
+    private const string UnavailableReasonFallback = "Pack could not be loaded in this runtime.";
 
     internal const string PackSourceBuiltin = "builtin";
     internal const string PackSourceOpenSource = "open_source";
     internal const string PackSourceClosedSource = "closed_source";
+
+    private static readonly KnownPackDefinition FileSystemPackDefinition = new(
+        "fs",
+        "File System",
+        "Safe-by-default file system reads (restricted to AllowedRoots).",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceBuiltin);
+
+    private static readonly KnownPackDefinition SystemPackDefinition = new(
+        "system",
+        "ComputerX",
+        "ComputerX host inventory and diagnostics (read-only).",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceClosedSource);
+
+    private static readonly KnownPackDefinition ActiveDirectoryPackDefinition = new(
+        "ad",
+        "ADPlayground",
+        "ADPlayground-backed Active Directory analysis tools (read-oriented).",
+        ToolCapabilityTier.SensitiveRead,
+        IsDangerous: false,
+        PackSourceClosedSource);
+
+    private static readonly KnownPackDefinition PowerShellPackDefinition = new(
+        "powershell",
+        "PowerShell Runtime",
+        "Opt-in PowerShell runtime execution (windows_powershell / pwsh).",
+        ToolCapabilityTier.DangerousWrite,
+        IsDangerous: true,
+        PackSourceBuiltin);
+
+    private static readonly KnownPackDefinition TestimoXPackDefinition = new(
+        "testimox",
+        "TestimoX",
+        "TestimoX rule discovery and targeted rule execution (read-oriented diagnostics).",
+        ToolCapabilityTier.SensitiveRead,
+        IsDangerous: false,
+        PackSourceClosedSource);
+
+    private static readonly KnownPackDefinition OfficeImoPackDefinition = new(
+        "officeimo",
+        "Office Documents (OfficeIMO)",
+        "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceOpenSource);
+
+    private static readonly KnownPackDefinition ReviewerSetupPackDefinition = new(
+        "reviewersetup",
+        "Reviewer Setup",
+        "Path contract and execution guidance for IntelligenceX reviewer onboarding.",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceBuiltin);
+
+    private static readonly KnownPackDefinition EmailPackDefinition = new(
+        "email",
+        "Email (Mailozaurr)",
+        "IMAP/SMTP workflows (search/get/send) via Mailozaurr.",
+        ToolCapabilityTier.SensitiveRead,
+        IsDangerous: false,
+        PackSourceBuiltin);
 
     /// <summary>
     /// Builds the default tool packs (public read-only packs plus optional private packs when available).
@@ -154,6 +272,15 @@ public static class ToolPackBootstrap {
     /// <param name="options">Bootstrap options.</param>
     /// <returns>Tool pack list.</returns>
     public static IReadOnlyList<IToolPack> CreateDefaultReadOnlyPacks(ToolPackBootstrapOptions options) {
+        return CreateDefaultReadOnlyPacksWithAvailability(options).Packs;
+    }
+
+    /// <summary>
+    /// Builds the default tool packs together with structured per-pack availability diagnostics.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <returns>Loaded packs and pack availability metadata.</returns>
+    public static ToolPackBootstrapResult CreateDefaultReadOnlyPacksWithAvailability(ToolPackBootstrapOptions options) {
         if (options is null) {
             throw new ArgumentNullException(nameof(options));
         }
@@ -162,114 +289,128 @@ public static class ToolPackBootstrap {
             .Where(static root => !string.IsNullOrWhiteSpace(root))
             .ToArray();
 
+        var packs = new List<IToolPack>();
+        var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
+
         var evxOptions = new EventLogToolOptions();
         foreach (var root in allowedRoots) {
             evxOptions.AllowedRoots.Add(root);
         }
 
-        var packs = new List<IToolPack> {
-            RequireDeclaredSourceKind(new EventLogToolPack(evxOptions), "Event Log")
-        };
+        var eventLogPack = RequireDeclaredSourceKind(new EventLogToolPack(evxOptions), "Event Log");
+        packs.Add(eventLogPack);
+        UpsertAvailability(
+            availabilityById,
+            CreateAvailabilityFromDescriptor(
+                descriptor: eventLogPack.Descriptor,
+                enabled: true,
+                disabledReason: null));
 
-        if (options.EnableFileSystemPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.FileSystem",
-                packTypeName: FileSystemPackTypeName,
-                optionsTypeName: FileSystemOptionsTypeName,
-                configureOptions: fsOptions => {
-                    AddStringListValuesIfPresent(fsOptions, "AllowedRoots", allowedRoots);
-                },
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableFileSystemPack,
+            definition: FileSystemPackDefinition,
+            packLabel: "IX.FileSystem",
+            packTypeName: FileSystemPackTypeName,
+            optionsTypeName: FileSystemOptionsTypeName,
+            configureOptions: fsOptions => {
+                AddStringListValuesIfPresent(fsOptions, "AllowedRoots", allowedRoots);
+            },
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnableSystemPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.System",
-                packTypeName: SystemPackTypeName,
-                optionsTypeName: SystemOptionsTypeName,
-                configureOptions: null,
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableSystemPack,
+            definition: SystemPackDefinition,
+            packLabel: "IX.System",
+            packTypeName: SystemPackTypeName,
+            optionsTypeName: SystemOptionsTypeName,
+            configureOptions: null,
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnableActiveDirectoryPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.ADPlayground",
-                packTypeName: ActiveDirectoryPackTypeName,
-                optionsTypeName: ActiveDirectoryOptionsTypeName,
-                configureOptions: adOptions => {
-                    SetPropertyIfPresent(adOptions, "DomainController", options.AdDomainController);
-                    SetPropertyIfPresent(adOptions, "DefaultSearchBaseDn", options.AdDefaultSearchBaseDn);
-                    SetPropertyIfPresent(adOptions, "MaxResults", options.AdMaxResults > 0 ? options.AdMaxResults : 1000);
-                },
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableActiveDirectoryPack,
+            definition: ActiveDirectoryPackDefinition,
+            packLabel: "IX.ADPlayground",
+            packTypeName: ActiveDirectoryPackTypeName,
+            optionsTypeName: ActiveDirectoryOptionsTypeName,
+            configureOptions: adOptions => {
+                SetPropertyIfPresent(adOptions, "DomainController", options.AdDomainController);
+                SetPropertyIfPresent(adOptions, "DefaultSearchBaseDn", options.AdDefaultSearchBaseDn);
+                SetPropertyIfPresent(adOptions, "MaxResults", options.AdMaxResults > 0 ? options.AdMaxResults : 1000);
+            },
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnablePowerShellPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.PowerShell",
-                packTypeName: PowerShellPackTypeName,
-                optionsTypeName: PowerShellOptionsTypeName,
-                configureOptions: psOptions => {
-                    SetPropertyIfPresent(psOptions, "Enabled", true);
-                    SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
-                    SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
-                    SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
-                    SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
-                    SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
-                },
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnablePowerShellPack,
+            definition: PowerShellPackDefinition,
+            packLabel: "IX.PowerShell",
+            packTypeName: PowerShellPackTypeName,
+            optionsTypeName: PowerShellOptionsTypeName,
+            configureOptions: psOptions => {
+                SetPropertyIfPresent(psOptions, "Enabled", true);
+                SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
+                SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
+                SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
+                SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
+                SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
+            },
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnableTestimoXPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.TestimoX",
-                packTypeName: TestimoXPackTypeName,
-                optionsTypeName: TestimoXOptionsTypeName,
-                configureOptions: testimoOptions => {
-                    SetPropertyIfPresent(testimoOptions, "Enabled", true);
-                },
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableTestimoXPack,
+            definition: TestimoXPackDefinition,
+            packLabel: "IX.TestimoX",
+            packTypeName: TestimoXPackTypeName,
+            optionsTypeName: TestimoXOptionsTypeName,
+            configureOptions: testimoOptions => {
+                SetPropertyIfPresent(testimoOptions, "Enabled", true);
+            },
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnableOfficeImoPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.OfficeIMO",
-                packTypeName: OfficeImoPackTypeName,
-                optionsTypeName: OfficeImoOptionsTypeName,
-                configureOptions: officeImoOptions => {
-                    AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
-                },
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableOfficeImoPack,
+            definition: OfficeImoPackDefinition,
+            packLabel: "IX.OfficeIMO",
+            packTypeName: OfficeImoPackTypeName,
+            optionsTypeName: OfficeImoOptionsTypeName,
+            configureOptions: officeImoOptions => {
+                AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
+            },
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnableReviewerSetupPack) {
-            packs.Add(RequireDeclaredSourceKind(new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
-                IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
-            }), "Reviewer Setup"));
-        }
+        AddOptionalBuiltInPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableReviewerSetupPack,
+            definition: ReviewerSetupPackDefinition,
+            createPack: () => RequireDeclaredSourceKind(
+                new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
+                    IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
+                }),
+                packLabel: "Reviewer Setup"),
+            onWarning: options.OnBootstrapWarning);
 
-        if (options.EnableEmailPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.Email",
-                packTypeName: EmailPackTypeName,
-                optionsTypeName: EmailOptionsTypeName,
-                configureOptions: null,
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableEmailPack,
+            definition: EmailPackDefinition,
+            packLabel: "IX.Email",
+            packTypeName: EmailPackTypeName,
+            optionsTypeName: EmailOptionsTypeName,
+            configureOptions: null,
+            onWarning: options.OnBootstrapWarning);
 
         if (options.EnablePluginFolderLoading) {
             var existingPackIds = new HashSet<string>(
@@ -285,7 +426,25 @@ public static class ToolPackBootstrap {
                 onWarning: options.OnBootstrapWarning);
         }
 
-        return packs;
+        for (var i = 0; i < packs.Count; i++) {
+            var descriptor = packs[i].Descriptor;
+            UpsertAvailability(
+                availabilityById,
+                CreateAvailabilityFromDescriptor(
+                    descriptor: descriptor,
+                    enabled: true,
+                    disabledReason: null));
+        }
+
+        var availability = availabilityById.Values
+            .OrderBy(static pack => pack.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static pack => pack.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return new ToolPackBootstrapResult {
+            Packs = packs,
+            PackAvailability = availability
+        };
     }
 
     /// <summary>
@@ -459,6 +618,130 @@ public static class ToolPackBootstrap {
         return new DescriptorOverrideToolPack(pack, descriptor with { SourceKind = normalized });
     }
 
+    private static void AddOptionalReflectionPack(
+        List<IToolPack> packs,
+        Dictionary<string, ToolPackAvailabilityInfo> availabilityById,
+        bool enabledByConfiguration,
+        KnownPackDefinition definition,
+        string packLabel,
+        string packTypeName,
+        string? optionsTypeName,
+        Action<object>? configureOptions,
+        Action<string>? onWarning) {
+        if (!enabledByConfiguration) {
+            UpsertAvailability(availabilityById, CreateAvailabilityFromDefinition(definition, enabled: false, DisabledByRuntimeConfigurationReason));
+            return;
+        }
+
+        var loaded = TryAddPack(
+            packs: packs,
+            packLabel: packLabel,
+            packTypeName: packTypeName,
+            optionsTypeName: optionsTypeName,
+            configureOptions: configureOptions,
+            warnWhenUnavailable: true,
+            onWarning: onWarning,
+            loadedPack: out var loadedPack,
+            unavailableReason: out var unavailableReason);
+
+        if (loaded && loadedPack is not null) {
+            UpsertAvailability(
+                availabilityById,
+                CreateAvailabilityFromDescriptor(
+                    descriptor: loadedPack.Descriptor,
+                    enabled: true,
+                    disabledReason: null));
+            return;
+        }
+
+        UpsertAvailability(
+            availabilityById,
+            CreateAvailabilityFromDefinition(
+                definition: definition,
+                enabled: false,
+                disabledReason: unavailableReason));
+    }
+
+    private static void AddOptionalBuiltInPack(
+        List<IToolPack> packs,
+        Dictionary<string, ToolPackAvailabilityInfo> availabilityById,
+        bool enabledByConfiguration,
+        KnownPackDefinition definition,
+        Func<IToolPack> createPack,
+        Action<string>? onWarning) {
+        if (!enabledByConfiguration) {
+            UpsertAvailability(availabilityById, CreateAvailabilityFromDefinition(definition, enabled: false, DisabledByRuntimeConfigurationReason));
+            return;
+        }
+
+        try {
+            var pack = createPack();
+            packs.Add(pack);
+            UpsertAvailability(
+                availabilityById,
+                CreateAvailabilityFromDescriptor(
+                    descriptor: pack.Descriptor,
+                    enabled: true,
+                    disabledReason: null));
+        } catch (Exception ex) {
+            var reason = NormalizeDisabledReason(ex.Message);
+            Warn(onWarning, $"{definition.Name} pack skipped: {reason}", shouldWarn: true);
+            UpsertAvailability(
+                availabilityById,
+                CreateAvailabilityFromDefinition(
+                    definition: definition,
+                    enabled: false,
+                    disabledReason: reason));
+        }
+    }
+
+    private static ToolPackAvailabilityInfo CreateAvailabilityFromDefinition(KnownPackDefinition definition, bool enabled, string? disabledReason) {
+        var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
+        return new ToolPackAvailabilityInfo {
+            Id = definition.Id,
+            Name = definition.Name,
+            Description = definition.Description,
+            Tier = definition.Tier,
+            IsDangerous = definition.IsDangerous,
+            SourceKind = NormalizeSourceKind(definition.SourceKind, definition.Id),
+            Enabled = enabled,
+            DisabledReason = enabled ? null : normalizedReason
+        };
+    }
+
+    private static ToolPackAvailabilityInfo CreateAvailabilityFromDescriptor(ToolPackDescriptor descriptor, bool enabled, string? disabledReason) {
+        if (descriptor is null) {
+            throw new ArgumentNullException(nameof(descriptor));
+        }
+
+        var normalizedId = NormalizePackId(descriptor.Id);
+        var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedId : descriptor.Name.Trim();
+        var normalizedDescription = string.IsNullOrWhiteSpace(descriptor.Description) ? null : descriptor.Description.Trim();
+        var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
+        var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
+
+        return new ToolPackAvailabilityInfo {
+            Id = normalizedId.Length == 0 ? descriptor.Id : normalizedId,
+            Name = normalizedName,
+            Description = normalizedDescription,
+            Tier = descriptor.Tier,
+            IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+            SourceKind = normalizedSourceKind,
+            Enabled = enabled,
+            DisabledReason = enabled ? null : normalizedReason
+        };
+    }
+
+    private static void UpsertAvailability(Dictionary<string, ToolPackAvailabilityInfo> availabilityById, ToolPackAvailabilityInfo availability) {
+        var normalizedPackId = NormalizePackId(availability.Id);
+        if (normalizedPackId.Length == 0) {
+            return;
+        }
+
+        var normalizedName = string.IsNullOrWhiteSpace(availability.Name) ? normalizedPackId : availability.Name.Trim();
+        availabilityById[normalizedPackId] = availability with { Id = normalizedPackId, Name = normalizedName };
+    }
+
     private static bool TryAddPack(
         List<IToolPack> packs,
         string packLabel,
@@ -466,10 +749,16 @@ public static class ToolPackBootstrap {
         string? optionsTypeName,
         Action<object>? configureOptions,
         bool warnWhenUnavailable,
-        Action<string>? onWarning) {
+        Action<string>? onWarning,
+        out IToolPack? loadedPack,
+        out string unavailableReason) {
+        loadedPack = null;
+        unavailableReason = UnavailableReasonFallback;
+
         try {
             var packType = ResolveType(packTypeName);
             if (packType is null) {
+                unavailableReason = "Required assembly was not found.";
                 Warn(onWarning, $"{packLabel} pack unavailable (assembly not found).", warnWhenUnavailable);
                 return false;
             }
@@ -478,12 +767,14 @@ public static class ToolPackBootstrap {
             if (!string.IsNullOrWhiteSpace(optionsTypeName)) {
                 var optionsType = ResolveType(optionsTypeName);
                 if (optionsType is null) {
+                    unavailableReason = "Pack options type was not found.";
                     Warn(onWarning, $"{packLabel} pack unavailable (options type not found).", warnWhenUnavailable);
                     return false;
                 }
 
                 options = Activator.CreateInstance(optionsType);
                 if (options is null) {
+                    unavailableReason = "Could not create pack options.";
                     Warn(onWarning, $"{packLabel} pack unavailable (cannot create options instance).", warnWhenUnavailable);
                     return false;
                 }
@@ -495,14 +786,18 @@ public static class ToolPackBootstrap {
                 : Activator.CreateInstance(packType, options);
 
             if (instance is not IToolPack pack) {
+                unavailableReason = "Pack type does not implement IToolPack.";
                 Warn(onWarning, $"{packLabel} pack unavailable (does not implement IToolPack).", warnWhenUnavailable);
                 return false;
             }
 
-            packs.Add(RequireDeclaredSourceKind(pack, packLabel));
+            loadedPack = RequireDeclaredSourceKind(pack, packLabel);
+            packs.Add(loadedPack);
+            unavailableReason = string.Empty;
             return true;
         } catch (Exception ex) {
-            Warn(onWarning, $"{packLabel} pack skipped: {ex.Message}", warnWhenUnavailable);
+            unavailableReason = NormalizeDisabledReason(ex.Message);
+            Warn(onWarning, $"{packLabel} pack skipped: {unavailableReason}", warnWhenUnavailable);
             return false;
         }
     }
@@ -580,6 +875,20 @@ public static class ToolPackBootstrap {
         }
     }
 
+    private static string NormalizeDisabledReason(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return UnavailableReasonFallback;
+        }
+
+        normalized = normalized.Replace(Environment.NewLine, " ", StringComparison.Ordinal)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+
+        return normalized.Length == 0 ? UnavailableReasonFallback : normalized;
+    }
+
     private static void Warn(Action<string>? onWarning, string message, bool shouldWarn) {
         if (!shouldWarn) {
             return;
@@ -601,4 +910,12 @@ public static class ToolPackBootstrap {
             _inner.Register(registry);
         }
     }
+
+    private sealed record KnownPackDefinition(
+        string Id,
+        string Name,
+        string Description,
+        ToolCapabilityTier Tier,
+        bool IsDangerous,
+        string SourceKind);
 }

@@ -34,6 +34,7 @@ internal sealed partial class ChatServiceSession {
     private readonly Stream _stream;
     private ToolRegistry _registry;
     private IReadOnlyList<IToolPack> _packs;
+    private ToolPackAvailabilityInfo[] _packAvailability;
     private string[] _startupWarnings;
     private string[] _pluginSearchPaths;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
@@ -83,7 +84,9 @@ internal sealed partial class ChatServiceSession {
             OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
         };
 
-        _packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(bootstrapOptions);
+        var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
+        _packs = bootstrapResult.Packs;
+        _packAvailability = bootstrapResult.PackAvailability.ToArray();
         _pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
         _startupWarnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
         _registry = new ToolRegistry();
@@ -162,7 +165,7 @@ internal sealed partial class ChatServiceSession {
                             Name = "IntelligenceX.Chat.Service",
                             Version = typeof(ChatServiceSession).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                             ProcessId = Environment.ProcessId.ToString(),
-                            Policy = BuildSessionPolicy(_options, _packs, _startupWarnings, _pluginSearchPaths)
+                            Policy = BuildSessionPolicy(_options, _packAvailability, _startupWarnings, _pluginSearchPaths)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 

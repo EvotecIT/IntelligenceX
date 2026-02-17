@@ -637,6 +637,7 @@ public sealed partial class MainWindow : Window {
                 description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
                 tier = pack.Tier.ToString(),
                 enabled = pack.Enabled,
+                disabledReason = string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
                 isDangerous = pack.IsDangerous,
                 sourceKind = pack.SourceKind switch {
                     ToolPackSourceKind.Builtin => "builtin",

@@ -25,6 +25,10 @@ public sealed record ToolPackInfoDto {
     /// </summary>
     public required bool Enabled { get; init; }
     /// <summary>
+    /// Optional reason when the pack is unavailable for this session.
+    /// </summary>
+    public string? DisabledReason { get; init; }
+    /// <summary>
     /// Whether the pack includes potentially dangerous/write operations.
     /// </summary>
     public required bool IsDangerous { get; init; }
