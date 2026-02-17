@@ -80,12 +80,12 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolRoutingInsight> insights,
         int selectedToolCount,
         int totalToolCount) {
-        if (!weightedToolRouting) {
-            return "disabled";
-        }
-
         if (selectedToolCount <= 0 || totalToolCount <= 0) {
             return "no_tools";
+        }
+
+        if (!weightedToolRouting) {
+            return "disabled";
         }
 
         if (executionContractApplies && selectedToolCount >= totalToolCount) {
@@ -108,7 +108,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldEmitRoutingTransparency(int selectedToolCount, int totalToolCount) {
-        return selectedToolCount > 0 && totalToolCount > 0;
+        return selectedToolCount >= 0 && totalToolCount >= 0;
     }
 
     private static string BuildRoutingSelectionMessage(int selectedToolCount, int totalToolCount, string strategy) {
@@ -128,6 +128,8 @@ internal sealed partial class ChatServiceSession {
                 $"Tool routing kept the full tool set ({selected}/{total}) for this turn.",
             "disabled" =>
                 $"Tool routing is disabled for this turn; using the full tool set ({selected}/{total}).",
+            "no_tools" =>
+                "No tools are currently available for this turn.",
             _ =>
                 $"Tool routing selected {selected} of {total} tools for this turn."
         };

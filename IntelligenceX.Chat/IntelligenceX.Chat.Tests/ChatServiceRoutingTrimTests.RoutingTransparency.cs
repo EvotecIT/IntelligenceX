@@ -7,9 +7,12 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
     [InlineData(6, 12, true)]
-    [InlineData(0, 12, false)]
-    [InlineData(6, 0, false)]
-    public void ShouldEmitRoutingTransparency_RequiresValidCounts(
+    [InlineData(0, 12, true)]
+    [InlineData(6, 0, true)]
+    [InlineData(0, 0, true)]
+    [InlineData(-1, 0, false)]
+    [InlineData(0, -1, false)]
+    public void ShouldEmitRoutingTransparency_EmitsForDiagnosticStates(
         int selectedToolCount,
         int totalToolCount,
         bool expected) {
@@ -26,12 +29,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("continuation_subset", "continuation context")]
     [InlineData("execution_contract_full_set", "explicit execution turn")]
     [InlineData("disabled", "disabled for this turn")]
+    [InlineData("no_tools", "No tools are currently available")]
     public void BuildRoutingSelectionMessage_UsesStrategySpecificText(string strategy, string expectedPhrase) {
         var result = BuildRoutingSelectionMessageMethod.Invoke(null, new object?[] { 7, 24, strategy });
         var text = Assert.IsType<string>(result);
 
-        Assert.Contains("7", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("24", text, StringComparison.OrdinalIgnoreCase);
+        if (!string.Equals(strategy, "no_tools", StringComparison.OrdinalIgnoreCase)) {
+            Assert.Contains("7", text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("24", text, StringComparison.OrdinalIgnoreCase);
+        }
         Assert.Contains(expectedPhrase, text, StringComparison.OrdinalIgnoreCase);
     }
 
