@@ -15,7 +15,7 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class OpenAICompatibleHttpTransportTests {
     [Fact]
-    public async Task ListModelsAsync_LmStudioCatalogOverlay_AddsMetadataAndCatalogModels() {
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_OnlyEnrichesPrimaryModels() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """
                 {
@@ -58,7 +58,7 @@ public sealed class OpenAICompatibleHttpTransportTests {
         }, http);
 
         var result = await transport.ListModelsAsync(CancellationToken.None);
-        Assert.Equal(2, result.Models.Count);
+        Assert.Single(result.Models);
 
         var gemma = Assert.Single(result.Models, m => string.Equals(m.Model, "google/gemma-3-4b", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("loaded", gemma.RuntimeState);
@@ -68,10 +68,7 @@ public sealed class OpenAICompatibleHttpTransportTests {
         Assert.Equal(4096, gemma.LoadedContextLength);
         Assert.Contains("tool_use", gemma.Capabilities, StringComparer.OrdinalIgnoreCase);
 
-        var gptOss = Assert.Single(result.Models, m => string.Equals(m.Model, "openai/gpt-oss-20b", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal("not-loaded", gptOss.RuntimeState);
-        Assert.Equal("gpt-oss", gptOss.Architecture);
-        Assert.Equal("MXFP4", gptOss.Quantization);
+        Assert.DoesNotContain(result.Models, m => string.Equals(m.Model, "openai/gpt-oss-20b", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(2, handler.RequestUris.Count);
         Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));

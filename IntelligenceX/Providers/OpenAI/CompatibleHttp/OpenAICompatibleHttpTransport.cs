@@ -160,7 +160,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
     private static IReadOnlyList<ModelInfo> MergeLmStudioCatalogModels(IReadOnlyList<ModelInfo> primary, IReadOnlyList<ModelInfo> catalog) {
         if (primary.Count == 0) {
-            return catalog;
+            return primary;
         }
 
         if (catalog.Count == 0) {
@@ -173,21 +173,11 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             RegisterModelAliases(catalogLookup, model);
         }
 
-        var merged = new List<ModelInfo>(Math.Max(primary.Count, catalog.Count));
-        var primaryAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var merged = new List<ModelInfo>(primary.Count);
         for (var i = 0; i < primary.Count; i++) {
             var model = primary[i];
-            RegisterModelAliases(primaryAliases, model);
             var match = FindCatalogMatch(catalogLookup, model);
             merged.Add(match is null ? model : MergeModelInfo(model, match));
-        }
-
-        for (var i = 0; i < catalog.Count; i++) {
-            var catalogModel = catalog[i];
-            if (HasAnyAlias(primaryAliases, catalogModel)) {
-                continue;
-            }
-            merged.Add(catalogModel);
         }
 
         return merged;
@@ -285,36 +275,6 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         if (name.Length > 0 && !lookup.ContainsKey(name)) {
             lookup[name] = model;
         }
-    }
-
-    private static void RegisterModelAliases(ISet<string> aliases, ModelInfo model) {
-        if (aliases is null || model is null) {
-            return;
-        }
-
-        var id = NormalizeModelKey(model.Id);
-        if (id.Length > 0) {
-            aliases.Add(id);
-        }
-
-        var name = NormalizeModelKey(model.Model);
-        if (name.Length > 0) {
-            aliases.Add(name);
-        }
-    }
-
-    private static bool HasAnyAlias(ISet<string> aliases, ModelInfo model) {
-        if (aliases is null || model is null) {
-            return false;
-        }
-
-        var id = NormalizeModelKey(model.Id);
-        if (id.Length > 0 && aliases.Contains(id)) {
-            return true;
-        }
-
-        var name = NormalizeModelKey(model.Model);
-        return name.Length > 0 && aliases.Contains(name);
     }
 
     private static string NormalizeModelKey(string? value) {
