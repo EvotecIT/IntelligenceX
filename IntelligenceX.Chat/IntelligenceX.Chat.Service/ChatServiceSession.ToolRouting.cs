@@ -108,7 +108,9 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldEmitRoutingTransparency(int selectedToolCount, int totalToolCount) {
-        return selectedToolCount >= 0 && totalToolCount >= 0;
+        return selectedToolCount >= 0
+            && totalToolCount >= 0
+            && selectedToolCount <= totalToolCount;
     }
 
     private static string BuildRoutingSelectionMessage(int selectedToolCount, int totalToolCount, string strategy) {

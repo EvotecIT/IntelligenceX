@@ -8,11 +8,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
     [InlineData(6, 12, true)]
     [InlineData(0, 12, true)]
-    [InlineData(6, 0, true)]
+    [InlineData(6, 0, false)]
+    [InlineData(13, 12, false)]
     [InlineData(0, 0, true)]
     [InlineData(-1, 0, false)]
     [InlineData(0, -1, false)]
-    public void ShouldEmitRoutingTransparency_EmitsForDiagnosticStates(
+    public void ShouldEmitRoutingTransparency_RequiresNonNegativeConsistentCounts(
         int selectedToolCount,
         int totalToolCount,
         bool expected) {
