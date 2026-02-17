@@ -81,6 +81,17 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.True(enabled.EnableOfficeImoPack);
     }
 
+    [Fact]
+    public void Parse_Allows_Disabling_And_Enabling_PowerShellPack() {
+        var enabled = ServiceOptions.Parse(new[] { "--enable-powershell-pack" }, out var enabledError);
+        Assert.True(string.IsNullOrWhiteSpace(enabledError));
+        Assert.True(enabled.EnablePowerShellPack);
+
+        var disabled = ServiceOptions.Parse(new[] { "--enable-powershell-pack", "--disable-powershell-pack" }, out var disabledError);
+        Assert.True(string.IsNullOrWhiteSpace(disabledError));
+        Assert.False(disabled.EnablePowerShellPack);
+    }
+
     [Theory]
     [InlineData("copilot-cli")]
     [InlineData("copilot")]

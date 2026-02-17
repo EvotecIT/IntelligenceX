@@ -192,7 +192,13 @@
   }
 
   function setPackEnabled(packId, groupTools, enabled) {
-    if (packId && !packIsAvailable(packId)) {
+    var runtimeDisabledByConfig = !!packId && packDisabledByRuntimeConfiguration(packId);
+    if (packId && !packIsAvailable(packId) && !runtimeDisabledByConfig) {
+      return;
+    }
+
+    if ((!Array.isArray(groupTools) || groupTools.length === 0) && runtimeDisabledByConfig && packId) {
+      post("set_pack_enabled", { packId: packId, enabled: enabled });
       return;
     }
 
@@ -346,11 +352,13 @@
         return String(a.displayName || a.name).localeCompare(String(b.displayName || b.name));
       });
       var packAvailable = packIsAvailable(currentPackId);
+      var packRuntimeDisabledByConfig = packDisabledByRuntimeConfiguration(currentPackId);
+      var packUnavailable = !packAvailable && !packRuntimeDisabledByConfig;
       var packUnavailableReason = packDisabledReason(currentPackId);
 
       var details = document.createElement("details");
       details.className = "options-accordion";
-      if (!packAvailable) {
+      if (packUnavailable) {
         details.classList.add("unavailable");
       }
       details.open = ensureAccordionState(currentPackId);
@@ -382,7 +390,9 @@
       if (packUnavailableReason) {
         var reason = document.createElement("span");
         reason.className = "options-accordion-reason";
-        reason.textContent = "Unavailable: " + packUnavailableReason;
+        reason.textContent = packUnavailable
+          ? ("Unavailable: " + packUnavailableReason)
+          : packUnavailableReason;
         reason.title = packUnavailableReason;
         heading.appendChild(reason);
       }
@@ -423,8 +433,10 @@
       var packHasTools = actionableTools.length > 0;
       var isPackLoaded = packHasTools && allEnabled;
       pill.className = "options-pill" + (isPackLoaded && packAvailable ? "" : " off");
-      if (!packAvailable) {
+      if (packUnavailable) {
         pill.textContent = "Unavailable";
+      } else if (!packHasTools && packRuntimeDisabledByConfig) {
+        pill.textContent = "Disabled";
       } else if (!packHasTools) {
         pill.textContent = "No tools";
       } else {
@@ -437,10 +449,12 @@
       packToggle.type = "checkbox";
       packToggle.checked = packHasTools && allEnabled;
       packToggle.indeterminate = packHasTools && !allEnabled && someEnabled;
-      packToggle.disabled = !packAvailable || !packHasTools;
+      packToggle.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig);
       packToggle.setAttribute("aria-label", "Enable pack " + packDisplayName(currentPackId));
-      if (!packAvailable && packUnavailableReason) {
+      if (packUnavailable && packUnavailableReason) {
         packToggle.title = packUnavailableReason;
+      } else if (packRuntimeDisabledByConfig) {
+        packToggle.title = "Disabled by runtime configuration. Toggle to apply and restart runtime.";
       } else if (!packHasTools) {
         packToggle.title = "No tools are currently registered for this pack.";
       }
@@ -468,14 +482,18 @@
 
         var emptyTitle = document.createElement("div");
         emptyTitle.className = "options-item-title";
-        emptyTitle.textContent = !packAvailable
+        emptyTitle.textContent = packUnavailable
           ? "Pack unavailable"
+          : (!packHasTools && packRuntimeDisabledByConfig)
+            ? "Pack disabled"
           : "No tools registered in this pack";
         emptyCard.appendChild(emptyTitle);
 
         var emptyBody = document.createElement("div");
         emptyBody.className = "options-item-sub";
-        emptyBody.textContent = packUnavailableReason
+        emptyBody.textContent = packRuntimeDisabledByConfig
+          ? "Pack is disabled by runtime configuration. Enable the toggle to restart runtime with this pack enabled."
+          : packUnavailableReason
           ? packUnavailableReason
           : "This pack is present in policy metadata but did not register any tool definitions.";
         emptyCard.appendChild(emptyBody);

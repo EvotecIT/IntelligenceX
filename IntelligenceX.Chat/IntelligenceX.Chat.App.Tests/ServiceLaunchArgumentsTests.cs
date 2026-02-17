@@ -107,6 +107,26 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
+    /// Ensures runtime pack toggles are emitted when requested.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesRuntimePackToggleFlags_WhenConfigured() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                EnablePowerShellPack = true,
+                EnableTestimoXPack = false,
+                EnableOfficeImoPack = true
+            });
+
+        Assert.Contains("--enable-powershell-pack", args);
+        Assert.Contains("--disable-testimox-pack", args);
+        Assert.Contains("--enable-officeimo-pack", args);
+    }
+
+    /// <summary>
     /// Ensures unknown transport values are rejected.
     /// </summary>
     [Fact]

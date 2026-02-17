@@ -460,7 +460,13 @@
     if (!pack) {
       return true;
     }
-    return normalizeBool(pack.enabled);
+
+    if (normalizeBool(pack.enabled)) {
+      return true;
+    }
+
+    // Keep runtime-config-disabled packs actionable in UI (for example PowerShell disabled by default).
+    return packDisabledByRuntimeConfiguration(packId);
   }
 
   function packDisabledReason(packId) {
@@ -471,6 +477,15 @@
 
     var reason = String(pack.disabledReason || "").trim();
     return reason.length > 0 ? reason : "";
+  }
+
+  function packDisabledByRuntimeConfiguration(packId) {
+    var reason = packDisabledReason(packId);
+    if (!reason) {
+      return false;
+    }
+
+    return reason.toLowerCase().indexOf("disabled by runtime configuration") >= 0;
   }
 
   function normalizePackSourceKind(value) {

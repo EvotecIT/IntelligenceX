@@ -116,12 +116,20 @@ public sealed partial class MainWindow : Window {
         _toolStates[key] = enabled;
     }
 
-    private bool SetToolPackEnabled(string packId, bool enabled) {
+    private async Task<bool> SetToolPackEnabledAsync(string packId, bool enabled) {
         var normalizedPackId = NormalizePackId(packId);
         if (normalizedPackId.Length == 0) {
             return false;
         }
 
+        if (IsRuntimeManagedPack(normalizedPackId)) {
+            return await TryApplyRuntimePackSettingAsync(normalizedPackId, enabled).ConfigureAwait(false);
+        }
+
+        return SetToolPackToolStateEnabled(normalizedPackId, enabled);
+    }
+
+    private bool SetToolPackToolStateEnabled(string normalizedPackId, bool enabled) {
         var changed = false;
         var names = new List<string>(_toolStates.Keys);
         for (var i = 0; i < names.Count; i++) {
@@ -140,6 +148,67 @@ public sealed partial class MainWindow : Window {
         }
 
         return changed;
+    }
+
+    private static bool IsRuntimeManagedPack(string normalizedPackId) {
+        return string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)
+               || string.Equals(normalizedPackId, "testimox", StringComparison.Ordinal)
+               || string.Equals(normalizedPackId, "officeimo", StringComparison.Ordinal);
+    }
+
+    private ToolPackInfoDto? FindSessionPackInfo(string normalizedPackId) {
+        var packs = _sessionPolicy?.Packs;
+        if (packs is null || packs.Length == 0) {
+            return null;
+        }
+
+        for (var i = 0; i < packs.Length; i++) {
+            var pack = packs[i];
+            if (string.Equals(NormalizePackId(pack.Id), normalizedPackId, StringComparison.Ordinal)) {
+                return pack;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<bool> TryApplyRuntimePackSettingAsync(string normalizedPackId, bool enabled) {
+        if (_isSending) {
+            await SetStatusAsync("Finish the active response before changing runtime pack settings.").ConfigureAwait(false);
+            return false;
+        }
+
+        var pack = FindSessionPackInfo(normalizedPackId);
+        if (pack is not null && pack.Enabled == enabled) {
+            return false;
+        }
+
+        var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
+        _pendingServiceLaunchProfileOptions = BuildRuntimePackLaunchProfileOptions(normalizedPackId, enabled, profileSaved);
+
+        await RestartSidecarAsync().ConfigureAwait(false);
+        await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
+        await SyncConnectedServiceProfileAndModelsAsync(
+            forceModelRefresh: true,
+            setProfileNewThread: false,
+            appendWarnings: true).ConfigureAwait(false);
+
+        return true;
+    }
+
+    private ServiceLaunchProfileOptions BuildRuntimePackLaunchProfileOptions(string normalizedPackId, bool enabled, bool profileSaved) {
+        return new ServiceLaunchProfileOptions {
+            LoadProfileName = profileSaved ? _appProfileName : null,
+            SaveProfileName = _appProfileName,
+            Model = _localProviderModel,
+            OpenAITransport = _localProviderTransport,
+            OpenAIBaseUrl = _localProviderBaseUrl,
+            OpenAIStreaming = true,
+            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+            EnablePowerShellPack = string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal) ? enabled : null,
+            EnableTestimoXPack = string.Equals(normalizedPackId, "testimox", StringComparison.Ordinal) ? enabled : null,
+            EnableOfficeImoPack = string.Equals(normalizedPackId, "officeimo", StringComparison.Ordinal) ? enabled : null
+        };
     }
 
     private string ResolveToolPackId(string toolName) {

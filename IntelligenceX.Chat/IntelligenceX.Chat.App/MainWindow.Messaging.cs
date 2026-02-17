@@ -279,7 +279,7 @@ public sealed partial class MainWindow : Window {
                         var packId = (TryGetString(root, "packId") ?? string.Empty).Trim();
                         var enabled = TryGetBoolean(root, "enabled");
                         if (!string.IsNullOrWhiteSpace(packId) && enabled.HasValue) {
-                            if (SetToolPackEnabled(packId, enabled.Value)) {
+                            if (await SetToolPackEnabledAsync(packId, enabled.Value).ConfigureAwait(true)) {
                                 await PublishOptionsStateAsync().ConfigureAwait(true);
                                 await PersistAppStateAsync().ConfigureAwait(true);
                             } else {
