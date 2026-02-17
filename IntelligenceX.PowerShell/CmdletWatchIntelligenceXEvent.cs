@@ -10,7 +10,8 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Watches JSON-RPC notifications from the app-server.</para>
-/// <para type="description">Streams notification events until the cmdlet is cancelled. Optionally filter by method.</para>
+/// <para type="description">Streams notification events until cancelled. Use method filters to observe specific
+/// protocol events such as turn progress, login completion, or status changes.</para>
 /// <example>
 ///  <para>Watch all events</para>
 ///  <code>Watch-IntelligenceXEvent</code>
@@ -18,6 +19,10 @@ namespace IntelligenceX.PowerShell;
 /// <example>
 ///  <para>Watch only turn deltas</para>
 ///  <code>Watch-IntelligenceXEvent -Method "turn/delta"</code>
+/// </example>
+/// <example>
+///  <para>Watch multiple event types</para>
+///  <code>Watch-IntelligenceXEvent -Method "turn/delta","turn/completed","account/login/completed"</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Watch, "IntelligenceXEvent")]
@@ -30,7 +35,7 @@ public sealed class CmdletWatchIntelligenceXEvent : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Optional method filter.</para>
+    /// <para type="description">Optional JSON-RPC method filter list. Matching is case-insensitive.</para>
     /// </summary>
     [Parameter]
     public string[]? Method { get; set; }

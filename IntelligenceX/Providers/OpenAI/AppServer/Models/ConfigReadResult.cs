@@ -4,7 +4,8 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents the configuration read response.
+/// Represents the app-server configuration read response.
+/// Includes merged effective config plus metadata describing value origins and layers.
 /// </summary>
 public sealed class ConfigReadResult {
     /// <summary>
@@ -20,19 +21,19 @@ public sealed class ConfigReadResult {
     }
 
     /// <summary>
-    /// Gets the merged configuration.
+    /// Gets the merged effective configuration object.
     /// </summary>
     public JsonObject Config { get; }
     /// <summary>
-    /// Gets metadata about configuration origins.
+    /// Gets metadata keyed by configuration field name that describes where each value originated.
     /// </summary>
     public IReadOnlyDictionary<string, ConfigLayerMetadata> Origins { get; }
     /// <summary>
-    /// Gets the configuration layers.
+    /// Gets configuration layers in evaluation order.
     /// </summary>
     public IReadOnlyList<ConfigLayer> Layers { get; }
     /// <summary>
-    /// Gets the raw JSON object.
+    /// Gets the original raw JSON payload returned by app-server.
     /// </summary>
     public JsonObject Raw { get; }
     /// <summary>
@@ -77,7 +78,7 @@ public sealed class ConfigReadResult {
 }
 
 /// <summary>
-/// Metadata about a configuration layer.
+/// Metadata about the source of a specific configuration field.
 /// </summary>
 public sealed class ConfigLayerMetadata {
     /// <summary>
@@ -91,7 +92,7 @@ public sealed class ConfigLayerMetadata {
     }
 
     /// <summary>
-    /// Gets the source information.
+    /// Gets source descriptor information for the configuration value.
     /// </summary>
     public ConfigLayerSourceInfo Source { get; }
     /// <summary>
@@ -121,7 +122,7 @@ public sealed class ConfigLayerMetadata {
 }
 
 /// <summary>
-/// Represents a single configuration layer.
+/// Represents a single configuration layer considered by app-server.
 /// </summary>
 public sealed class ConfigLayer {
     /// <summary>
@@ -138,7 +139,7 @@ public sealed class ConfigLayer {
     }
 
     /// <summary>
-    /// Gets the source information.
+    /// Gets source descriptor information for this layer.
     /// </summary>
     public ConfigLayerSourceInfo Source { get; }
     /// <summary>
@@ -150,7 +151,7 @@ public sealed class ConfigLayer {
     /// </summary>
     public JsonValue? Config { get; }
     /// <summary>
-    /// Gets the disabled reason when the layer is not active.
+    /// Gets the reason the layer was disabled, if this layer was not active.
     /// </summary>
     public string? DisabledReason { get; }
     /// <summary>
@@ -178,7 +179,7 @@ public sealed class ConfigLayer {
 }
 
 /// <summary>
-/// Represents the source descriptor for a configuration layer.
+/// Represents source descriptor details for a configuration layer.
 /// </summary>
 public sealed class ConfigLayerSourceInfo {
     /// <summary>
@@ -199,7 +200,7 @@ public sealed class ConfigLayerSourceInfo {
     /// </summary>
     public JsonValue? Raw { get; }
     /// <summary>
-    /// Gets unrecognized fields from the payload.
+    /// Gets unrecognized fields from the payload when the source is represented as an object.
     /// </summary>
     public JsonObject? Additional { get; }
 

@@ -85,9 +85,18 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Reads the current configuration.
+    /// Reads the effective app-server configuration and layer metadata.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// A <see cref="ConfigReadResult"/> containing merged configuration values, source metadata, and layer details.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var config = await client.ReadConfigAsync(cancellationToken);
+    /// var model = config.Config.GetString("model");
+    /// </code>
+    /// </example>
     public async Task<ConfigReadResult> ReadConfigAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("config/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -98,11 +107,21 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Writes a single configuration value.
+    /// Writes a single app-server configuration value.
     /// </summary>
-    /// <param name="key">Configuration key.</param>
-    /// <param name="value">Configuration value.</param>
+    /// <param name="key">Configuration key to write (for example <c>model</c>).</param>
+    /// <param name="value">Configuration value encoded as JSON.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the write request is accepted.</returns>
+    /// <remarks>
+    /// Use <see cref="ReadConfigAsync(System.Threading.CancellationToken)"/> after writing to confirm the effective value
+    /// and inspect origin/layer metadata.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// await client.WriteConfigValueAsync("model", JsonConversion.ToJsonValue("gpt-5.3-codex"), cancellationToken);
+    /// </code>
+    /// </example>
     public Task WriteConfigValueAsync(string key, JsonValue value, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(key, nameof(key));
         Guard.NotNull(value, nameof(value));
@@ -113,10 +132,20 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Writes a batch of configuration values.
+    /// Writes multiple app-server configuration values in a single request.
     /// </summary>
-    /// <param name="entries">Entries to write.</param>
+    /// <param name="entries">Configuration entries to write as a batch.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the batch write request is accepted.</returns>
+    /// <example>
+    /// <code>
+    /// var entries = new[] {
+    ///     new ConfigEntry("model", JsonConversion.ToJsonValue("gpt-5.3-codex")),
+    ///     new ConfigEntry("approvalPolicy", JsonConversion.ToJsonValue("on-failure"))
+    /// };
+    /// await client.WriteConfigBatchAsync(entries, cancellationToken);
+    /// </code>
+    /// </example>
     public Task WriteConfigBatchAsync(IReadOnlyList<ConfigEntry> entries, CancellationToken cancellationToken = default) {
         Guard.NotNull(entries, nameof(entries));
         var items = new JsonArray();
@@ -130,9 +159,18 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Reads configuration requirements.
+    /// Reads server-side constraints for configuration values.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// A <see cref="ConfigRequirementsReadResult"/> describing allowed values such as approval policies and sandbox modes.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var requirements = await client.ReadConfigRequirementsAsync(cancellationToken);
+    /// var allowedPolicies = requirements.Requirements?.AllowedApprovalPolicies;
+    /// </code>
+    /// </example>
     public async Task<ConfigRequirementsReadResult> ReadConfigRequirementsAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("configRequirements/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -143,11 +181,23 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Starts an MCP OAuth login flow.
+    /// Starts an MCP OAuth login flow for a configured server.
     /// </summary>
-    /// <param name="serverId">Optional server id.</param>
-    /// <param name="serverName">Optional server name.</param>
+    /// <param name="serverId">Optional MCP server identifier.</param>
+    /// <param name="serverName">Optional MCP server name.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// A <see cref="McpOauthLoginStart"/> containing <c>LoginId</c> and browser <c>AuthUrl</c>.
+    /// </returns>
+    /// <remarks>
+    /// Provide either <paramref name="serverId"/> or <paramref name="serverName"/>.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var login = await client.StartMcpOauthLoginAsync(serverName: "github", cancellationToken: cancellationToken);
+    /// Console.WriteLine(login.AuthUrl);
+    /// </code>
+    /// </example>
     public async Task<McpOauthLoginStart> StartMcpOauthLoginAsync(string? serverId, string? serverName = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -166,11 +216,22 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Lists MCP server status entries.
+    /// Lists MCP server status entries, including auth and capability metadata.
     /// </summary>
-    /// <param name="cursor">Pagination cursor.</param>
-    /// <param name="limit">Maximum number of items.</param>
+    /// <param name="cursor">Optional pagination cursor from a previous result.</param>
+    /// <param name="limit">Optional maximum number of items to return in this page.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// A <see cref="McpServerStatusListResult"/> with the current page and optional <c>NextCursor</c>.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var firstPage = await client.ListMcpServerStatusAsync(limit: 25, cancellationToken: cancellationToken);
+    /// foreach (var server in firstPage.Servers) {
+    ///     Console.WriteLine($"{server.Name}: {server.AuthStatus}");
+    /// }
+    /// </code>
+    /// </example>
     public async Task<McpServerStatusListResult> ListMcpServerStatusAsync(string? cursor = null, int? limit = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -189,9 +250,19 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     /// <summary>
-    /// Reloads MCP server configuration.
+    /// Reloads MCP server configuration in the running app-server.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the reload request is accepted.</returns>
+    /// <remarks>
+    /// Use this method after modifying MCP configuration files to refresh server definitions without restarting the process.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// await client.ReloadMcpServerConfigAsync(cancellationToken);
+    /// var status = await client.ListMcpServerStatusAsync(cancellationToken: cancellationToken);
+    /// </code>
+    /// </example>
     public async Task ReloadMcpServerConfigAsync(CancellationToken cancellationToken = default) {
         await CallWithRetryAsync("config/mcpServer/reload", (JsonObject?)null, false, cancellationToken).ConfigureAwait(false);
     }

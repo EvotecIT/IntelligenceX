@@ -3,7 +3,7 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents the initial response from an MCP OAuth login start.
+/// Represents the initial response from an MCP OAuth login start request.
 /// </summary>
 public sealed class McpOauthLoginStart {
     /// <summary>
@@ -17,15 +17,15 @@ public sealed class McpOauthLoginStart {
     }
 
     /// <summary>
-    /// Gets the login id.
+    /// Gets the login identifier used to correlate this OAuth flow.
     /// </summary>
     public string? LoginId { get; }
     /// <summary>
-    /// Gets the authorization URL.
+    /// Gets the browser authorization URL for completing OAuth consent.
     /// </summary>
     public string? AuthUrl { get; }
     /// <summary>
-    /// Gets the raw JSON object.
+    /// Gets the original raw JSON payload returned by app-server.
     /// </summary>
     public JsonObject Raw { get; }
     /// <summary>

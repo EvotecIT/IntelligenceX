@@ -9,7 +9,8 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Runs health checks for OpenAI app-server and optional Copilot CLI.</para>
-/// <para type="description">Returns status for the active IntelligenceX client and, optionally, the Copilot CLI.</para>
+/// <para type="description">Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI
+/// instance using explicit or config-derived options.</para>
 /// <example>
 ///  <para>Check OpenAI app-server health</para>
 ///  <code>Get-IntelligenceXHealth</code>
@@ -18,12 +19,16 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Check OpenAI and Copilot CLI health</para>
 ///  <code>Get-IntelligenceXHealth -Copilot</code>
 /// </example>
+/// <example>
+///  <para>Check Copilot with explicit path and auto-install enabled</para>
+///  <code>Get-IntelligenceXHealth -Copilot -CopilotCliPath "copilot" -CopilotAutoInstall</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXHealth")]
 [OutputType(typeof(HealthReportRecord))]
 public sealed class CmdletGetIntelligenceXHealth : IntelligenceXCmdlet {
     /// <summary>
-    /// <para type="description">OpenAI app-server client instance. Defaults to the active client.</para>
+    /// <para type="description">OpenAI/app-server client instance. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
@@ -65,7 +70,7 @@ public sealed class CmdletGetIntelligenceXHealth : IntelligenceXCmdlet {
     public SwitchParameter CopilotAutoInstall { get; set; }
 
     /// <summary>
-    /// <para type="description">Copilot auto-install method.</para>
+    /// <para type="description">Copilot auto-install method to use when <c>-CopilotAutoInstall</c> is set.</para>
     /// </summary>
     [Parameter]
     public CopilotCliInstallMethod CopilotInstallMethod { get; set; } = CopilotCliInstallMethod.Auto;

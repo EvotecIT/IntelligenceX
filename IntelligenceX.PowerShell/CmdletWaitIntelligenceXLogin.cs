@@ -15,7 +15,11 @@ namespace IntelligenceX.PowerShell;
 /// </example>
 /// <example>
 ///  <para>Wait for a specific login with a shorter timeout</para>
-///  <code>Wait-IntelligenceXLogin -LoginId $login.id -TimeoutSeconds 120</code>
+///  <code>Wait-IntelligenceXLogin -LoginId $login.LoginId -TimeoutSeconds 120</code>
+/// </example>
+/// <example>
+///  <para>Start and wait in one flow</para>
+///  <code>$login = Start-IntelligenceXChatGptLogin; Wait-IntelligenceXLogin -LoginId $login.LoginId</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Wait, "IntelligenceXLogin")]
@@ -33,7 +37,7 @@ public sealed class CmdletWaitIntelligenceXLogin : IntelligenceXCmdlet {
     public string? LoginId { get; set; }
 
     /// <summary>
-    /// <para type="description">Maximum wait time in seconds.</para>
+    /// <para type="description">Maximum wait time in seconds before cancellation.</para>
     /// </summary>
     [Parameter]
     public int TimeoutSeconds { get; set; } = 300;

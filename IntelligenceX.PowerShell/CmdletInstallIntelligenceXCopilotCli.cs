@@ -5,30 +5,39 @@ using IntelligenceX.Copilot;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Installs GitHub Copilot CLI (opt-in).</para>
-/// <para type="description">Runs the platform-appropriate install command for the Copilot CLI.</para>
+/// <para type="synopsis">Installs GitHub Copilot CLI using a selected install strategy.</para>
+/// <para type="description">Executes the platform-specific installer command and optionally returns command metadata.
+/// Supports WhatIf/Confirm through <c>ShouldProcess</c>.</para>
 /// <example>
 ///  <para>Install Copilot CLI using the auto method</para>
 ///  <code>Install-IntelligenceXCopilotCli</code>
+/// </example>
+/// <example>
+///  <para>Preview installation without executing changes</para>
+///  <code>Install-IntelligenceXCopilotCli -WhatIf</code>
+/// </example>
+/// <example>
+///  <para>Install prerelease and return command metadata</para>
+///  <code>Install-IntelligenceXCopilotCli -Prerelease -PassThru</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Install, "IntelligenceXCopilotCli", SupportsShouldProcess = true)]
 [OutputType(typeof(CopilotCliInstallCommand))]
 public sealed class CmdletInstallIntelligenceXCopilotCli : PSCmdlet {
     /// <summary>
-    /// <para type="description">Install method to use.</para>
+    /// <para type="description">Install method to use (Auto, Winget, Brew, Apt, etc. depending on platform).</para>
     /// </summary>
     [Parameter]
     public CopilotCliInstallMethod Method { get; set; } = CopilotCliInstallMethod.Auto;
 
     /// <summary>
-    /// <para type="description">Install prerelease version.</para>
+    /// <para type="description">Installs a prerelease build when available.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Prerelease { get; set; }
 
     /// <summary>
-    /// <para type="description">Return the install command object.</para>
+    /// <para type="description">Returns the resolved install command object after successful execution.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter PassThru { get; set; }

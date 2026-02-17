@@ -8,11 +8,20 @@ using IntelligenceX.OpenAI;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Lists collaboration modes.</para>
-/// <para type="description">Returns available collaboration modes for the app-server.</para>
+/// <para type="synopsis">Lists collaboration modes available in the current app-server runtime.</para>
+/// <para type="description">Use this cmdlet to discover valid collaboration mode values before setting them in
+/// configuration or passing them to review/chat workflows.</para>
 /// <example>
 ///  <para>List collaboration modes</para>
 ///  <code>Get-IntelligenceXCollaborationMode</code>
+/// </example>
+/// <example>
+///  <para>Show mode names and mapped mode values</para>
+///  <code>(Get-IntelligenceXCollaborationMode).Modes | Select-Object Name, Mode, Model</code>
+/// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>Get-IntelligenceXCollaborationMode -Raw</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXCollaborationMode")]
@@ -25,7 +34,7 @@ public sealed class CmdletGetIntelligenceXCollaborationMode : IntelligenceXCmdle
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed mode models.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

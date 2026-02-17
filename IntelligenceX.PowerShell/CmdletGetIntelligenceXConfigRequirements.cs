@@ -8,8 +8,9 @@ using IntelligenceX.Json;
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Reads configuration requirements.</para>
-/// <para type="description">Returns required/optional settings for the current app-server configuration.</para>
+/// <para type="synopsis">Reads server-defined constraints for supported configuration values.</para>
+/// <para type="description">Returns allowed values for key settings (for example approval policy and sandbox mode)
+/// so scripts can validate config before writing changes.</para>
 /// <example>
 ///  <para>Get config requirements</para>
 ///  <code>Get-IntelligenceXConfigRequirements</code>
@@ -17,6 +18,10 @@ namespace IntelligenceX.PowerShell;
 /// <example>
 ///  <para>Get raw JSON output</para>
 ///  <code>Get-IntelligenceXConfigRequirements -Raw</code>
+/// </example>
+/// <example>
+///  <para>Inspect allowed approval policies</para>
+///  <code>(Get-IntelligenceXConfigRequirements).Requirements.AllowedApprovalPolicies</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXConfigRequirements")]
@@ -29,7 +34,7 @@ public sealed class CmdletGetIntelligenceXConfigRequirements : IntelligenceXCmdl
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed requirements models.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }

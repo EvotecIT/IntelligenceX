@@ -8,7 +8,8 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Returns the current account details.</para>
-/// <para type="description">Shows account metadata for the active client.</para>
+/// <para type="description">Returns the account identity for the active session, such as email and account id.
+/// Useful to confirm which credential bundle is currently active.</para>
 /// <example>
 ///  <para>Get account info</para>
 ///  <code>Get-IntelligenceXAccount</code>
@@ -16,6 +17,10 @@ namespace IntelligenceX.PowerShell;
 /// <example>
 ///  <para>Get raw JSON account payload</para>
 ///  <code>Get-IntelligenceXAccount -Raw</code>
+/// </example>
+/// <example>
+///  <para>Verify account after login in a script</para>
+///  <code>$login = Start-IntelligenceXChatGptLogin; Wait-IntelligenceXLogin -LoginId $login.LoginId; Get-IntelligenceXAccount</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXAccount")]
@@ -28,7 +33,7 @@ public sealed class CmdletGetIntelligenceXAccount : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Return raw JSON response.</para>
+    /// <para type="description">Returns the raw JSON-RPC payload instead of typed account info.</para>
     /// </summary>
     [Parameter]
     public SwitchParameter Raw { get; set; }
