@@ -33,6 +33,8 @@ namespace IntelligenceX.Chat.App;
 /// </summary>
 public sealed partial class MainWindow : Window {
     private const uint WmNcLButtonDown = 0x00A1;
+    private const uint WmNcLButtonUp = 0x00A2;
+    private const uint WmLButtonUp = 0x0202;
     private const uint WmMouseWheel = 0x020A;
     private const uint WmMouseHWheel = 0x020E;
     private const uint WmPointerWheel = 0x024E;
@@ -60,6 +62,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
+    private static readonly TimeSpan DragMoveWatchdogInterval = TimeSpan.FromMilliseconds(1200);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -79,6 +82,9 @@ public sealed partial class MainWindow : Window {
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
@@ -148,8 +154,22 @@ public sealed partial class MainWindow : Window {
     private bool _queuedWheelFromGlobal;
     private bool _queuedWheelFromPointer;
     private bool _wheelForwardFlushScheduled;
+    private readonly object _dragMoveWatchdogSync = new();
+    private int _dragMoveWatchdogSequence;
+    private bool _dragMoveWatchdogInFlight;
     private bool _windowIsActive;
     private bool _nativeWheelObserved;
+    private long _wheelPointerQueuedEvents;
+    private long _wheelGlobalQueuedEvents;
+    private long _wheelGlobalRejectedEvents;
+    private long _wheelZeroDeltaIgnoredEvents;
+    private long _wheelDroppedNotReadyEvents;
+    private long _wheelForwardedBatches;
+    private long _wheelForwardedPointerBatches;
+    private long _wheelForwardedGlobalBatches;
+    private long _wheelForwardedAbsDelta;
+    private long _dragMoveWatchdogArmCount;
+    private long _dragMoveWatchdogForcedReleaseCount;
     private static readonly MarkdownRendererOptions MarkdownOptions = MarkdownRendererPresets.CreateChatStrictMinimal();
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
     private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
@@ -431,6 +451,7 @@ public sealed partial class MainWindow : Window {
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
             DetachNativeTitleBarEventSubscriptions();
+            LogInputReliabilityTelemetry("shutdown");
             UninstallGlobalWheelHook();
             UninstallWindowMessageHook();
             _stateStore.Dispose();
@@ -720,6 +741,7 @@ public sealed partial class MainWindow : Window {
             if (nCode >= 0 && _webViewReady && isWheelMessage && lParam != IntPtr.Zero && IsForegroundOwnedByCurrentProcess()) {
                 var hook = Marshal.PtrToStructure<MouseLowLevelHookStruct>(lParam);
                 if (!ShouldAcceptGlobalWheelEvent(hook.Point)) {
+                    Interlocked.Increment(ref _wheelGlobalRejectedEvents);
                     return CallNextHookEx(_globalMouseHookHandle, nCode, wParam, lParam);
                 }
 
@@ -788,7 +810,14 @@ public sealed partial class MainWindow : Window {
 
     private void QueueWheelForward(int delta, bool fromGlobalHook) {
         if (delta == 0) {
+            Interlocked.Increment(ref _wheelZeroDeltaIgnoredEvents);
             return;
+        }
+
+        if (fromGlobalHook) {
+            Interlocked.Increment(ref _wheelGlobalQueuedEvents);
+        } else {
+            Interlocked.Increment(ref _wheelPointerQueuedEvents);
         }
 
         bool shouldScheduleFlush;
@@ -836,7 +865,18 @@ public sealed partial class MainWindow : Window {
         }
 
         if (!_webViewReady || delta == 0) {
+            Interlocked.Increment(ref _wheelDroppedNotReadyEvents);
             return;
+        }
+
+        Interlocked.Increment(ref _wheelForwardedBatches);
+        Interlocked.Add(ref _wheelForwardedAbsDelta, Math.Abs((long)delta));
+        if (fromPointer) {
+            Interlocked.Increment(ref _wheelForwardedPointerBatches);
+        }
+
+        if (fromGlobal) {
+            Interlocked.Increment(ref _wheelForwardedGlobalBatches);
         }
 
         if (fromPointer) {
@@ -902,6 +942,114 @@ public sealed partial class MainWindow : Window {
         }
 
         return point.X >= rect.Left && point.X < rect.Right && point.Y >= rect.Top && point.Y < rect.Bottom;
+    }
+
+    private int ArmDragMoveWatchdog(IntPtr hwnd) {
+        if (hwnd == IntPtr.Zero) {
+            return 0;
+        }
+
+        int sequence;
+        lock (_dragMoveWatchdogSync) {
+            sequence = unchecked(_dragMoveWatchdogSequence + 1);
+            if (sequence == 0) {
+                sequence = 1;
+            }
+
+            _dragMoveWatchdogSequence = sequence;
+            _dragMoveWatchdogInFlight = true;
+        }
+
+        Interlocked.Increment(ref _dragMoveWatchdogArmCount);
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(DragMoveWatchdogInterval).ConfigureAwait(false);
+                TryForceEndDragMove(hwnd, sequence);
+            } catch (Exception ex) {
+                StartupLog.Write("ArmDragMoveWatchdog failed: " + ex.Message);
+            }
+        });
+
+        return sequence;
+    }
+
+    private void CompleteDragMoveWatchdog(int sequence) {
+        if (sequence == 0) {
+            return;
+        }
+
+        lock (_dragMoveWatchdogSync) {
+            if (_dragMoveWatchdogSequence == sequence) {
+                _dragMoveWatchdogInFlight = false;
+            }
+        }
+    }
+
+    private void TryForceEndDragMove(IntPtr hwnd, int sequence) {
+        lock (_dragMoveWatchdogSync) {
+            if (!_dragMoveWatchdogInFlight || _dragMoveWatchdogSequence != sequence) {
+                return;
+            }
+        }
+
+        // If the button is still physically pressed, user is actively dragging.
+        if ((GetAsyncKeyState(VkLButton) & unchecked((short)0x8000)) != 0) {
+            return;
+        }
+
+        lock (_dragMoveWatchdogSync) {
+            if (!_dragMoveWatchdogInFlight || _dragMoveWatchdogSequence != sequence) {
+                return;
+            }
+
+            _dragMoveWatchdogInFlight = false;
+        }
+
+        try {
+            ReleaseCapture();
+            if (hwnd != IntPtr.Zero) {
+                _ = PostMessage(hwnd, WmLButtonUp, IntPtr.Zero, IntPtr.Zero);
+                _ = PostMessage(hwnd, WmNcLButtonUp, (IntPtr)HtCaption, IntPtr.Zero);
+            }
+
+            var forced = Interlocked.Increment(ref _dragMoveWatchdogForcedReleaseCount);
+            StartupLog.Write("DragMove watchdog forced release #" + forced.ToString(CultureInfo.InvariantCulture));
+        } catch (Exception ex) {
+            StartupLog.Write("TryForceEndDragMove failed: " + ex.Message);
+        }
+    }
+
+    private void LogInputReliabilityTelemetry(string phase) {
+        try {
+            var pointerQueued = Interlocked.Read(ref _wheelPointerQueuedEvents);
+            var globalQueued = Interlocked.Read(ref _wheelGlobalQueuedEvents);
+            var globalRejected = Interlocked.Read(ref _wheelGlobalRejectedEvents);
+            var zeroDeltaIgnored = Interlocked.Read(ref _wheelZeroDeltaIgnoredEvents);
+            var droppedNotReady = Interlocked.Read(ref _wheelDroppedNotReadyEvents);
+            var forwardedBatches = Interlocked.Read(ref _wheelForwardedBatches);
+            var forwardedPointerBatches = Interlocked.Read(ref _wheelForwardedPointerBatches);
+            var forwardedGlobalBatches = Interlocked.Read(ref _wheelForwardedGlobalBatches);
+            var forwardedAbsDelta = Interlocked.Read(ref _wheelForwardedAbsDelta);
+            var dragWatchdogArmed = Interlocked.Read(ref _dragMoveWatchdogArmCount);
+            var dragWatchdogForced = Interlocked.Read(ref _dragMoveWatchdogForcedReleaseCount);
+
+            StartupLog.Write(
+                "InputTelemetry(" + phase + "): " +
+                "wheel.pointerQueued=" + pointerQueued.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.globalQueued=" + globalQueued.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.globalRejected=" + globalRejected.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.zeroDeltaIgnored=" + zeroDeltaIgnored.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.droppedNotReady=" + droppedNotReady.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedBatches=" + forwardedBatches.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedPointerBatches=" + forwardedPointerBatches.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedGlobalBatches=" + forwardedGlobalBatches.ToString(CultureInfo.InvariantCulture) +
+                ", wheel.forwardedAbsDelta=" + forwardedAbsDelta.ToString(CultureInfo.InvariantCulture) +
+                ", drag.watchdogArmed=" + dragWatchdogArmed.ToString(CultureInfo.InvariantCulture) +
+                ", drag.watchdogForced=" + dragWatchdogForced.ToString(CultureInfo.InvariantCulture));
+        } catch (Exception ex) {
+            StartupLog.Write("LogInputReliabilityTelemetry failed: " + ex.Message);
+        }
     }
 
     private void EnsureNativeTitleBarEventSubscriptions() {

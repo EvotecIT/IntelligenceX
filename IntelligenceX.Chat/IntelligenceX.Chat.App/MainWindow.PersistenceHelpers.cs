@@ -494,14 +494,19 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
+            var dragWatchdogSequence = ArmDragMoveWatchdog(hwnd);
             var lParam = IntPtr.Zero;
             if (GetCursorPos(out var cursor)) {
                 var packed = ((cursor.Y & 0xFFFF) << 16) | (cursor.X & 0xFFFF);
                 lParam = (IntPtr)packed;
             }
 
-            ReleaseCapture();
-            _ = SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, lParam);
+            try {
+                ReleaseCapture();
+                _ = SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, lParam);
+            } finally {
+                CompleteDragMoveWatchdog(dragWatchdogSequence);
+            }
         } catch {
             // Ignore.
         }
