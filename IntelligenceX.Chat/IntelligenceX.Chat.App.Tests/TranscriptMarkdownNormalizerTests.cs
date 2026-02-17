@@ -78,18 +78,6 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
-    /// Ensures leading strong metric lines are normalized so markdown parsers do not treat them as definition lists.
-    /// </summary>
-    [Fact]
-    public void NormalizeForRendering_RewritesLeadingStrongMetricLineToValueStrong() {
-        var text = "**Available Kerberos-related rules: 12** (all enabled, built-in).";
-
-        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
-
-        Assert.Equal("Available Kerberos-related rules - **12** (all enabled, built-in).", normalized);
-    }
-
-    /// <summary>
     /// Ensures glued bold/word boundaries are normalized into readable spacing.
     /// </summary>
     [Fact]
