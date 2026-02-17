@@ -21,6 +21,7 @@ public sealed class MainWindowRoutingMetaPayloadTests {
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":8,"totalToolCount":21}""", 8, 21)]
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"8","totalToolCount":"21"}""", 8, 21)]
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"8.7","totalToolCount":"21.4"}""", 8, 21)]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1e3","totalToolCount":"2e3"}""", 1000, 2000)]
     public void TryParseRoutingMetaPayload_AcceptsNumericVariants(string payload, int expectedSelected, int expectedTotal) {
         var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
 
@@ -99,12 +100,11 @@ public sealed class MainWindowRoutingMetaPayloadTests {
     }
 
     /// <summary>
-    /// Ensures exponent and grouped numeric string formats are rejected to keep parsing strict and predictable.
+    /// Ensures grouped numeric string formats are rejected to keep parsing locale-independent.
     /// </summary>
     [Theory]
-    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1e3","totalToolCount":"21"}""")]
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1,000","totalToolCount":"21"}""")]
-    public void TryParseRoutingMetaPayload_ReturnsFalseForNonPlainNumericStringFormats(string payload) {
+    public void TryParseRoutingMetaPayload_ReturnsFalseForGroupedNumericStringFormats(string payload) {
         var parsed = Invoke(payload, out _, out _, out _);
 
         Assert.False(parsed);

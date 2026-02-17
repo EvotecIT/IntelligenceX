@@ -1215,7 +1215,8 @@ public sealed partial class MainWindow : Window {
                     return true;
                 }
 
-                if (decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture,
+                if (decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
+                        CultureInfo.InvariantCulture,
                         out var decimalText)) {
                     return TryClampRoutingMetaDecimalCount(decimalText, out value);
                 }
