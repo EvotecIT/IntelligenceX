@@ -23,6 +23,73 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures ordered-list markers in <c>1)</c> form are normalized for markdown engines that require <c>1.</c>.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_ConvertsParenOrderedListMarkersToDotStyle() {
+        var text = "1) First check\n2) Second check";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("1. First check\n2. Second check", normalized);
+    }
+
+    /// <summary>
+    /// Ensures ordered-list markers get spacing before strong spans in compact model output.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_AddsMissingSpaceAfterOrderedMarkersBeforeStrongSpans() {
+        var text = "1)**Privilege hygiene sweep**\n2.**Delegation risk audit**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("1. **Privilege hygiene sweep**\n2. **Delegation risk audit**", normalized);
+    }
+
+    /// <summary>
+    /// Ensures compact ordered-list items chained after closing parenthesis are split into lines.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_SplitsCollapsedOrderedListItemsAfterParenthesis() {
+        var text = "1. **Privilege hygiene sweep**(Domain Admins + nested exposure)2.**Delegation risk audit**(unconstrained)";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "1. **Privilege hygiene sweep** (Domain Admins + nested exposure)\n2. **Delegation risk audit** (unconstrained)",
+            normalized);
+    }
+
+    /// <summary>
+    /// Ensures single-line collapsed numbered menus are expanded into readable markdown list items.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_ExpandsCollapsedSingleLineNumberedMenuWithStrongDetails() {
+        var text =
+            "1) **Privilege hygiene sweep(Domain Admins + other privileged groups, nested exposure) 2)** Delegation risk audit**(unconstrained / constrained / protocol transition) 3)** Replication + DC health snapshot** (stale links, failing partners, LDAP/Kerberos basics)";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "1. **Privilege hygiene sweep** (Domain Admins + other privileged groups, nested exposure)\n"
+            + "2. **Delegation risk audit** (unconstrained / constrained / protocol transition)\n"
+            + "3. **Replication + DC health snapshot** (stale links, failing partners, LDAP/Kerberos basics)",
+            normalized);
+    }
+
+    /// <summary>
+    /// Ensures leading strong metric lines are normalized so markdown parsers do not treat them as definition lists.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RewritesLeadingStrongMetricLineToValueStrong() {
+        var text = "**Available Kerberos-related rules: 12** (all enabled, built-in).";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("Available Kerberos-related rules - **12** (all enabled, built-in).", normalized);
+    }
+
+    /// <summary>
     /// Ensures glued bold/word boundaries are normalized into readable spacing.
     /// </summary>
     [Fact]
