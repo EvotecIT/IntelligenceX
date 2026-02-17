@@ -1146,10 +1146,12 @@ public sealed partial class MainWindow : Window {
                 return false;
             }
 
+            var hasStrategy = false;
             if (root.TryGetProperty("strategy", out var strategyElement) && strategyElement.ValueKind == JsonValueKind.String) {
                 var parsed = (strategyElement.GetString() ?? string.Empty).Trim().Replace('_', ' ');
                 if (parsed.Length > 0) {
                     strategy = parsed;
+                    hasStrategy = true;
                 }
             }
 
@@ -1171,7 +1173,7 @@ public sealed partial class MainWindow : Window {
                 selectedToolCount = totalToolCount;
             }
 
-            return hasSelectedToolCount && hasTotalToolCount;
+            return hasStrategy && hasSelectedToolCount && hasTotalToolCount;
         } catch (JsonException) {
             return false;
         }

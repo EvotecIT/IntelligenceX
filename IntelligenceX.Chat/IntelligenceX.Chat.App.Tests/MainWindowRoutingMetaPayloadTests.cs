@@ -110,6 +110,18 @@ public sealed class MainWindowRoutingMetaPayloadTests {
         Assert.False(parsed);
     }
 
+    /// <summary>
+    /// Ensures routing metadata requires a non-empty strategy field to avoid ambiguous UI status text.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"selectedToolCount":"8","totalToolCount":"21"}""")]
+    [InlineData("""{"strategy":"","selectedToolCount":"8","totalToolCount":"21"}""")]
+    public void TryParseRoutingMetaPayload_ReturnsFalseWhenStrategyIsMissingOrEmpty(string payload) {
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
     private static bool Invoke(string payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
         var args = new object?[] { payload, null, 0, 0 };
         var result = TryParseRoutingMetaPayloadMethod.Invoke(null, args);
