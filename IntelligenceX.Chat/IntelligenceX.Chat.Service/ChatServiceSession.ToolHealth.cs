@@ -85,13 +85,19 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds);
         var warnings = new List<string>(_startupWarnings);
         var hasNewWarnings = false;
 
         foreach (var definition in packInfoDefinitions) {
             var metadata = ResolvePackMetadata(definition);
+            var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind);
             var probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+            if (!probe.Ok && IsToolTimeoutProbe(probe)) {
+                var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind);
+                if (retryTimeoutSeconds > timeoutSeconds) {
+                    probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, retryTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+                }
+            }
             if (probe.Ok) {
                 continue;
             }
@@ -175,12 +181,29 @@ internal sealed partial class ChatServiceSession {
         return (packId, packName, sourceKind);
     }
 
-    private static int ResolveStartupToolHealthTimeoutSeconds(int configuredTimeoutSeconds) {
+    internal static int ResolveStartupToolHealthTimeoutSeconds(int configuredTimeoutSeconds, ToolPackSourceKind sourceKind) {
         if (configuredTimeoutSeconds <= 0) {
-            return 2;
+            return sourceKind == ToolPackSourceKind.ClosedSource ? 8 : 4;
         }
 
-        return Math.Clamp(configuredTimeoutSeconds, 1, 5);
+        return sourceKind == ToolPackSourceKind.ClosedSource
+            ? Math.Clamp(configuredTimeoutSeconds, 4, 20)
+            : Math.Clamp(configuredTimeoutSeconds, 2, 10);
+    }
+
+    internal static int ResolveStartupToolHealthRetryTimeoutSeconds(int initialTimeoutSeconds, ToolPackSourceKind sourceKind) {
+        if (initialTimeoutSeconds <= 0) {
+            return sourceKind == ToolPackSourceKind.ClosedSource ? 12 : 6;
+        }
+
+        var doubled = initialTimeoutSeconds * 2;
+        return sourceKind == ToolPackSourceKind.ClosedSource
+            ? Math.Clamp(doubled, 10, 30)
+            : Math.Clamp(doubled, 4, 12);
+    }
+
+    private static bool IsToolTimeoutProbe(ToolHealthDiagnostics.ProbeResult probe) {
+        return string.Equals(probe.ErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeHealthErrorCode(string? value) {
