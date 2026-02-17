@@ -14,7 +14,10 @@
       { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
       { "title": "Security & Trust", "href": "/docs/reviewer/security-trust/" },
-      { "title": "Static Analysis", "href": "/docs/reviewer/static-analysis/" }
+      { "title": "Static Analysis", "href": "/docs/reviewer/static-analysis/" },
+      { "title": "Projects + PR Monitoring", "href": "/docs/reviewer/projects-pr-monitoring/" },
+      { "title": "Project Bootstrap and Sync", "href": "/docs/reviewer/project-bootstrap-sync/" },
+      { "title": "Project Views and Operations", "href": "/docs/reviewer/project-views-and-ops/" }
     ]
   },
   {

@@ -12,6 +12,7 @@ Welcome to the IntelligenceX documentation.
 - [Getting Started](/docs/getting-started/)
 - [Reviewer Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
 - [CLI Quick Start](/docs/cli/quickstart/)
+- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
 
 ## GitHub Actions Reviewer
 
@@ -21,6 +22,9 @@ Welcome to the IntelligenceX documentation.
 - [Reviewer Configuration](/docs/reviewer/configuration/)
 - [Reviewer Security & Trust](/docs/reviewer/security-trust/)
 - [Reviewer Static Analysis](/docs/reviewer/static-analysis/)
+- [Reviewer Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
+- [Reviewer Project Bootstrap and Sync](/docs/reviewer/project-bootstrap-sync/)
+- [Reviewer Project Views and Operations](/docs/reviewer/project-views-and-ops/)
 
 ## CLI Tools
 

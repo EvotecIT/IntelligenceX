@@ -1,0 +1,113 @@
+# Project Views and Operations
+
+This page covers maintainer-facing operations after project setup: view checklist/apply planning, bot-feedback sync, triage index generation, and vision drift checks.
+
+## Important disclaimer
+
+These commands provide assistive operational intelligence, not unattended production governance.
+
+- Keep human review in the loop for merge/close/defer decisions.
+- Use output confidence and links as context, not as sole authority.
+
+## View checklist and apply plan
+
+GitHub Project views are not fully creatable through public API mutations today. IntelligenceX therefore provides deterministic checklist/apply-plan guidance.
+
+### Build a checklist of recommended views
+
+```bash
+intelligencex todo project-view-checklist \
+  --config artifacts/triage/ix-project-config.json \
+  --create-issue
+```
+
+Useful options:
+
+- `--issue <n>` upserts checklist comment on an existing issue.
+- `--issue-title <text>` customizes title when creating issue.
+- `--print` emits markdown to stdout.
+
+### Build an apply plan for missing views
+
+```bash
+intelligencex todo project-view-apply \
+  --config artifacts/triage/ix-project-config.json \
+  --create-issue \
+  --open-web
+```
+
+Useful options:
+
+- `--fail-if-missing` exits with code `2` when recommended views are missing.
+- `--issue <n>` upserts plan comment to an existing issue.
+- `--out <path>` writes markdown to custom location.
+
+## Sync bot feedback into TODO.md
+
+Use this to keep explicit bot checklist tasks visible in one backlog:
+
+```bash
+intelligencex todo sync-bot-feedback --repo EvotecIT/IntelligenceX
+```
+
+Create issues for unchecked tasks:
+
+```bash
+intelligencex todo sync-bot-feedback \
+  --repo EvotecIT/IntelligenceX \
+  --create-issues \
+  --label ix-bot-feedback \
+  --max-issues 20
+```
+
+Behavior notes:
+
+- Imports explicit markdown task-list items only (`- [ ]` / `- [x]`).
+- Preserves existing checkbox state in `TODO.md` where possible.
+- Uses stable markers for issue deduplication when `--create-issues` is enabled.
+
+## Build triage and vision artifacts
+
+### Build triage index
+
+```bash
+intelligencex todo build-triage-index \
+  --repo EvotecIT/IntelligenceX \
+  --max-prs 300 \
+  --max-issues 300 \
+  --duplicate-threshold 0.82 \
+  --best-limit 20
+```
+
+Outputs:
+
+- `artifacts/triage/ix-triage-index.json`
+- `artifacts/triage/ix-triage-index.md`
+
+### Run vision check
+
+```bash
+intelligencex todo vision-check \
+  --repo EvotecIT/IntelligenceX \
+  --vision VISION.md \
+  --refresh-index \
+  --drift-threshold 0.70 \
+  --no-fail-on-drift
+```
+
+Outputs:
+
+- `artifacts/triage/ix-vision-check.json`
+- `artifacts/triage/ix-vision-check.md`
+
+## Suggested maintainer cadence
+
+1. Run `sync-bot-feedback` during PR-review sweeps.
+2. Refresh triage/vision artifacts daily or per release train.
+3. Sync project fields before backlog grooming.
+4. Regenerate view checklist/apply plan when project layout drifts.
+
+## Related docs
+
+- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
+- [Project Bootstrap and Sync](/docs/reviewer/project-bootstrap-sync/)
