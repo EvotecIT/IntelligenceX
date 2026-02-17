@@ -102,6 +102,32 @@ public sealed class OpenAICompatibleHttpTransportTests {
     }
 
     [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_PropagatesCancellation() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondCanceled();
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transport.ListModelsAsync(CancellationToken.None));
+        Assert.Equal(2, handler.RequestUris.Count);
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/api/v0/models", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ToolCalls_Are_Emitted_In_ToolCallParser_Shape() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """
@@ -256,6 +282,11 @@ public sealed class OpenAICompatibleHttpTransportTests {
             _responses.Enqueue((req, ct) => Task.FromResult(new HttpResponseMessage(status) {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             }));
+            return this;
+        }
+
+        public StubHandler RespondCanceled() {
+            _responses.Enqueue((req, ct) => Task.FromException<HttpResponseMessage>(new OperationCanceledException(ct)));
             return this;
         }
 
