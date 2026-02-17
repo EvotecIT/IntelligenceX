@@ -8,11 +8,14 @@
     <IsPackable>false</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IntelligenceXProjectReferencePath>..\..\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="!Exists('$(IntelligenceXProjectReferencePath)')">..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="!Exists('$(IntelligenceXProjectReferencePath)')">..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Always reference the repo-local IntelligenceX project to keep chat/runtime transport features in sync. -->
-    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
+  <ItemGroup Condition="'$(IntelligenceXProjectReferencePath)' != ''">
+    <!-- Prefer repo-local IntelligenceX and fall back to legacy nested checkout layouts. -->
+    <ProjectReference Include="$(IntelligenceXProjectReferencePath)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,5 +26,9 @@
   <ItemGroup>
     <None Include="..\\Docs\\HostSystemPrompt.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Target Name="EnsureIntelligenceXProjectReferenceResolved" BeforeTargets="PrepareForBuild" Condition="'$(IntelligenceXProjectReferencePath)' == ''">
+    <Error Text="Unable to resolve IntelligenceX project reference. Expected IntelligenceX/IntelligenceX.csproj (or legacy nested IntelligenceX/IntelligenceX/IntelligenceX.csproj) in this checkout topology." />
+  </Target>
 
 </Project>
