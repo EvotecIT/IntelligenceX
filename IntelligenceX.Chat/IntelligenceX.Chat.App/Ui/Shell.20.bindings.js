@@ -813,9 +813,7 @@
     }
     if (baseInput) {
       baseInput.disabled = !isCompatible;
-      if (!isCompatible) {
-        baseInput.value = "";
-      } else if (!(baseInput.value || "").trim()) {
+      if (isCompatible && !(baseInput.value || "").trim()) {
         var runtimeDetection = (((state.options || {}).localModel || {}).runtimeDetection || {});
         var lmStudioAvailable = runtimeDetection.lmStudioAvailable === true;
         var ollamaAvailable = runtimeDetection.ollamaAvailable === true;
@@ -834,9 +832,6 @@
     }
     if (apiKeyInput) {
       apiKeyInput.disabled = !isCompatible;
-      if (!isCompatible) {
-        apiKeyInput.value = "";
-      }
     }
     if (autoDetectButton) {
       autoDetectButton.hidden = !isCompatible;
