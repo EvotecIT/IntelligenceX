@@ -8,6 +8,7 @@ layout: page
 
 ## Latest Posts
 
+- [Event Viewer in Action](/blog/event-viewer-in-action/)
 - [Chat Flow and Options](/blog/chat-flow-and-options/)
 
 ## What We Publish Here
