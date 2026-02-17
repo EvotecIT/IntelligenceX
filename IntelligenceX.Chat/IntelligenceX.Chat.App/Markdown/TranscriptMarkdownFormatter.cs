@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.Chat.App.Rendering;
 
 namespace IntelligenceX.Chat.App.Markdown;
 
@@ -20,14 +21,15 @@ internal static class TranscriptMarkdownFormatter {
         var markdown = new MarkdownComposer();
 
         foreach (var message in messages) {
-            if (string.IsNullOrWhiteSpace(message.Text)) {
+            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(message.Text);
+            if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
 
             var time = message.Time.ToString(format, CultureInfo.InvariantCulture);
             markdown
                 .Heading($"{message.Role} ({time})", 3)
-                .Raw(message.Text)
+                .Raw(normalizedText)
                 .BlankLine();
         }
 

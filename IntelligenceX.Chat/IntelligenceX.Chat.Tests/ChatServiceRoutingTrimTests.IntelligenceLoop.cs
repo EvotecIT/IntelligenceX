@@ -11,12 +11,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ResolveMaxReviewPasses_DefaultsToSafeValueWhenUnset() {
         var result = ChatServiceSession.ResolveMaxReviewPasses(null);
-        Assert.Equal(1, result);
+        Assert.Equal(0, result);
     }
 
     [Theory]
-    [InlineData(-1, 1)]
-    [InlineData(0, 1)]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
     [InlineData(1, 1)]
     [InlineData(2, 2)]
     [InlineData(5, 3)]

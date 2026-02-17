@@ -36,6 +36,10 @@ internal static class TranscriptMarkdownNormalizer {
         @"\*\*(?<inner>[^*\r\n]+)\*\*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex LeadingWhitespaceInsideStrongOpenRegex = new(
+        @"(?:(?<=^)|(?<=[\s(\[{>]))\*\*[ \t]+(?=[^\s*\r\n])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex MissingSpaceBeforeBoldMetricRegex = new(
         @"(?<=\s)-(?=\*\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -65,11 +69,31 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex CollapsedOrderedListAfterParenRegex = new(
-        @"(?<=\))[ \t]+(?=\d+\.(?:\^\s*|\s+)\S)",
+        @"(?<=\))\s*(?=\d+\.(?:\^\s*|\s*[*_]{2}|\s+)\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CollapsedOrderedListAfterDetailRegex = new(
+        @"(?<=\))\s+(?=\d+[.)]\s*[*_]{0,2}\s*\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CollapsedOrderedListAfterStrongRegex = new(
+        @"(?<=\*\*)\s+(?=\d+[.)]\s*[*_]{0,2}\s*\S)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex OrderedListCaretRegex = new(
         @"(?m)^(?<lead>\s*\d+\.)\s*\^\s*",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex OrderedListParenMarkerRegex = new(
+        @"(?m)^(?<indent>\s*)(?<num>\d+)\)(?=\s*\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex OrderedListMarkerMissingSpaceRegex = new(
+        @"(?m)^(?<lead>\s*\d+\.)(?=\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TightParenJoinRegex = new(
+        @"(?<=[\p{L}\p{N}\)])\((?=[\p{L}][^\r\n)]*\))",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex AcronymParenJoinRegex = new(
@@ -78,6 +102,14 @@ internal static class TranscriptMarkdownNormalizer {
 
     private static readonly Regex StrongCloseAcronymParenJoinRegex = new(
         @"(?<=\*\*)\((?=[A-Z]{2,})",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex StrongCloseParenJoinRegex = new(
+        @"(?<=\*\*)\((?=[\p{L}][^\r\n)]*\))",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex OrderedItemStrongMissingCloseBeforeParenRegex = new(
+        @"(?m)^(?<lead>\s*\d+\.\s+)\*\*(?<title>[^*\r\n()]+)\((?<detail>[^)\r\n]+)\)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static string NormalizeForRendering(string? text) {
@@ -101,10 +133,23 @@ internal static class TranscriptMarkdownNormalizer {
             value = MissingSpaceBeforeBoldMetricRegex.Replace(value, "- ");
             value = SingleStarMetricRegex.Replace(value, "- **");
             value = CollapsedBulletRegex.Replace(value, "\n- **");
+            value = CollapsedOrderedListAfterDetailRegex.Replace(value, "\n");
+            value = CollapsedOrderedListAfterStrongRegex.Replace(value, "\n");
             value = CollapsedOrderedListAfterParenRegex.Replace(value, "\n");
             value = OrderedListCaretRegex.Replace(value, "${lead} ");
+            value = OrderedListParenMarkerRegex.Replace(value, "${indent}${num}.");
+            value = OrderedListMarkerMissingSpaceRegex.Replace(value, "${lead} ");
+            value = TightParenJoinRegex.Replace(value, " (");
             value = AcronymParenJoinRegex.Replace(value, " (");
             value = StrongCloseAcronymParenJoinRegex.Replace(value, " (");
+            value = StrongCloseParenJoinRegex.Replace(value, " (");
+            value = OrderedItemStrongMissingCloseBeforeParenRegex.Replace(value, static match => {
+                var lead = match.Groups["lead"].Value;
+                var title = match.Groups["title"].Value.Trim();
+                var detail = match.Groups["detail"].Value.Trim();
+                return lead + "**" + title + "** (" + detail + ")";
+            });
+            value = LeadingWhitespaceInsideStrongOpenRegex.Replace(value, "**");
             value = ExpandCollapsedMetricLines(value);
             value = ConvertLegacyMetricMarkdown(value);
             return value;

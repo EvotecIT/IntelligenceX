@@ -377,6 +377,8 @@ public sealed partial class MainWindow : Window {
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             await RenderTranscriptAsync().ConfigureAwait(false);
+        } else if (TryIncrementConversationUnread(conversation)) {
+            NotifyConversationUnreadChanged();
         }
     }
 

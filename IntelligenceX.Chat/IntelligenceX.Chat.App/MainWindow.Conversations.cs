@@ -41,7 +41,8 @@ public sealed partial class MainWindow : Window {
                     Id = stored.Id.Trim(),
                     Title = string.IsNullOrWhiteSpace(stored.Title) ? DefaultConversationTitle : stored.Title.Trim(),
                     ThreadId = string.IsNullOrWhiteSpace(stored.ThreadId) ? null : stored.ThreadId.Trim(),
-                    UpdatedUtc = EnsureUtc(stored.UpdatedUtc)
+                    UpdatedUtc = EnsureUtc(stored.UpdatedUtc),
+                    UnreadCount = NormalizeUnreadCount(stored.UnreadCount)
                 };
                 if (IsSystemConversation(conversation)) {
                     conversation.Title = SystemConversationTitle;
@@ -170,6 +171,67 @@ public sealed partial class MainWindow : Window {
         return conversation is not null && IsSystemConversationId(conversation.Id);
     }
 
+    private static int NormalizeUnreadCount(int value) {
+        return value <= 0 ? 0 : value;
+    }
+
+    private bool TryMarkConversationRead(ConversationRuntime? conversation) {
+        if (conversation is null || conversation.UnreadCount <= 0) {
+            return false;
+        }
+
+        conversation.UnreadCount = 0;
+        return true;
+    }
+
+    private bool TryEnsureConversationUnread(ConversationRuntime? conversation) {
+        if (conversation is null) {
+            return false;
+        }
+
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            return TryMarkConversationRead(conversation);
+        }
+
+        if (conversation.UnreadCount > 0) {
+            return false;
+        }
+
+        conversation.UnreadCount = 1;
+        return true;
+    }
+
+    private bool TryIncrementConversationUnread(ConversationRuntime? conversation, int amount = 1) {
+        if (conversation is null) {
+            return false;
+        }
+
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            return TryMarkConversationRead(conversation);
+        }
+
+        var increment = amount <= 0 ? 1 : amount;
+        var next = conversation.UnreadCount + increment;
+        if (next < 0) {
+            next = 0;
+        }
+        if (next > 999) {
+            next = 999;
+        }
+
+        if (next == conversation.UnreadCount) {
+            return false;
+        }
+
+        conversation.UnreadCount = next;
+        return true;
+    }
+
+    private void NotifyConversationUnreadChanged() {
+        _ = PublishOptionsStateAsync();
+        QueuePersistAppState();
+    }
+
     private static int CompareConversationsForDisplay(ConversationRuntime? left, ConversationRuntime? right) {
         var leftIsSystem = IsSystemConversation(left);
         var rightIsSystem = IsSystemConversation(right);
@@ -242,6 +304,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _activeConversationId = conversation.Id;
+        conversation.UnreadCount = 0;
         _messages = conversation.Messages;
         _threadId = conversation.ThreadId;
     }

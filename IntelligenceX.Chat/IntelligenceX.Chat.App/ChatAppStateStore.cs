@@ -196,6 +196,7 @@ internal sealed class ChatConversationState {
     public string? ThreadId { get; set; }
     public List<ChatMessageState> Messages { get; set; } = new();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    public int UnreadCount { get; set; }
 }
 
 internal sealed class ChatMessageState {

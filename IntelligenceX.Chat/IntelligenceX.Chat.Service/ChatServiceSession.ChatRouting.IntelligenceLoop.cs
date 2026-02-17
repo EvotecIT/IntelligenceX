@@ -19,7 +19,7 @@ internal sealed partial class ChatServiceSession {
     private const string ResponseReviewMarker = "ix:response-review:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
-    private const int DefaultMaxReviewPasses = 1;
+    private const int DefaultMaxReviewPasses = 0;
     private const int MaxReviewPassesLimit = 3;
     private const int DefaultModelHeartbeatSeconds = 8;
     private const int MaxModelHeartbeatSeconds = 60;
@@ -62,7 +62,7 @@ internal sealed partial class ChatServiceSession {
     // Internal seam for deterministic chat-loop tests and shared routing behavior.
     internal static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
         var configured = options?.MaxReviewPasses;
-        if (!configured.HasValue || configured.Value <= 0) {
+        if (!configured.HasValue) {
             return DefaultMaxReviewPasses;
         }
 

@@ -49,7 +49,8 @@ public sealed record ToolPackBootstrapOptions {
     public bool EnableActiveDirectoryPack { get; init; } = true;
 
     /// <summary>
-    /// Enables dangerous IX.PowerShell runtime pack when available.
+    /// Enables runtime command execution for the IX.PowerShell pack.
+    /// The pack can still be registered for discoverability when this is false.
     /// </summary>
     public bool EnablePowerShellPack { get; init; }
 
@@ -210,23 +211,21 @@ public static class ToolPackBootstrap {
                 onWarning: options.OnBootstrapWarning);
         }
 
-        if (options.EnablePowerShellPack) {
-            TryAddPack(
-                packs,
-                packLabel: "IX.PowerShell",
-                packTypeName: PowerShellPackTypeName,
-                optionsTypeName: PowerShellOptionsTypeName,
-                configureOptions: psOptions => {
-                    SetPropertyIfPresent(psOptions, "Enabled", true);
-                    SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
-                    SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
-                    SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
-                    SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
-                    SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
-                },
-                warnWhenUnavailable: true,
-                onWarning: options.OnBootstrapWarning);
-        }
+        TryAddPack(
+            packs,
+            packLabel: "IX.PowerShell",
+            packTypeName: PowerShellPackTypeName,
+            optionsTypeName: PowerShellOptionsTypeName,
+            configureOptions: psOptions => {
+                SetPropertyIfPresent(psOptions, "Enabled", options.EnablePowerShellPack);
+                SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
+                SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
+                SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
+                SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
+                SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
+            },
+            warnWhenUnavailable: true,
+            onWarning: options.OnBootstrapWarning);
 
         if (options.EnableTestimoXPack) {
             TryAddPack(

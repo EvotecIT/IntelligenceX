@@ -162,7 +162,7 @@ public sealed partial class MainWindow : Window {
     private bool _nativeWheelObserved;
     private long _wheelPointerQueuedEvents;
     private long _wheelGlobalQueuedEvents;
-    private long _wheelGlobalRejectedEvents;
+    private long _wheelGlobalRejectedEvents = 0;
     private long _wheelZeroDeltaIgnoredEvents;
     private long _wheelDroppedNotReadyEvents;
     private long _wheelForwardedBatches;
@@ -317,6 +317,7 @@ public sealed partial class MainWindow : Window {
         public string? ThreadId { get; set; }
         public List<(string Role, string Text, DateTime Time)> Messages { get; } = new();
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+        public int UnreadCount { get; set; }
     }
 
     private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc);
@@ -532,7 +533,7 @@ public sealed partial class MainWindow : Window {
 
                 StartupLog.Write("EnsureWebViewInitializedAsync begin");
                 InstallWindowMessageHook();
-                RefreshGlobalWheelHookPolicy();
+                InstallGlobalWheelHook();
                 await _webView.EnsureCoreWebView2Async().AsTask().ConfigureAwait(false);
                 _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
@@ -545,8 +546,8 @@ public sealed partial class MainWindow : Window {
                     new Microsoft.UI.Xaml.Input.PointerEventHandler((_, e) => {
                         var delta = e.GetCurrentPoint(_webView).Properties.MouseWheelDelta;
                         if (delta != 0 && _webViewReady) {
-                            RecordNativeWheelObserved();
-                            QueueWheelForward(delta, fromGlobalHook: false);
+                            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
+                            _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
                             // Keep native WebView wheel delivery as fallback for device-specific paths.
                             e.Handled = false;
                         }
@@ -570,7 +571,7 @@ public sealed partial class MainWindow : Window {
                 InstallWindowMessageHook();
                 EnsureNativeTitleBarEventSubscriptions();
                 RequestTitleBarMetricsRefresh();
-                RefreshGlobalWheelHookPolicy();
+                InstallGlobalWheelHook();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
@@ -741,11 +742,6 @@ public sealed partial class MainWindow : Window {
             var isWheelMessage = message == WmMouseWheel || message == WmMouseHWheel;
             if (nCode >= 0 && _webViewReady && isWheelMessage && lParam != IntPtr.Zero && IsForegroundOwnedByCurrentProcess()) {
                 var hook = Marshal.PtrToStructure<MouseLowLevelHookStruct>(lParam);
-                if (!ShouldAcceptGlobalWheelEvent(hook.Point)) {
-                    Interlocked.Increment(ref _wheelGlobalRejectedEvents);
-                    return CallNextHookEx(_globalMouseHookHandle, nCode, wParam, lParam);
-                }
-
                 var delta = (short)((hook.MouseData >> 16) & 0xFFFF);
                 if (delta != 0) {
                     if (!_globalWheelObservedLogged) {
@@ -753,7 +749,14 @@ public sealed partial class MainWindow : Window {
                         StartupLog.Write("GlobalMouseHookProc observed first wheel event");
                     }
 
-                    QueueWheelForward(delta, fromGlobalHook: true);
+                    _ = _dispatcher.TryEnqueue(() => {
+                        if (!_webViewReady) {
+                            return;
+                        }
+
+                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelGlobalDiagnosticRecordScript(delta));
+                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
+                    });
                 }
             }
         } catch (Exception ex) {
@@ -782,8 +785,14 @@ public sealed partial class MainWindow : Window {
             if (_webViewReady && (msg == WmMouseWheel || msg == WmMouseHWheel || msg == WmPointerWheel || msg == WmPointerHWheel)) {
                 var delta = ExtractWheelDelta(wParam);
                 if (delta != 0) {
-                    RecordNativeWheelObserved();
-                    QueueWheelForward(delta, fromGlobalHook: false);
+                    _ = _dispatcher.TryEnqueue(() => {
+                        if (!_webViewReady) {
+                            return;
+                        }
+
+                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelDiagnosticRecordScript(delta));
+                        _ = _webView.ExecuteScriptAsync(UiBridgeScripts.BuildWheelForwardScript(delta));
+                    });
                 }
             }
         } catch (Exception ex) {
@@ -897,10 +906,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _nativeWheelObserved = true;
-        if (WheelHookMode == GlobalWheelHookMode.Auto) {
-            StartupLog.Write("Native wheel path observed; disabling global wheel hook (auto mode).");
-            RefreshGlobalWheelHookPolicy();
-        }
+        StartupLog.Write("Native wheel path observed.");
     }
 
     private void RefreshGlobalWheelHookPolicy() {
@@ -918,7 +924,9 @@ public sealed partial class MainWindow : Window {
                 break;
             case GlobalWheelHookMode.Auto:
             default:
-                if (_webViewReady && _windowIsActive && !_nativeWheelObserved) {
+                // Keep the global hook active while the app is active as a reliability fallback.
+                // JS-side dedupe skips forwarded host wheel when native WebView wheel already applied.
+                if (_webViewReady && _windowIsActive) {
                     InstallGlobalWheelHook();
                 } else {
                     UninstallGlobalWheelHook();

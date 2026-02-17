@@ -64,6 +64,11 @@ public sealed partial class MainWindow : Window {
         conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             _ = RenderTranscriptAsync();
+            return;
+        }
+
+        if (TryIncrementConversationUnread(conversation)) {
+            NotifyConversationUnreadChanged();
         }
     }
 
@@ -608,6 +613,7 @@ public sealed partial class MainWindow : Window {
                 preview,
                 isActive = string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase),
                 isSystem,
+                unreadCount = NormalizeUnreadCount(conversation.UnreadCount),
                 updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
             });
         }

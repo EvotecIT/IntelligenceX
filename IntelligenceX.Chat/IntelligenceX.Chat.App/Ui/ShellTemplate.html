@@ -73,7 +73,13 @@
 
         <div class="activity-indicator" id="activity">
           <div class="activity-dots"><span></span><span></span><span></span></div>
-          <span class="activity-text"></span>
+          <div class="activity-copy">
+            <div class="activity-topline">
+              <span class="activity-phase"></span>
+              <span class="activity-text"></span>
+            </div>
+            <span class="activity-timeline"></span>
+          </div>
         </div>
 
         <footer class="composer">
@@ -219,6 +225,8 @@
           <select id="optTimeMode" class="options-select">
             <option value="seconds">Seconds (HH:mm:ss)</option>
             <option value="minutes">Minutes (HH:mm)</option>
+            <option value="date-seconds">Date + Seconds (yyyy-MM-dd HH:mm:ss)</option>
+            <option value="date-minutes">Date + Minutes (yyyy-MM-dd HH:mm)</option>
           </select>
         </section>
 
@@ -298,7 +306,7 @@
             </select>
           </div>
           <div class="options-row">
-            <label class="options-label-inline" for="optAutonomyMaxReviewPasses">Max review passes</label>
+            <label class="options-label-inline" for="optAutonomyMaxReviewPasses">Max review passes (0 disables)</label>
             <input id="optAutonomyMaxReviewPasses" class="options-input options-input-sm" type="number" min="0" max="3" placeholder="Default" />
           </div>
           <div class="options-row">

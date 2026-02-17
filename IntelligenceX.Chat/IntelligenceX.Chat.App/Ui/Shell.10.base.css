@@ -414,9 +414,31 @@ body {
   display: block;
   font-size: 12px;
   font-weight: 700;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-sidebar-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-sidebar-item-unread {
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(76, 195, 255, 0.76);
+  background: rgba(76, 195, 255, 0.22);
+  color: #dff4ff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  min-width: 22px;
+  text-align: center;
 }
 
 .chat-sidebar-item-meta {

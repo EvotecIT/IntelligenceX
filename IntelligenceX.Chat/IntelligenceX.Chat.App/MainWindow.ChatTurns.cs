@@ -149,6 +149,8 @@ public sealed partial class MainWindow : Window {
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             await RenderTranscriptAsync().ConfigureAwait(false);
+        } else if (TryIncrementConversationUnread(conversation)) {
+            NotifyConversationUnreadChanged();
         }
 
         await PersistAppStateAsync().ConfigureAwait(false);
@@ -164,6 +166,8 @@ public sealed partial class MainWindow : Window {
         turn.Conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(turn.Conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             await RenderTranscriptAsync().ConfigureAwait(false);
+        } else if (TryIncrementConversationUnread(turn.Conversation)) {
+            NotifyConversationUnreadChanged();
         }
 
         await PersistAppStateAsync().ConfigureAwait(false);

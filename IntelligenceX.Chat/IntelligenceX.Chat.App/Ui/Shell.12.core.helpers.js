@@ -7,6 +7,19 @@
     return !!(item && item.isSystem === true);
   }
 
+  function conversationUnreadCount(item) {
+    var count = item && typeof item.unreadCount === "number" ? Math.floor(item.unreadCount) : 0;
+    return count > 0 ? count : 0;
+  }
+
+  function formatUnreadCountLabel(count) {
+    if (count > 99) {
+      return "99+";
+    }
+
+    return String(count);
+  }
+
   function conversationMeta(item) {
     var isSystem = conversationIsSystem(item);
     var count = item && typeof item.messageCount === "number" ? item.messageCount : 0;
@@ -58,10 +71,22 @@
       var body = document.createElement("div");
       body.className = "chat-sidebar-item-body";
 
+      var titleRow = document.createElement("div");
+      titleRow.className = "chat-sidebar-item-title-row";
+
       var title = document.createElement("span");
       title.className = "chat-sidebar-item-title";
       title.textContent = conversationTitle(chat);
-      body.appendChild(title);
+      titleRow.appendChild(title);
+      var unreadCount = conversationUnreadCount(chat);
+      if (unreadCount > 0 && id !== state.options.activeConversationId) {
+        var unreadBadge = document.createElement("span");
+        unreadBadge.className = "chat-sidebar-item-unread";
+        unreadBadge.textContent = formatUnreadCountLabel(unreadCount);
+        unreadBadge.title = unreadCount === 1 ? "1 unread update" : (String(unreadCount) + " unread updates");
+        titleRow.appendChild(unreadBadge);
+      }
+      body.appendChild(titleRow);
       if (isSystem) {
         var badge = document.createElement("span");
         badge.className = "chat-sidebar-item-pill";
@@ -125,10 +150,22 @@
       var main = document.createElement("div");
       main.className = "options-conversation-main";
 
+      var titleRow = document.createElement("div");
+      titleRow.className = "options-conversation-title-row";
+
       var title = document.createElement("div");
       title.className = "options-conversation-title";
       title.textContent = conversationTitle(chat);
-      main.appendChild(title);
+      titleRow.appendChild(title);
+      var unreadCount = conversationUnreadCount(chat);
+      if (unreadCount > 0 && id !== state.options.activeConversationId) {
+        var unreadBadge = document.createElement("span");
+        unreadBadge.className = "options-conversation-unread";
+        unreadBadge.textContent = formatUnreadCountLabel(unreadCount);
+        unreadBadge.title = unreadCount === 1 ? "1 unread update" : (String(unreadCount) + " unread updates");
+        titleRow.appendChild(unreadBadge);
+      }
+      main.appendChild(titleRow);
       if (isSystem) {
         var systemTag = document.createElement("span");
         systemTag.className = "options-pill options-pill-category";

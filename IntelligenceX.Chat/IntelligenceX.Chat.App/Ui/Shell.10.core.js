@@ -21,6 +21,7 @@
   var lastHostWheelAt = 0;
   var lastNativeWheelAt = 0;
   var sidebarResizeActive = false;
+  var debugToolsEnabledFallbackByProfile = {};
 
   var sidebarPrefs = {
     width: 228,
@@ -151,13 +152,29 @@
   }
 
   function loadDebugToolsEnabledForActiveProfile() {
-    state.options.debugToolsEnabled = readStorage(debugToolsStorageKey()) === "1";
+    var key = debugToolsStorageKey();
+    var stored = readStorage(key);
+    if (stored === "1" || stored === "0") {
+      var enabled = stored === "1";
+      state.options.debugToolsEnabled = enabled;
+      debugToolsEnabledFallbackByProfile[key] = enabled;
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(debugToolsEnabledFallbackByProfile, key)) {
+      state.options.debugToolsEnabled = debugToolsEnabledFallbackByProfile[key] === true;
+      return;
+    }
+
+    state.options.debugToolsEnabled = false;
   }
 
   function setDebugToolsEnabled(enabled, persist) {
     state.options.debugToolsEnabled = enabled === true;
+    var key = debugToolsStorageKey();
+    debugToolsEnabledFallbackByProfile[key] = state.options.debugToolsEnabled;
     if (persist !== false) {
-      writeStorage(debugToolsStorageKey(), state.options.debugToolsEnabled ? "1" : "0");
+      writeStorage(key, state.options.debugToolsEnabled ? "1" : "0");
     }
     updateMenuState();
   }

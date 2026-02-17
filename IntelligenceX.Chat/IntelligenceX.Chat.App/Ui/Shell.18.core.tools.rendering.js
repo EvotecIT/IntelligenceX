@@ -1,8 +1,17 @@
   function renderOptions() {
     loadDebugToolsEnabledForActiveProfile();
     var selector = byId("optTimeMode");
-    if (state.options.timestampMode === "minutes" || state.options.timestampMode === "seconds") {
-      selector.value = state.options.timestampMode;
+    var timestampMode = (state.options.timestampMode || "").toLowerCase();
+    if (timestampMode === "date_minutes") {
+      timestampMode = "date-minutes";
+    } else if (timestampMode === "date_seconds") {
+      timestampMode = "date-seconds";
+    }
+    if (timestampMode === "minutes"
+      || timestampMode === "seconds"
+      || timestampMode === "date-minutes"
+      || timestampMode === "date-seconds") {
+      selector.value = timestampMode;
     } else {
       selector.value = "seconds";
     }
@@ -262,21 +271,99 @@
     el.scrollTop = el.scrollHeight;
   }
 
+  function summarizeTimelineForActivity(timeline) {
+    if (!Array.isArray(timeline) || timeline.length <= 1) {
+      return "";
+    }
+
+    var maxSteps = 4;
+    var start = Math.max(0, timeline.length - maxSteps);
+    var compact = timeline.slice(start);
+    var prefix = start > 0 ? "... > " : "";
+    return prefix + compact.join(" > ");
+  }
+
+  function detectActivityPhase(text, timeline) {
+    var source = "";
+    if (typeof text === "string" && text.trim().length > 0) {
+      source = text.trim().toLowerCase();
+    } else if (Array.isArray(timeline) && timeline.length > 0) {
+      source = String(timeline[timeline.length - 1] || "").trim().toLowerCase();
+    }
+
+    if (!source) {
+      return null;
+    }
+
+    if (source.indexOf("review") >= 0) {
+      return { label: "Review", tone: "phase-review" };
+    }
+    if (source.indexOf("plan") >= 0 || source.indexOf("route") >= 0) {
+      return { label: "Plan", tone: "phase-plan" };
+    }
+    if (source.indexOf("wait") >= 0 || source.indexOf("heartbeat") >= 0 || source.indexOf("still") >= 0) {
+      return { label: "Wait", tone: "phase-wait" };
+    }
+    if (source.indexOf("execute") >= 0
+      || source.indexOf("running") >= 0
+      || source.indexOf("tool") >= 0
+      || source.indexOf("batch") >= 0
+      || source.indexOf("thinking") >= 0) {
+      return { label: "Execute", tone: "phase-exec" };
+    }
+
+    return { label: "Work", tone: "phase-exec" };
+  }
+
   window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
     var label = el.querySelector(".activity-text");
+    var timelineEl = el.querySelector(".activity-timeline");
+    var phaseEl = el.querySelector(".activity-phase");
     if (text) {
-      var timelineSummary = "";
       if (Array.isArray(timeline) && timeline.length > 0) {
         state.activityTimeline = timeline;
-        timelineSummary = " | " + timeline.join(" > ");
       }
-      label.textContent = text + timelineSummary;
+
+      var timelineSummary = summarizeTimelineForActivity(timeline);
+      var fullTimeline = Array.isArray(timeline) && timeline.length > 0 ? timeline.join(" > ") : "";
+      var phase = detectActivityPhase(text, timeline);
+      label.textContent = text;
+      label.title = fullTimeline.length > 0 ? fullTimeline : text;
+      if (phaseEl) {
+        if (phase && phase.label) {
+          phaseEl.textContent = phase.label;
+          phaseEl.className = "activity-phase has-data " + (phase.tone || "phase-exec");
+        } else {
+          phaseEl.textContent = "";
+          phaseEl.className = "activity-phase";
+        }
+      }
+      if (timelineEl) {
+        timelineEl.textContent = timelineSummary;
+        timelineEl.classList.toggle("has-data", timelineSummary.length > 0);
+        if (fullTimeline.length > 0) {
+          timelineEl.title = fullTimeline;
+        } else {
+          timelineEl.removeAttribute("title");
+        }
+      }
       el.classList.add("active");
       if (isNearBottom(transcript)) {
         scrollToBottom(transcript);
       }
     } else {
+      label.textContent = "";
+      label.removeAttribute("title");
+      if (phaseEl) {
+        phaseEl.textContent = "";
+        phaseEl.className = "activity-phase";
+      }
+      if (timelineEl) {
+        timelineEl.textContent = "";
+        timelineEl.classList.remove("has-data");
+        timelineEl.removeAttribute("title");
+      }
       el.classList.remove("active");
     }
   };

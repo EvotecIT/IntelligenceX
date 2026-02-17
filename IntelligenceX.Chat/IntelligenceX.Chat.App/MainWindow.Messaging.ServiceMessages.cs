@@ -47,6 +47,8 @@ public sealed partial class MainWindow : Window {
                     requestConversation.UpdatedUtc = DateTime.UtcNow;
                     if (string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
                         _ = RenderTranscriptAsync();
+                    } else if (TryEnsureConversationUnread(requestConversation)) {
+                        NotifyConversationUnreadChanged();
                     }
                     break;
                 case ChatStatusMessage status:
@@ -60,6 +62,10 @@ public sealed partial class MainWindow : Window {
                     _latestServiceActivityText = activityText ?? string.Empty;
                     _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
                     _ = PublishSessionStateAsync();
+                    if (!string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)
+                        && TryEnsureConversationUnread(requestConversation)) {
+                        NotifyConversationUnreadChanged();
+                    }
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
                     }

@@ -40,6 +40,25 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures repeated system rows never collapse metadata visibility.
+    /// </summary>
+    [Fact]
+    public void Format_DoesNotHideMetaForSystemContinuations() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 17, 14, 22, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("System", "Restarting local runtime...", now),
+            ("System", "Could not connect to local runtime.", now.AddSeconds(3))
+        }, "yyyy-MM-dd HH:mm:ss", options);
+
+        Assert.Contains("msg-row system", html);
+        Assert.DoesNotContain("msg-row system cont", html);
+        Assert.DoesNotContain("class='meta hidden'", html);
+        Assert.Contains("System &middot; 2026-02-17 14:22:00", html);
+        Assert.Contains("System &middot; 2026-02-17 14:22:03", html);
+    }
+
+    /// <summary>
     /// Ensures blank transcript text is skipped while preserving index progression.
     /// </summary>
     [Fact]
@@ -209,5 +228,25 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("**“Top 8 high-signal security pack”**", html);
         Assert.DoesNotContain("**GPO-related**", html);
         Assert.DoesNotContain("** unresolved privileged SIDs**", html);
+    }
+
+    /// <summary>
+    /// Ensures malformed compact ordered menu text is repaired before HTML rendering so literal markdown markers are not visible.
+    /// </summary>
+    [Fact]
+    public void Format_RepairsCollapsedOrderedMenuWithoutLiteralMarkers() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 17, 13, 1, 40, DateTimeKind.Local);
+        var text = "Love it 😄\nIf “oki doki” means *“we’re good for now”* — perfect.\n\nQuick next-step menu (pick one and I’ll run it right away):\n1) **Privilege hygiene sweep(Domain Admins + other privileged groups, nested exposure) 2)** Delegation risk audit**(unconstrained / constrained / protocol transition) 3)** Replication + DC health snapshot** (stale links, failing partners, LDAP/Kerberos basics)\n\nOr just say “done” and I’ll keep quiet like a well-configured service.";
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        Assert.Contains("\n2. **Delegation risk audit** (unconstrained / constrained / protocol transition)", normalized);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<strong>Privilege hygiene sweep</strong>", html);
+        Assert.Contains("<strong>Delegation risk audit</strong>", html);
+        Assert.Contains("<strong>Replication + DC health snapshot</strong>", html);
+        Assert.DoesNotContain("**", html);
     }
 }

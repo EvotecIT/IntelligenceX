@@ -12,10 +12,8 @@
       return target.parentElement;
     }
 
-    if (target.nodeType === 9 && target.activeElement) {
-      return target.activeElement;
-    }
-
+    // Avoid falling back to document.activeElement for document targets.
+    // In WebView2 this can point at the prompt while wheel happens over transcript.
     return target.parentElement || null;
   }
 
@@ -83,7 +81,7 @@
       return;
     }
 
-    if (isEditableElement(targetEl) && !inOptions) {
+    if (isEditableElement(targetEl) && !inOptions && !inTranscript && !inDataView) {
       wheelDiag.counters.skippedEditable++;
       recordWheelDiag("editable_skip", { deltaY: Number(deltaY) });
       return;

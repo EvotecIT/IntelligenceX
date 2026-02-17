@@ -59,7 +59,9 @@ internal static class TranscriptHtmlFormatter {
             }
 
             var role = ResolveRoleStyle(message.Role);
-            var isContinuation = string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
+            var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal);
+            var isContinuation = hideContinuationMeta
+                && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
             var actionExtraction = string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
                 ? ExtractPendingActionsForRendering(normalizedText)
                 : new PendingActionExtraction(normalizedText, Array.Empty<PendingActionRenderItem>());
@@ -225,11 +227,63 @@ internal static class TranscriptHtmlFormatter {
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {
         try {
-            var html = MarkdownRenderer.RenderBodyHtml(text, markdownOptions);
+            var html = MarkdownRenderer.RenderBodyHtml(ExpandAdjacentOrderedListItems(text), markdownOptions);
             return EnsureInlineCodeHtml(html);
         } catch {
             return EnsureInlineCodeHtml("<article class='markdown-body'><p>" + WebUtility.HtmlEncode(text) + "</p></article>");
         }
+    }
+
+    private static string ExpandAdjacentOrderedListItems(string text) {
+        if (string.IsNullOrEmpty(text) || text.IndexOf('\n') < 0) {
+            return text;
+        }
+
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        if (lines.Length < 2) {
+            return normalized;
+        }
+
+        var sb = new StringBuilder(normalized.Length + 32);
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            sb.Append(current);
+            if (i >= lines.Length - 1) {
+                continue;
+            }
+
+            sb.Append('\n');
+            var next = lines[i + 1] ?? string.Empty;
+            if (IsOrderedListLine(current) && IsOrderedListLine(next)) {
+                sb.Append('\n');
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsOrderedListLine(string line) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var i = 0;
+        while (i < line.Length && char.IsWhiteSpace(line[i])) {
+            i++;
+        }
+
+        var numberStart = i;
+        while (i < line.Length && char.IsDigit(line[i])) {
+            i++;
+        }
+
+        if (i == numberStart || i >= line.Length || line[i] != '.') {
+            return false;
+        }
+
+        i++;
+        return i < line.Length && char.IsWhiteSpace(line[i]);
     }
 
     private static PendingActionExtraction ExtractPendingActionsForRendering(string text) {

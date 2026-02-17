@@ -24,4 +24,19 @@ public sealed class TranscriptMarkdownFormatterTests {
         Assert.Contains("hello", markdown);
         Assert.Contains("hi there", markdown);
     }
+
+    /// <summary>
+    /// Ensures markdown export normalizes list-marker artifacts for strict markdown renderers.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesParenOrderedListMarkers() {
+        var now = new DateTime(2026, 2, 11, 13, 45, 30, DateTimeKind.Local);
+        var markdown = TranscriptMarkdownFormatter.Format(new[] {
+            ("Assistant", "1) First check\n2) Second check", now)
+        }, "HH:mm:ss");
+
+        Assert.Contains("1. First check", markdown);
+        Assert.Contains("2. Second check", markdown);
+        Assert.DoesNotContain("1) First check", markdown);
+    }
 }
