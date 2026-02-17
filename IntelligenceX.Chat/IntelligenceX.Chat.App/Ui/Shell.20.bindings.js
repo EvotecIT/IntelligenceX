@@ -1,6 +1,3 @@
-  var pendingWindowDrag = null;
-  var windowDragThresholdPx = 6;
-
   function isNoDragTarget(target) {
     if (!target || !target.closest) {
       return false;
@@ -8,100 +5,109 @@
     return !!target.closest("[data-no-drag],button,input,textarea,a,select");
   }
 
-  function clearPendingWindowDrag(pointerId, force) {
-    if (!pendingWindowDrag) {
+  var nativeTitlebarEnabled = false;
+  var titlebarMetricsScheduled = false;
+
+  window.ixSetNativeTitlebarEnabled = function(enabled) {
+    nativeTitlebarEnabled = !!enabled;
+  };
+
+  function getRectForHost(el) {
+    if (!el || !el.getBoundingClientRect) {
+      return null;
+    }
+
+    var rect = el.getBoundingClientRect();
+    var width = Math.round(rect.width);
+    var height = Math.round(rect.height);
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      width: width,
+      height: height
+    };
+  }
+
+  function postTitlebarMetricsNow() {
+    if (!dragBar) {
       return;
     }
 
-    var pendingPointerId = pendingWindowDrag.pointerId;
-    var pointerMatches = (typeof pointerId !== "number") || (pointerId === pendingPointerId);
-
-    if (!pointerMatches && !force) {
-      // Ignore unrelated pointer events to avoid interfering with active capture.
+    var titleBarRect = getRectForHost(dragBar);
+    if (!titleBarRect) {
       return;
     }
 
-    if (dragBar && dragBar.hasPointerCapture) {
-      if (dragBar.hasPointerCapture(pendingPointerId)) {
-        try {
-          dragBar.releasePointerCapture(pendingPointerId);
-        } catch (_) {
-          // Ignore release failures.
-        }
+    var noDragRects = [];
+    var noDragKeys = {};
+    var noDragTargets = dragBar.querySelectorAll("[data-no-drag],button,input,textarea,a,select");
+    for (var i = 0; i < noDragTargets.length; i++) {
+      var rect = getRectForHost(noDragTargets[i]);
+      if (!rect) {
+        continue;
       }
 
-      if (typeof pointerId === "number" && pointerId !== pendingPointerId && dragBar.hasPointerCapture(pointerId)) {
-        try {
-          dragBar.releasePointerCapture(pointerId);
-        } catch (_) {
-          // Ignore release failures.
-        }
+      var key = rect.x + ":" + rect.y + ":" + rect.width + ":" + rect.height;
+      if (noDragKeys[key]) {
+        continue;
       }
+
+      noDragKeys[key] = true;
+      noDragRects.push(rect);
     }
 
-    pendingWindowDrag = null;
+    post("window_titlebar_metrics", {
+      titleBarRect: titleBarRect,
+      noDragRects: noDragRects
+    });
+  }
+
+  function scheduleTitlebarMetricsPost() {
+    if (titlebarMetricsScheduled) {
+      return;
+    }
+
+    titlebarMetricsScheduled = true;
+    requestAnimationFrame(function() {
+      titlebarMetricsScheduled = false;
+      postTitlebarMetricsNow();
+    });
   }
 
   if (dragBar) {
-    dragBar.addEventListener("pointerdown", function(e) {
-      if (e.button !== 0 || isNoDragTarget(e.target)) {
-        return;
-      }
+    scheduleTitlebarMetricsPost();
 
-      // Reset any stale candidate before tracking a new pointer sequence.
-      clearPendingWindowDrag(undefined, true);
-
-      pendingWindowDrag = {
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY
-      };
-
-      if (dragBar.setPointerCapture) {
-        try {
-          dragBar.setPointerCapture(e.pointerId);
-        } catch (_) {
-          // Ignore capture failures.
-        }
-      }
+    window.addEventListener("resize", function() {
+      scheduleTitlebarMetricsPost();
     });
 
-    dragBar.addEventListener("pointermove", function(e) {
-      if (!pendingWindowDrag || pendingWindowDrag.pointerId !== e.pointerId) {
-        return;
-      }
+    if (typeof ResizeObserver === "function") {
+      var titlebarResizeObserver = new ResizeObserver(function() {
+        scheduleTitlebarMetricsPost();
+      });
+      titlebarResizeObserver.observe(dragBar);
 
-      if ((e.buttons & 1) !== 1) {
-        clearPendingWindowDrag(e.pointerId);
-        return;
+      var observedNoDragTargets = dragBar.querySelectorAll("[data-no-drag],button,input,textarea,a,select");
+      for (var j = 0; j < observedNoDragTargets.length; j++) {
+        titlebarResizeObserver.observe(observedNoDragTargets[j]);
       }
+    }
 
-      var dx = e.clientX - pendingWindowDrag.startX;
-      var dy = e.clientY - pendingWindowDrag.startY;
-      if ((dx * dx + dy * dy) < (windowDragThresholdPx * windowDragThresholdPx)) {
+    dragBar.addEventListener("pointerdown", function(e) {
+      if (e.button !== 0 || isNoDragTarget(e.target) || nativeTitlebarEnabled) {
         return;
       }
 
       e.preventDefault();
-      clearPendingWindowDrag(e.pointerId);
       post("window_drag");
     });
 
-    dragBar.addEventListener("pointerup", function(e) {
-      clearPendingWindowDrag(e.pointerId);
-    });
-
-    dragBar.addEventListener("pointercancel", function(e) {
-      clearPendingWindowDrag(e.pointerId);
-    });
-
-    dragBar.addEventListener("lostpointercapture", function(e) {
-      var hasPointerId = typeof e.pointerId === "number";
-      clearPendingWindowDrag(hasPointerId ? e.pointerId : undefined, !hasPointerId);
-    });
-
     dragBar.addEventListener("dblclick", function(e) {
-      if (e.button !== 0 || isNoDragTarget(e.target)) {
+      if (e.button !== 0 || isNoDragTarget(e.target) || nativeTitlebarEnabled) {
         return;
       }
       e.preventDefault();
@@ -463,10 +469,7 @@
       turnTimeoutSeconds: (byId("optAutonomyTurnTimeout").value || "").trim(),
       toolTimeoutSeconds: (byId("optAutonomyToolTimeout").value || "").trim(),
       weightedToolRouting: (byId("optAutonomyWeightedRouting").value || "default").trim(),
-      maxCandidateTools: (byId("optAutonomyMaxCandidates").value || "").trim(),
-      planExecuteReviewLoop: (byId("optAutonomyPlanReview").value || "default").trim(),
-      maxReviewPasses: (byId("optAutonomyMaxReviewPasses").value || "").trim(),
-      modelHeartbeatSeconds: (byId("optAutonomyModelHeartbeat").value || "").trim()
+      maxCandidateTools: (byId("optAutonomyMaxCandidates").value || "").trim()
     });
   }
 
@@ -476,9 +479,6 @@
   byId("optAutonomyParallel").addEventListener("change", postAutonomySettings);
   byId("optAutonomyWeightedRouting").addEventListener("change", postAutonomySettings);
   byId("optAutonomyMaxCandidates").addEventListener("change", postAutonomySettings);
-  byId("optAutonomyPlanReview").addEventListener("change", postAutonomySettings);
-  byId("optAutonomyMaxReviewPasses").addEventListener("change", postAutonomySettings);
-  byId("optAutonomyModelHeartbeat").addEventListener("change", postAutonomySettings);
   var proactiveModeToggle = byId("optProactiveMode");
   if (proactiveModeToggle) {
     proactiveModeToggle.addEventListener("change", function(e) {

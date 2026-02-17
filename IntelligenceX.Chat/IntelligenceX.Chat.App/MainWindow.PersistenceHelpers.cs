@@ -18,6 +18,7 @@ using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
+using Microsoft.UI.Input;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -46,9 +47,6 @@ public sealed partial class MainWindow : Window {
             _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
             _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
             _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
-            _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
-            _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
-            _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
             _appState.ExportSaveMode = _exportSaveMode;
             _appState.ExportDefaultFormat = _exportDefaultFormat;
             _appState.ExportLastDirectory = _lastExportDirectory;
@@ -224,35 +222,14 @@ public sealed partial class MainWindow : Window {
         }
 
         var ordered = new List<ConversationRuntime>(_conversations);
-        ordered.Sort(CompareConversationsForDisplay);
-
-        var userConversationLimit = MaxConversations - 1;
-        if (userConversationLimit < 1) {
-            userConversationLimit = 1;
+        ordered.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+        if (ordered.Count > MaxConversations) {
+            ordered.RemoveRange(MaxConversations, ordered.Count - MaxConversations);
         }
 
-        var trimmed = new List<ConversationRuntime>(Math.Min(MaxConversations, ordered.Count));
-        var userCount = 0;
-        for (var i = 0; i < ordered.Count; i++) {
-            var conversation = ordered[i];
-            if (IsSystemConversation(conversation)) {
-                trimmed.Add(conversation);
-                continue;
-            }
-
-            if (userCount >= userConversationLimit) {
-                continue;
-            }
-
-            userCount++;
-            trimmed.Add(conversation);
-        }
-
-        var conversations = new List<ChatConversationState>(trimmed.Count);
-        foreach (var conversation in trimmed) {
-            var title = IsSystemConversation(conversation)
-                ? SystemConversationTitle
-                : ComputeConversationTitle(conversation.Title, conversation.Messages);
+        var conversations = new List<ChatConversationState>(ordered.Count);
+        foreach (var conversation in ordered) {
+            var title = ComputeConversationTitle(conversation.Title, conversation.Messages);
             var updatedUtc = conversation.UpdatedUtc == default
                 ? (conversation.Messages.Count > 0 ? conversation.Messages[^1].Time.ToUniversalTime() : DateTime.UtcNow)
                 : EnsureUtc(conversation.UpdatedUtc);
@@ -490,11 +467,218 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
+            // Ignore delayed drag requests when the button is no longer physically pressed.
+            if ((GetAsyncKeyState(VkLButton) & unchecked((short)0x8000)) == 0) {
+                return;
+            }
+
+            var lParam = IntPtr.Zero;
+            if (GetCursorPos(out var cursor)) {
+                var packed = ((cursor.Y & 0xFFFF) << 16) | (cursor.X & 0xFFFF);
+                lParam = (IntPtr)packed;
+            }
+
             ReleaseCapture();
-            _ = SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, IntPtr.Zero);
+            _ = SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, lParam);
         } catch {
             // Ignore.
         }
+    }
+
+    private void EnsureNativeTitleBarRegionSupport() {
+        if (_nonClientPointerSource is not null) {
+            return;
+        }
+
+        try {
+            var appWindow = AppWindow;
+            if (appWindow is null) {
+                return;
+            }
+
+            _nonClientPointerSource = InputNonClientPointerSource.GetForWindowId(appWindow.Id);
+        } catch (Exception ex) {
+            StartupLog.Write("EnsureNativeTitleBarRegionSupport failed: " + ex.Message);
+        }
+    }
+
+    private void UpdateNativeTitleBarRegions(JsonElement root) {
+        try {
+            EnsureNativeTitleBarRegionSupport();
+            if (_nonClientPointerSource is null) {
+                return;
+            }
+
+            if (!TryGetUiHostRect(root, "titleBarRect", out var titleBarRect)) {
+                return;
+            }
+
+            var scale = GetUiRasterizationScale();
+            var captionRect = ScaleToRegionRect(titleBarRect, scale);
+            if (captionRect.Width <= 0 || captionRect.Height <= 0) {
+                return;
+            }
+
+            var passthroughRects = new List<RectInt32>();
+            if (root.TryGetProperty("noDragRects", out var noDragRectsElement)
+                && noDragRectsElement.ValueKind == JsonValueKind.Array) {
+                foreach (var noDrag in noDragRectsElement.EnumerateArray()) {
+                    if (!TryGetUiHostRect(noDrag, out var noDragRect)) {
+                        continue;
+                    }
+
+                    var scaled = ScaleToRegionRect(noDragRect, scale);
+                    if (!TryIntersectRect(captionRect, scaled, out var clipped)) {
+                        continue;
+                    }
+
+                    if (clipped.Width > 0 && clipped.Height > 0) {
+                        passthroughRects.Add(clipped);
+                    }
+                }
+            }
+
+            var captionRects = new List<RectInt32> { captionRect };
+            for (var i = 0; i < passthroughRects.Count; i++) {
+                captionRects = SubtractRectangles(captionRects, passthroughRects[i]);
+                if (captionRects.Count == 0) {
+                    break;
+                }
+            }
+
+            _nonClientPointerSource.SetRegionRects(NonClientRegionKind.Passthrough, passthroughRects.ToArray());
+            _nonClientPointerSource.SetRegionRects(NonClientRegionKind.Caption, captionRects.ToArray());
+
+            if (!_nativeTitleBarRegionsActive) {
+                _nativeTitleBarRegionsActive = true;
+                if (_webViewReady) {
+                    _ = _webView.ExecuteScriptAsync("window.ixSetNativeTitlebarEnabled && window.ixSetNativeTitlebarEnabled(true);");
+                }
+            }
+        } catch (Exception ex) {
+            StartupLog.Write("UpdateNativeTitleBarRegions failed: " + ex.Message);
+            _nativeTitleBarRegionsActive = false;
+            if (_webViewReady) {
+                _ = _webView.ExecuteScriptAsync("window.ixSetNativeTitlebarEnabled && window.ixSetNativeTitlebarEnabled(false);");
+            }
+        }
+    }
+
+    private static bool TryGetUiHostRect(JsonElement root, string propertyName, out UiHostRect rect) {
+        rect = default;
+        if (!root.TryGetProperty(propertyName, out var rectElement)) {
+            return false;
+        }
+
+        return TryGetUiHostRect(rectElement, out rect);
+    }
+
+    private static bool TryGetUiHostRect(JsonElement element, out UiHostRect rect) {
+        rect = default;
+        if (element.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        if (!TryGetDoubleValue(element, "x", out var x)
+            || !TryGetDoubleValue(element, "y", out var y)
+            || !TryGetDoubleValue(element, "width", out var width)
+            || !TryGetDoubleValue(element, "height", out var height)) {
+            return false;
+        }
+
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(width) || !double.IsFinite(height)) {
+            return false;
+        }
+
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+
+        rect = new UiHostRect(x, y, width, height);
+        return true;
+    }
+
+    private static bool TryGetDoubleValue(JsonElement root, string propertyName, out double value) {
+        value = 0;
+        if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Number) {
+            return false;
+        }
+
+        return element.TryGetDouble(out value);
+    }
+
+    private double GetUiRasterizationScale() {
+        try {
+            var scale = _webView.XamlRoot?.RasterizationScale ?? 1.0;
+            return scale > 0 ? scale : 1.0;
+        } catch {
+            return 1.0;
+        }
+    }
+
+    private static RectInt32 ScaleToRegionRect(UiHostRect rect, double scale) {
+        var x = (int)Math.Round(rect.X * scale, MidpointRounding.AwayFromZero);
+        var y = (int)Math.Round(rect.Y * scale, MidpointRounding.AwayFromZero);
+        var width = (int)Math.Round(rect.Width * scale, MidpointRounding.AwayFromZero);
+        var height = (int)Math.Round(rect.Height * scale, MidpointRounding.AwayFromZero);
+
+        if (width <= 0 && rect.Width > 0) {
+            width = 1;
+        }
+        if (height <= 0 && rect.Height > 0) {
+            height = 1;
+        }
+
+        return new RectInt32(x, y, Math.Max(0, width), Math.Max(0, height));
+    }
+
+    private static List<RectInt32> SubtractRectangles(List<RectInt32> sourceRects, RectInt32 cutout) {
+        var result = new List<RectInt32>();
+        for (var i = 0; i < sourceRects.Count; i++) {
+            var source = sourceRects[i];
+            if (!TryIntersectRect(source, cutout, out var intersection)) {
+                result.Add(source);
+                continue;
+            }
+
+            var sourceRight = source.X + source.Width;
+            var sourceBottom = source.Y + source.Height;
+            var intersectionRight = intersection.X + intersection.Width;
+            var intersectionBottom = intersection.Y + intersection.Height;
+
+            if (intersection.Y > source.Y) {
+                result.Add(new RectInt32(source.X, source.Y, source.Width, intersection.Y - source.Y));
+            }
+
+            if (intersectionBottom < sourceBottom) {
+                result.Add(new RectInt32(source.X, intersectionBottom, source.Width, sourceBottom - intersectionBottom));
+            }
+
+            if (intersection.X > source.X) {
+                result.Add(new RectInt32(source.X, intersection.Y, intersection.X - source.X, intersection.Height));
+            }
+
+            if (intersectionRight < sourceRight) {
+                result.Add(new RectInt32(intersectionRight, intersection.Y, sourceRight - intersectionRight, intersection.Height));
+            }
+        }
+
+        return result;
+    }
+
+    private static bool TryIntersectRect(RectInt32 first, RectInt32 second, out RectInt32 intersection) {
+        var left = Math.Max(first.X, second.X);
+        var top = Math.Max(first.Y, second.Y);
+        var right = Math.Min(first.X + first.Width, second.X + second.Width);
+        var bottom = Math.Min(first.Y + first.Height, second.Y + second.Height);
+
+        if (right <= left || bottom <= top) {
+            intersection = default;
+            return false;
+        }
+
+        intersection = new RectInt32(left, top, right - left, bottom - top);
+        return true;
     }
 
     private Task RunOnUiThreadAsync(Func<Task> work) {

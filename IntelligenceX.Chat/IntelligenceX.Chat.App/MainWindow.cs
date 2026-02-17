@@ -16,6 +16,7 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
+using Microsoft.UI.Input;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -39,14 +40,13 @@ public sealed partial class MainWindow : Window {
     private const int WhMouseLl = 14;
     private const int GwlWndProc = -4;
     private const int HtCaption = 0x0002;
+    private const int VkLButton = 0x0001;
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
     private const int MaxQueuedTurns = 8;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
     private const string DefaultConversationTitle = "New Chat";
-    private const string SystemConversationId = "chat-system";
-    private const string SystemConversationTitle = "System";
     private const string DefaultLocalModel = "gpt-5.3-codex";
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
@@ -76,6 +76,12 @@ public sealed partial class MainWindow : Window {
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out PointNative lpPoint);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -124,6 +130,8 @@ public sealed partial class MainWindow : Window {
     private readonly object _windowHookSync = new();
     private readonly Dictionary<IntPtr, IntPtr> _hookedWindowProcs = new();
     private bool _windowHookInstalled;
+    private InputNonClientPointerSource? _nonClientPointerSource;
+    private bool _nativeTitleBarRegionsActive;
     private static readonly MarkdownRendererOptions MarkdownOptions = MarkdownRendererPresets.CreateChatStrictMinimal();
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
     private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
@@ -155,9 +163,6 @@ public sealed partial class MainWindow : Window {
     private int? _autonomyToolTimeoutSeconds;
     private bool? _autonomyWeightedToolRouting;
     private int? _autonomyMaxCandidateTools;
-    private bool? _autonomyPlanExecuteReviewLoop;
-    private int? _autonomyMaxReviewPasses;
-    private int? _autonomyModelHeartbeatSeconds;
     private bool _proactiveModeEnabled = true;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
@@ -230,7 +235,6 @@ public sealed partial class MainWindow : Window {
     private string? _activeRequestConversationId;
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
-    private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private List<(string Role, string Text, DateTime Time)> _messages = new();
     private readonly StringBuilder _assistantStreaming = new();
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
@@ -332,6 +336,20 @@ public sealed partial class MainWindow : Window {
         public int Y;
     }
 
+    private readonly struct UiHostRect {
+        public UiHostRect(double x, double y, double width, double height) {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
+
+        public double X { get; }
+        public double Y { get; }
+        public double Width { get; }
+        public double Height { get; }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct MouseLowLevelHookStruct {
         public PointNative Point;
@@ -431,6 +449,8 @@ public sealed partial class MainWindow : Window {
             if (appWindow.Presenter is OverlappedPresenter overlapped) {
                 overlapped.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: false);
             }
+
+            EnsureNativeTitleBarRegionSupport();
         } catch (Exception ex) {
             StartupLog.Write("ConfigureWindowPlacement failed: " + ex.Message);
         }
@@ -817,18 +837,12 @@ public sealed partial class MainWindow : Window {
         _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
         _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
         _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
-        _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
-        _autonomyMaxReviewPasses = NormalizeAutonomyInt(_appState.AutonomyMaxReviewPasses, min: 0, max: 3);
-        _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(_appState.AutonomyModelHeartbeatSeconds, min: 0, max: 60);
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;
         _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
         _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
         _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
         _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
-        _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
-        _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
-        _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
         _exportSaveMode = ExportPreferencesContract.NormalizeSaveMode(_appState.ExportSaveMode);
         _appState.ExportSaveMode = _exportSaveMode;
         _exportDefaultFormat = ExportPreferencesContract.NormalizeFormat(_appState.ExportDefaultFormat);
