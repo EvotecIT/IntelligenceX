@@ -137,7 +137,8 @@
           { "Title": "Home", "Url": "/" },
           { "Title": "Docs", "Url": "/docs/" },
           { "Title": "Showcase", "Url": "/showcase/" },
-          { "Title": "API Reference", "Url": "/api/" }
+          { "Title": "API (.NET)", "Url": "/api/" },
+          { "Title": "API (PowerShell)", "Url": "/api/powershell/" }
         ]
       },
       {
@@ -148,7 +149,8 @@
           { "Title": "IX Tools", "Url": "/docs/tools/overview/" },
           { "Title": "CLI Tools", "Url": "/docs/cli/overview/" },
           { "Title": ".NET Library", "Url": "/docs/library/overview/" },
-          { "Title": "API Reference", "Url": "/api/" },
+          { "Title": "API (.NET)", "Url": "/api/" },
+          { "Title": "API (PowerShell)", "Url": "/api/powershell/" },
           { "Title": "PowerShell", "Url": "/docs/powershell/overview/" }
         ]
       },

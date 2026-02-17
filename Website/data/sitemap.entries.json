@@ -72,7 +72,14 @@
     },
     {
       "path": "/api/",
-      "title": "API Reference",
+      "title": "API Reference (.NET)",
+      "section": "API",
+      "priority": "0.8",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/api/powershell/",
+      "title": "API Reference (PowerShell)",
       "section": "API",
       "priority": "0.8",
       "changefreq": "weekly"
