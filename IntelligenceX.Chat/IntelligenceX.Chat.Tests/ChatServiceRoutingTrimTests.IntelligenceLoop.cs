@@ -135,6 +135,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Potential issues to verify", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Recommended next fixes", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hidden regressions", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

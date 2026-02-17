@@ -118,15 +118,50 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        if (weightedToolRouting && originalToolCount > 0 && toolDefs.Count > 0 && toolDefs.Count < originalToolCount) {
+        if (originalToolCount > 0 && toolDefs.Count > 0) {
+            var plannerInsightsDetected = HasPlannerInsight(routingInsights);
+            var routingStrategy = ResolveRoutingStrategy(
+                weightedToolRouting,
+                executionContractApplies,
+                usedContinuationSubset,
+                routingInsights,
+                toolDefs.Count,
+                originalToolCount);
+
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
                     threadId,
                     status: "routing",
-                    message: $"Tool routing selected {toolDefs.Count} of {originalToolCount} tools for this turn.")
+                    message: BuildRoutingSelectionMessage(toolDefs.Count, originalToolCount, routingStrategy))
                 .ConfigureAwait(false);
-            await EmitRoutingInsightsAsync(writer, request.RequestId, threadId, routingInsights).ConfigureAwait(false);
+
+            var routingMetaPayload = BuildRoutingMetaPayload(
+                strategy: routingStrategy,
+                weightedToolRouting,
+                executionContractApplies,
+                usedContinuationSubset,
+                selectedToolCount: toolDefs.Count,
+                totalToolCount: originalToolCount,
+                insightCount: routingInsights.Count,
+                plannerInsightsDetected);
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "routing_meta",
+                    message: routingMetaPayload)
+                .ConfigureAwait(false);
+
+            await EmitRoutingInsightsAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    routingInsights,
+                    routingStrategy,
+                    toolDefs.Count,
+                    originalToolCount)
+                .ConfigureAwait(false);
         }
 
         TurnInfo turn = await RunModelPhaseWithProgressAsync(

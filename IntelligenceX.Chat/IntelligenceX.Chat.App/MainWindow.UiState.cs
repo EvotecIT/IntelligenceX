@@ -885,6 +885,14 @@ public sealed partial class MainWindow : Window {
             return $"Routing {routingToolLabel}...";
         }
 
+        if (string.Equals(status.Status, "routing_meta", StringComparison.OrdinalIgnoreCase)) {
+            if (TryParseRoutingMetaPayload(status.Message, out var strategy, out var selectedToolCount, out var totalToolCount)) {
+                return $"Routing strategy {strategy} ({selectedToolCount}/{totalToolCount} tools)";
+            }
+
+            return "Routing strategy updated...";
+        }
+
         if (!string.IsNullOrWhiteSpace(status.Message)) {
             return status.Message!;
         }
@@ -911,6 +919,7 @@ public sealed partial class MainWindow : Window {
             "tool_parallel_safety_off" => "Using sequential mode for mutating tools...",
             "tool_batch_started" => "Starting parallel tool batch...",
             "tool_batch_progress" => "Parallel tool batch in progress...",
+            "tool_batch_heartbeat" => "Parallel tool batch still running...",
             "tool_batch_recovering" => "Recovering transient tool failures...",
             "tool_batch_recovered" => "Recovery pass complete",
             "tool_batch_completed" => "Parallel tool batch complete",
@@ -984,6 +993,7 @@ public sealed partial class MainWindow : Window {
         var label = normalizedStatus switch {
             "thinking" => "thinking",
             "routing_tool" when toolLabel.Length > 0 => "route " + toolLabel,
+            "routing_meta" => "route strategy",
             "tool_call" when toolLabel.Length > 0 => "prepare " + toolLabel,
             "tool_running" when toolLabel.Length > 0 => "run " + toolLabel,
             "tool_heartbeat" when toolLabel.Length > 0 => "run " + toolLabel,
@@ -994,6 +1004,7 @@ public sealed partial class MainWindow : Window {
             "tool_parallel_safety_off" => "safety serialized",
             "tool_batch_started" => "batch start",
             "tool_batch_progress" => "batch progress",
+            "tool_batch_heartbeat" => "batch wait",
             "tool_batch_recovering" => "batch recovery",
             "tool_batch_recovered" => "batch recovered",
             "tool_batch_completed" => "batch completed",
@@ -1104,6 +1115,52 @@ public sealed partial class MainWindow : Window {
             if (root.TryGetProperty("score", out var scoreElement) && scoreElement.ValueKind == JsonValueKind.Number
                 && scoreElement.TryGetDouble(out var parsedScore) && !double.IsNaN(parsedScore) && !double.IsInfinity(parsedScore)) {
                 score = Math.Clamp(parsedScore, 0d, 9999d);
+            }
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private static bool TryParseRoutingMetaPayload(string? payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
+        strategy = "updated";
+        selectedToolCount = 0;
+        totalToolCount = 0;
+
+        var json = (payload ?? string.Empty).Trim();
+        if (json.Length == 0 || json[0] != '{' || json.Length > MaxRoutingInsightPayloadChars) {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions {
+                MaxDepth = 8,
+                CommentHandling = JsonCommentHandling.Disallow,
+                AllowTrailingCommas = false
+            });
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (root.TryGetProperty("strategy", out var strategyElement) && strategyElement.ValueKind == JsonValueKind.String) {
+                var parsed = (strategyElement.GetString() ?? string.Empty).Trim().Replace('_', ' ');
+                if (parsed.Length > 0) {
+                    strategy = parsed;
+                }
+            }
+
+            if (root.TryGetProperty("selectedToolCount", out var selectedElement)
+                && selectedElement.ValueKind == JsonValueKind.Number
+                && selectedElement.TryGetInt32(out var parsedSelected)) {
+                selectedToolCount = Math.Max(0, parsedSelected);
+            }
+
+            if (root.TryGetProperty("totalToolCount", out var totalElement)
+                && totalElement.ValueKind == JsonValueKind.Number
+                && totalElement.TryGetInt32(out var parsedTotal)) {
+                totalToolCount = Math.Max(0, parsedTotal);
             }
 
             return true;

@@ -221,6 +221,9 @@ internal sealed partial class ChatServiceSession {
             - Keep all existing factual findings that are already supported by tool output.
             - Add a short "Potential issues to verify" section (1-3 bullets).
             - Add a short "Recommended next fixes" section (1-3 bullets).
+            - For each bullet, include signal -> why it matters -> exact next validation/fix action.
+            - If confidence is uncertain, say what evidence is missing and how to collect it.
+            - Prefer proactive checks that can catch hidden regressions, not just obvious follow-ups.
             - Do not invent tool outputs or claim completed actions that were not executed.
             Return only the revised assistant response text.
             """;
