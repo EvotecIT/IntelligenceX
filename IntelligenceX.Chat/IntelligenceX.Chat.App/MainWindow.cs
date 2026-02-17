@@ -162,7 +162,6 @@ public sealed partial class MainWindow : Window {
     private bool _nativeWheelObserved;
     private long _wheelPointerQueuedEvents;
     private long _wheelGlobalQueuedEvents;
-    private long _wheelGlobalRejectedEvents;
     private long _wheelZeroDeltaIgnoredEvents;
     private long _wheelDroppedNotReadyEvents;
     private long _wheelForwardedBatches;
@@ -746,11 +745,6 @@ public sealed partial class MainWindow : Window {
             var isWheelMessage = message == WmMouseWheel || message == WmMouseHWheel;
             if (nCode >= 0 && _webViewReady && isWheelMessage && lParam != IntPtr.Zero && IsForegroundOwnedByCurrentProcess()) {
                 var hook = Marshal.PtrToStructure<MouseLowLevelHookStruct>(lParam);
-                if (!ShouldAcceptGlobalWheelEvent(hook.Point)) {
-                    Interlocked.Increment(ref _wheelGlobalRejectedEvents);
-                    return CallNextHookEx(_globalMouseHookHandle, nCode, wParam, lParam);
-                }
-
                 var delta = (short)((hook.MouseData >> 16) & 0xFFFF);
                 if (delta != 0) {
                     if (!_globalWheelObservedLogged) {
@@ -902,10 +896,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _nativeWheelObserved = true;
-        if (WheelHookMode == GlobalWheelHookMode.Auto) {
-            StartupLog.Write("Native wheel path observed; disabling global wheel hook (auto mode).");
-            RefreshGlobalWheelHookPolicy();
-        }
+        StartupLog.Write("Native wheel path observed.");
     }
 
     private void RefreshGlobalWheelHookPolicy() {
@@ -923,31 +914,15 @@ public sealed partial class MainWindow : Window {
                 break;
             case GlobalWheelHookMode.Auto:
             default:
-                if (_webViewReady && _windowIsActive && !_nativeWheelObserved) {
+                // Keep global hook active while app window is active as a reliability fallback.
+                // JS dedupe will skip forwarded host wheel if native wheel already applied.
+                if (_webViewReady && _windowIsActive) {
                     InstallGlobalWheelHook();
                 } else {
                     UninstallGlobalWheelHook();
                 }
                 break;
         }
-    }
-
-    private bool ShouldAcceptGlobalWheelEvent(PointNative point) {
-        if (!_windowIsActive || !_webViewReady) {
-            return false;
-        }
-
-        var hwnd = _windowHandle;
-        if (hwnd == IntPtr.Zero) {
-            hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            _windowHandle = hwnd;
-        }
-
-        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var rect)) {
-            return true;
-        }
-
-        return point.X >= rect.Left && point.X < rect.Right && point.Y >= rect.Top && point.Y < rect.Bottom;
     }
 
     private int ArmDragMoveWatchdog(IntPtr hwnd) {
@@ -1030,7 +1005,6 @@ public sealed partial class MainWindow : Window {
         try {
             var pointerQueued = Interlocked.Read(ref _wheelPointerQueuedEvents);
             var globalQueued = Interlocked.Read(ref _wheelGlobalQueuedEvents);
-            var globalRejected = Interlocked.Read(ref _wheelGlobalRejectedEvents);
             var zeroDeltaIgnored = Interlocked.Read(ref _wheelZeroDeltaIgnoredEvents);
             var droppedNotReady = Interlocked.Read(ref _wheelDroppedNotReadyEvents);
             var forwardedBatches = Interlocked.Read(ref _wheelForwardedBatches);
@@ -1044,7 +1018,6 @@ public sealed partial class MainWindow : Window {
                 "InputTelemetry(" + phase + "): " +
                 "wheel.pointerQueued=" + pointerQueued.ToString(CultureInfo.InvariantCulture) +
                 ", wheel.globalQueued=" + globalQueued.ToString(CultureInfo.InvariantCulture) +
-                ", wheel.globalRejected=" + globalRejected.ToString(CultureInfo.InvariantCulture) +
                 ", wheel.zeroDeltaIgnored=" + zeroDeltaIgnored.ToString(CultureInfo.InvariantCulture) +
                 ", wheel.droppedNotReady=" + droppedNotReady.ToString(CultureInfo.InvariantCulture) +
                 ", wheel.forwardedBatches=" + forwardedBatches.ToString(CultureInfo.InvariantCulture) +
