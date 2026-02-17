@@ -259,7 +259,7 @@ public sealed record ChatRequestOptions {
     public bool? PlanExecuteReviewLoop { get; init; }
     /// <summary>
     /// Optional cap for response-quality review passes per turn.
-    /// Null/0 means service-selected default.
+    /// 0 disables review passes. Null uses the service default.
     /// </summary>
     public int? MaxReviewPasses { get; init; }
     /// <summary>
