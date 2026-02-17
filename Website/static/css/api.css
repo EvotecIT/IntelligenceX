@@ -542,6 +542,22 @@ p { color: var(--pf-muted); margin: 0 0 1rem; }
   min-width: 0;
 }
 
+.member-header pre.member-signature {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  background: var(--pf-code-bg);
+  border: 1px solid var(--pf-code-border);
+  border-radius: var(--pf-radius-sm);
+}
+
+.member-header pre.member-signature code {
+  color: inherit;
+  font-family: var(--pf-font-mono);
+}
+
 .member-anchor {
   color: var(--pf-muted);
   font-size: 0.8rem;
