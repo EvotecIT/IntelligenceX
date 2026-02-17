@@ -8,6 +8,7 @@ layout: page
 
 ## Latest Posts
 
+- [IX Reviewer in Action](/blog/ix-reviewer-in-action/)
 - [Event Viewer in Action](/blog/event-viewer-in-action/)
 - [Chat Flow and Options](/blog/chat-flow-and-options/)
 
