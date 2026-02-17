@@ -153,11 +153,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             var value = JsonLite.Parse(payload);
             var obj = value?.AsObject();
             return obj is null ? null : ModelListResult.FromJson(obj);
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception) when (cancellationToken.IsCancellationRequested) {
-            throw new OperationCanceledException(cancellationToken);
-        } catch {
+        } catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested) {
             return null;
         }
     }

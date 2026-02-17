@@ -155,6 +155,38 @@ public sealed class OpenAICompatibleHttpTransportTests {
     }
 
     [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_PropagatesPreCanceledToken() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model", "state": "loaded" }
+                  ],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transport.ListModelsAsync(cts.Token));
+    }
+
+    [Fact]
     public async Task ToolCalls_Are_Emitted_In_ToolCallParser_Shape() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """
@@ -325,6 +357,8 @@ public sealed class OpenAICompatibleHttpTransportTests {
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+
             RequestUris.Add(request.RequestUri ?? new Uri("about:blank"));
             if (request.Content is not null) {
                 RequestBodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
