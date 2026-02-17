@@ -107,11 +107,7 @@ internal sealed partial class ChatServiceSession {
         return "full_toolset";
     }
 
-    private static bool ShouldEmitRoutingTransparency(bool weightedToolRouting, int selectedToolCount, int totalToolCount) {
-        if (!weightedToolRouting) {
-            return false;
-        }
-
+    private static bool ShouldEmitRoutingTransparency(int selectedToolCount, int totalToolCount) {
         return selectedToolCount > 0 && totalToolCount > 0;
     }
 
@@ -131,7 +127,7 @@ internal sealed partial class ChatServiceSession {
             "full_toolset" =>
                 $"Tool routing kept the full tool set ({selected}/{total}) for this turn.",
             "disabled" =>
-                "Tool routing is disabled for this turn.",
+                $"Tool routing is disabled for this turn; using the full tool set ({selected}/{total}).",
             _ =>
                 $"Tool routing selected {selected} of {total} tools for this turn."
         };

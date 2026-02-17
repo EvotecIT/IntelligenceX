@@ -6,18 +6,16 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
-    [InlineData(true, 6, 12, true)]
-    [InlineData(true, 0, 12, false)]
-    [InlineData(true, 6, 0, false)]
-    [InlineData(false, 6, 12, false)]
-    public void ShouldEmitRoutingTransparency_RequiresWeightedRoutingAndValidCounts(
-        bool weightedToolRouting,
+    [InlineData(6, 12, true)]
+    [InlineData(0, 12, false)]
+    [InlineData(6, 0, false)]
+    public void ShouldEmitRoutingTransparency_RequiresValidCounts(
         int selectedToolCount,
         int totalToolCount,
         bool expected) {
         var result = ShouldEmitRoutingTransparencyMethod.Invoke(
             null,
-            new object?[] { weightedToolRouting, selectedToolCount, totalToolCount });
+            new object?[] { selectedToolCount, totalToolCount });
 
         Assert.Equal(expected, Assert.IsType<bool>(result));
     }
@@ -27,6 +25,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("weighted_heuristic", "weighted relevance")]
     [InlineData("continuation_subset", "continuation context")]
     [InlineData("execution_contract_full_set", "explicit execution turn")]
+    [InlineData("disabled", "disabled for this turn")]
     public void BuildRoutingSelectionMessage_UsesStrategySpecificText(string strategy, string expectedPhrase) {
         var result = BuildRoutingSelectionMessageMethod.Invoke(null, new object?[] { 7, 24, strategy });
         var text = Assert.IsType<string>(result);
