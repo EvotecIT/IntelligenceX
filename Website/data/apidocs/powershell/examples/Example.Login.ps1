@@ -1,8 +1,8 @@
 $moduleManifest = Join-Path (Split-Path -Parent $PSScriptRoot) 'IntelligenceX.PowerShell.psd1'
 if (Test-Path -LiteralPath $moduleManifest) {
-    Import-Module $moduleManifest -Force
+    Import-Module $moduleManifest -Force -ErrorAction Stop
 } else {
-    Import-Module IntelligenceX.PowerShell -Force
+    Import-Module IntelligenceX.PowerShell -Force -ErrorAction Stop
 }
 
 # Optional: configure defaults via .intelligencex/config.json (see Module/Examples/.intelligencex/config.json)
