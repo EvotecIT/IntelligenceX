@@ -98,6 +98,18 @@ public sealed class MainWindowRoutingMetaPayloadTests {
         Assert.False(parsed);
     }
 
+    /// <summary>
+    /// Ensures exponent and grouped numeric string formats are rejected to keep parsing strict and predictable.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1e3","totalToolCount":"21"}""")]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1,000","totalToolCount":"21"}""")]
+    public void TryParseRoutingMetaPayload_ReturnsFalseForNonPlainNumericStringFormats(string payload) {
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
     private static bool Invoke(string payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
         var args = new object?[] { payload, null, 0, 0 };
         var result = TryParseRoutingMetaPayloadMethod.Invoke(null, args);
