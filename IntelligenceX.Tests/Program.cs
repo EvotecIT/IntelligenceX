@@ -321,6 +321,9 @@ internal static partial class Program {
         failed += Run("Analysis catalog PowerShell docs links", TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern);
         failed += Run("PowerShell docs snippets use exported cmdlets", TestPowerShellDocsSnippetsUseExportedCmdlets);
         failed += Run("PowerShell example scripts use exported cmdlets", TestPowerShellExampleScriptsUseExportedCmdlets);
+        failed += Run("PowerShell cmdlet source XML docs are rich", TestPowerShellCmdletSourceXmlDocsAreRich);
+        failed += Run("PowerShell help XML covers all cmdlets with rich docs", TestPowerShellHelpXmlCoversAllCmdletsWithRichDocs);
+        failed += Run("OpenAI client C# XML docs are complete", TestOpenAiClientCSharpXmlDocsAreComplete);
         failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
         failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
         failed += Run("Analysis hotspots render and state snippet", TestAnalysisHotspotsRenderAndStateSnippet);

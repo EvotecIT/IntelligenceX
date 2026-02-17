@@ -90,6 +90,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// </summary>
     /// <param name="options">Optional app-server options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to AppServerClient.</returns>
     public static async Task<AppServerClient> StartAsync(AppServerOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new AppServerOptions();
         options.Validate();
@@ -174,6 +175,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// </summary>
     /// <param name="clientInfo">Client identity information.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
         Guard.NotNull(clientInfo, nameof(clientInfo));
 
@@ -193,6 +195,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <param name="method">Optional method override.</param>
     /// <param name="timeout">Optional timeout.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to HealthCheckResult.</returns>
     public async Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         var sw = Stopwatch.StartNew();
