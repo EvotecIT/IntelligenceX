@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -291,6 +292,37 @@ public sealed partial class ChatServiceRoutingTrimTests {
         writer.Flush();
         var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
         Assert.Contains("tool_canceled", statusOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FinalizeToolBatchHeartbeatAsync_PreservesPrimaryFailureWhenHeartbeatAlsoFails() {
+        using var cts = new CancellationTokenSource();
+        var heartbeatTask = Task.FromException(new InvalidOperationException("heartbeat-failure"));
+        var primaryFailure = ExceptionDispatchInfo.Capture(new ApplicationException("primary-failure"));
+
+        var taskObj = FinalizeToolBatchHeartbeatAsyncMethod.Invoke(
+            null,
+            new object?[] { heartbeatTask, cts, primaryFailure });
+        var task = Assert.IsAssignableFrom<Task<ExceptionDispatchInfo?>>(taskObj);
+
+        var heartbeatFailure = await task;
+        Assert.Null(heartbeatFailure);
+    }
+
+    [Fact]
+    public async Task FinalizeToolBatchHeartbeatAsync_ReturnsHeartbeatFailureWhenNoPrimaryFailure() {
+        using var cts = new CancellationTokenSource();
+        var heartbeatTask = Task.FromException(new InvalidOperationException("heartbeat-failure"));
+
+        var taskObj = FinalizeToolBatchHeartbeatAsyncMethod.Invoke(
+            null,
+            new object?[] { heartbeatTask, cts, null });
+        var task = Assert.IsAssignableFrom<Task<ExceptionDispatchInfo?>>(taskObj);
+
+        var heartbeatFailure = await task;
+        var captured = Assert.IsType<ExceptionDispatchInfo>(heartbeatFailure);
+        Assert.IsType<InvalidOperationException>(captured.SourceException);
+        Assert.Contains("heartbeat-failure", captured.SourceException.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class StubTool : ITool {

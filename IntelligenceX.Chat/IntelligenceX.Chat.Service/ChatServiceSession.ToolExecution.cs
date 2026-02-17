@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -244,17 +245,22 @@ internal sealed partial class ChatServiceSession {
             () => Math.Max(0, Volatile.Read(ref failed)),
             batchHeartbeatCts.Token);
 
-        ToolOutputDto[] outputsInCallOrder;
+        ToolOutputDto[]? outputsInCallOrder = null;
+        ExceptionDispatchInfo? batchFailure = null;
+        ExceptionDispatchInfo? heartbeatFailure = null;
         try {
             outputsInCallOrder = await Task.WhenAll(tasks).ConfigureAwait(false);
+        } catch (Exception ex) {
+            batchFailure = ExceptionDispatchInfo.Capture(ex);
         } finally {
-            batchHeartbeatCts.Cancel();
-            try {
-                await batchHeartbeatTask.ConfigureAwait(false);
-            } catch (OperationCanceledException) when (batchHeartbeatCts.IsCancellationRequested) {
-                // Expected when the batch completes or turn cancellation is requested.
-            }
+            heartbeatFailure = await FinalizeToolBatchHeartbeatAsync(batchHeartbeatTask, batchHeartbeatCts, batchFailure).ConfigureAwait(false);
             batchStopwatch.Stop();
+        }
+
+        batchFailure?.Throw();
+        heartbeatFailure?.Throw();
+        if (outputsInCallOrder is null) {
+            throw new InvalidOperationException("Parallel tool batch completed without outputs.");
         }
 
         var recoveryIndexes = CollectLowConcurrencyRecoveryIndexesWithHints(calls, outputsInCallOrder, mutatingToolHintsByName);
@@ -323,6 +329,24 @@ internal sealed partial class ChatServiceSession {
                         Math.Max(0, Volatile.Read(ref failed))))
                 .ConfigureAwait(false);
             return output;
+        }
+    }
+
+    private static async Task<ExceptionDispatchInfo?> FinalizeToolBatchHeartbeatAsync(Task batchHeartbeatTask, CancellationTokenSource batchHeartbeatCts,
+        ExceptionDispatchInfo? primaryBatchFailure) {
+        batchHeartbeatCts.Cancel();
+        try {
+            await batchHeartbeatTask.ConfigureAwait(false);
+            return null;
+        } catch (OperationCanceledException) when (batchHeartbeatCts.IsCancellationRequested) {
+            // Expected when the batch completes or turn cancellation is requested.
+            return null;
+        } catch (Exception ex) when (primaryBatchFailure is not null) {
+            // Preserve the primary batch failure so callers observe the real tool execution root cause.
+            Trace.TraceWarning($"Tool batch heartbeat finalize failed after primary batch failure: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        } catch (Exception ex) {
+            return ExceptionDispatchInfo.Capture(ex);
         }
     }
 

@@ -74,6 +74,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildToolBatchHeartbeatMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolBatchHeartbeatMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolBatchHeartbeatMessage not found.");
+    private static readonly MethodInfo FinalizeToolBatchHeartbeatAsyncMethod =
+        typeof(ChatServiceSession).GetMethod("FinalizeToolBatchHeartbeatAsync", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("FinalizeToolBatchHeartbeatAsync not found.");
     private static readonly MethodInfo BuildToolBatchCompletedMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolBatchCompletedMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolBatchCompletedMessage not found.");
