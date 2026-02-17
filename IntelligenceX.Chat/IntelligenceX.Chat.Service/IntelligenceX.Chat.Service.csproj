@@ -8,9 +8,13 @@
     <IsPackable>false</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <IntelligenceXProjectReferencePath>..\..\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
-    <IntelligenceXProjectReferencePath Condition="!Exists('$(IntelligenceXProjectReferencePath)')">..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
-    <IntelligenceXProjectReferencePath Condition="!Exists('$(IntelligenceXProjectReferencePath)')">..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath></IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="'$(IntelligenceXProjectReferencePath)' == '' AND '$(INTELLIGENCEX_PROJECT_REFERENCE_PATH)' != '' AND Exists('$(INTELLIGENCEX_PROJECT_REFERENCE_PATH)')">$(INTELLIGENCEX_PROJECT_REFERENCE_PATH)</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="'$(IntelligenceXProjectReferencePath)' == '' AND Exists('..\..\IntelligenceX\IntelligenceX.csproj')">..\..\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="'$(IntelligenceXProjectReferencePath)' == '' AND Exists('..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj')">..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="'$(IntelligenceXProjectReferencePath)' == '' AND Exists('..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj')">..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="'$(IntelligenceXProjectReferencePath)' == '' AND Exists('..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj')">..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
+    <IntelligenceXProjectReferencePath Condition="'$(IntelligenceXProjectReferencePath)' == '' AND Exists('..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj')">..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj</IntelligenceXProjectReferencePath>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(IntelligenceXProjectReferencePath)' != ''">
