@@ -39,7 +39,7 @@ and can resolve engine sources from configured local roots when needed.
   - OS/system helpers (keep OS-specific things isolated)
   - Includes `system_pack_info` guidance tool
 - `IntelligenceX.Tools.PowerShell`
-  - Dedicated IX.PowerShell runtime pack for `powershell.exe` / `pwsh` execution (opt-in, dangerous)
+  - Dedicated IX.PowerShell runtime pack for `powershell.exe` / `pwsh` / `cmd.exe` execution (opt-in, dangerous)
   - Includes `powershell_pack_info`, `powershell_environment_discover`, `powershell_hosts`, and `powershell_run`
   - `powershell_run` uses explicit `intent` (`read_only`/`read_write`) with policy-gated write controls
   - Engine-first via `IntelligenceX.Engines.PowerShell`

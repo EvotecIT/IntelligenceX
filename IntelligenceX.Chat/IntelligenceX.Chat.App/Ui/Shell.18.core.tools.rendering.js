@@ -257,8 +257,26 @@
     state.options.profile = nextOptions.profile || state.options.profile;
     state.options.localModel = nextOptions.localModel || state.options.localModel;
     state.options.policy = nextOptions.policy || null;
-    state.options.packs = nextOptions.packs || [];
-    state.options.tools = nextOptions.tools || [];
+    var incomingPacks = Array.isArray(nextOptions.packs) ? nextOptions.packs : [];
+    var incomingTools = Array.isArray(nextOptions.tools) ? nextOptions.tools : [];
+    if (typeof nextOptions.toolsLoading === "boolean") {
+      state.options.toolsLoading = nextOptions.toolsLoading;
+    } else {
+      state.options.toolsLoading = false;
+    }
+
+    var preservePreviousTools = state.options.toolsLoading
+      && incomingTools.length === 0
+      && Array.isArray(state.options.tools)
+      && state.options.tools.length > 0;
+    if (preservePreviousTools) {
+      if (incomingPacks.length > 0) {
+        state.options.packs = incomingPacks;
+      }
+    } else {
+      state.options.packs = incomingPacks;
+      state.options.tools = incomingTools;
+    }
     loadDebugToolsEnabledForActiveProfile();
     renderOptions();
   };

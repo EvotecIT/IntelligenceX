@@ -229,7 +229,7 @@ public static class ToolPackBootstrap {
     private static readonly KnownPackDefinition PowerShellPackDefinition = new(
         "powershell",
         "PowerShell Runtime",
-        "Opt-in PowerShell runtime execution (windows_powershell / pwsh).",
+        "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
         ToolCapabilityTier.DangerousWrite,
         IsDangerous: true,
         PackSourceBuiltin);

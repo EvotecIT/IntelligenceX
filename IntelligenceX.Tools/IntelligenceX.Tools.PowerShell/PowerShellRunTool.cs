@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Engines.PowerShell;
@@ -12,7 +15,7 @@ namespace IntelligenceX.Tools.PowerShell;
 /// Executes command/script text using local PowerShell hosts.
 /// </summary>
 public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
-    private static readonly string[] MutatingVerbPrefixes = {
+    private static readonly string[] PowerShellMutatingVerbPrefixes = {
         "set-",
         "new-",
         "remove-",
@@ -33,7 +36,7 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         "start-"
     };
 
-    private static readonly string[] MutatingFragments = {
+    private static readonly string[] PowerShellMutatingFragments = {
         "| out-file",
         "| set-content",
         "| add-content",
@@ -43,15 +46,41 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         " >> "
     };
 
+    private static readonly string[] CmdMutatingVerbPrefixes = {
+        "del ",
+        "erase ",
+        "copy ",
+        "move ",
+        "ren ",
+        "rename ",
+        "mkdir ",
+        "md ",
+        "rmdir ",
+        "rd "
+    };
+
+    private static readonly string[] CmdMutatingFragments = {
+        " > ",
+        " >> ",
+        " copy ",
+        " move ",
+        " del ",
+        " erase ",
+        " rmdir ",
+        " rd "
+    };
+
+    private static readonly UTF8Encoding Utf8NoBom = new(false);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_run",
-        "Execute a PowerShell command or script in pwsh/windows_powershell (dangerous; read_only default, read_write requires explicit policy and intent).",
+        "Execute a shell command or script via pwsh/windows_powershell/cmd (dangerous; read_only default, read_write requires explicit policy and intent).",
         ToolSchema.Object(
-                ("host", ToolSchema.String("PowerShell host: auto, pwsh, windows_powershell. Default auto.").Enum("auto", "pwsh", "windows_powershell")),
+                ("host", ToolSchema.String("Shell host: auto, pwsh, windows_powershell, cmd. Default auto (PowerShell).").Enum("auto", "pwsh", "windows_powershell", "cmd")),
                 ("intent", ToolSchema.String("Execution intent: read_only (default) or read_write.").Enum("read_only", "read_write")),
                 ("allow_write", ToolSchema.Boolean("Explicit write approval flag for read_write intent. Required when policy enforces explicit write confirmation.")),
-                ("command", ToolSchema.String("Single PowerShell command text. Provide exactly one of command or script.")),
-                ("script", ToolSchema.String("Multi-line PowerShell script text. Provide exactly one of command or script.")),
+                ("command", ToolSchema.String("Single shell command text. Provide exactly one of command or script.")),
+                ("script", ToolSchema.String("Multi-line shell script text. Provide exactly one of command or script.")),
                 ("working_directory", ToolSchema.String("Optional working directory for process execution.")),
                 ("timeout_ms", ToolSchema.Integer("Execution timeout in milliseconds.")),
                 ("max_output_chars", ToolSchema.Integer("Maximum combined output characters to return.")),
@@ -67,15 +96,15 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (!Options.Enabled) {
-            return Task.FromResult(ToolResponse.Error(
+            return ToolResponse.Error(
                 errorCode: "disabled",
                 error: "IX.PowerShell pack is disabled by policy.",
                 hints: new[] { "Enable the PowerShell pack explicitly in host/service options before calling powershell_run." },
-                isTransient: false));
+                isTransient: false);
         }
 
         var command = ToolArgs.GetOptionalTrimmed(arguments, "command");
@@ -84,53 +113,53 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         var hasCommand = !string.IsNullOrWhiteSpace(command);
         var hasScript = !string.IsNullOrWhiteSpace(script);
         if (hasCommand == hasScript) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "Provide exactly one of command or script."));
+            return ToolResponse.Error("invalid_argument", "Provide exactly one of command or script.");
         }
 
         if (!TryParseIntent(ToolArgs.GetOptionalTrimmed(arguments, "intent"), out var intent, out var intentError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", intentError ?? "Invalid intent value."));
+            return ToolResponse.Error("invalid_argument", intentError ?? "Invalid intent value.");
         }
 
         var allowWrite = ToolArgs.GetBoolean(arguments, "allow_write", defaultValue: false);
         var payload = hasCommand ? command! : script!;
-        var mutatingReason = Options.EnableMutationHeuristic ? DetectMutatingPayloadReason(payload) : null;
+        if (!TryParseHost(ToolArgs.GetOptionalTrimmed(arguments, "host"), out var hostKind, out var hostError)) {
+            return ToolResponse.Error("invalid_argument", hostError ?? "Invalid host value.");
+        }
+
+        var mutatingReason = Options.EnableMutationHeuristic ? DetectMutatingPayloadReason(payload, hostKind) : null;
 
         if (intent == PowerShellExecutionIntent.ReadOnly && mutatingReason is not null) {
-            return Task.FromResult(ToolResponse.Error(
+            return ToolResponse.Error(
                 errorCode: "invalid_argument",
-                error: "Read-only intent rejected a potentially mutating PowerShell payload.",
+                error: "Read-only intent rejected a potentially mutating shell payload.",
                 hints: new[] {
                     $"Detected mutating pattern: {mutatingReason}",
                     "If this is intentional, set intent=read_write.",
                     "If policy requires it, also set allow_write=true."
                 },
-                isTransient: false));
+                isTransient: false);
         }
 
         if (intent == PowerShellExecutionIntent.ReadWrite && !Options.AllowWrite) {
-            return Task.FromResult(ToolResponse.Error(
+            return ToolResponse.Error(
                 errorCode: "disabled",
-                error: "Read-write PowerShell execution is disabled by policy.",
+                error: "Read-write shell execution is disabled by policy.",
                 hints: new[] {
                     "Enable PowerShellToolOptions.AllowWrite to allow read_write intent.",
                     "Keep intent=read_only for non-mutating inventory commands."
                 },
-                isTransient: false));
+                isTransient: false);
         }
 
         if (intent == PowerShellExecutionIntent.ReadWrite && Options.RequireExplicitWriteFlag && !allowWrite) {
-            return Task.FromResult(ToolResponse.Error(
+            return ToolResponse.Error(
                 errorCode: "invalid_argument",
                 error: "Read-write intent requires explicit allow_write=true confirmation.",
                 hints: new[] {
                     "Set allow_write=true for approved mutating actions.",
                     "Use intent=read_only for inventory/diagnostic commands."
                 },
-                isTransient: false));
-        }
-
-        if (!TryParseHost(ToolArgs.GetOptionalTrimmed(arguments, "host"), out var host, out var hostError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", hostError ?? "Invalid host value."));
+                isTransient: false);
         }
 
         var timeoutMs = ToolArgs.GetCappedInt32(
@@ -148,6 +177,61 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
 
         var includeErrorStream = ToolArgs.GetBoolean(arguments, "include_error_stream", defaultValue: true);
         var workingDirectory = ToolArgs.GetOptionalTrimmed(arguments, "working_directory");
+        var intentText = ToIntentId(intent);
+
+        if (hostKind == ShellHostKind.Cmd) {
+            var cmdResult = await ExecuteCmdAsync(
+                    payload: payload,
+                    includeErrorStream: includeErrorStream,
+                    timeoutMs: timeoutMs,
+                    maxOutputChars: maxOutputChars,
+                    workingDirectory: workingDirectory,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!cmdResult.Success) {
+                return ToolResponse.Error(
+                    errorCode: cmdResult.ErrorCode ?? "query_failed",
+                    error: cmdResult.Error ?? "Command prompt execution failed.",
+                    hints: cmdResult.Hints,
+                    isTransient: string.Equals(cmdResult.ErrorCode, "timeout", StringComparison.Ordinal));
+            }
+
+            var cmdModel = cmdResult.Model!;
+            var cmdMeta = ToolOutputHints.Meta(count: 1, truncated: cmdModel.OutputTruncated)
+                .Add("intent", intentText)
+                .Add("allow_write", allowWrite)
+                .Add("mutation_heuristic_enabled", Options.EnableMutationHeuristic)
+                .Add("mutation_heuristic_matched", mutatingReason is not null);
+
+            if (!string.IsNullOrWhiteSpace(mutatingReason)) {
+                cmdMeta.Add("mutation_heuristic_reason", mutatingReason);
+            }
+
+            var cmdSummary = ToolMarkdown.SummaryFacts(
+                title: "Shell Execution",
+                facts: new[] {
+                    ("Host", cmdModel.Host),
+                    ("ExitCode", cmdModel.ExitCode.ToString()),
+                    ("DurationMs", cmdModel.DurationMs.ToString()),
+                    ("TimedOut", cmdModel.TimedOut ? "true" : "false"),
+                    ("OutputTruncated", cmdModel.OutputTruncated ? "true" : "false"),
+                    ("Intent", intentText),
+                    ("WriteAllowed", allowWrite ? "true" : "false")
+                });
+
+            return ToolResponse.OkModel(
+                model: cmdModel,
+                meta: cmdMeta,
+                summaryMarkdown: cmdSummary,
+                render: ToolOutputHints.RenderCode(language: "text", contentPath: "output"));
+        }
+
+        var host = hostKind switch {
+            ShellHostKind.PowerShell7 => PowerShellHostKind.PowerShell7,
+            ShellHostKind.WindowsPowerShell => PowerShellHostKind.WindowsPowerShell,
+            _ => PowerShellHostKind.Auto
+        };
 
         var attempt = PowerShellCommandQueryExecutor.TryExecute(
             request: new PowerShellCommandQueryRequest {
@@ -161,12 +245,10 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
             },
             cancellationToken: cancellationToken);
         if (!attempt.Success) {
-            return Task.FromResult(ErrorFromFailure(attempt.Failure));
+            return ErrorFromFailure(attempt.Failure);
         }
 
         var result = attempt.Result!;
-        var intentText = ToIntentId(intent);
-
         var meta = ToolOutputHints.Meta(count: 1, truncated: result.OutputTruncated)
             .Add("intent", intentText)
             .Add("allow_write", allowWrite)
@@ -189,15 +271,15 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                 ("WriteAllowed", allowWrite ? "true" : "false")
             });
 
-        return Task.FromResult(ToolResponse.OkModel(
+        return ToolResponse.OkModel(
             model: result,
             meta: meta,
             summaryMarkdown: summary,
-            render: ToolOutputHints.RenderCode(language: "text", contentPath: "output")));
+            render: ToolOutputHints.RenderCode(language: "text", contentPath: "output"));
     }
 
-    private static bool TryParseHost(string? raw, out PowerShellHostKind host, out string? error) {
-        host = PowerShellHostKind.Auto;
+    private static bool TryParseHost(string? raw, out ShellHostKind host, out string? error) {
+        host = ShellHostKind.Auto;
         error = null;
 
         if (string.IsNullOrWhiteSpace(raw) || string.Equals(raw, "auto", StringComparison.OrdinalIgnoreCase)) {
@@ -205,16 +287,21 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         }
 
         if (string.Equals(raw, "pwsh", StringComparison.OrdinalIgnoreCase)) {
-            host = PowerShellHostKind.PowerShell7;
+            host = ShellHostKind.PowerShell7;
             return true;
         }
 
         if (string.Equals(raw, "windows_powershell", StringComparison.OrdinalIgnoreCase)) {
-            host = PowerShellHostKind.WindowsPowerShell;
+            host = ShellHostKind.WindowsPowerShell;
             return true;
         }
 
-        error = "host must be one of: auto, pwsh, windows_powershell.";
+        if (string.Equals(raw, "cmd", StringComparison.OrdinalIgnoreCase)) {
+            host = ShellHostKind.Cmd;
+            return true;
+        }
+
+        error = "host must be one of: auto, pwsh, windows_powershell, cmd.";
         return false;
     }
 
@@ -239,7 +326,7 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         return intent == PowerShellExecutionIntent.ReadWrite ? "read_write" : "read_only";
     }
 
-    private static string? DetectMutatingPayloadReason(string payload) {
+    private static string? DetectMutatingPayloadReason(string payload, ShellHostKind hostKind) {
         if (string.IsNullOrWhiteSpace(payload)) {
             return null;
         }
@@ -253,15 +340,17 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
 
             var lowered = line.ToLowerInvariant();
 
-            for (var j = 0; j < MutatingVerbPrefixes.Length; j++) {
-                var prefix = MutatingVerbPrefixes[j];
+            var verbPrefixes = hostKind == ShellHostKind.Cmd ? CmdMutatingVerbPrefixes : PowerShellMutatingVerbPrefixes;
+            for (var j = 0; j < verbPrefixes.Length; j++) {
+                var prefix = verbPrefixes[j];
                 if (lowered.StartsWith(prefix, StringComparison.Ordinal)) {
                     return $"line starts with '{prefix}'.";
                 }
             }
 
-            for (var j = 0; j < MutatingFragments.Length; j++) {
-                var fragment = MutatingFragments[j];
+            var fragments = hostKind == ShellHostKind.Cmd ? CmdMutatingFragments : PowerShellMutatingFragments;
+            for (var j = 0; j < fragments.Length; j++) {
+                var fragment = fragments[j];
                 if (lowered.Contains(fragment, StringComparison.Ordinal)) {
                     return $"line contains '{fragment.Trim()}'.";
                 }
@@ -271,8 +360,142 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         return null;
     }
 
+    private static async Task<CmdExecutionAttempt> ExecuteCmdAsync(string payload, bool includeErrorStream, int timeoutMs, int maxOutputChars, string? workingDirectory, CancellationToken cancellationToken) {
+        if (!IsCmdHostAvailable()) {
+            return CmdExecutionAttempt.FromFailure(
+                errorCode: "host_unavailable",
+                error: "cmd host is not available on this machine.",
+                hints: new[] { "Use powershell_environment_discover or powershell_hosts to inspect available hosts." });
+        }
+
+        if (!string.IsNullOrWhiteSpace(workingDirectory) && !Directory.Exists(workingDirectory)) {
+            return CmdExecutionAttempt.FromFailure(
+                errorCode: "invalid_argument",
+                error: "working_directory does not exist.",
+                hints: new[] { "Provide an existing working_directory path or omit this argument." });
+        }
+
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var scriptPath = Path.Combine(Path.GetTempPath(), "ix-cmd-" + Guid.NewGuid().ToString("N") + ".cmd");
+        try {
+            await File.WriteAllTextAsync(scriptPath, payload, Utf8NoBom, cancellationToken).ConfigureAwait(false);
+
+            using var process = new Process {
+                StartInfo = new ProcessStartInfo {
+                    FileName = cmdPath,
+                    Arguments = "/d /s /c \"\"" + scriptPath + "\"\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
+                        ? Environment.CurrentDirectory
+                        : workingDirectory!
+                }
+            };
+
+            var stopwatch = Stopwatch.StartNew();
+            process.Start();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = includeErrorStream
+                ? process.StandardError.ReadToEndAsync()
+                : Task.FromResult(string.Empty);
+
+            var timedOut = false;
+            using var timeoutCts = new CancellationTokenSource(timeoutMs);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+            try {
+                await process.WaitForExitAsync(linkedCts.Token).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
+                timedOut = true;
+                try {
+                    if (!process.HasExited) {
+                        process.Kill(entireProcessTree: true);
+                    }
+                } catch {
+                    // Ignore best-effort kill failures.
+                }
+
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            var combinedOutput = includeErrorStream && !string.IsNullOrEmpty(stderr)
+                ? (string.IsNullOrEmpty(stdout) ? stderr : (stdout + Environment.NewLine + stderr))
+                : stdout;
+            var (output, truncated) = TruncateOutput(combinedOutput ?? string.Empty, maxOutputChars);
+
+            if (timedOut) {
+                return CmdExecutionAttempt.FromFailure(
+                    errorCode: "timeout",
+                    error: "cmd execution timed out.",
+                    hints: new[] { "Increase timeout_ms for long-running commands." });
+            }
+
+            return CmdExecutionAttempt.FromSuccess(new CmdExecutionModel(
+                Host: "cmd",
+                ExitCode: process.ExitCode,
+                DurationMs: stopwatch.ElapsedMilliseconds,
+                TimedOut: false,
+                OutputTruncated: truncated,
+                Output: output));
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            return CmdExecutionAttempt.FromFailure(
+                errorCode: "query_failed",
+                error: "cmd execution failed: " + ex.Message,
+                hints: new[] { "Check command/script syntax and working_directory." });
+        } finally {
+            try {
+                if (File.Exists(scriptPath)) {
+                    File.Delete(scriptPath);
+                }
+            } catch {
+                // Ignore temporary script cleanup failures.
+            }
+        }
+    }
+
+    private static (string Output, bool Truncated) TruncateOutput(string output, int maxChars) {
+        if (string.IsNullOrEmpty(output) || output.Length <= maxChars) {
+            return (output, false);
+        }
+
+        return (output[..maxChars], true);
+    }
+
+    private enum ShellHostKind {
+        Auto,
+        PowerShell7,
+        WindowsPowerShell,
+        Cmd
+    }
+
     private enum PowerShellExecutionIntent {
         ReadOnly,
         ReadWrite
+    }
+
+    private sealed record CmdExecutionModel(
+        string Host,
+        int ExitCode,
+        long DurationMs,
+        bool TimedOut,
+        bool OutputTruncated,
+        string Output);
+
+    private sealed record CmdExecutionAttempt(
+        bool Success,
+        CmdExecutionModel? Model,
+        string? ErrorCode,
+        string? Error,
+        string[]? Hints) {
+        public static CmdExecutionAttempt FromSuccess(CmdExecutionModel model) => new(true, model, null, null, null);
+
+        public static CmdExecutionAttempt FromFailure(string errorCode, string error, string[]? hints = null) => new(false, null, errorCode, error, hints);
     }
 }

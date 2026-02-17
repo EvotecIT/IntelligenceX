@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using IntelligenceX.Engines.PowerShell;
 using IntelligenceX.Tools.Common;
 
@@ -39,7 +40,7 @@ public abstract class PowerShellToolBase : ToolBase {
         };
 
         if (code == PowerShellCommandQueryFailureCode.HostNotAvailable) {
-            hints.Add("Use powershell_environment_discover or powershell_hosts to check host availability (pwsh/windows_powershell).");
+            hints.Add("Use powershell_environment_discover or powershell_hosts to check host availability (pwsh/windows_powershell/cmd).");
         }
         if (code == PowerShellCommandQueryFailureCode.Timeout) {
             hints.Add("Increase timeout_ms for long-running commands.");
@@ -50,5 +51,29 @@ public abstract class PowerShellToolBase : ToolBase {
             error: message,
             hints: hints.Count == 0 ? null : hints,
             isTransient: code == PowerShellCommandQueryFailureCode.Timeout || code == PowerShellCommandQueryFailureCode.QueryFailed);
+    }
+
+    /// <summary>
+    /// Returns runtime hosts available for powershell_run execution.
+    /// </summary>
+    protected static IReadOnlyList<string> GetAvailableRuntimeHosts() {
+        var hosts = new List<string>(PowerShellCommandQueryExecutor.GetAvailableHosts());
+        if (IsCmdHostAvailable()) {
+            hosts.Add("cmd");
+        }
+
+        return hosts;
+    }
+
+    /// <summary>
+    /// Returns true when cmd.exe is available on this machine.
+    /// </summary>
+    protected static bool IsCmdHostAvailable() {
+        try {
+            var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+            return File.Exists(cmdPath);
+        } catch {
+            return false;
+        }
     }
 }

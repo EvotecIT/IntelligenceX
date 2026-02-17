@@ -12,7 +12,7 @@ namespace IntelligenceX.Tools.PowerShell;
 public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_pack_info",
-        "Return IX.PowerShell pack capabilities, output contract, and safe usage guidance. Call this first when planning shell execution.",
+        "Return IX.PowerShell pack capabilities, output contract, and safe usage guidance (pwsh/windows_powershell/cmd). Call this first when planning shell execution.",
         ToolSchema.Object().NoAdditionalProperties());
 
     /// <summary>
@@ -34,7 +34,8 @@ public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
             recommendedFlow: new[] {
                 "Call powershell_environment_discover first to read policy, host availability, and runtime limits.",
                 "Use powershell_hosts when you only need host inventory.",
-                "Use powershell_run with intent=read_only by default, and switch to intent=read_write only with explicit approval.",
+                "Use powershell_run with host=pwsh/windows_powershell/cmd and intent=read_only by default.",
+                "Switch to intent=read_write only with explicit approval.",
                 "Prefer short, auditable commands and cap timeout/output when possible."
             },
             flowSteps: new[] {
@@ -56,7 +57,7 @@ public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
                     primaryTools: new[] { "powershell_environment_discover" }),
                 ToolPackGuidance.Capability(
                     id: "host_discovery",
-                    summary: "Report locally available PowerShell hosts (pwsh/windows_powershell).",
+                    summary: "Report locally available shell hosts (pwsh/windows_powershell/cmd).",
                     primaryTools: new[] { "powershell_hosts" }),
                 ToolPackGuidance.Capability(
                     id: "runtime_execution",

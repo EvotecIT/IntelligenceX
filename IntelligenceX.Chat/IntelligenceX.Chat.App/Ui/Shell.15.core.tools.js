@@ -322,6 +322,11 @@
 
     var order = Object.keys(groups);
     if (order.length === 0) {
+      if (!filter && state.options.toolsLoading === true) {
+        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>Loading tool packs...</div><div class='options-item-sub'>Runtime is still publishing pack metadata.</div></div>";
+        return;
+      }
+
       if (filter) {
         toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>No tools match filter</div></div>";
       } else {

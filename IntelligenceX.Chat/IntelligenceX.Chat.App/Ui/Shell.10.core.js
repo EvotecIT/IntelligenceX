@@ -109,7 +109,8 @@
       toolFilter: "",
       policy: null,
       packs: [],
-      tools: []
+      tools: [],
+      toolsLoading: true
     }
   };
 

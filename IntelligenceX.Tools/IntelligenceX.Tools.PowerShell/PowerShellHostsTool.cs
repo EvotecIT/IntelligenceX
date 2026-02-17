@@ -1,6 +1,5 @@
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.Engines.PowerShell;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -13,7 +12,7 @@ namespace IntelligenceX.Tools.PowerShell;
 public sealed class PowerShellHostsTool : PowerShellToolBase, ITool {
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_hosts",
-        "List available local PowerShell hosts (pwsh and/or windows_powershell).",
+        "List available local shell hosts (pwsh/windows_powershell/cmd).",
         ToolSchema.Object().NoAdditionalProperties());
 
     /// <summary>
@@ -28,11 +27,12 @@ public sealed class PowerShellHostsTool : PowerShellToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var hosts = PowerShellCommandQueryExecutor.GetAvailableHosts();
+        var hosts = GetAvailableRuntimeHosts();
         var model = new {
             enabled = Options.Enabled,
             available_hosts = hosts,
-            preferred_default = hosts.Count > 0 ? hosts[0] : "none"
+            preferred_default = hosts.Count > 0 ? hosts[0] : "none",
+            cmd_available = IsCmdHostAvailable()
         };
 
         var summary = ToolMarkdown.SummaryFacts(

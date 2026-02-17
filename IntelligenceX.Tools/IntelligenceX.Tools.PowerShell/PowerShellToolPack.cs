@@ -24,7 +24,7 @@ public sealed class PowerShellToolPack : IToolPack {
         Name = "PowerShell Runtime",
         Tier = ToolCapabilityTier.DangerousWrite,
         IsDangerous = true,
-        Description = "Opt-in PowerShell runtime execution (windows_powershell / pwsh).",
+        Description = "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
         SourceKind = "builtin"
     };
 

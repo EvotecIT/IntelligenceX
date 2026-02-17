@@ -1,6 +1,5 @@
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.Engines.PowerShell;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -13,7 +12,7 @@ namespace IntelligenceX.Tools.PowerShell;
 public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, ITool {
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_environment_discover",
-        "Discover IX.PowerShell runtime hosts and execution policy (enabled/read-write options). Call this before powershell_run.",
+        "Discover IX.PowerShell runtime hosts (pwsh/windows_powershell/cmd) and execution policy (enabled/read-write options). Call this before powershell_run.",
         ToolSchema.Object().NoAdditionalProperties());
 
     /// <summary>
@@ -28,7 +27,7 @@ public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, IToo
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var hosts = PowerShellCommandQueryExecutor.GetAvailableHosts();
+        var hosts = GetAvailableRuntimeHosts();
         var preferred = hosts.Count > 0 ? hosts[0] : "none";
 
         var model = new {
@@ -41,7 +40,8 @@ public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, IToo
             runtime = new {
                 available_hosts = hosts,
                 preferred_default = preferred,
-                has_any_host = hosts.Count > 0
+                has_any_host = hosts.Count > 0,
+                cmd_available = IsCmdHostAvailable()
             },
             limits = new {
                 default_timeout_ms = Options.DefaultTimeoutMs,
