@@ -20,6 +20,10 @@
   <ItemGroup Condition="'$(IntelligenceXProjectReferencePath)' != ''">
     <!-- Prefer repo-local IntelligenceX and fall back to legacy nested checkout layouts. -->
     <ProjectReference Include="$(IntelligenceXProjectReferencePath)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Service-local project dependencies are always required. -->
     <ProjectReference Include="..\IntelligenceX.Chat.Abstractions\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\IntelligenceX.Chat.Profiles\IntelligenceX.Chat.Profiles.csproj" />
   </ItemGroup>
