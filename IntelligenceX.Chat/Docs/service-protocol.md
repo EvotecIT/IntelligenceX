@@ -63,7 +63,9 @@ Chat execution messages:
 Tool health messages:
 
 - `tool_health` (response; per-pack `*_pack_info` probe status with `okCount`/`failedCount`)
-- On service startup, lightweight pack probes are also folded into `hello.policy.startupWarnings` with a `[tool health]` prefix.
+- On service startup, lightweight pack probes are also folded into `hello.policy.startupWarnings`.
+  - Actionable failures use a `[tool health]` prefix.
+  - Closed-source startup timeouts may be downgraded to `[tool health notice]` to avoid noisy first-run warnings.
 - `check_tool_health` supports optional filters:
   - `sourceKinds`: array of `builtin|openSource|closedSource`
   - `packIds`: array of pack IDs (for example `ad`, `system`, `testimox`)

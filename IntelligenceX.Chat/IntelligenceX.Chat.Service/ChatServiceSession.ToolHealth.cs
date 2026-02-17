@@ -90,10 +90,10 @@ internal sealed partial class ChatServiceSession {
 
         foreach (var definition in packInfoDefinitions) {
             var metadata = ResolvePackMetadata(definition);
-            var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind);
+            var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind, metadata.PackId);
             var probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, timeoutSeconds, cancellationToken).ConfigureAwait(false);
             if (!probe.Ok && IsToolTimeoutProbe(probe)) {
-                var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind);
+                var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind, metadata.PackId);
                 if (retryTimeoutSeconds > timeoutSeconds) {
                     probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, retryTimeoutSeconds, cancellationToken).ConfigureAwait(false);
                 }
@@ -104,7 +104,10 @@ internal sealed partial class ChatServiceSession {
 
             var sourceLabel = ToSourceLabel(metadata.SourceKind);
             var packLabel = metadata.PackId.Length == 0 ? "unknown" : metadata.PackId;
-            var warning = $"[tool health][{sourceLabel}][{packLabel}] {probe.ToolName} failed ({NormalizeHealthErrorCode(probe.ErrorCode)}): {NormalizeHealthError(probe.Error)}";
+            var prefix = ShouldDowngradeStartupToolHealthFailure(metadata.SourceKind, probe.ErrorCode)
+                ? "[tool health notice]"
+                : "[tool health]";
+            var warning = $"{prefix}[{sourceLabel}][{packLabel}] {probe.ToolName} failed ({NormalizeHealthErrorCode(probe.ErrorCode)}): {NormalizeHealthError(probe.Error)}";
             if (warnings.Any(existing => string.Equals(existing, warning, StringComparison.OrdinalIgnoreCase))) {
                 continue;
             }
@@ -181,9 +184,18 @@ internal sealed partial class ChatServiceSession {
         return (packId, packName, sourceKind);
     }
 
-    internal static int ResolveStartupToolHealthTimeoutSeconds(int configuredTimeoutSeconds, ToolPackSourceKind sourceKind) {
+    internal static int ResolveStartupToolHealthTimeoutSeconds(int configuredTimeoutSeconds, ToolPackSourceKind sourceKind, string? packId = null) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        var isTestimoX = string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase);
         if (configuredTimeoutSeconds <= 0) {
-            return sourceKind == ToolPackSourceKind.ClosedSource ? 8 : 4;
+            var timeout = sourceKind == ToolPackSourceKind.ClosedSource ? 8 : 4;
+            return isTestimoX
+                ? Math.Clamp(Math.Max(timeout, 12), 12, 30)
+                : timeout;
+        }
+
+        if (isTestimoX) {
+            return Math.Clamp(configuredTimeoutSeconds, 12, 30);
         }
 
         return sourceKind == ToolPackSourceKind.ClosedSource
@@ -191,15 +203,27 @@ internal sealed partial class ChatServiceSession {
             : Math.Clamp(configuredTimeoutSeconds, 2, 10);
     }
 
-    internal static int ResolveStartupToolHealthRetryTimeoutSeconds(int initialTimeoutSeconds, ToolPackSourceKind sourceKind) {
+    internal static int ResolveStartupToolHealthRetryTimeoutSeconds(int initialTimeoutSeconds, ToolPackSourceKind sourceKind, string? packId = null) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
         if (initialTimeoutSeconds <= 0) {
-            return sourceKind == ToolPackSourceKind.ClosedSource ? 12 : 6;
+            var timeout = sourceKind == ToolPackSourceKind.ClosedSource ? 12 : 6;
+            return string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase)
+                ? Math.Clamp(Math.Max(timeout, 20), 20, 45)
+                : timeout;
         }
 
         var doubled = initialTimeoutSeconds * 2;
-        return sourceKind == ToolPackSourceKind.ClosedSource
+        var resolved = sourceKind == ToolPackSourceKind.ClosedSource
             ? Math.Clamp(doubled, 10, 30)
             : Math.Clamp(doubled, 4, 12);
+        return string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase)
+            ? Math.Clamp(Math.Max(resolved, 20), 20, 45)
+            : resolved;
+    }
+
+    internal static bool ShouldDowngradeStartupToolHealthFailure(ToolPackSourceKind sourceKind, string? errorCode) {
+        return sourceKind == ToolPackSourceKind.ClosedSource
+               && string.Equals((errorCode ?? string.Empty).Trim(), "tool_timeout", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsToolTimeoutProbe(ToolHealthDiagnostics.ProbeResult probe) {

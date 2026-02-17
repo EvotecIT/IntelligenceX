@@ -45,4 +45,45 @@ public sealed class StartupToolHealthTimeoutPolicyTests {
 
         Assert.Equal(expectedTimeoutSeconds, timeout);
     }
+
+    [Theory]
+    [InlineData(0, ToolPackSourceKind.ClosedSource, "testimox", 12)]
+    [InlineData(2, ToolPackSourceKind.ClosedSource, "testimox", 12)]
+    [InlineData(60, ToolPackSourceKind.ClosedSource, "testimox", 30)]
+    public void ResolveStartupToolHealthTimeoutSeconds_UsesHigherFloorForTestimoX(
+        int configuredTimeoutSeconds,
+        ToolPackSourceKind sourceKind,
+        string packId,
+        int expectedTimeoutSeconds) {
+        var timeout = ChatServiceSession.ResolveStartupToolHealthTimeoutSeconds(configuredTimeoutSeconds, sourceKind, packId);
+
+        Assert.Equal(expectedTimeoutSeconds, timeout);
+    }
+
+    [Theory]
+    [InlineData(0, ToolPackSourceKind.ClosedSource, "testimox", 20)]
+    [InlineData(8, ToolPackSourceKind.ClosedSource, "testimox", 20)]
+    [InlineData(24, ToolPackSourceKind.ClosedSource, "testimox", 30)]
+    public void ResolveStartupToolHealthRetryTimeoutSeconds_UsesHigherFloorForTestimoX(
+        int initialTimeoutSeconds,
+        ToolPackSourceKind sourceKind,
+        string packId,
+        int expectedTimeoutSeconds) {
+        var timeout = ChatServiceSession.ResolveStartupToolHealthRetryTimeoutSeconds(initialTimeoutSeconds, sourceKind, packId);
+
+        Assert.Equal(expectedTimeoutSeconds, timeout);
+    }
+
+    [Theory]
+    [InlineData(ToolPackSourceKind.ClosedSource, "tool_timeout", true)]
+    [InlineData(ToolPackSourceKind.ClosedSource, "access_denied", false)]
+    [InlineData(ToolPackSourceKind.OpenSource, "tool_timeout", false)]
+    public void ShouldDowngradeStartupToolHealthFailure_OnlyClosedSourceTimeouts(
+        ToolPackSourceKind sourceKind,
+        string errorCode,
+        bool expected) {
+        var result = ChatServiceSession.ShouldDowngradeStartupToolHealthFailure(sourceKind, errorCode);
+
+        Assert.Equal(expected, result);
+    }
 }
