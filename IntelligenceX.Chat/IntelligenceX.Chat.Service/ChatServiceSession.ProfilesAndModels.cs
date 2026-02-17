@@ -319,6 +319,22 @@ internal sealed partial class ChatServiceSession {
             DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? null : m.DisplayName,
             Description = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
             IsDefault = m.IsDefault,
+            OwnedBy = string.IsNullOrWhiteSpace(m.OwnedBy) ? null : m.OwnedBy,
+            Publisher = string.IsNullOrWhiteSpace(m.Publisher) ? null : m.Publisher,
+            Architecture = string.IsNullOrWhiteSpace(m.Architecture) ? null : m.Architecture,
+            Quantization = string.IsNullOrWhiteSpace(m.Quantization) ? null : m.Quantization,
+            CompatibilityType = string.IsNullOrWhiteSpace(m.CompatibilityType) ? null : m.CompatibilityType,
+            RuntimeState = string.IsNullOrWhiteSpace(m.RuntimeState) ? null : m.RuntimeState,
+            ModelType = string.IsNullOrWhiteSpace(m.ModelType) ? null : m.ModelType,
+            MaxContextLength = m.MaxContextLength,
+            LoadedContextLength = m.LoadedContextLength,
+            Capabilities = m.Capabilities is { Count: > 0 }
+                ? m.Capabilities
+                    .Where(capability => !string.IsNullOrWhiteSpace(capability))
+                    .Select(capability => capability.Trim())
+                    .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : Array.Empty<string>(),
             DefaultReasoningEffort = string.IsNullOrWhiteSpace(m.DefaultReasoningEffort) ? null : m.DefaultReasoningEffort,
             SupportedReasoningEfforts = m.SupportedReasoningEfforts.Count == 0
                 ? Array.Empty<ReasoningEffortOptionDto>()

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -14,6 +15,176 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class OpenAICompatibleHttpTransportTests {
+    [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_OnlyEnrichesPrimaryModels() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model", "owned_by": "organization_owner" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    {
+                      "id": "google/gemma-3-4b",
+                      "object": "model",
+                      "state": "loaded",
+                      "arch": "gemma3",
+                      "quantization": "Q4_K_M",
+                      "max_context_length": 131072,
+                      "loaded_context_length": 4096,
+                      "capabilities": ["tool_use"]
+                    },
+                    {
+                      "id": "openai/gpt-oss-20b",
+                      "object": "model",
+                      "state": "not-loaded",
+                      "arch": "gpt-oss",
+                      "quantization": "MXFP4"
+                    }
+                  ],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var result = await transport.ListModelsAsync(CancellationToken.None);
+        Assert.Single(result.Models);
+
+        var gemma = Assert.Single(result.Models, m => string.Equals(m.Model, "google/gemma-3-4b", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("loaded", gemma.RuntimeState);
+        Assert.Equal("gemma3", gemma.Architecture);
+        Assert.Equal("Q4_K_M", gemma.Quantization);
+        Assert.Equal(131072, gemma.MaxContextLength);
+        Assert.Equal(4096, gemma.LoadedContextLength);
+        Assert.Contains("tool_use", gemma.Capabilities, StringComparer.OrdinalIgnoreCase);
+
+        Assert.DoesNotContain(result.Models, m => string.Equals(m.Model, "openai/gpt-oss-20b", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(2, handler.RequestUris.Count);
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/api/v0/models", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_NonLmStudioBaseUrl_DoesNotProbeLmStudioCatalog() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "llama3.1", "object": "model", "owned_by": "ollama" }
+                  ],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:11434",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var result = await transport.ListModelsAsync(CancellationToken.None);
+        var only = Assert.Single(result.Models);
+        Assert.Equal("llama3.1", only.Model);
+        Assert.Single(handler.RequestUris);
+        Assert.Equal("/v1/models", handler.RequestUris[0].AbsolutePath);
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_PropagatesCancellation() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondCanceled();
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transport.ListModelsAsync(CancellationToken.None));
+        Assert.Equal(2, handler.RequestUris.Count);
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/api/v0/models", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_PropagatesCancellationDuringContentRead() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondCanceledContent();
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transport.ListModelsAsync(CancellationToken.None));
+        Assert.Equal(2, handler.RequestUris.Count);
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/api/v0/models", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_PropagatesPreCanceledToken() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model", "state": "loaded" }
+                  ],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transport.ListModelsAsync(cts.Token));
+    }
 
     [Fact]
     public async Task ToolCalls_Are_Emitted_In_ToolCallParser_Shape() {
@@ -173,7 +344,21 @@ public sealed class OpenAICompatibleHttpTransportTests {
             return this;
         }
 
+        public StubHandler RespondCanceled() {
+            _responses.Enqueue((req, ct) => Task.FromException<HttpResponseMessage>(new OperationCanceledException(ct)));
+            return this;
+        }
+
+        public StubHandler RespondCanceledContent() {
+            _responses.Enqueue((req, ct) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = new CanceledReadContent()
+            }));
+            return this;
+        }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+
             RequestUris.Add(request.RequestUri ?? new Uri("about:blank"));
             if (request.Content is not null) {
                 RequestBodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
@@ -186,6 +371,17 @@ public sealed class OpenAICompatibleHttpTransportTests {
             }
 
             return await _responses.Dequeue()(request, cancellationToken);
+        }
+    }
+
+    private sealed class CanceledReadContent : HttpContent {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) {
+            return Task.FromException(new OperationCanceledException());
+        }
+
+        protected override bool TryComputeLength(out long length) {
+            length = 0;
+            return false;
         }
     }
 }

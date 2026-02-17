@@ -504,6 +504,117 @@
     return count;
   }
 
+  function normalizePositiveInt(value) {
+    if (value == null || value === "") {
+      return 0;
+    }
+    var parsed = Number(value);
+    if (!isFinite(parsed) || parsed <= 0) {
+      return 0;
+    }
+    return Math.floor(parsed);
+  }
+
+  function formatModelContextLabel(loadedContextLength, maxContextLength) {
+    var loaded = normalizePositiveInt(loadedContextLength);
+    var max = normalizePositiveInt(maxContextLength);
+    if (loaded > 0 && max > 0) {
+      return "ctx " + loaded + "/" + max;
+    }
+    if (max > 0) {
+      return "ctx " + max;
+    }
+    return "";
+  }
+
+  function buildModelMetadataTokens(modelItem) {
+    var item = modelItem || {};
+    var runtimeState = normalizeModelText(item.runtimeState || item.RuntimeState || item.state || item.State).toLowerCase();
+    var quantization = normalizeModelText(item.quantization || item.Quantization);
+    var architecture = normalizeModelText(item.architecture || item.Architecture || item.arch || item.Arch);
+    var modelType = normalizeModelText(item.modelType || item.ModelType || item.type || item.Type);
+    var contextLabel = formatModelContextLabel(
+      item.loadedContextLength || item.LoadedContextLength || item.loaded_context_length,
+      item.maxContextLength || item.MaxContextLength || item.max_context_length);
+    var capabilities = Array.isArray(item.capabilities)
+      ? item.capabilities
+      : (Array.isArray(item.Capabilities) ? item.Capabilities : []);
+
+    var tokens = [];
+    if (runtimeState) {
+      tokens.push(runtimeState);
+    }
+    if (quantization) {
+      tokens.push(quantization);
+    }
+    if (architecture) {
+      tokens.push(architecture);
+    }
+    if (modelType) {
+      tokens.push(modelType);
+    }
+    if (contextLabel) {
+      tokens.push(contextLabel);
+    }
+    if (capabilities.length > 0) {
+      var normalizedCaps = [];
+      for (var i = 0; i < capabilities.length; i++) {
+        var cap = normalizeModelText(capabilities[i]);
+        if (!cap) {
+          continue;
+        }
+        normalizedCaps.push(cap);
+        if (normalizedCaps.length >= 2) {
+          break;
+        }
+      }
+      if (normalizedCaps.length > 0) {
+        tokens.push(normalizedCaps.join(","));
+      }
+    }
+
+    return tokens;
+  }
+
+  function buildModelMetadataLabel(modelItem) {
+    var tokens = buildModelMetadataTokens(modelItem);
+    return tokens.length > 0 ? (" [" + tokens.join(" · ") + "]") : "";
+  }
+
+  function summarizeModelRuntimeMetadata(models) {
+    var summary = {
+      hasMetadata: false,
+      loadedCount: 0,
+      notLoadedCount: 0,
+      maxLoadedContext: 0
+    };
+
+    if (!Array.isArray(models) || models.length === 0) {
+      return summary;
+    }
+
+    for (var i = 0; i < models.length; i++) {
+      var item = models[i] || {};
+      var runtimeState = normalizeModelText(item.runtimeState || item.RuntimeState || item.state || item.State).toLowerCase();
+      if (runtimeState === "loaded") {
+        summary.loadedCount++;
+      } else if (runtimeState.indexOf("not") >= 0 || runtimeState === "unloaded") {
+        summary.notLoadedCount++;
+      }
+
+      var loadedContext = normalizePositiveInt(item.loadedContextLength || item.LoadedContextLength || item.loaded_context_length);
+      if (loadedContext > summary.maxLoadedContext) {
+        summary.maxLoadedContext = loadedContext;
+      }
+
+      if (runtimeState || buildModelMetadataTokens(item).length > 0) {
+        summary.hasMetadata = true;
+      }
+    }
+
+    return summary;
+  }
+
   function isOllamaBaseUrl(value) {
     var normalized = String(value || "").trim().toLowerCase();
     if (!normalized) {
@@ -727,7 +838,7 @@
       modelSelect.appendChild(manualOption);
 
       var seen = {};
-      function pushModelOption(modelName, labelPrefix, matchLabel) {
+      function pushModelOption(modelName, labelPrefix, matchLabel, metadataLabel) {
         var normalized = normalizeModelText(modelName);
         if (!normalized) {
           return;
@@ -745,16 +856,17 @@
         seen[key] = true;
         var option = document.createElement("option");
         option.value = normalized;
-        option.textContent = labelPrefix ? (labelPrefix + " " + normalized) : normalized;
+        var suffix = normalizeModelText(metadataLabel || "");
+        option.textContent = (labelPrefix ? (labelPrefix + " " + normalized) : normalized) + suffix;
         modelSelect.appendChild(option);
         selectableOptionCount++;
       }
 
       for (var r = 0; r < recents.length; r++) {
-        pushModelOption(recents[r], "Recent:", recents[r]);
+        pushModelOption(recents[r], "Recent:", recents[r], "");
       }
       for (var f = 0; f < favorites.length; f++) {
-        pushModelOption(favorites[f], "Favorite:", favorites[f]);
+        pushModelOption(favorites[f], "Favorite:", favorites[f], "");
       }
       for (var i = 0; i < models.length; i++) {
         var item = models[i] || {};
@@ -763,10 +875,11 @@
           continue;
         }
         var displayName = normalizeModelText(item.displayName || item.DisplayName);
+        var metadataLabel = buildModelMetadataLabel(item);
         if (displayName && displayName.toLowerCase() !== modelName.toLowerCase()) {
-          pushModelOption(modelName, displayName + ":", displayName);
+          pushModelOption(modelName, displayName + ":", displayName, metadataLabel);
         } else {
-          pushModelOption(modelName, "", modelName);
+          pushModelOption(modelName, "", modelName, metadataLabel);
         }
       }
 
@@ -823,6 +936,18 @@
         }
         if (models.length > 0) {
           parts.push(String(models.length) + " models returned");
+          var metadataSummary = summarizeModelRuntimeMetadata(models);
+          if (metadataSummary.hasMetadata) {
+            if (metadataSummary.loadedCount > 0) {
+              parts.push(String(metadataSummary.loadedCount) + " loaded");
+            }
+            if (metadataSummary.notLoadedCount > 0) {
+              parts.push(String(metadataSummary.notLoadedCount) + " not-loaded");
+            }
+            if (metadataSummary.maxLoadedContext > 0) {
+              parts.push("active ctx " + String(metadataSummary.maxLoadedContext));
+            }
+          }
           var cloudHostedCount = countCloudHostedModelNames(models);
           if (!copilotConnected && cloudHostedCount > 0 && cloudHostedCount >= Math.ceil(models.length * 0.6)) {
             parts.push("catalog looks cloud-hosted; load a local model in LM Studio to see local IDs");
