@@ -70,13 +70,19 @@ internal sealed partial class ChatServiceSession {
         var sw = Stopwatch.StartNew();
         var executeTask = ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken);
         var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        var canceledByTurn = false;
         while (!executeTask.IsCompleted) {
             // Use a non-cancelable heartbeat delay and a separate cancellation task.
             // This avoids a cancellation race where Task.Delay(..., token) can complete immediately
             // and trigger a tight heartbeat loop while the tool task is still finishing.
             var heartbeatDelayTask = Task.Delay(ToolHeartbeatInterval);
             var completedTask = await Task.WhenAny(executeTask, heartbeatDelayTask, cancellationTask).ConfigureAwait(false);
-            if (ReferenceEquals(completedTask, executeTask) || ReferenceEquals(completedTask, cancellationTask)) {
+            if (ReferenceEquals(completedTask, executeTask)) {
+                break;
+            }
+
+            if (ReferenceEquals(completedTask, cancellationTask)) {
+                canceledByTurn = true;
                 break;
             }
 
@@ -90,6 +96,29 @@ internal sealed partial class ChatServiceSession {
                     durationMs: sw.ElapsedMilliseconds,
                     message: BuildToolHeartbeatMessage(call.Name, Math.Max(1, (int)Math.Round(sw.Elapsed.TotalSeconds))))
                 .ConfigureAwait(false);
+        }
+
+        if (canceledByTurn && !executeTask.IsCompleted) {
+            ObserveBackgroundToolCompletion(executeTask);
+            sw.Stop();
+            var canceledOutput = BuildToolOutputDto(
+                call.CallId,
+                ToolOutputEnvelope.Error(
+                    errorCode: "tool_canceled",
+                    error: $"Tool '{call.Name}' was canceled before completion.",
+                    hints: new[] { "Retry the request when ready." },
+                    isTransient: true));
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: "tool_canceled",
+                    toolName: call.Name,
+                    toolCallId: call.CallId,
+                    durationMs: sw.ElapsedMilliseconds,
+                    message: BuildToolCanceledMessage(call.Name))
+                .ConfigureAwait(false);
+            return canceledOutput;
         }
 
         var output = await executeTask.ConfigureAwait(false);
@@ -115,6 +144,27 @@ internal sealed partial class ChatServiceSession {
                 toolCallId: call.CallId,
                 message: ProjectionFallbackRecoveredStatusMessage)
             .ConfigureAwait(false);
+    }
+
+    private static string BuildToolCanceledMessage(string? toolName) {
+        var label = (toolName ?? string.Empty).Trim();
+        if (label.Length == 0) {
+            label = "tool";
+        }
+
+        return $"Canceled {label} due to request cancellation.";
+    }
+
+    private static void ObserveBackgroundToolCompletion(Task task) {
+        _ = task.ContinueWith(
+            static completedTask => {
+                // Observe faulted task exceptions so cancellation short-circuiting does not surface
+                // unobserved background exceptions later on finalizer threads.
+                _ = completedTask.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private async Task<ToolOutputDto> ExecuteToolAsync(ToolCall call, int toolTimeoutSeconds, CancellationToken cancellationToken) {

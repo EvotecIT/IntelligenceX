@@ -913,6 +913,7 @@ public sealed partial class MainWindow : Window {
                 status.DurationMs is not null
                     ? toolLabel + " done (" + FormatDuration(status.DurationMs.Value) + ")"
                     : toolLabel + " done",
+            "tool_canceled" when toolLabel.Length > 0 => toolLabel + " canceled",
             "tool_recovered" when toolLabel.Length > 0 => toolLabel + " recovered with safe defaults",
             "tool_parallel_mode" => "Parallel mode changed for this turn...",
             "tool_parallel_forced" => "Parallel mode forced for mutating tools...",
@@ -998,6 +999,7 @@ public sealed partial class MainWindow : Window {
             "tool_running" when toolLabel.Length > 0 => "run " + toolLabel,
             "tool_heartbeat" when toolLabel.Length > 0 => "run " + toolLabel,
             "tool_completed" when toolLabel.Length > 0 => "done " + toolLabel,
+            "tool_canceled" when toolLabel.Length > 0 => "cancel " + toolLabel,
             "tool_recovered" when toolLabel.Length > 0 => "recover " + toolLabel,
             "tool_parallel_mode" => "mode parallel",
             "tool_parallel_forced" => "mode forced",

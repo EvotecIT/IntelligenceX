@@ -245,6 +245,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(0, heartbeatCount);
     }
 
+    [Fact]
+    public async Task ExecuteToolWithStatusAsync_CancelsPromptlyForNonCooperativeTool() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(registryField);
+
+        var toolGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "hung_tool",
+            (_, _) => toolGate.Task));
+        registryField!.SetValue(session, registry);
+
+        var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
+            "ExecuteToolWithStatusAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(executeToolWithStatusMethod);
+
+        using var outputStream = new MemoryStream();
+        using var writer = new StreamWriter(outputStream, new UTF8Encoding(false), leaveOpen: true) {
+            AutoFlush = true
+        };
+        using var cts = new CancellationTokenSource();
+        var call = new ToolCall("call_002", "hung_tool", null, null, new JsonObject());
+
+        var taskObj = executeToolWithStatusMethod!.Invoke(
+            session,
+            new object?[] { writer, "req-002", "thread-002", call, 5, cts.Token });
+        var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
+
+        cts.CancelAfter(TimeSpan.FromMilliseconds(10));
+        var completion = await Task.WhenAny(task, Task.Delay(350));
+        if (!ReferenceEquals(completion, task)) {
+            toolGate.TrySetResult("""{"ok":true}""");
+            Assert.Fail("ExecuteToolWithStatusAsync did not return promptly after cancellation.");
+        }
+
+        var output = await task;
+        toolGate.TrySetResult("""{"ok":true}""");
+
+        Assert.False(output.Ok is true);
+        Assert.Equal("tool_canceled", output.ErrorCode, ignoreCase: true);
+
+        writer.Flush();
+        var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
+        Assert.Contains("tool_canceled", statusOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class StubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
