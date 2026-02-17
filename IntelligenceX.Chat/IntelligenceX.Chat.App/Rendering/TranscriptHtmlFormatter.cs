@@ -59,7 +59,9 @@ internal static class TranscriptHtmlFormatter {
             }
 
             var role = ResolveRoleStyle(message.Role);
-            var isContinuation = string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
+            var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal);
+            var isContinuation = hideContinuationMeta
+                && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
             var actionExtraction = string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
                 ? ExtractPendingActionsForRendering(normalizedText)
                 : new PendingActionExtraction(normalizedText, Array.Empty<PendingActionRenderItem>());

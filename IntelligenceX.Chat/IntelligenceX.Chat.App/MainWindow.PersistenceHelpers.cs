@@ -437,6 +437,16 @@ public sealed partial class MainWindow : Window {
         }
 
         var normalized = value.Trim();
+        if (string.Equals(normalized, "date-minutes", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "date_minutes", StringComparison.OrdinalIgnoreCase)) {
+            return "date-minutes";
+        }
+
+        if (string.Equals(normalized, "date-seconds", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "date_seconds", StringComparison.OrdinalIgnoreCase)) {
+            return "date-seconds";
+        }
+
         if (string.Equals(normalized, "minutes", StringComparison.OrdinalIgnoreCase)) {
             return "minutes";
         }
@@ -454,6 +464,16 @@ public sealed partial class MainWindow : Window {
         }
 
         var normalized = value.Trim();
+        if (string.Equals(normalized, "date-minutes", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "date_minutes", StringComparison.OrdinalIgnoreCase)) {
+            return "yyyy-MM-dd HH:mm";
+        }
+
+        if (string.Equals(normalized, "date-seconds", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "date_seconds", StringComparison.OrdinalIgnoreCase)) {
+            return "yyyy-MM-dd HH:mm:ss";
+        }
+
         if (string.Equals(normalized, "minutes", StringComparison.OrdinalIgnoreCase)) {
             return "HH:mm";
         }
