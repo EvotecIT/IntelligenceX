@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -113,6 +114,32 @@ public sealed class OpenAICompatibleHttpTransportTests {
                 }
                 """)
             .RespondCanceled();
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transport.ListModelsAsync(CancellationToken.None));
+        Assert.Equal(2, handler.RequestUris.Count);
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/api/v0/models", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_PropagatesCancellationDuringContentRead() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondCanceledContent();
 
         using var http = new HttpClient(handler);
         using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
@@ -290,6 +317,13 @@ public sealed class OpenAICompatibleHttpTransportTests {
             return this;
         }
 
+        public StubHandler RespondCanceledContent() {
+            _responses.Enqueue((req, ct) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = new CanceledReadContent()
+            }));
+            return this;
+        }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
             RequestUris.Add(request.RequestUri ?? new Uri("about:blank"));
             if (request.Content is not null) {
@@ -303,6 +337,17 @@ public sealed class OpenAICompatibleHttpTransportTests {
             }
 
             return await _responses.Dequeue()(request, cancellationToken);
+        }
+    }
+
+    private sealed class CanceledReadContent : HttpContent {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) {
+            return Task.FromException(new OperationCanceledException());
+        }
+
+        protected override bool TryComputeLength(out long length) {
+            length = 0;
+            return false;
         }
     }
 }
