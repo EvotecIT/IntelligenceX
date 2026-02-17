@@ -1,4 +1,9 @@
-Import-Module "$PSScriptRoot\..\IntelligenceX.psd1" -Force
+$moduleManifest = Join-Path (Split-Path -Parent $PSScriptRoot) 'IntelligenceX.PowerShell.psd1'
+if (Test-Path -LiteralPath $moduleManifest) {
+    Import-Module $moduleManifest -Force
+} else {
+    Import-Module IntelligenceX.PowerShell -Force
+}
 
 $client = Connect-IntelligenceX
 

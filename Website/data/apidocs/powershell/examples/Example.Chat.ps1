@@ -1,10 +1,15 @@
-Import-Module "$PSScriptRoot\..\IntelligenceX.psd1" -Force
+$moduleManifest = Join-Path (Split-Path -Parent $PSScriptRoot) 'IntelligenceX.PowerShell.psd1'
+if (Test-Path -LiteralPath $moduleManifest) {
+    Import-Module $moduleManifest -Force
+} else {
+    Import-Module IntelligenceX.PowerShell -Force
+}
 
 $client = Connect-IntelligenceX
 Initialize-IntelligenceX -Client $client -Name 'IntelligenceX.Examples' -Title 'IntelligenceX Examples' -Version '0.1.0'
 
 $login = Start-IntelligenceXChatGptLogin -Client $client
-Write-Host "Open this URL to login: $($login.AuthUrl)"
+Write-Output "Open this URL to login: $($login.AuthUrl)"
 Wait-IntelligenceXLogin -Client $client -LoginId $login.LoginId
 
 $thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.3-codex'
