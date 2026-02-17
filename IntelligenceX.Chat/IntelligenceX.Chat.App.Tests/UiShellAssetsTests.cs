@@ -88,4 +88,17 @@ public sealed class UiShellAssetsTests {
             previousIndex = index;
         }
     }
+
+    /// <summary>
+    /// Ensures autonomy review-loop controls propagate through the UI set_autonomy payload.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesAutonomyReviewLoopFieldsInSetAutonomyPayload() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("post(\"set_autonomy\", {", html, StringComparison.Ordinal);
+        Assert.Contains("planExecuteReviewLoop: (byId(\"optAutonomyPlanReview\").value || \"default\").trim()", html, StringComparison.Ordinal);
+        Assert.Contains("maxReviewPasses: (byId(\"optAutonomyMaxReviewPasses\").value || \"\").trim()", html, StringComparison.Ordinal);
+        Assert.Contains("modelHeartbeatSeconds: (byId(\"optAutonomyModelHeartbeat\").value || \"\").trim()", html, StringComparison.Ordinal);
+    }
 }

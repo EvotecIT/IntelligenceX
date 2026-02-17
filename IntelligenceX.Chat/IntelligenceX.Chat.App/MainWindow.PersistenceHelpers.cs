@@ -224,7 +224,34 @@ public sealed partial class MainWindow : Window {
         var ordered = new List<ConversationRuntime>(_conversations);
         ordered.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
         if (ordered.Count > MaxConversations) {
-            ordered.RemoveRange(MaxConversations, ordered.Count - MaxConversations);
+            ConversationRuntime? systemConversation = null;
+            for (var i = 0; i < ordered.Count; i++) {
+                if (IsSystemConversation(ordered[i])) {
+                    systemConversation = ordered[i];
+                    break;
+                }
+            }
+
+            if (systemConversation is null) {
+                ordered.RemoveRange(MaxConversations, ordered.Count - MaxConversations);
+            } else {
+                var userConversationLimit = Math.Max(1, MaxConversations - 1);
+                var trimmed = new List<ConversationRuntime>(MaxConversations) { systemConversation };
+                for (var i = 0; i < ordered.Count && trimmed.Count < MaxConversations; i++) {
+                    var conversation = ordered[i];
+                    if (ReferenceEquals(conversation, systemConversation) || IsSystemConversation(conversation)) {
+                        continue;
+                    }
+
+                    trimmed.Add(conversation);
+                    if (trimmed.Count >= userConversationLimit + 1) {
+                        break;
+                    }
+                }
+
+                trimmed.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+                ordered = trimmed;
+            }
         }
 
         var conversations = new List<ChatConversationState>(ordered.Count);

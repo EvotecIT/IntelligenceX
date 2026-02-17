@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using IntelligenceX.Chat.App;
@@ -21,6 +22,11 @@ public sealed class MainWindowConversationTrimTests {
                                                                             "TrimConversationsToLimit",
                                                                             BindingFlags.NonPublic | BindingFlags.Instance)
                                                                         ?? throw new InvalidOperationException("TrimConversationsToLimit not found.");
+
+    private static readonly MethodInfo BuildConversationStateSnapshotMethod = typeof(MainWindow).GetMethod(
+                                                                                  "BuildConversationStateSnapshot",
+                                                                                  BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                              ?? throw new InvalidOperationException("BuildConversationStateSnapshot not found.");
 
     private static readonly FieldInfo ConversationsField = typeof(MainWindow).GetField(
                                                                "_conversations",
@@ -82,6 +88,35 @@ public sealed class MainWindowConversationTrimTests {
         Assert.Equal("chat-dup-active", Assert.IsType<string>(ActiveConversationIdField.GetValue(window)));
     }
 
+    /// <summary>
+    /// Ensures persisted conversation snapshots always keep the system conversation
+    /// even when old and user conversations exceed cap.
+    /// </summary>
+    [Fact]
+    public void BuildConversationStateSnapshot_PreservesSystemConversationWhenTrimmedToCap() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var conversations = CreateConversationList();
+        var nowUtc = new DateTime(2026, 2, 17, 8, 0, 0, DateTimeKind.Utc);
+
+        for (var i = 0; i < 45; i++) {
+            conversations.Add(CreateConversation("chat-user-" + i.ToString("00"), nowUtc.AddMinutes(-i)));
+        }
+        conversations.Add(CreateConversation(SystemConversationId, nowUtc.AddDays(-3)));
+
+        ConversationsField.SetValue(window, conversations);
+
+        var snapshot = InvokeBuildConversationStateSnapshot(window);
+        var ids = ExtractSnapshotConversationIds(snapshot);
+
+        Assert.Equal(40, snapshot.Count);
+        Assert.Equal(40, ids.Count);
+        Assert.Contains(SystemConversationId, ids, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(39, ids.Count(id => !string.Equals(id, SystemConversationId, StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains("chat-user-00", ids, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("chat-user-38", ids, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("chat-user-44", ids, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static IList CreateConversationList() {
         var listType = typeof(List<>).MakeGenericType(ConversationRuntimeType);
         return Assert.IsAssignableFrom<IList>(Activator.CreateInstance(listType));
@@ -101,5 +136,27 @@ public sealed class MainWindowConversationTrimTests {
         } catch (TargetInvocationException ex) {
             throw ex.InnerException ?? ex;
         }
+    }
+
+    private static IList InvokeBuildConversationStateSnapshot(MainWindow window) {
+        try {
+            var result = BuildConversationStateSnapshotMethod.Invoke(window, null);
+            return Assert.IsAssignableFrom<IList>(result);
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    private static List<string> ExtractSnapshotConversationIds(IList snapshot) {
+        var ids = new List<string>(snapshot.Count);
+        for (var i = 0; i < snapshot.Count; i++) {
+            var item = snapshot[i] ?? throw new InvalidOperationException("Snapshot item is null.");
+            var idProperty = item.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)
+                             ?? throw new InvalidOperationException("Snapshot item Id property missing.");
+            var id = Assert.IsType<string>(idProperty.GetValue(item));
+            ids.Add(id);
+        }
+
+        return ids;
     }
 }

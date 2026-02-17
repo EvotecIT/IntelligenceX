@@ -470,6 +470,9 @@
     post("set_autonomy", {
       maxToolRounds: (byId("optAutonomyMaxRounds").value || "").trim(),
       parallelMode: (byId("optAutonomyParallel").value || "auto").trim(),
+      planExecuteReviewLoop: (byId("optAutonomyPlanReview").value || "default").trim(),
+      maxReviewPasses: (byId("optAutonomyMaxReviewPasses").value || "").trim(),
+      modelHeartbeatSeconds: (byId("optAutonomyModelHeartbeat").value || "").trim(),
       turnTimeoutSeconds: (byId("optAutonomyTurnTimeout").value || "").trim(),
       toolTimeoutSeconds: (byId("optAutonomyToolTimeout").value || "").trim(),
       weightedToolRouting: (byId("optAutonomyWeightedRouting").value || "default").trim(),
@@ -478,6 +481,9 @@
   }
 
   byId("optAutonomyMaxRounds").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyPlanReview").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyMaxReviewPasses").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyModelHeartbeat").addEventListener("change", postAutonomySettings);
   byId("optAutonomyTurnTimeout").addEventListener("change", postAutonomySettings);
   byId("optAutonomyToolTimeout").addEventListener("change", postAutonomySettings);
   byId("optAutonomyParallel").addEventListener("change", postAutonomySettings);
