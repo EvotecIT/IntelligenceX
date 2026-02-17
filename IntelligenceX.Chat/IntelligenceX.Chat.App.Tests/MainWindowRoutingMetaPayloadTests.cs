@@ -1,0 +1,134 @@
+using System;
+using System.Reflection;
+using IntelligenceX.Chat.App;
+using Xunit;
+
+namespace IntelligenceX.Chat.App.Tests;
+
+/// <summary>
+/// Guards routing metadata payload parsing so UI activity text remains stable across numeric JSON variants.
+/// </summary>
+public sealed class MainWindowRoutingMetaPayloadTests {
+    private static readonly MethodInfo TryParseRoutingMetaPayloadMethod = typeof(MainWindow).GetMethod(
+                                                            "TryParseRoutingMetaPayload",
+                                                            BindingFlags.NonPublic | BindingFlags.Static)
+                                                        ?? throw new InvalidOperationException("TryParseRoutingMetaPayload not found.");
+
+    /// <summary>
+    /// Ensures routing metadata parsing accepts numeric values represented as numbers and strings.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":8,"totalToolCount":21}""", 8, 21)]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"8","totalToolCount":"21"}""", 8, 21)]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"8.7","totalToolCount":"21.4"}""", 8, 21)]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1e3","totalToolCount":"2e3"}""", 1000, 2000)]
+    public void TryParseRoutingMetaPayload_AcceptsNumericVariants(string payload, int expectedSelected, int expectedTotal) {
+        var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
+
+        Assert.True(parsed);
+        Assert.Equal("semantic planner", strategy);
+        Assert.Equal(expectedSelected, selectedToolCount);
+        Assert.Equal(expectedTotal, totalToolCount);
+    }
+
+    /// <summary>
+    /// Ensures oversized routing metadata count values clamp safely without overflow.
+    /// </summary>
+    [Fact]
+    public void TryParseRoutingMetaPayload_ClampsOversizedCountsToIntMax() {
+        var payload = """{"strategy":"weighted_heuristic","selectedToolCount":"4294967296","totalToolCount":"4294967296"}""";
+
+        var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
+
+        Assert.True(parsed);
+        Assert.Equal("weighted heuristic", strategy);
+        Assert.Equal(int.MaxValue, selectedToolCount);
+        Assert.Equal(int.MaxValue, totalToolCount);
+    }
+
+    /// <summary>
+    /// Ensures negative integer count values are normalized to zero.
+    /// </summary>
+    [Fact]
+    public void TryParseRoutingMetaPayload_ClampsNegativeIntegerCountsToZero() {
+        var payload = """{"strategy":"weighted_heuristic","selectedToolCount":-4,"totalToolCount":-1}""";
+
+        var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
+
+        Assert.True(parsed);
+        Assert.Equal("weighted heuristic", strategy);
+        Assert.Equal(0, selectedToolCount);
+        Assert.Equal(0, totalToolCount);
+    }
+
+    /// <summary>
+    /// Ensures selected count is normalized when payload counts arrive in an inconsistent state.
+    /// </summary>
+    [Fact]
+    public void TryParseRoutingMetaPayload_ClampsSelectedCountToTotalWhenNeeded() {
+        var payload = """{"strategy":"semantic_planner","selectedToolCount":"17","totalToolCount":"9"}""";
+
+        var parsed = Invoke(payload, out _, out var selectedToolCount, out var totalToolCount);
+
+        Assert.True(parsed);
+        Assert.Equal(9, selectedToolCount);
+        Assert.Equal(9, totalToolCount);
+    }
+
+    /// <summary>
+    /// Ensures malformed count fields fail parsing so callers can show fallback activity text.
+    /// </summary>
+    [Fact]
+    public void TryParseRoutingMetaPayload_ReturnsFalseWhenCountsAreInvalid() {
+        var payload = """{"strategy":"semantic_planner","selectedToolCount":"eight","totalToolCount":"21"}""";
+
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
+    /// <summary>
+    /// Ensures negative decimal count values are rejected to avoid silently masking malformed metadata.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"-0.5","totalToolCount":"21"}""")]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":8,"totalToolCount":-0.5}""")]
+    public void TryParseRoutingMetaPayload_ReturnsFalseForNegativeDecimalCounts(string payload) {
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
+    /// <summary>
+    /// Ensures grouped numeric string formats are rejected to keep parsing locale-independent.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1,000","totalToolCount":"21"}""")]
+    public void TryParseRoutingMetaPayload_ReturnsFalseForGroupedNumericStringFormats(string payload) {
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
+    /// <summary>
+    /// Ensures routing metadata requires a non-empty strategy field to avoid ambiguous UI status text.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"selectedToolCount":"8","totalToolCount":"21"}""")]
+    [InlineData("""{"strategy":"","selectedToolCount":"8","totalToolCount":"21"}""")]
+    public void TryParseRoutingMetaPayload_ReturnsFalseWhenStrategyIsMissingOrEmpty(string payload) {
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
+    private static bool Invoke(string payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
+        var args = new object?[] { payload, null, 0, 0 };
+        var result = TryParseRoutingMetaPayloadMethod.Invoke(null, args);
+
+        strategy = Assert.IsType<string>(args[1]);
+        selectedToolCount = Assert.IsType<int>(args[2]);
+        totalToolCount = Assert.IsType<int>(args[3]);
+        return Assert.IsType<bool>(result);
+    }
+}

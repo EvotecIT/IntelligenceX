@@ -885,6 +885,14 @@ public sealed partial class MainWindow : Window {
             return $"Routing {routingToolLabel}...";
         }
 
+        if (string.Equals(status.Status, "routing_meta", StringComparison.OrdinalIgnoreCase)) {
+            if (TryParseRoutingMetaPayload(status.Message, out var strategy, out var selectedToolCount, out var totalToolCount)) {
+                return $"Routing strategy {strategy} ({selectedToolCount}/{totalToolCount} tools)";
+            }
+
+            return "Routing strategy updated...";
+        }
+
         if (!string.IsNullOrWhiteSpace(status.Message)) {
             return status.Message!;
         }
@@ -905,12 +913,14 @@ public sealed partial class MainWindow : Window {
                 status.DurationMs is not null
                     ? toolLabel + " done (" + FormatDuration(status.DurationMs.Value) + ")"
                     : toolLabel + " done",
+            "tool_canceled" when toolLabel.Length > 0 => toolLabel + " canceled",
             "tool_recovered" when toolLabel.Length > 0 => toolLabel + " recovered with safe defaults",
             "tool_parallel_mode" => "Parallel mode changed for this turn...",
             "tool_parallel_forced" => "Parallel mode forced for mutating tools...",
             "tool_parallel_safety_off" => "Using sequential mode for mutating tools...",
             "tool_batch_started" => "Starting parallel tool batch...",
             "tool_batch_progress" => "Parallel tool batch in progress...",
+            "tool_batch_heartbeat" => "Parallel tool batch still running...",
             "tool_batch_recovering" => "Recovering transient tool failures...",
             "tool_batch_recovered" => "Recovery pass complete",
             "tool_batch_completed" => "Parallel tool batch complete",
@@ -984,16 +994,19 @@ public sealed partial class MainWindow : Window {
         var label = normalizedStatus switch {
             "thinking" => "thinking",
             "routing_tool" when toolLabel.Length > 0 => "route " + toolLabel,
+            "routing_meta" => "route strategy",
             "tool_call" when toolLabel.Length > 0 => "prepare " + toolLabel,
             "tool_running" when toolLabel.Length > 0 => "run " + toolLabel,
             "tool_heartbeat" when toolLabel.Length > 0 => "run " + toolLabel,
             "tool_completed" when toolLabel.Length > 0 => "done " + toolLabel,
+            "tool_canceled" when toolLabel.Length > 0 => "cancel " + toolLabel,
             "tool_recovered" when toolLabel.Length > 0 => "recover " + toolLabel,
             "tool_parallel_mode" => "mode parallel",
             "tool_parallel_forced" => "mode forced",
             "tool_parallel_safety_off" => "safety serialized",
             "tool_batch_started" => "batch start",
             "tool_batch_progress" => "batch progress",
+            "tool_batch_heartbeat" => "batch wait",
             "tool_batch_recovering" => "batch recovery",
             "tool_batch_recovered" => "batch recovered",
             "tool_batch_completed" => "batch completed",
@@ -1110,6 +1123,131 @@ public sealed partial class MainWindow : Window {
         } catch {
             return false;
         }
+    }
+
+    private static bool TryParseRoutingMetaPayload(string? payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
+        strategy = "updated";
+        selectedToolCount = 0;
+        totalToolCount = 0;
+
+        var json = (payload ?? string.Empty).Trim();
+        if (json.Length == 0 || json[0] != '{' || json.Length > MaxRoutingInsightPayloadChars) {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions {
+                MaxDepth = 8,
+                CommentHandling = JsonCommentHandling.Disallow,
+                AllowTrailingCommas = false
+            });
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            var hasStrategy = false;
+            if (root.TryGetProperty("strategy", out var strategyElement) && strategyElement.ValueKind == JsonValueKind.String) {
+                var parsed = (strategyElement.GetString() ?? string.Empty).Trim().Replace('_', ' ');
+                if (parsed.Length > 0) {
+                    strategy = parsed;
+                    hasStrategy = true;
+                }
+            }
+
+            var hasSelectedToolCount = false;
+            if (root.TryGetProperty("selectedToolCount", out var selectedElement)
+                && TryParseRoutingMetaCount(selectedElement, out var parsedSelected)) {
+                selectedToolCount = parsedSelected;
+                hasSelectedToolCount = true;
+            }
+
+            var hasTotalToolCount = false;
+            if (root.TryGetProperty("totalToolCount", out var totalElement)
+                && TryParseRoutingMetaCount(totalElement, out var parsedTotal)) {
+                totalToolCount = parsedTotal;
+                hasTotalToolCount = true;
+            }
+
+            if (hasSelectedToolCount && hasTotalToolCount && selectedToolCount > totalToolCount) {
+                selectedToolCount = totalToolCount;
+            }
+
+            return hasStrategy && hasSelectedToolCount && hasTotalToolCount;
+        } catch (JsonException) {
+            return false;
+        }
+    }
+
+    private static bool TryParseRoutingMetaCount(JsonElement element, out int value) {
+        value = 0;
+
+        switch (element.ValueKind) {
+            case JsonValueKind.Number:
+                if (element.TryGetInt32(out var parsedInt)) {
+                    value = Math.Max(0, parsedInt);
+                    return true;
+                }
+
+                if (element.TryGetInt64(out var parsedLong)) {
+                    value = ClampRoutingMetaCount(parsedLong);
+                    return true;
+                }
+
+                if (element.TryGetDecimal(out var parsedDecimal)) {
+                    return TryClampRoutingMetaDecimalCount(parsedDecimal, out value);
+                }
+
+                return false;
+            case JsonValueKind.String:
+                var text = (element.GetString() ?? string.Empty).Trim();
+                if (text.Length == 0) {
+                    return false;
+                }
+
+                if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intText)) {
+                    value = Math.Max(0, intText);
+                    return true;
+                }
+
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longText)) {
+                    value = ClampRoutingMetaCount(longText);
+                    return true;
+                }
+
+                if (decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
+                        CultureInfo.InvariantCulture,
+                        out var decimalText)) {
+                    return TryClampRoutingMetaDecimalCount(decimalText, out value);
+                }
+
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private static int ClampRoutingMetaCount(long value) {
+        if (value <= 0) {
+            return 0;
+        }
+
+        return value >= int.MaxValue ? int.MaxValue : (int)value;
+    }
+
+    private static bool TryClampRoutingMetaDecimalCount(decimal value, out int normalized) {
+        normalized = 0;
+        if (value < 0m) {
+            return false;
+        }
+
+        if (value >= int.MaxValue) {
+            normalized = int.MaxValue;
+            return true;
+        }
+
+        normalized = (int)decimal.Truncate(value);
+        return true;
     }
 
     private string ResolveToolActivityName(string toolName) {

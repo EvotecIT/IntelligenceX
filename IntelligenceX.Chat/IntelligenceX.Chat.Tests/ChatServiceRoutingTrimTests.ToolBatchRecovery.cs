@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -243,6 +244,85 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
         var heartbeatCount = Regex.Matches(statusOutput, "tool_heartbeat", RegexOptions.CultureInvariant).Count;
         Assert.Equal(0, heartbeatCount);
+    }
+
+    [Fact]
+    public async Task ExecuteToolWithStatusAsync_CancelsPromptlyForNonCooperativeTool() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(registryField);
+
+        var toolGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "hung_tool",
+            (_, _) => toolGate.Task));
+        registryField!.SetValue(session, registry);
+
+        var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
+            "ExecuteToolWithStatusAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(executeToolWithStatusMethod);
+
+        using var outputStream = new MemoryStream();
+        using var writer = new StreamWriter(outputStream, new UTF8Encoding(false), leaveOpen: true) {
+            AutoFlush = true
+        };
+        using var cts = new CancellationTokenSource();
+        var call = new ToolCall("call_002", "hung_tool", null, null, new JsonObject());
+
+        var taskObj = executeToolWithStatusMethod!.Invoke(
+            session,
+            new object?[] { writer, "req-002", "thread-002", call, 5, cts.Token });
+        var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
+
+        cts.CancelAfter(TimeSpan.FromMilliseconds(10));
+        var completion = await Task.WhenAny(task, Task.Delay(350));
+        if (!ReferenceEquals(completion, task)) {
+            toolGate.TrySetResult("""{"ok":true}""");
+            Assert.Fail("ExecuteToolWithStatusAsync did not return promptly after cancellation.");
+        }
+
+        var output = await task;
+        toolGate.TrySetResult("""{"ok":true}""");
+
+        Assert.False(output.Ok is true);
+        Assert.Equal("tool_canceled", output.ErrorCode, ignoreCase: true);
+
+        writer.Flush();
+        var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
+        Assert.Contains("tool_canceled", statusOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FinalizeToolBatchHeartbeatAsync_PreservesPrimaryFailureWhenHeartbeatAlsoFails() {
+        using var cts = new CancellationTokenSource();
+        var heartbeatTask = Task.FromException(new InvalidOperationException("heartbeat-failure"));
+        var primaryFailure = ExceptionDispatchInfo.Capture(new ApplicationException("primary-failure"));
+
+        var taskObj = FinalizeToolBatchHeartbeatAsyncMethod.Invoke(
+            null,
+            new object?[] { heartbeatTask, cts, primaryFailure });
+        var task = Assert.IsAssignableFrom<Task<ExceptionDispatchInfo?>>(taskObj);
+
+        var heartbeatFailure = await task;
+        Assert.Null(heartbeatFailure);
+    }
+
+    [Fact]
+    public async Task FinalizeToolBatchHeartbeatAsync_ReturnsHeartbeatFailureWhenNoPrimaryFailure() {
+        using var cts = new CancellationTokenSource();
+        var heartbeatTask = Task.FromException(new InvalidOperationException("heartbeat-failure"));
+
+        var taskObj = FinalizeToolBatchHeartbeatAsyncMethod.Invoke(
+            null,
+            new object?[] { heartbeatTask, cts, null });
+        var task = Assert.IsAssignableFrom<Task<ExceptionDispatchInfo?>>(taskObj);
+
+        var heartbeatFailure = await task;
+        var captured = Assert.IsType<ExceptionDispatchInfo>(heartbeatFailure);
+        Assert.IsType<InvalidOperationException>(captured.SourceException);
+        Assert.Contains("heartbeat-failure", captured.SourceException.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class StubTool : ITool {

@@ -44,17 +44,24 @@ internal sealed partial class ChatServiceSession {
         return list;
     }
 
-    private async Task EmitRoutingInsightsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolRoutingInsight> insights) {
+    private async Task EmitRoutingInsightsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolRoutingInsight> insights,
+        string routingStrategy, int selectedToolCount, int totalToolCount) {
         if (insights.Count == 0) {
             return;
         }
 
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         for (var i = 0; i < insights.Count; i++) {
             var insight = insights[i];
+            var insightStrategy = ResolveRoutingInsightStrategy(insight, routingStrategy);
             var payload = JsonSerializer.Serialize(new {
                 confidence = insight.Confidence,
                 score = insight.Score,
-                reason = insight.Reason
+                reason = insight.Reason,
+                strategy = insightStrategy,
+                rank = i + 1,
+                selectedToolCount = selected,
+                totalToolCount = total
             });
             await TryWriteStatusAsync(
                     writer,
@@ -65,6 +72,132 @@ internal sealed partial class ChatServiceSession {
                     message: payload)
                 .ConfigureAwait(false);
         }
+    }
+
+    private static string ResolveRoutingStrategy(
+        bool weightedToolRouting,
+        bool executionContractApplies,
+        bool usedContinuationSubset,
+        IReadOnlyList<ToolRoutingInsight> insights,
+        int selectedToolCount,
+        int totalToolCount) {
+        if (selectedToolCount <= 0 || totalToolCount <= 0) {
+            return "no_tools";
+        }
+
+        if (!weightedToolRouting) {
+            return "disabled";
+        }
+
+        if (executionContractApplies && selectedToolCount >= totalToolCount) {
+            return "execution_contract_full_set";
+        }
+
+        if (usedContinuationSubset) {
+            return "continuation_subset";
+        }
+
+        if (HasPlannerInsight(insights)) {
+            return "semantic_planner";
+        }
+
+        if (selectedToolCount < totalToolCount) {
+            return "weighted_heuristic";
+        }
+
+        return "full_toolset";
+    }
+
+    private static bool ShouldEmitRoutingTransparency(int selectedToolCount, int totalToolCount) {
+        // Contract: always emit routing transparency for any non-negative state so turns remain
+        // observable, then normalize counts in payload/message builders for consistency.
+        return selectedToolCount >= 0
+            && totalToolCount >= 0;
+    }
+
+    private static string BuildRoutingSelectionMessage(int selectedToolCount, int totalToolCount, string strategy) {
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
+
+        return strategy switch {
+            "execution_contract_full_set" =>
+                $"Tool routing kept all {selected}/{total} tools for this explicit execution turn.",
+            "continuation_subset" =>
+                $"Tool routing reused continuation context and selected {selected} of {total} tools for this turn.",
+            "semantic_planner" =>
+                $"Tool routing used semantic planning and selected {selected} of {total} tools for this turn.",
+            "weighted_heuristic" =>
+                $"Tool routing used weighted relevance and selected {selected} of {total} tools for this turn.",
+            "full_toolset" =>
+                $"Tool routing kept the full tool set ({selected}/{total}) for this turn.",
+            "disabled" =>
+                $"Tool routing is disabled for this turn; using the full tool set ({selected}/{total}).",
+            "no_tools" =>
+                "No tools are currently available for this turn.",
+            _ =>
+                $"Tool routing selected {selected} of {total} tools for this turn."
+        };
+    }
+
+    private static string BuildRoutingMetaPayload(
+        string strategy,
+        bool weightedToolRouting,
+        bool executionContractApplies,
+        bool usedContinuationSubset,
+        int selectedToolCount,
+        int totalToolCount,
+        int insightCount,
+        bool plannerInsightsDetected) {
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
+        return JsonSerializer.Serialize(new {
+            strategy = (strategy ?? string.Empty).Trim(),
+            weightedToolRouting,
+            executionContractApplies,
+            usedContinuationSubset,
+            selectedToolCount = selected,
+            totalToolCount = total,
+            reducedToolSet = selected > 0 && selected < total,
+            insightCount = Math.Max(0, insightCount),
+            plannerInsightsDetected
+        });
+    }
+
+    private static (int SelectedToolCount, int TotalToolCount) NormalizeRoutingToolCounts(int selectedToolCount, int totalToolCount) {
+        // Keep emitted count semantics consistent for all consumers.
+        var total = Math.Max(0, totalToolCount);
+        var selected = Math.Clamp(selectedToolCount, 0, total);
+        return (selected, total);
+    }
+
+    private static bool HasPlannerInsight(IReadOnlyList<ToolRoutingInsight> insights) {
+        if (insights.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < insights.Count; i++) {
+            var reason = insights[i].Reason ?? string.Empty;
+            if (reason.IndexOf("semantic planner", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ResolveRoutingInsightStrategy(ToolRoutingInsight insight, string defaultStrategy) {
+        var reason = (insight.Reason ?? string.Empty).Trim();
+        if (reason.Length == 0) {
+            return defaultStrategy;
+        }
+
+        if (reason.IndexOf("continuation", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "continuation_subset";
+        }
+
+        if (reason.IndexOf("semantic planner", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "semantic_planner";
+        }
+
+        return defaultStrategy;
     }
 
     private bool TryGetContinuationToolSubset(string threadId, string userRequest, IReadOnlyList<ToolDefinition> allDefinitions,

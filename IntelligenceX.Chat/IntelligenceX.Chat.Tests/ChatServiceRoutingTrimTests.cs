@@ -71,6 +71,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildToolBatchProgressMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolBatchProgressMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolBatchProgressMessage not found.");
+    private static readonly MethodInfo BuildToolBatchHeartbeatMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolBatchHeartbeatMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolBatchHeartbeatMessage not found.");
+    private static readonly MethodInfo FinalizeToolBatchHeartbeatAsyncMethod =
+        typeof(ChatServiceSession).GetMethod("FinalizeToolBatchHeartbeatAsync", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("FinalizeToolBatchHeartbeatAsync not found.");
     private static readonly MethodInfo BuildToolBatchCompletedMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolBatchCompletedMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolBatchCompletedMessage not found.");
@@ -122,6 +128,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ParsePlannerSelectedDefinitionsMethod =
         typeof(ChatServiceSession).GetMethod("ParsePlannerSelectedDefinitions", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ParsePlannerSelectedDefinitions not found.");
+    private static readonly MethodInfo ResolveRoutingStrategyMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveRoutingStrategy", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveRoutingStrategy not found.");
+    private static readonly MethodInfo BuildRoutingSelectionMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildRoutingSelectionMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildRoutingSelectionMessage not found.");
+    private static readonly MethodInfo ShouldEmitRoutingTransparencyMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldEmitRoutingTransparency", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldEmitRoutingTransparency not found.");
+    private static readonly MethodInfo BuildRoutingMetaPayloadMethod =
+        typeof(ChatServiceSession).GetMethod("BuildRoutingMetaPayload", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildRoutingMetaPayload not found.");
+    private static readonly MethodInfo NormalizeRoutingToolCountsMethod =
+        typeof(ChatServiceSession).GetMethod("NormalizeRoutingToolCounts", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("NormalizeRoutingToolCounts not found.");
     private static readonly FieldInfo ToolRoutingContextLockField =
         typeof(ChatServiceSession).GetField("_toolRoutingContextLock", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolRoutingContextLock not found.");
