@@ -475,7 +475,7 @@ pre:hover .code-copy-btn {
 
 .activity-indicator {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 0 20px;
   max-height: 0;
@@ -485,15 +485,17 @@ pre:hover .code-copy-btn {
 }
 
 .activity-indicator.active {
-  max-height: 36px;
+  max-height: 74px;
   opacity: 1;
-  padding: 4px 20px 8px;
+  padding: 6px 20px 10px;
 }
 
 .activity-dots {
   display: flex;
   gap: 3px;
   align-items: center;
+  margin-top: 4px;
+  flex-shrink: 0;
 }
 
 .activity-dots span {
@@ -518,9 +520,18 @@ pre:hover .code-copy-btn {
 }
 
 .activity-text {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
+  line-height: 1.35;
   color: var(--ix-text-muted);
   font-weight: 500;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 
 .composer {
