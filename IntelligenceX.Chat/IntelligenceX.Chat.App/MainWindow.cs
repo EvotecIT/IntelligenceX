@@ -1233,18 +1233,7 @@ public sealed partial class MainWindow : Window {
             _timestampMode = ResolveTimestampMode(_appState.TimestampMode);
             _timestampFormat = ResolveTimestampFormat(_appState.TimestampMode);
         }
-        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: 64);
-        _autonomyParallelTools = _appState.AutonomyParallelTools;
-        _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyTurnTimeoutSeconds, min: 0, max: 3600);
-        _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
-        _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
-        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
-        _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
-        _appState.AutonomyParallelTools = _autonomyParallelTools;
-        _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
-        _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
-        _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
-        _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+        RestoreAutonomyOverridesFromAppState();
         _exportSaveMode = ExportPreferencesContract.NormalizeSaveMode(_appState.ExportSaveMode);
         _appState.ExportSaveMode = _exportSaveMode;
         _exportDefaultFormat = ExportPreferencesContract.NormalizeFormat(_appState.ExportDefaultFormat);

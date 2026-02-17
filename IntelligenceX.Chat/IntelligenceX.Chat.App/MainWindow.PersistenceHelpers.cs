@@ -41,12 +41,7 @@ public sealed partial class MainWindow : Window {
             var activeConversation = GetActiveConversation();
             _appState.ProfileName = _appProfileName;
             _appState.TimestampMode = _timestampMode;
-            _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
-            _appState.AutonomyParallelTools = _autonomyParallelTools;
-            _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
-            _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
-            _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
-            _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+            CaptureAutonomyOverridesIntoAppState();
             _appState.ExportSaveMode = _exportSaveMode;
             _appState.ExportDefaultFormat = _exportDefaultFormat;
             _appState.ExportLastDirectory = _lastExportDirectory;
@@ -396,6 +391,40 @@ public sealed partial class MainWindow : Window {
     private static string ResolveAppProfileName(string? value) {
         var name = (value ?? string.Empty).Trim();
         return string.IsNullOrWhiteSpace(name) ? "default" : name;
+    }
+
+    private void CaptureAutonomyOverridesIntoAppState() {
+        _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
+        _appState.AutonomyParallelTools = _autonomyParallelTools;
+        _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
+        _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
+        _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
+        _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+        _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
+        _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
+        _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
+    }
+
+    private void RestoreAutonomyOverridesFromAppState() {
+        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: 64);
+        _autonomyParallelTools = _appState.AutonomyParallelTools;
+        _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyTurnTimeoutSeconds, min: 0, max: 3600);
+        _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
+        _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
+        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
+        _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
+        _autonomyMaxReviewPasses = NormalizeAutonomyInt(_appState.AutonomyMaxReviewPasses, min: 0, max: 3);
+        _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(_appState.AutonomyModelHeartbeatSeconds, min: 0, max: 60);
+
+        _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
+        _appState.AutonomyParallelTools = _autonomyParallelTools;
+        _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
+        _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
+        _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
+        _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+        _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
+        _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
+        _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
     }
 
     private static string? NormalizeTheme(string? value) {
