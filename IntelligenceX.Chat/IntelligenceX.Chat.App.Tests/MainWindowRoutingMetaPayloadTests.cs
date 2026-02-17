@@ -71,6 +71,18 @@ public sealed class MainWindowRoutingMetaPayloadTests {
         Assert.False(parsed);
     }
 
+    /// <summary>
+    /// Ensures negative decimal count values are rejected to avoid silently masking malformed metadata.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"-0.5","totalToolCount":"21"}""")]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":8,"totalToolCount":-0.5}""")]
+    public void TryParseRoutingMetaPayload_ReturnsFalseForNegativeDecimalCounts(string payload) {
+        var parsed = Invoke(payload, out _, out _, out _);
+
+        Assert.False(parsed);
+    }
+
     private static bool Invoke(string payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
         var args = new object?[] { payload, null, 0, 0 };
         var result = TryParseRoutingMetaPayloadMethod.Invoke(null, args);

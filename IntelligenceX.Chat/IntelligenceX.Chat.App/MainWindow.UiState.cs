@@ -1193,8 +1193,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 if (element.TryGetDecimal(out var parsedDecimal)) {
-                    value = ClampRoutingMetaCount(parsedDecimal);
-                    return true;
+                    return TryClampRoutingMetaDecimalCount(parsedDecimal, out value);
                 }
 
                 return false;
@@ -1215,8 +1214,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalText)) {
-                    value = ClampRoutingMetaCount(decimalText);
-                    return true;
+                    return TryClampRoutingMetaDecimalCount(decimalText, out value);
                 }
 
                 return false;
@@ -1233,16 +1231,19 @@ public sealed partial class MainWindow : Window {
         return value >= int.MaxValue ? int.MaxValue : (int)value;
     }
 
-    private static int ClampRoutingMetaCount(decimal value) {
-        if (value <= 0m) {
-            return 0;
+    private static bool TryClampRoutingMetaDecimalCount(decimal value, out int normalized) {
+        normalized = 0;
+        if (value < 0m) {
+            return false;
         }
 
         if (value >= int.MaxValue) {
-            return int.MaxValue;
+            normalized = int.MaxValue;
+            return true;
         }
 
-        return (int)decimal.Truncate(value);
+        normalized = (int)decimal.Truncate(value);
+        return true;
     }
 
     private string ResolveToolActivityName(string toolName) {
