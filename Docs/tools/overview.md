@@ -17,6 +17,10 @@ IntelligenceX.Chat classifies packs with a runtime `sourceKind`:
 | `open_source` | Pack is loaded from external open-source plugin assemblies. |
 | `closed_source` | Pack exists but may come from private/internal assemblies not present in OSS checkouts. |
 
+Closed-source licensing boundary:
+- Closed-source packs may be available in IX Chat private/licensed environments.
+- Using those packs in external/custom hosts requires a separate license.
+
 ## Tool Pack Loading Flow
 
 ```mermaid
@@ -61,6 +65,7 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 - Some packs are always available in OSS (`eventlog`, `fs`, `reviewersetup`).
 - Some are optional/conditional for runtime reasons (`email` dependency gating, `powershell` safety opt-in), while still being OSS-oriented packs.
 - Some are enabled by default but may not exist in OSS environments (`system`, `ad`, `testimox`).
+- Closed-source packs are intended for IX Chat private/licensed usage by default.
 
 ### .NET library (custom apps)
 
@@ -75,6 +80,7 @@ var result = await Easy.ChatAsync("Summarize changed files", tools: tools);
 ```
 
 For package-based integration, use only packs you actually reference.
+For closed-source packs, assume unavailable unless you have a separate license for external-host use.
 
 ## Related
 

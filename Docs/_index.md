@@ -18,7 +18,6 @@ Welcome to the IntelligenceX documentation.
 - [Reviewer Overview](/docs/reviewer/overview/)
 - [Reviewer Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
 - [Reviewer Web Setup UI](/docs/reviewer/setup-web/)
-- [Reviewer Onboarding Unification Tracker](/docs/reviewer/onboarding-unification-tracker/)
 - [Reviewer Configuration](/docs/reviewer/configuration/)
 - [Reviewer Security & Trust](/docs/reviewer/security-trust/)
 - [Reviewer Static Analysis](/docs/reviewer/static-analysis/)
@@ -51,6 +50,6 @@ Welcome to the IntelligenceX documentation.
 - [Screenshots](/docs/screenshots/)
 - [Chat: Local Providers](/docs/apps/chat-local-providers/)
 
-## Apps (Planned)
+## Apps
 
 - [Windows Tray Chat App](/docs/apps/windows-tray-chat/)

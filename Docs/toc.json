@@ -10,7 +10,6 @@
       { "title": "Understanding Reviewer Output", "href": "/docs/reviewer/review-output/" },
       { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
       { "title": "First PR Checklist", "href": "/docs/reviewer/first-pr-checklist/" },
-      { "title": "Onboarding Unification Tracker", "href": "/docs/reviewer/onboarding-unification-tracker/" },
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
       { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
@@ -39,7 +38,6 @@
     "items": [
       { "title": "Install", "href": "/docs/cli/install/" },
       { "title": "Overview", "href": "/docs/cli/overview/" },
-      { "title": "TODO Backlog Sync", "href": "/docs/cli/todo/" },
       { "title": "Quick Start", "href": "/docs/cli/quickstart/" }
     ]
   },
@@ -51,8 +49,6 @@
       { "title": "Providers", "href": "/docs/library/providers/" },
       { "title": "Tool Calling", "href": "/docs/library/tools/" },
       { "title": "Tool Packs", "href": "/docs/library/tool-packs/" },
-      { "title": "Build & Publish (Draft)", "href": "/docs/library/build-publish/" },
-      { "title": "Plugin Rollout (Draft)", "href": "/docs/library/plugin-rollout-draft/" },
       { "title": "API Reference", "href": "/api/" }
     ]
   },
@@ -68,10 +64,9 @@
     "items": [
       { "title": "Examples", "href": "/docs/examples/" },
       { "title": "Troubleshooting", "href": "/docs/troubleshooting/" },
-      { "title": "Screenshots (Planned)", "href": "/docs/screenshots/" },
+      { "title": "Screenshots", "href": "/docs/screenshots/" },
       { "title": "Chat: Local Providers", "href": "/docs/apps/chat-local-providers/" },
-      { "title": "Windows Tray Chat (Planned)", "href": "/docs/apps/windows-tray-chat/" },
-      { "title": "Agent Superpowers Backlog (Draft)", "href": "/docs/agent-superpowers-backlog/" }
+      { "title": "Windows Tray Chat", "href": "/docs/apps/windows-tray-chat/" }
     ]
   }
 ]

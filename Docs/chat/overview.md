@@ -22,7 +22,7 @@ IX Chat uses a dual-process architecture:
 | Component | Technology | Role |
 |---|---|---|
 | **UI Process** | WinUI 3 + WebView2 | Window management, tray icon, rendering |
-| **Host Process** | Console app (IntelligenceX.CLI) | AI provider communication, tool execution |
+| **Host Process** | Console app (`IntelligenceX.Chat.Host`) | AI provider communication, tool execution |
 | **IPC** | Named pipes | Connects UI and Host processes |
 
 ## Tech Stack

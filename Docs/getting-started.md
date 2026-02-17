@@ -13,11 +13,8 @@ Get up and running with AI-powered code reviews in under a minute.
 The fastest way to set up IntelligenceX:
 
 ```bash
-# Install the CLI
-dotnet tool install --global IntelligenceX.Cli
-
-# Run the setup wizard
-intelligencex setup wizard
+# Run from source
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup wizard
 ```
 
 The wizard guides you through:

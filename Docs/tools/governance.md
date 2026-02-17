@@ -45,6 +45,15 @@ Host/app code should consume descriptor metadata and avoid pack-name hardcoding.
 
 Runtime state (for example `Loaded`, `Disabled`, `Partial`) must be shown separately from provenance.
 
+## 4.1 Closed-Source License Boundary
+
+For packs distributed as `closed_source`:
+
+- They are private/proprietary distributions and are not part of the public OSS package baseline.
+- Default policy is IX Chat usage only (when those packs are present in a licensed/private build).
+- Using those packs outside IX Chat (for example in external custom hosts/services) requires a separate license.
+- Public docs and marketing copy must not imply `closed_source` packs are generally reusable in arbitrary third-party hosts by default.
+
 ## 5. Tool Display Rules
 
 - Prefer typed metadata from contracts (`PackId`, `PackName`, `PackDescription`, `PackSourceKind`) over string parsing.

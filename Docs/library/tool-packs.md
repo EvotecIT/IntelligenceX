@@ -3,21 +3,21 @@
 IntelligenceX tool packs are **optional** libraries that implement `ITool` and can be plugged into any provider/tool-calling loop.
 
 Core idea:
-- The **stable contract** lives in the main `IntelligenceX` repo under the `IntelligenceX.Tools` namespace (`ITool`, `ToolRegistry`, schema types).
-- **Tool implementations** live in separate packages (ideally separate repos) so downstream users do not carry dependencies they do not need.
+- The **stable contract** lives in this monorepo under the `IntelligenceX.Tools` namespace (`ITool`, `ToolRegistry`, schema types).
+- Tool-pack implementations are versioned in this monorepo under `IntelligenceX.Tools/` and published as focused packages so users only install what they need.
 
-## Repository split
+## Monorepo layout
 
-- `EvotecIT/IntelligenceX`
-  - Provider clients (`IntelligenceX.OpenAI.*`, `IntelligenceX.Copilot.*`)
-  - Tool contract (`IntelligenceX.Tools` namespace)
-  - Provider-specific tool-calling orchestration (for example `IntelligenceX.OpenAI.ToolCalling`)
-
-- `EvotecIT/IntelligenceX.Tools` (tool packs)
+- `IntelligenceX/`: provider clients and tool-calling orchestration
+- `IntelligenceX.Tools/`: tool pack implementations
   - `IntelligenceX.Tools.FileSystem` (cross-platform)
   - `IntelligenceX.Tools.Email` (depends on Mailozaurr/MailKit/MimeKit)
-  - `IntelligenceX.Tools.System` (OS-specific helpers; keep isolated)
-  - Future Windows-only packs (recommended): `IntelligenceX.Tools.ADPlayground`, `IntelligenceX.Tools.EventLog`, etc.
+  - `IntelligenceX.Tools.EventLog` (Windows)
+  - `IntelligenceX.Tools.PowerShell` (Windows/PowerShell hosts)
+
+Note:
+- Some private/internal packs may still be maintained separately, but the public source of truth for OSS tool packs is this monorepo.
+- Closed-source/private packs are IX Chat private/licensed by default. Using those packs in external custom hosts requires a separate license.
 
 ## Recommended libraries (by domain)
 

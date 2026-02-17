@@ -1,35 +1,28 @@
-# Windows Tray Chat App (Planned)
+# Windows Tray Chat App
 
-Goal: a Windows systray app with a chat-like interface that can run tools (files, Event Log, AD, etc.) and render rich outputs (tables, code blocks, expandable tool traces).
+IX Chat is available today as a Windows tray application backed by the `IntelligenceX.Chat` projects in this monorepo.
 
-Recommended split:
-- Core library: `EvotecIT/IntelligenceX` (public)
-- Tool packs: `EvotecIT/IntelligenceX.Tools` (private until stable; publish selectively later)
-- App repo: `EvotecIT/IntelligenceX.Chat` (or `EvotecIT/IntelligenceX.Desktop`) (can be public)
+## Run from source
 
-## UI stack recommendation (Windows)
+```powershell
+pwsh ./Build/Run-ChatApp.ps1 -Configuration Release
+```
 
-If you want it to feel native and look premium:
-- Windows App SDK + WinUI 3
-- Tray integration: `H.NotifyIcon` (WinUI 3 compatible)
-- Markdown rendering: WebView2-based markdown renderer (for GitHub-flavored tables) or a dedicated WinUI markdown control if it supports tables
+Optional host-only mode:
 
-Why:
-- WinUI 3 has the best Windows-native typography/layout.
-- WebView2 makes table rendering easy and consistent.
+```powershell
+pwsh ./Build/Run-Chat.ps1 -AllowRoot C:\Support\GitHub
+```
 
-## App architecture
+## Architecture
 
-- One local “agent host” process:
-  - `IntelligenceX.OpenAI` (or other provider) for chat
-  - `ToolRegistry` populated from selected tool packs
-- UI connects to host via local HTTP/Named Pipes (keep the UI thin).
-- Tool execution produces:
-  - human-facing summary
-  - machine-readable JSON artifact (for follow-up tool calls)
+- WinUI 3 desktop app with tray integration
+- Host/service runtime for provider communication and tool execution
+- Local-only credential and runtime model (no IntelligenceX cloud backend)
 
-## Tool packs (Windows-only examples)
+## Related docs
 
-Keep these out of the core repo and out of cross-platform packs:
-- `IntelligenceX.Tools.ADPlayground`
-- `IntelligenceX.Tools.EventLog` (EventViewerX / PSEventViewer)
+- [IX Chat Overview](/docs/chat/overview/)
+- [IX Chat Quickstart](/docs/chat/quickstart/)
+- [IX Chat Architecture](/docs/chat/architecture/)
+- [Chat: Local Providers](/docs/apps/chat-local-providers/)

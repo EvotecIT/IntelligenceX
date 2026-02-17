@@ -29,7 +29,16 @@
       "UseToc": true,
       "TocFile": "../Docs/toc.json",
       "Include": ["*.md", "**/*.md"],
-      "Exclude": ["cli/commands/**", "screenshots/**", "reviewer/review-smoke.md"]
+      "Exclude": [
+        "cli/commands/**",
+        "screenshots/**",
+        "reviewer/review-smoke.md",
+        "reviewer/onboarding-unification-tracker.md",
+        "agent-superpowers-backlog.md",
+        "cli/todo.md",
+        "library/build-publish.md",
+        "library/plugin-rollout-draft.md"
+      ]
     }
   ],
   "Head": {
