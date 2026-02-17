@@ -114,4 +114,17 @@ public sealed class UiShellAssetsTests {
         Assert.DoesNotContain("if (!isCompatible) {\n        baseInput.value = \"\";", script, StringComparison.Ordinal);
         Assert.DoesNotContain("if (!isCompatible) {\n        apiKeyInput.value = \"\";", script, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures runtime apply guards duplicate submits and flips runtime UI state immediately.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesRuntimeApplyInFlightGuardAndOptimisticUiUpdate() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("if (local.isApplying === true) {", script, StringComparison.Ordinal);
+        Assert.Contains("state.options.localModel.isApplying = true;", script, StringComparison.Ordinal);
+        Assert.Contains("renderLocalModelOptions();", script, StringComparison.Ordinal);
+    }
 }

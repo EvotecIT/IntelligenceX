@@ -637,6 +637,7 @@
 
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
+    var isApplying = local.isApplying === true;
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
     var isCopilotCli = transport === "copilot-cli";
@@ -707,7 +708,9 @@
 
     var simpleHint = byId("optLocalSimpleHint");
     if (simpleHint) {
-      if (transport === "native") {
+      if (isApplying) {
+        simpleHint.textContent = "Applying runtime settings. Please wait for the runtime to restart.";
+      } else if (transport === "native") {
         simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
       } else if (isCopilotCli) {
         simpleHint.textContent = "Copilot subscription runtime is active. Use Sign In to authenticate your GitHub Copilot account.";
@@ -727,12 +730,14 @@
       var isNative = transport === "native";
       useOpenAiRuntimeButton.textContent = isNative ? "ChatGPT Runtime Active" : "Use ChatGPT Runtime";
       useOpenAiRuntimeButton.classList.toggle("options-btn-active", isNative);
+      useOpenAiRuntimeButton.disabled = isApplying;
     }
 
     var connectLmStudioButton = byId("btnConnectLmStudio");
     if (connectLmStudioButton) {
       connectLmStudioButton.textContent = lmStudioConnected ? "LM Studio Runtime Active" : "Use LM Studio Runtime";
       connectLmStudioButton.classList.toggle("options-btn-active", lmStudioConnected);
+      connectLmStudioButton.disabled = isApplying;
       connectLmStudioButton.title = runtimeDetectionHasRun && !lmStudioAvailable && !lmStudioConnected
         ? "LM Studio was not detected. Start LM Studio and click Auto Detect Runtime in Advanced Runtime."
         : "";
@@ -742,6 +747,7 @@
     if (useCopilotRuntimeButton) {
       useCopilotRuntimeButton.textContent = isCopilotCli ? "Copilot Subscription Active" : "Use Copilot Subscription";
       useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotCli);
+      useCopilotRuntimeButton.disabled = isApplying;
       useCopilotRuntimeButton.title = isCopilotCli
         ? ""
         : "Uses GitHub Copilot subscription sign-in (no API key required).";
@@ -749,8 +755,16 @@
 
     var refreshModelsButton = byId("btnRefreshModels");
     if (refreshModelsButton) {
-      refreshModelsButton.disabled = transport === "native";
-      refreshModelsButton.title = transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : "";
+      refreshModelsButton.disabled = isApplying || transport === "native";
+      refreshModelsButton.title = isApplying
+        ? "Runtime switch in progress."
+        : (transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : "");
+    }
+
+    var applyRuntimeButton = byId("btnApplyLocalProvider");
+    if (applyRuntimeButton) {
+      applyRuntimeButton.disabled = isApplying;
+      applyRuntimeButton.textContent = isApplying ? "Applying Runtime..." : "Apply Runtime";
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();

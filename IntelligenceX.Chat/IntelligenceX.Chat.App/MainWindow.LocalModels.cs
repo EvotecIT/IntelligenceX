@@ -160,60 +160,74 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? apiKeyValue, bool clearApiKey, bool forceModelRefresh) {
-        if (_isSending) {
-            await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
+        if (Interlocked.CompareExchange(ref _localProviderApplyInFlight, 1, 0) != 0) {
+            await SetStatusAsync("Runtime switch already in progress.").ConfigureAwait(false);
             return;
         }
 
-        var rawTransport = (transportValue ?? string.Empty).Trim();
-        var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
-        var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(baseUrlValue, normalizedTransport, rawTransport);
-        var normalizedModel = NormalizeLocalProviderModel(modelValue, normalizedTransport);
-        var clearApiKeyRequested = clearApiKey && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
-        var normalizedApiKey = NormalizeLocalProviderApiKey(apiKeyValue, normalizedTransport);
-        var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
+        try {
+            await SetStatusAsync("Applying runtime settings...").ConfigureAwait(false);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
 
-        var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
-                      || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                      || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal)
-                      || hasApiKeyUpdate;
+            if (_isSending) {
+                await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
+                return;
+            }
 
-        _localProviderTransport = normalizedTransport;
-        _localProviderBaseUrl = normalizedBaseUrl;
-        _localProviderModel = normalizedModel;
-        _appState.LocalProviderTransport = _localProviderTransport;
-        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-        _appState.LocalProviderModel = _localProviderModel;
+            var rawTransport = (transportValue ?? string.Empty).Trim();
+            var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
+            var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(baseUrlValue, normalizedTransport, rawTransport);
+            var normalizedModel = NormalizeLocalProviderModel(modelValue, normalizedTransport);
+            var clearApiKeyRequested = clearApiKey && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
+            var normalizedApiKey = NormalizeLocalProviderApiKey(apiKeyValue, normalizedTransport);
+            var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
 
-        var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
-        await PersistAppStateAsync().ConfigureAwait(false);
+            var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
+                          || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                          || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal)
+                          || hasApiKeyUpdate;
 
-        if (!changed && profileSaved) {
-            await RefreshModelsFromUiAsync(forceModelRefresh).ConfigureAwait(false);
-            return;
+            _localProviderTransport = normalizedTransport;
+            _localProviderBaseUrl = normalizedBaseUrl;
+            _localProviderModel = normalizedModel;
+            _appState.LocalProviderTransport = _localProviderTransport;
+            _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
+            _appState.LocalProviderModel = _localProviderModel;
+
+            var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
+            await PersistAppStateAsync().ConfigureAwait(false);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+
+            if (!changed && profileSaved) {
+                await RefreshModelsFromUiAsync(forceModelRefresh).ConfigureAwait(false);
+                return;
+            }
+
+            ClearConversationThreadIds();
+            await PersistAppStateAsync().ConfigureAwait(false);
+
+            _pendingServiceLaunchProfileOptions = new ServiceLaunchProfileOptions {
+                LoadProfileName = profileSaved ? _appProfileName : null,
+                SaveProfileName = _appProfileName,
+                Model = _localProviderModel,
+                OpenAITransport = _localProviderTransport,
+                OpenAIBaseUrl = _localProviderBaseUrl,
+                OpenAIApiKey = normalizedApiKey,
+                ClearOpenAIApiKey = clearApiKeyRequested,
+                OpenAIStreaming = true,
+                OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
+            };
+
+            await RestartSidecarAsync().ConfigureAwait(false);
+            await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
+            await SyncConnectedServiceProfileAndModelsAsync(
+                forceModelRefresh: true,
+                setProfileNewThread: false,
+                appendWarnings: true).ConfigureAwait(false);
+        } finally {
+            Interlocked.Exchange(ref _localProviderApplyInFlight, 0);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
         }
-
-        ClearConversationThreadIds();
-        await PersistAppStateAsync().ConfigureAwait(false);
-
-        _pendingServiceLaunchProfileOptions = new ServiceLaunchProfileOptions {
-            LoadProfileName = profileSaved ? _appProfileName : null,
-            SaveProfileName = _appProfileName,
-            Model = _localProviderModel,
-            OpenAITransport = _localProviderTransport,
-            OpenAIBaseUrl = _localProviderBaseUrl,
-            OpenAIApiKey = normalizedApiKey,
-            ClearOpenAIApiKey = clearApiKeyRequested,
-            OpenAIStreaming = true,
-            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
-        };
-
-        await RestartSidecarAsync().ConfigureAwait(false);
-        await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
-        await SyncConnectedServiceProfileAndModelsAsync(
-            forceModelRefresh: true,
-            setProfileNewThread: false,
-            appendWarnings: true).ConfigureAwait(false);
     }
 
     private async Task ReconnectServiceSessionAsync() {

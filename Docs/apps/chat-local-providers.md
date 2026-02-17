@@ -23,8 +23,9 @@ For the WinUI desktop app (`Build/Run-ChatApp.ps1`):
    - **Use ChatGPT Runtime** (`native`)
    - **Use LM Studio Runtime** (`compatible-http` + LM Studio base URL)
    - **Use Copilot Subscription** (`copilot-cli`)
-3. Click **Refresh Models** after switching runtime or changing endpoint details.
-4. Use **Show Advanced Runtime** when you need explicit transport/base URL/API key/manual model overrides.
+3. Runtime actions apply immediately and show an in-progress state while the runtime restarts.
+4. Click **Refresh Models** after switching runtime or changing endpoint details when you want a forced re-probe.
+5. Use **Show Advanced Runtime** when you need explicit transport/base URL/API key/manual model overrides.
 
 Advanced presets:
 - **Use LM Studio Runtime**: `http://127.0.0.1:1234/v1`
@@ -37,6 +38,7 @@ Notes:
 - Leaving API key empty keeps the currently saved compatible-http key unchanged.
 - Use **Clear Saved API Key** to remove the saved compatible-http key from the active profile.
 - The panel shows active runtime/model status so you can confirm what is currently used.
+- While a runtime switch is running, runtime buttons are temporarily disabled to avoid duplicate restarts.
 
 ## Model Discovery and Runtime Detection
 
@@ -44,6 +46,10 @@ Notes:
 - If localhost is not available, IX Chat also probes your currently configured `compatible-http` base URL.
 - This helps external endpoints (for example remote LM Studio or Azure/OpenAI-compatible gateways) reflect real availability.
 - For LM Studio endpoints, IX Chat also reads LM Studio catalog metadata (state, quantization, architecture, context lengths, capabilities) when available and surfaces it in the runtime model picker/state note.
+
+Troubleshooting:
+- `Couldn't connect to local runtime after startup: Timed out waiting for service pipe.` indicates the selected runtime transport did not become reachable in time.
+- For LM Studio, verify Local Server is running and `http://127.0.0.1:1234/v1/models` returns data before retrying.
 
 ## Security Model
 

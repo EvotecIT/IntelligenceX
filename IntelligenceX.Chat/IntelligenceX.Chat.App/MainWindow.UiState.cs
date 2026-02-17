@@ -289,6 +289,7 @@ public sealed partial class MainWindow : Window {
             localModel = new {
                 transport = _localProviderTransport,
                 baseUrl = _localProviderBaseUrl ?? string.Empty,
+                isApplying = Volatile.Read(ref _localProviderApplyInFlight) != 0,
                 modelsEndpoint = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
                     ? BuildModelsProbeUrl(_localProviderBaseUrl ?? string.Empty)
                     : string.Empty,

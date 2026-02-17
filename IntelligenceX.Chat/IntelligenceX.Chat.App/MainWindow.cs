@@ -310,6 +310,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _autoReconnectSync = new();
     private CancellationTokenSource? _autoReconnectCts;
     private Task? _autoReconnectTask;
+    private int _localProviderApplyInFlight;
 
     private sealed class ConversationRuntime {
         public required string Id { get; init; }
