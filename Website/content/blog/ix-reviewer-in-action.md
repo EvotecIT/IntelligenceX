@@ -39,8 +39,6 @@ It also separates what is required from what is optional:
 
 That separation helps teams avoid endless churn and focus on what actually decides merge readiness.
 
-![Lower section of IntelligenceX Review showing critical issues optional issues other reviews and tests coverage in one structured report](/assets/screenshots/ix-reviewer-in-action/ix-reviewer-04-critical-and-optional-sections.jpg)
-
 ## It Tracks Context, Not Just One Diff Snippet
 
 Another important part is transparency.
