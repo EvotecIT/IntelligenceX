@@ -41,6 +41,8 @@ Welcome to the IntelligenceX documentation.
 
 - [PowerShell Overview](/docs/powershell/overview/)
 - [PowerShell Quickstart](/docs/powershell/quickstart/)
+- [PowerShell Cookbook](/docs/powershell/cookbook/)
+- [PowerShell Troubleshooting](/docs/powershell/troubleshooting/)
 
 ## Guides
 

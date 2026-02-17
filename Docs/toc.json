@@ -56,7 +56,9 @@
     "title": "PowerShell Module",
     "items": [
       { "title": "Overview", "href": "/docs/powershell/overview/" },
-      { "title": "Quickstart", "href": "/docs/powershell/quickstart/" }
+      { "title": "Quickstart", "href": "/docs/powershell/quickstart/" },
+      { "title": "Cookbook", "href": "/docs/powershell/cookbook/" },
+      { "title": "Troubleshooting", "href": "/docs/powershell/troubleshooting/" }
     ]
   },
   {

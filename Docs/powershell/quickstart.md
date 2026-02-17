@@ -85,3 +85,9 @@ Set-IntelligenceXConfigBatch -Values @{
 ```powershell
 Disconnect-IntelligenceX -Client $client
 ```
+
+## Next Steps
+
+- [PowerShell Cookbook](/docs/powershell/cookbook/)
+- [PowerShell Troubleshooting](/docs/powershell/troubleshooting/)
+- [PowerShell API Reference](/api/powershell/)
