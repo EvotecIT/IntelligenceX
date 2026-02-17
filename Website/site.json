@@ -58,8 +58,12 @@
   "Social": {
     "Enabled": true,
     "SiteName": "IntelligenceX",
-    "Image": "/favicon.svg",
-    "TwitterCard": "summary"
+    "Image": "/assets/screenshots/chat-flow/ChatAD_1_1.png",
+    "TwitterCard": "summary_large_image",
+    "AutoGenerateCards": true,
+    "GeneratedCardsPath": "/assets/social/generated",
+    "GeneratedCardWidth": 1200,
+    "GeneratedCardHeight": 630
   },
   "StructuredData": {
     "Enabled": true,
