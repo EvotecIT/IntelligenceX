@@ -16,6 +16,9 @@ Related docs:
 - [Understanding Reviewer Output](/docs/reviewer/review-output/)
 - [Configuration](/docs/reviewer/configuration/)
 - [Security and Trust](/docs/reviewer/security-trust/)
+- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
+- [Project Bootstrap and Sync](/docs/reviewer/project-bootstrap-sync/)
+- [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
 
 ## Runtime Flow
 
