@@ -16,6 +16,7 @@ namespace IntelligenceX.OpenAI.Transport;
 
 internal sealed class CopilotCliTransport : IOpenAITransport {
     private readonly CopilotClientOptions _options;
+    private readonly Func<CopilotSession, CopilotMessageOptions, TimeSpan?, CancellationToken, Task<string?>> _sendAndWaitAsync;
     private readonly SemaphoreSlim _clientGate = new(1, 1);
     private readonly object _threadsLock = new();
     private readonly Dictionary<string, CopilotThreadState> _threads = new(StringComparer.Ordinal);
@@ -35,8 +36,13 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
         public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     }
 
-    public CopilotCliTransport(CopilotClientOptions options) {
+    public CopilotCliTransport(CopilotClientOptions options) : this(options, null) { }
+
+    internal CopilotCliTransport(CopilotClientOptions options,
+        Func<CopilotSession, CopilotMessageOptions, TimeSpan?, CancellationToken, Task<string?>>? sendAndWaitAsync) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _sendAndWaitAsync = sendAndWaitAsync ?? ((session, message, timeout, cancellationToken) =>
+            session.SendAndWaitAsync(message, timeout, cancellationToken));
         if (!_options.AutoInstallCli) {
             // Subscription runtime should "just work" for app callers, without manual CLI install.
             _options.AutoInstallCli = true;
@@ -280,9 +286,9 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
             }
         });
 
-        var response = await state.Session.SendAndWaitAsync(new CopilotMessageOptions {
+        var response = await _sendAndWaitAsync(state.Session, new CopilotMessageOptions {
             Prompt = prompt
-        }, timeout: null, cancellationToken).ConfigureAwait(false);
+        }, Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
 
         state.UpdatedAtUtc = DateTimeOffset.UtcNow;
         var text = response ?? string.Empty;
