@@ -15,9 +15,7 @@
   {{ include "theme-tokens" }}
   {{ extra_css_html }}
   {{ assets.css_html }}
-  {{ opengraph_html }}
-  {{ structured_data_html }}
-  {{ head_html }}
+  {{ include "head-meta" }}
 </head>
 <body>
   {{ include "header" }}
