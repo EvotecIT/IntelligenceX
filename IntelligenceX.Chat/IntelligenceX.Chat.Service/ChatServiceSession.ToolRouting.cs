@@ -109,6 +109,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldEmitRoutingTransparency(int selectedToolCount, int totalToolCount) {
+        // Contract: always emit routing transparency for any non-negative state so turns remain
+        // observable, then normalize counts in payload/message builders for consistency.
         return selectedToolCount >= 0
             && totalToolCount >= 0;
     }
@@ -160,6 +162,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static (int SelectedToolCount, int TotalToolCount) NormalizeRoutingToolCounts(int selectedToolCount, int totalToolCount) {
+        // Keep emitted count semantics consistent for all consumers.
         var total = Math.Max(0, totalToolCount);
         var selected = Math.Clamp(selectedToolCount, 0, total);
         return (selected, total);

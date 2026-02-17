@@ -13,7 +13,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData(0, 0, true)]
     [InlineData(-1, 0, false)]
     [InlineData(0, -1, false)]
-    public void ShouldEmitRoutingTransparency_RequiresNonNegativeCounts(
+    public void ShouldEmitRoutingTransparency_EmitsForNonNegativeDiagnosticStates(
         int selectedToolCount,
         int totalToolCount,
         bool expected) {
@@ -49,6 +49,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("4", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("9 of 4", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveRoutingStrategy_ReturnsNoToolsForDegenerateCountStates() {
+        var insightsParameterType = ResolveRoutingStrategyMethod.GetParameters()[3].ParameterType;
+        var insightType = insightsParameterType.GetGenericArguments()[0];
+        var emptyInsights = Array.CreateInstance(insightType, 0);
+        var result = ResolveRoutingStrategyMethod.Invoke(null, new object?[] {
+            true,
+            false,
+            false,
+            emptyInsights,
+            5,
+            0
+        });
+        var strategy = Assert.IsType<string>(result);
+
+        Assert.Equal("no_tools", strategy);
     }
 
     [Fact]
@@ -93,6 +111,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var root = doc.RootElement;
         Assert.Equal(6, root.GetProperty("selectedToolCount").GetInt32());
         Assert.Equal(6, root.GetProperty("totalToolCount").GetInt32());
+        Assert.False(root.GetProperty("reducedToolSet").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildRoutingMetaPayload_NormalizesDegenerateNoToolsCounts() {
+        var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            "no_tools",
+            true,
+            false,
+            false,
+            5,
+            0,
+            0,
+            false
+        });
+        var payload = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        Assert.Equal("no_tools", root.GetProperty("strategy").GetString());
+        Assert.Equal(0, root.GetProperty("selectedToolCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("totalToolCount").GetInt32());
         Assert.False(root.GetProperty("reducedToolSet").GetBoolean());
     }
 }
