@@ -303,6 +303,16 @@ public sealed partial class MainWindow : Window {
                 DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? null : entry.DisplayName.Trim(),
                 Description = string.IsNullOrWhiteSpace(entry.Description) ? null : entry.Description.Trim(),
                 IsDefault = entry.IsDefault,
+                OwnedBy = string.IsNullOrWhiteSpace(entry.OwnedBy) ? null : entry.OwnedBy.Trim(),
+                Publisher = string.IsNullOrWhiteSpace(entry.Publisher) ? null : entry.Publisher.Trim(),
+                Architecture = string.IsNullOrWhiteSpace(entry.Architecture) ? null : entry.Architecture.Trim(),
+                Quantization = string.IsNullOrWhiteSpace(entry.Quantization) ? null : entry.Quantization.Trim(),
+                CompatibilityType = string.IsNullOrWhiteSpace(entry.CompatibilityType) ? null : entry.CompatibilityType.Trim(),
+                RuntimeState = string.IsNullOrWhiteSpace(entry.RuntimeState) ? null : entry.RuntimeState.Trim(),
+                ModelType = string.IsNullOrWhiteSpace(entry.ModelType) ? null : entry.ModelType.Trim(),
+                MaxContextLength = entry.MaxContextLength,
+                LoadedContextLength = entry.LoadedContextLength,
+                Capabilities = NormalizeModelNames(entry.Capabilities),
                 DefaultReasoningEffort = string.IsNullOrWhiteSpace(entry.DefaultReasoningEffort) ? null : entry.DefaultReasoningEffort.Trim(),
                 SupportedReasoningEfforts = entry.SupportedReasoningEfforts ?? Array.Empty<ReasoningEffortOptionDto>()
             });

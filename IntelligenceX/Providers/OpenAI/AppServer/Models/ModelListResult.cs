@@ -71,7 +71,9 @@ public sealed class ModelInfo {
     /// </summary>
     public ModelInfo(string id, string model, string displayName, string description,
         IReadOnlyList<ReasoningEffortOption> supportedReasoningEfforts, string? defaultReasoningEffort, bool isDefault,
-        JsonObject raw, JsonObject? additional) {
+        JsonObject raw, JsonObject? additional, string? ownedBy = null, string? publisher = null, string? architecture = null,
+        string? quantization = null, string? compatibilityType = null, string? runtimeState = null, string? modelType = null,
+        long? maxContextLength = null, long? loadedContextLength = null, IReadOnlyList<string>? capabilities = null) {
         Id = id;
         Model = model;
         DisplayName = displayName;
@@ -81,6 +83,16 @@ public sealed class ModelInfo {
         IsDefault = isDefault;
         Raw = raw;
         Additional = additional;
+        OwnedBy = ownedBy;
+        Publisher = publisher;
+        Architecture = architecture;
+        Quantization = quantization;
+        CompatibilityType = compatibilityType;
+        RuntimeState = runtimeState;
+        ModelType = modelType;
+        MaxContextLength = maxContextLength;
+        LoadedContextLength = loadedContextLength;
+        Capabilities = capabilities ?? System.Array.Empty<string>();
     }
 
     /// <summary>
@@ -111,6 +123,46 @@ public sealed class ModelInfo {
     /// Gets a value indicating whether this is the default model.
     /// </summary>
     public bool IsDefault { get; }
+    /// <summary>
+    /// Gets the provider owner identifier when exposed (for example <c>owned_by</c>).
+    /// </summary>
+    public string? OwnedBy { get; }
+    /// <summary>
+    /// Gets the model publisher when exposed by the runtime.
+    /// </summary>
+    public string? Publisher { get; }
+    /// <summary>
+    /// Gets the model architecture identifier when known.
+    /// </summary>
+    public string? Architecture { get; }
+    /// <summary>
+    /// Gets the quantization identifier when known.
+    /// </summary>
+    public string? Quantization { get; }
+    /// <summary>
+    /// Gets the compatibility format (for example gguf) when known.
+    /// </summary>
+    public string? CompatibilityType { get; }
+    /// <summary>
+    /// Gets the runtime load state (for example loaded/not-loaded) when known.
+    /// </summary>
+    public string? RuntimeState { get; }
+    /// <summary>
+    /// Gets the model type/category when known.
+    /// </summary>
+    public string? ModelType { get; }
+    /// <summary>
+    /// Gets the maximum context length when exposed by the runtime.
+    /// </summary>
+    public long? MaxContextLength { get; }
+    /// <summary>
+    /// Gets the currently loaded context length when exposed by the runtime.
+    /// </summary>
+    public long? LoadedContextLength { get; }
+    /// <summary>
+    /// Gets capability tags exposed by the runtime.
+    /// </summary>
+    public IReadOnlyList<string> Capabilities { get; }
     /// <summary>
     /// Gets the raw JSON object.
     /// </summary>
@@ -151,15 +203,71 @@ public sealed class ModelInfo {
 
         var defaultReasoningEffort = GetString(obj, "defaultReasoningEffort", "default_reasoning_effort");
         var isDefault = obj.GetBoolean("isDefault");
+        var ownedBy = GetString(obj, "ownedBy", "owned_by");
+        var publisher = GetString(obj, "publisher");
+        var architecture = GetString(obj, "arch", "architecture");
+        var quantization = GetString(obj, "quantization");
+        var compatibilityType = GetString(obj, "compatibilityType", "compatibility_type");
+        var runtimeState = GetString(obj, "state");
+        var modelType = GetString(obj, "type");
+        var maxContextLength = obj.GetInt64("maxContextLength") ?? obj.GetInt64("max_context_length");
+        var loadedContextLength = obj.GetInt64("loadedContextLength") ?? obj.GetInt64("loaded_context_length");
+        var capabilities = ParseStringArray(obj.GetArray("capabilities"));
         var additional = obj.ExtractAdditional(
             "id", "model", "displayName", "display_name", "description",
             "supportedReasoningEfforts", "supported_reasoning_efforts",
-            "defaultReasoningEffort", "default_reasoning_effort", "isDefault");
-        return new ModelInfo(id, model, displayName, description, efforts, defaultReasoningEffort, isDefault, obj, additional);
+            "defaultReasoningEffort", "default_reasoning_effort", "isDefault",
+            "ownedBy", "owned_by", "publisher", "arch", "architecture",
+            "quantization", "compatibilityType", "compatibility_type",
+            "state", "type", "maxContextLength", "max_context_length",
+            "loadedContextLength", "loaded_context_length", "capabilities");
+        return new ModelInfo(
+            id,
+            model,
+            displayName,
+            description,
+            efforts,
+            defaultReasoningEffort,
+            isDefault,
+            obj,
+            additional,
+            ownedBy,
+            publisher,
+            architecture,
+            quantization,
+            compatibilityType,
+            runtimeState,
+            modelType,
+            maxContextLength,
+            loadedContextLength,
+            capabilities);
     }
 
     private static string? GetString(JsonObject obj, string key) => obj.GetString(key);
     private static string? GetString(JsonObject obj, string primary, string fallback) => obj.GetString(primary) ?? obj.GetString(fallback);
+
+    private static IReadOnlyList<string> ParseStringArray(JsonArray? source) {
+        if (source is null || source.Count == 0) {
+            return System.Array.Empty<string>();
+        }
+
+        var list = new List<string>(source.Count);
+        for (var i = 0; i < source.Count; i++) {
+            var value = source[i].AsString();
+            if (value is null) {
+                continue;
+            }
+
+            var normalized = value.Trim();
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            list.Add(normalized);
+        }
+
+        return list.Count == 0 ? System.Array.Empty<string>() : list;
+    }
 }
 
 /// <summary>

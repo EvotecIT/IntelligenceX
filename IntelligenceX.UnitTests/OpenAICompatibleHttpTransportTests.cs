@@ -14,6 +14,95 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class OpenAICompatibleHttpTransportTests {
+    [Fact]
+    public async Task ListModelsAsync_LmStudioCatalogOverlay_AddsMetadataAndCatalogModels() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "google/gemma-3-4b", "object": "model", "owned_by": "organization_owner" }
+                  ],
+                  "object": "list"
+                }
+                """)
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    {
+                      "id": "google/gemma-3-4b",
+                      "object": "model",
+                      "state": "loaded",
+                      "arch": "gemma3",
+                      "quantization": "Q4_K_M",
+                      "max_context_length": 131072,
+                      "loaded_context_length": 4096,
+                      "capabilities": ["tool_use"]
+                    },
+                    {
+                      "id": "openai/gpt-oss-20b",
+                      "object": "model",
+                      "state": "not-loaded",
+                      "arch": "gpt-oss",
+                      "quantization": "MXFP4"
+                    }
+                  ],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var result = await transport.ListModelsAsync(CancellationToken.None);
+        Assert.Equal(2, result.Models.Count);
+
+        var gemma = Assert.Single(result.Models, m => string.Equals(m.Model, "google/gemma-3-4b", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("loaded", gemma.RuntimeState);
+        Assert.Equal("gemma3", gemma.Architecture);
+        Assert.Equal("Q4_K_M", gemma.Quantization);
+        Assert.Equal(131072, gemma.MaxContextLength);
+        Assert.Equal(4096, gemma.LoadedContextLength);
+        Assert.Contains("tool_use", gemma.Capabilities, StringComparer.OrdinalIgnoreCase);
+
+        var gptOss = Assert.Single(result.Models, m => string.Equals(m.Model, "openai/gpt-oss-20b", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("not-loaded", gptOss.RuntimeState);
+        Assert.Equal("gpt-oss", gptOss.Architecture);
+        Assert.Equal("MXFP4", gptOss.Quantization);
+
+        Assert.Equal(2, handler.RequestUris.Count);
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/v1/models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(handler.RequestUris, uri => string.Equals(uri.AbsolutePath, "/api/v0/models", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_NonLmStudioBaseUrl_DoesNotProbeLmStudioCatalog() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [
+                    { "id": "llama3.1", "object": "model", "owned_by": "ollama" }
+                  ],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:11434",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var result = await transport.ListModelsAsync(CancellationToken.None);
+        var only = Assert.Single(result.Models);
+        Assert.Equal("llama3.1", only.Model);
+        Assert.Single(handler.RequestUris);
+        Assert.Equal("/v1/models", handler.RequestUris[0].AbsolutePath);
+    }
 
     [Fact]
     public async Task ToolCalls_Are_Emitted_In_ToolCallParser_Shape() {

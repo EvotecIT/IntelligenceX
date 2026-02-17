@@ -70,6 +70,46 @@ public sealed record ModelInfoDto {
     /// </summary>
     public bool? IsDefault { get; init; }
     /// <summary>
+    /// Provider owner identifier (for example <c>owned_by</c>) when exposed.
+    /// </summary>
+    public string? OwnedBy { get; init; }
+    /// <summary>
+    /// Publisher identifier when exposed by the runtime.
+    /// </summary>
+    public string? Publisher { get; init; }
+    /// <summary>
+    /// Architecture identifier when known.
+    /// </summary>
+    public string? Architecture { get; init; }
+    /// <summary>
+    /// Quantization identifier when known.
+    /// </summary>
+    public string? Quantization { get; init; }
+    /// <summary>
+    /// Compatibility format (for example gguf) when known.
+    /// </summary>
+    public string? CompatibilityType { get; init; }
+    /// <summary>
+    /// Runtime load state (for example loaded/not-loaded) when known.
+    /// </summary>
+    public string? RuntimeState { get; init; }
+    /// <summary>
+    /// Model category/type when known.
+    /// </summary>
+    public string? ModelType { get; init; }
+    /// <summary>
+    /// Maximum context length when exposed by the runtime.
+    /// </summary>
+    public long? MaxContextLength { get; init; }
+    /// <summary>
+    /// Active loaded context length when exposed by the runtime.
+    /// </summary>
+    public long? LoadedContextLength { get; init; }
+    /// <summary>
+    /// Capability tags advertised by the runtime.
+    /// </summary>
+    public string[] Capabilities { get; init; } = System.Array.Empty<string>();
+    /// <summary>
     /// Default reasoning effort identifier when the provider exposes it.
     /// </summary>
     public string? DefaultReasoningEffort { get; init; }

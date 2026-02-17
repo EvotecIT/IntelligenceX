@@ -43,6 +43,7 @@ Notes:
 - Auto Detect probes localhost endpoints for LM Studio (`127.0.0.1:1234`) and Ollama (`127.0.0.1:11434`).
 - If localhost is not available, IX Chat also probes your currently configured `compatible-http` base URL.
 - This helps external endpoints (for example remote LM Studio or Azure/OpenAI-compatible gateways) reflect real availability.
+- For LM Studio endpoints, IX Chat also reads LM Studio catalog metadata (state, quantization, architecture, context lengths, capabilities) when available and surfaces it in the runtime model picker/state note.
 
 ## Security Model
 

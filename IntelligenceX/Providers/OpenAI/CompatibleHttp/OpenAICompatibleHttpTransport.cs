@@ -24,6 +24,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
     private readonly HttpClient _http;
     private readonly Uri _apiBase;
     private readonly Uri _modelsUrl;
+    private readonly Uri? _lmStudioModelsUrl;
     private readonly Uri _chatCompletionsUrl;
 
     private readonly object _threadsLock = new();
@@ -38,6 +39,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         _apiBase = NormalizeBaseUrl(_options.BaseUrl!);
         _modelsUrl = new Uri(_apiBase, "models");
+        _lmStudioModelsUrl = BuildLmStudioModelsUrl(_apiBase);
         _chatCompletionsUrl = new Uri(_apiBase, "chat/completions");
 
         _http = httpClient ?? new HttpClient();
@@ -112,11 +114,216 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             var value = JsonLite.Parse(payload);
             var obj = value?.AsObject() ?? new JsonObject();
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
-            return ModelListResult.FromJson(obj);
+            var primary = ModelListResult.FromJson(obj);
+            return await TryMergeLmStudioCatalogAsync(primary, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, false, ex));
             throw;
         }
+    }
+
+    private async Task<ModelListResult> TryMergeLmStudioCatalogAsync(ModelListResult primary, CancellationToken cancellationToken) {
+        if (_lmStudioModelsUrl is null) {
+            return primary;
+        }
+
+        var lmStudioCatalog = await TryFetchLmStudioCatalogAsync(cancellationToken).ConfigureAwait(false);
+        if (lmStudioCatalog is null || lmStudioCatalog.Models.Count == 0) {
+            return primary;
+        }
+
+        var merged = MergeLmStudioCatalogModels(primary.Models, lmStudioCatalog.Models);
+        return new ModelListResult(merged, primary.NextCursor, primary.Raw, primary.Additional);
+    }
+
+    private async Task<ModelListResult?> TryFetchLmStudioCatalogAsync(CancellationToken cancellationToken) {
+        if (_lmStudioModelsUrl is null) {
+            return null;
+        }
+
+        try {
+            using var request = new HttpRequestMessage(HttpMethod.Get, _lmStudioModelsUrl);
+            AddAuthHeader(request);
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                return null;
+            }
+
+            var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
+            var value = JsonLite.Parse(payload);
+            var obj = value?.AsObject();
+            return obj is null ? null : ModelListResult.FromJson(obj);
+        } catch {
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<ModelInfo> MergeLmStudioCatalogModels(IReadOnlyList<ModelInfo> primary, IReadOnlyList<ModelInfo> catalog) {
+        if (primary.Count == 0) {
+            return catalog;
+        }
+
+        if (catalog.Count == 0) {
+            return primary;
+        }
+
+        var catalogLookup = new Dictionary<string, ModelInfo>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < catalog.Count; i++) {
+            var model = catalog[i];
+            RegisterModelAliases(catalogLookup, model);
+        }
+
+        var merged = new List<ModelInfo>(Math.Max(primary.Count, catalog.Count));
+        var primaryAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < primary.Count; i++) {
+            var model = primary[i];
+            RegisterModelAliases(primaryAliases, model);
+            var match = FindCatalogMatch(catalogLookup, model);
+            merged.Add(match is null ? model : MergeModelInfo(model, match));
+        }
+
+        for (var i = 0; i < catalog.Count; i++) {
+            var catalogModel = catalog[i];
+            if (HasAnyAlias(primaryAliases, catalogModel)) {
+                continue;
+            }
+            merged.Add(catalogModel);
+        }
+
+        return merged;
+    }
+
+    private static ModelInfo? FindCatalogMatch(IReadOnlyDictionary<string, ModelInfo> lookup, ModelInfo model) {
+        if (lookup.Count == 0 || model is null) {
+            return null;
+        }
+
+        var id = NormalizeModelKey(model.Id);
+        if (id.Length > 0 && lookup.TryGetValue(id, out var byId)) {
+            return byId;
+        }
+
+        var name = NormalizeModelKey(model.Model);
+        if (name.Length > 0 && lookup.TryGetValue(name, out var byModel)) {
+            return byModel;
+        }
+
+        return null;
+    }
+
+    private static ModelInfo MergeModelInfo(ModelInfo primary, ModelInfo catalog) {
+        var mergedCapabilities = MergeCapabilities(primary.Capabilities, catalog.Capabilities);
+        return new ModelInfo(
+            id: string.IsNullOrWhiteSpace(primary.Id) ? catalog.Id : primary.Id,
+            model: string.IsNullOrWhiteSpace(primary.Model) ? catalog.Model : primary.Model,
+            displayName: string.IsNullOrWhiteSpace(primary.DisplayName) ? catalog.DisplayName : primary.DisplayName,
+            description: string.IsNullOrWhiteSpace(primary.Description) ? catalog.Description : primary.Description,
+            supportedReasoningEfforts: primary.SupportedReasoningEfforts.Count == 0 ? catalog.SupportedReasoningEfforts : primary.SupportedReasoningEfforts,
+            defaultReasoningEffort: string.IsNullOrWhiteSpace(primary.DefaultReasoningEffort)
+                ? catalog.DefaultReasoningEffort
+                : primary.DefaultReasoningEffort,
+            isDefault: primary.IsDefault || catalog.IsDefault,
+            raw: primary.Raw,
+            additional: primary.Additional,
+            ownedBy: string.IsNullOrWhiteSpace(primary.OwnedBy) ? catalog.OwnedBy : primary.OwnedBy,
+            publisher: string.IsNullOrWhiteSpace(primary.Publisher) ? catalog.Publisher : primary.Publisher,
+            architecture: string.IsNullOrWhiteSpace(primary.Architecture) ? catalog.Architecture : primary.Architecture,
+            quantization: string.IsNullOrWhiteSpace(primary.Quantization) ? catalog.Quantization : primary.Quantization,
+            compatibilityType: string.IsNullOrWhiteSpace(primary.CompatibilityType) ? catalog.CompatibilityType : primary.CompatibilityType,
+            runtimeState: string.IsNullOrWhiteSpace(primary.RuntimeState) ? catalog.RuntimeState : primary.RuntimeState,
+            modelType: string.IsNullOrWhiteSpace(primary.ModelType) ? catalog.ModelType : primary.ModelType,
+            maxContextLength: primary.MaxContextLength ?? catalog.MaxContextLength,
+            loadedContextLength: primary.LoadedContextLength ?? catalog.LoadedContextLength,
+            capabilities: mergedCapabilities);
+    }
+
+    private static IReadOnlyList<string> MergeCapabilities(IReadOnlyList<string> primary, IReadOnlyList<string> catalog) {
+        if (primary.Count == 0 && catalog.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        if (catalog.Count == 0) {
+            return primary;
+        }
+
+        if (primary.Count == 0) {
+            return catalog;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var merged = new List<string>(primary.Count + catalog.Count);
+        for (var i = 0; i < primary.Count; i++) {
+            var item = primary[i];
+            if (string.IsNullOrWhiteSpace(item) || !seen.Add(item.Trim())) {
+                continue;
+            }
+            merged.Add(item.Trim());
+        }
+
+        for (var i = 0; i < catalog.Count; i++) {
+            var item = catalog[i];
+            if (string.IsNullOrWhiteSpace(item) || !seen.Add(item.Trim())) {
+                continue;
+            }
+            merged.Add(item.Trim());
+        }
+
+        return merged;
+    }
+
+    private static void RegisterModelAliases(IDictionary<string, ModelInfo> lookup, ModelInfo model) {
+        if (lookup is null || model is null) {
+            return;
+        }
+
+        var id = NormalizeModelKey(model.Id);
+        if (id.Length > 0 && !lookup.ContainsKey(id)) {
+            lookup[id] = model;
+        }
+
+        var name = NormalizeModelKey(model.Model);
+        if (name.Length > 0 && !lookup.ContainsKey(name)) {
+            lookup[name] = model;
+        }
+    }
+
+    private static void RegisterModelAliases(ISet<string> aliases, ModelInfo model) {
+        if (aliases is null || model is null) {
+            return;
+        }
+
+        var id = NormalizeModelKey(model.Id);
+        if (id.Length > 0) {
+            aliases.Add(id);
+        }
+
+        var name = NormalizeModelKey(model.Model);
+        if (name.Length > 0) {
+            aliases.Add(name);
+        }
+    }
+
+    private static bool HasAnyAlias(ISet<string> aliases, ModelInfo model) {
+        if (aliases is null || model is null) {
+            return false;
+        }
+
+        var id = NormalizeModelKey(model.Id);
+        if (id.Length > 0 && aliases.Contains(id)) {
+            return true;
+        }
+
+        var name = NormalizeModelKey(model.Model);
+        return name.Length > 0 && aliases.Contains(name);
+    }
+
+    private static string NormalizeModelKey(string? value) {
+        if (value is null) {
+            return string.Empty;
+        }
+
+        var normalized = value.Trim();
+        return normalized.Length == 0 ? string.Empty : normalized;
     }
 
     public Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt, bool useLocalListener,
@@ -706,6 +913,31 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             builder.Path = finalPath + "/";
         }
         return builder.Uri;
+    }
+
+    private static Uri? BuildLmStudioModelsUrl(Uri apiBase) {
+        if (!IsLikelyLmStudioEndpoint(apiBase)) {
+            return null;
+        }
+
+        var builder = new UriBuilder(apiBase) {
+            Path = "/api/v0/models",
+            Query = string.Empty
+        };
+        return builder.Uri;
+    }
+
+    private static bool IsLikelyLmStudioEndpoint(Uri apiBase) {
+        if (apiBase is null) {
+            return false;
+        }
+
+        if (apiBase.Port == 1234) {
+            return true;
+        }
+
+        var host = apiBase.Host ?? string.Empty;
+        return host.IndexOf("lmstudio", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static Task<string> ReadAsStringAsync(HttpContent content, CancellationToken cancellationToken) {
