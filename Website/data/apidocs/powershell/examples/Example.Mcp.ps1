@@ -8,10 +8,11 @@ try {
     $status.Servers | Select-Object Name, AuthStatus
 
     # Start OAuth for the first OAuth-enabled server.
-    $oauthServer = $status.Servers | Where-Object AuthStatus -eq "OAuth" | Select-Object -First 1
+    $oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth
+    $oauthServer = $status.Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1
     if ($oauthServer) {
         $login = Start-IntelligenceXMcpOAuthLogin -Client $client -ServerName $oauthServer.Name
-        Write-Host "Open MCP OAuth URL: $($login.AuthUrl)"
+        Write-Output "Open MCP OAuth URL: $($login.AuthUrl)"
     }
 
     # Reload MCP config after local file edits.

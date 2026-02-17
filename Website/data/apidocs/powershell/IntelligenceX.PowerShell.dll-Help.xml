@@ -3716,7 +3716,7 @@
       </command:example>
       <command:example>
         <maml:title>----------  Example 3  ----------</maml:title>
-        <dev:code>$server = (Get-IntelligenceXMcpServerStatus).Servers | Where-Object AuthStatus -eq "OAuth" | Select-Object -First 1; Start-IntelligenceXMcpOAuthLogin -ServerName $server.Name</dev:code>
+        <dev:code>$oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth; $server = (Get-IntelligenceXMcpServerStatus).Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1; Start-IntelligenceXMcpOAuthLogin -ServerName $server.Name</dev:code>
         <dev:remarks>
           <maml:para>Discover an OAuth server first, then start login</maml:para>
         </dev:remarks>

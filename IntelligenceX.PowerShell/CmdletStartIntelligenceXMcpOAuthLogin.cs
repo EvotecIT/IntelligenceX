@@ -21,7 +21,7 @@ namespace IntelligenceX.PowerShell;
 /// </example>
 /// <example>
 ///  <para>Discover an OAuth server first, then start login</para>
-///  <code>$server = (Get-IntelligenceXMcpServerStatus).Servers | Where-Object AuthStatus -eq "OAuth" | Select-Object -First 1; Start-IntelligenceXMcpOAuthLogin -ServerName $server.Name</code>
+///  <code>$oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth; $server = (Get-IntelligenceXMcpServerStatus).Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1; Start-IntelligenceXMcpOAuthLogin -ServerName $server.Name</code>
 /// </example>
 /// <example>
 ///  <para>Return raw JSON response for custom handling</para>

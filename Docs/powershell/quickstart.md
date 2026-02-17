@@ -52,10 +52,11 @@ $review = Start-IntelligenceXReview -ThreadId $thread.Id -Delivery immediate -Ta
 $status = Get-IntelligenceXMcpServerStatus
 $status.Servers | Select-Object Name, AuthStatus
 
-$oauthServer = $status.Servers | Where-Object AuthStatus -eq "OAuth" | Select-Object -First 1
+$oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth
+$oauthServer = $status.Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1
 if ($oauthServer) {
     $oauth = Start-IntelligenceXMcpOAuthLogin -ServerName $oauthServer.Name
-    Write-Host "Complete MCP login at: $($oauth.AuthUrl)"
+    Write-Output "Complete MCP login at: $($oauth.AuthUrl)"
 }
 ```
 

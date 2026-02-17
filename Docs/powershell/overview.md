@@ -42,7 +42,8 @@ $status = Get-IntelligenceXMcpServerStatus
 $status.Servers | Select-Object Name, AuthStatus
 
 # Start OAuth when needed.
-$oauthServer = $status.Servers | Where-Object AuthStatus -eq 'OAuth' | Select-Object -First 1
+$oauthStatus = [IntelligenceX.OpenAI.AppServer.Models.McpAuthStatus]::OAuth
+$oauthServer = $status.Servers | Where-Object { $_.AuthStatus -eq $oauthStatus } | Select-Object -First 1
 if ($oauthServer) {
     $login = Start-IntelligenceXMcpOAuthLogin -ServerName $oauthServer.Name
     Start-Process $login.AuthUrl
