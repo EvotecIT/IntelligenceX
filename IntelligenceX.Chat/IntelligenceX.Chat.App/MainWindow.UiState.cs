@@ -1169,6 +1169,10 @@ public sealed partial class MainWindow : Window {
                 hasTotalToolCount = true;
             }
 
+            if (hasSelectedToolCount && hasTotalToolCount && selectedToolCount > totalToolCount) {
+                selectedToolCount = totalToolCount;
+            }
+
             return hasSelectedToolCount && hasTotalToolCount;
         } catch (JsonException) {
             return false;
