@@ -7,5 +7,5 @@ layout: page
 ---
 
 <div class="faq-list">
-    {{< faq data="faq" >}}
+    {{< faq data="faq.sections" >}}
 </div>
