@@ -751,6 +751,10 @@
   }
 
   function applyLocalProviderSettings(forceRefresh, clearApiKey) {
+    var local = ((state.options || {}).localModel || {});
+    if (local.isApplying === true) {
+      return;
+    }
     var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
     var baseUrl = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalBaseUrl").value || "").trim()
@@ -762,6 +766,16 @@
       : "";
     if (shouldClearApiKey) {
       apiKey = "";
+    }
+    if (state.options) {
+      if (!state.options.localModel) {
+        state.options.localModel = {};
+      }
+      state.options.localModel.transport = transport;
+      state.options.localModel.baseUrl = baseUrl;
+      state.options.localModel.model = model;
+      state.options.localModel.isApplying = true;
+      renderLocalModelOptions();
     }
     post("apply_local_provider", {
       transport: transport,

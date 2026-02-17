@@ -40,11 +40,19 @@ Markdown renderer dependency resolution is automatic:
 
 Inside the app:
 
-1. Open **Options -> Profile -> Model Runtime**.
-2. Click **Connect LM Studio**.
+1. Open **Options -> Runtime**.
+2. Click one of the runtime actions:
+   - **Use ChatGPT Runtime**
+   - **Use LM Studio Runtime**
+   - **Use Copilot Subscription**
 3. Wait for model discovery to populate and choose a discovered model if needed.
-4. Use **Advanced Runtime** only when you need custom transport/base URL/API key/manual model options.
-5. Click **Apply Runtime** after changing model/runtime options.
+4. Use **Show Advanced Runtime** only when you need custom transport/base URL/API key/manual model options (LM Studio/Ollama/Azure/other compatible endpoints).
+5. If you see **Applying Runtime...**, wait for restart and model refresh to complete before clicking runtime buttons again.
+6. Use **Refresh Models** to force model re-discovery after runtime changes.
+
+Troubleshooting:
+- `Couldn't connect to local runtime after startup: Timed out waiting for service pipe.` usually means the selected runtime endpoint is not reachable yet.
+- For LM Studio, ensure Local Server is enabled and reachable at `http://127.0.0.1:1234/v1` (or set your custom endpoint in **Advanced Runtime**).
 
 Reference: `Docs/apps/chat-local-providers.md`
 
