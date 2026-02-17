@@ -371,6 +371,10 @@ public sealed partial class MainWindow : Window {
             "ollama" => TransportCompatibleHttp,
             "lmstudio" => TransportCompatibleHttp,
             "lm-studio" => TransportCompatibleHttp,
+            "copilot" => TransportCopilotCli,
+            "copilot-cli" => TransportCopilotCli,
+            "github-copilot" => TransportCopilotCli,
+            "githubcopilot" => TransportCopilotCli,
             _ => TransportNative
         };
     }
@@ -398,7 +402,8 @@ public sealed partial class MainWindow : Window {
             return normalized;
         }
 
-        if (string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
             return string.Empty;
         }
 
@@ -526,7 +531,9 @@ public sealed partial class MainWindow : Window {
 
         var transportLabel = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
             ? "compatible-http"
-            : "native";
+            : string.Equals(_localProviderTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)
+                ? "copilot-cli"
+                : "native";
         var modelLabel = string.IsNullOrWhiteSpace(_localProviderModel) ? "(default)" : _localProviderModel.Trim();
         lines.Add("Runtime transport: " + transportLabel + ", model: " + modelLabel);
         lines.Add("Tools enabled: " + enabledTools.ToString(CultureInfo.InvariantCulture)

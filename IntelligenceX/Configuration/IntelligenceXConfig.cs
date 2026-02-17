@@ -459,6 +459,7 @@ public sealed class OpenAIConfig {
         return value.Trim().ToLowerInvariant() switch {
             "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
             "compatible-http" or "compatiblehttp" or "http" or "local" or "ollama" or "lmstudio" or "lm-studio" => OpenAITransportKind.CompatibleHttp,
+            "copilot" or "copilot-cli" or "github-copilot" or "githubcopilot" => OpenAITransportKind.CopilotCli,
             _ => OpenAITransportKind.Native
         };
     }

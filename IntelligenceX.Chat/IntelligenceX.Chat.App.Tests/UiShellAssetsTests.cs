@@ -101,4 +101,17 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("maxReviewPasses: (byId(\"optAutonomyMaxReviewPasses\").value || \"\").trim()", html, StringComparison.Ordinal);
         Assert.Contains("modelHeartbeatSeconds: (byId(\"optAutonomyModelHeartbeat\").value || \"\").trim()", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures transport switching keeps draft compatible-http credentials in the form,
+    /// instead of clearing hidden values when changing to non-compatible transports.
+    /// </summary>
+    [Fact]
+    public void Load_DoesNotClearCompatibleDraftFields_OnTransportToggle() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.DoesNotContain("if (!isCompatible) {\n        baseInput.value = \"\";", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (!isCompatible) {\n        apiKeyInput.value = \"\";", script, StringComparison.Ordinal);
+    }
 }

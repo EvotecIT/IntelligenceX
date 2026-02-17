@@ -10,7 +10,7 @@ IX Chat is a Windows desktop application that lives in your system tray, providi
 ## Key Features
 
 - **System Tray Integration** -- Always accessible from your Windows taskbar via [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon)
-- **Multi-Provider Support** -- Works with ChatGPT (native transport) and GitHub Copilot
+- **Clear Runtime Modes** -- ChatGPT Native, Copilot Subscription (`copilot-cli`), and Compatible HTTP (LM Studio/Ollama/Azure/other)
 - **Tool Calling** -- AI assistants can execute registered tool packs during conversations
 - **Persistent Conversations** -- Threads are saved locally and survive app restarts
 - **Zero-Trust Architecture** -- Your credentials never leave your machine

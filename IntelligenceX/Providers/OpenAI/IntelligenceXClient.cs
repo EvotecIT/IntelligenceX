@@ -111,6 +111,9 @@ public sealed class IntelligenceXClient : IDisposable
             case OpenAITransportKind.CompatibleHttp:
                 transport = new OpenAICompatibleHttpTransport(options.CompatibleHttpOptions);
                 break;
+            case OpenAITransportKind.CopilotCli:
+                transport = new CopilotCliTransport(options.CopilotOptions);
+                break;
             default:
                 transport = new OpenAINativeTransport(options.NativeOptions);
                 break;

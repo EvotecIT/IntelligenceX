@@ -422,6 +422,7 @@ ON CONFLICT(name) DO UPDATE SET
             OpenAITransportKind.Native => "native",
             OpenAITransportKind.AppServer => "appserver",
             OpenAITransportKind.CompatibleHttp => "compatible-http",
+            OpenAITransportKind.CopilotCli => "copilot-cli",
             _ => "native"
         };
     }
@@ -448,6 +449,12 @@ ON CONFLICT(name) DO UPDATE SET
             case "lmstudio":
             case "lm-studio":
                 kind = OpenAITransportKind.CompatibleHttp;
+                return true;
+            case "copilot":
+            case "copilot-cli":
+            case "github-copilot":
+            case "githubcopilot":
+                kind = OpenAITransportKind.CopilotCli;
                 return true;
             default:
                 return false;

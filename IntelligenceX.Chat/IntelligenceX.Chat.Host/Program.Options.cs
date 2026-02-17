@@ -144,7 +144,7 @@ internal static partial class Program {
                             return options;
                         }
                         if (!TryParseTransport(kindValue, out var kind)) {
-                            error = "--openai-transport must be one of: native, appserver, compatible-http.";
+                            error = "--openai-transport must be one of: native, appserver, compatible-http, copilot-cli.";
                             return options;
                         }
                         options.OpenAITransport = kind;
@@ -537,6 +537,12 @@ internal static partial class Program {
                 case "lmstudio":
                 case "lm-studio":
                     kind = OpenAITransportKind.CompatibleHttp;
+                    return true;
+                case "copilot":
+                case "copilot-cli":
+                case "github-copilot":
+                case "githubcopilot":
+                    kind = OpenAITransportKind.CopilotCli;
                     return true;
                 default:
                     return false;

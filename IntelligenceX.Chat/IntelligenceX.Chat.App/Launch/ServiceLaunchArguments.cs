@@ -97,6 +97,10 @@ internal static class ServiceLaunchArguments {
             "appserver" => "appserver",
             "compatible-http" => "compatible-http",
             "compatiblehttp" => "compatible-http",
+            "copilot" => "copilot-cli",
+            "copilot-cli" => "copilot-cli",
+            "github-copilot" => "copilot-cli",
+            "githubcopilot" => "copilot-cli",
             _ => throw new ArgumentException($"Unsupported OpenAI transport '{value}'.", nameof(value))
         };
     }

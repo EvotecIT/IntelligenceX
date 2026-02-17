@@ -148,7 +148,7 @@ internal sealed class ServiceOptions {
                     return options;
                 }
                 if (!TryParseTransport(value!, out var kind)) {
-                    error = "--openai-transport must be one of: native, appserver, compatible-http.";
+                    error = "--openai-transport must be one of: native, appserver, compatible-http, copilot-cli.";
                     return options;
                 }
                 options.OpenAITransport = kind;
@@ -405,7 +405,7 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
-        Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http (default: native).");
+        Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
         Console.WriteLine("  --openai-clear-api-key Clear any saved compatible-http API key when profile overrides are saved.");
@@ -465,6 +465,12 @@ internal sealed class ServiceOptions {
             case "lmstudio":
             case "lm-studio":
                 kind = OpenAITransportKind.CompatibleHttp;
+                return true;
+            case "copilot":
+            case "copilot-cli":
+            case "github-copilot":
+            case "githubcopilot":
+                kind = OpenAITransportKind.CopilotCli;
                 return true;
             default:
                 return false;
