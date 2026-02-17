@@ -21,6 +21,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// Lists available models.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to ModelListResult.</returns>
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("model/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -34,6 +35,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// Lists available collaboration modes.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to CollaborationModeListResult.</returns>
     public async Task<CollaborationModeListResult> ListCollaborationModesAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("collaborationMode/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -49,6 +51,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <param name="cwds">Optional working directories to query.</param>
     /// <param name="forceReload">Whether to force reload.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to SkillListResult.</returns>
     public async Task<SkillListResult> ListSkillsAsync(IReadOnlyList<string>? cwds = null, bool? forceReload = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -76,6 +79,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <param name="path">Skill path.</param>
     /// <param name="enabled">Whether the skill is enabled.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task WriteSkillConfigAsync(string path, bool enabled, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(path, nameof(path));
         var parameters = new JsonObject()
@@ -272,6 +276,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// </summary>
     /// <param name="questions">Questions to prompt.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to UserInputResponse.</returns>
     public async Task<UserInputResponse> RequestUserInputAsync(IReadOnlyList<string> questions, CancellationToken cancellationToken = default) {
         Guard.NotNull(questions, nameof(questions));
         var array = new JsonArray();
@@ -292,6 +297,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// </summary>
     /// <param name="content">Feedback content.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task UploadFeedbackAsync(string content, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(content, nameof(content));
         var parameters = new JsonObject().Add("content", content);
@@ -304,6 +310,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <param name="method">Method name.</param>
     /// <param name="parameters">Optional parameters.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to JsonValue?.</returns>
     public Task<JsonValue?> CallAsync(string method, JsonObject? parameters, CancellationToken cancellationToken = default) {
         return _rpc.CallAsync(method, parameters, cancellationToken);
     }
@@ -314,6 +321,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <param name="method">Method name.</param>
     /// <param name="parameters">Optional parameters.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task NotifyAsync(string method, JsonObject? parameters, CancellationToken cancellationToken = default) {
         return _rpc.NotifyAsync(method, parameters, cancellationToken);
     }
@@ -323,6 +331,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// </summary>
     /// <param name="loginId">Optional login id to match.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task WaitForLoginCompletionAsync(string? loginId = null, CancellationToken cancellationToken = default) {
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 

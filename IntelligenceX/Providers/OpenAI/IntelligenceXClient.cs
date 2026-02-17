@@ -84,6 +84,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <summary>
     /// Returns the underlying app-server client or throws if not active.
     /// </summary>
+    /// <returns>The resulting AppServerClient.</returns>
     public AppServerClient RequireAppServer() {
         var client = _transport.RawAppServerClient;
         if (client is null) {
@@ -97,6 +98,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// </summary>
     /// <param name="options">Optional client options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to IntelligenceXClient.</returns>
     public static async Task<IntelligenceXClient> ConnectAsync(IntelligenceXClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new IntelligenceXClientOptions();
         options.Validate();
@@ -130,6 +132,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// </summary>
     /// <param name="clientInfo">Client identity information.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
         return _transport.InitializeAsync(clientInfo, cancellationToken);
     }
@@ -140,6 +143,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="method">Optional method name to call.</param>
     /// <param name="timeout">Optional timeout.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to HealthCheckResult.</returns>
     public Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         return _transport.HealthCheckAsync(method, timeout, cancellationToken);
@@ -149,6 +153,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// Retrieves account information.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to AccountInfo.</returns>
     public Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken = default) {
         return _transport.GetAccountAsync(cancellationToken);
     }
@@ -157,6 +162,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// Logs out of the current session.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task LogoutAsync(CancellationToken cancellationToken = default) {
         return _transport.LogoutAsync(cancellationToken);
     }
@@ -165,6 +171,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// Lists available models.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to ModelListResult.</returns>
     public Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
         return _transport.ListModelsAsync(cancellationToken);
     }
@@ -173,6 +180,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// Starts a ChatGPT login flow.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to ChatGptLoginStart.</returns>
     public Task<ChatGptLoginStart> LoginChatGptAsync(CancellationToken cancellationToken = default) {
         return LoginChatGptAsync(null, null, true, null, cancellationToken);
     }
@@ -185,6 +193,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="useLocalListener">Whether to use a local listener.</param>
     /// <param name="timeout">Optional timeout.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to ChatGptLoginStart.</returns>
     public Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
         var resolvedTimeout = timeout ?? TimeSpan.FromMinutes(3);
@@ -199,6 +208,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="useLocalListener">Whether to use a local listener.</param>
     /// <param name="timeout">Optional timeout.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public async Task LoginChatGptAndWaitAsync(Action<string>? onUrl = null, Func<string, Task<string>>? onPrompt = null,
         bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
         await LoginChatGptAsync(onUrl, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
@@ -213,6 +223,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="useLocalListener">Whether to use a local listener.</param>
     /// <param name="timeout">Optional timeout.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public async Task EnsureChatGptLoginAsync(bool forceLogin = false, Action<string>? onUrl = null, Func<string, Task<string>>? onPrompt = null,
         bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
         if (!forceLogin) {
@@ -234,6 +245,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// </summary>
     /// <param name="apiKey">API key.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
         return _transport.LoginApiKeyAsync(apiKey, cancellationToken);
     }
@@ -246,6 +258,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="approvalPolicy">Optional approval policy.</param>
     /// <param name="sandbox">Optional sandbox policy name.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to ThreadInfo.</returns>
     public async Task<ThreadInfo> StartNewThreadAsync(string? model = null, string? currentDirectory = null, string? approvalPolicy = null,
         string? sandbox = null, CancellationToken cancellationToken = default) {
         var thread = await _transport.StartThreadAsync(model ?? _defaultModel, currentDirectory, approvalPolicy, sandbox, cancellationToken)
@@ -259,6 +272,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// </summary>
     /// <param name="threadId">Thread id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to ThreadInfo.</returns>
     public Task<ThreadInfo> UseThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         _currentThreadId = threadId;
@@ -271,6 +285,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="text">Prompt text.</param>
     /// <param name="model">Optional model override.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to TurnInfo.</returns>
     public async Task<TurnInfo> ChatAsync(string text, string? model = null, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(text, nameof(text));
         var input = Chat.ChatInput.FromText(text);
@@ -284,6 +299,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="imagePath">Local image path.</param>
     /// <param name="options">Chat options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to TurnInfo.</returns>
     public async Task<TurnInfo> ChatWithImagePathAsync(string text, string imagePath, Chat.ChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(text, nameof(text));
@@ -299,6 +315,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="imageUrl">Image URL.</param>
     /// <param name="options">Chat options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to TurnInfo.</returns>
     public async Task<TurnInfo> ChatWithImageUrlAsync(string text, string imageUrl, Chat.ChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(text, nameof(text));
@@ -313,6 +330,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="input">Chat input.</param>
     /// <param name="options">Chat options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that resolves to TurnInfo.</returns>
     public async Task<TurnInfo> ChatAsync(Chat.ChatInput input, Chat.ChatOptions? options = null, CancellationToken cancellationToken = default) {
         Guard.NotNull(input, nameof(input));
         options ??= new Chat.ChatOptions();
@@ -450,6 +468,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <summary>
     /// Disposes the client and underlying transport asynchronously.
     /// </summary>
+    /// <returns>A value task that completes when the operation finishes.</returns>
     public ValueTask DisposeAsync() {
         _transport.DeltaReceived -= OnDeltaReceived;
         _transport.RpcCallStarted -= OnRpcCallStarted;
@@ -465,6 +484,7 @@ public sealed class IntelligenceXClient : IDisposable
     /// <summary>
     /// Disposes the client and underlying transport asynchronously.
     /// </summary>
+    /// <returns>A task that completes when the operation finishes.</returns>
     public Task DisposeAsync() {
         _transport.DeltaReceived -= OnDeltaReceived;
         _transport.RpcCallStarted -= OnRpcCallStarted;
