@@ -31,11 +31,26 @@ public sealed class MainWindowRoutingMetaPayloadTests {
     }
 
     /// <summary>
-    /// Ensures routing metadata count values are clamped safely for overflow and negative inputs.
+    /// Ensures oversized routing metadata count values clamp safely without overflow.
     /// </summary>
     [Fact]
-    public void TryParseRoutingMetaPayload_ClampsLargeAndNegativeCounts() {
-        var payload = """{"strategy":"weighted_heuristic","selectedToolCount":"4294967296","totalToolCount":-4}""";
+    public void TryParseRoutingMetaPayload_ClampsOversizedCountsToIntMax() {
+        var payload = """{"strategy":"weighted_heuristic","selectedToolCount":"4294967296","totalToolCount":"4294967296"}""";
+
+        var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
+
+        Assert.True(parsed);
+        Assert.Equal("weighted heuristic", strategy);
+        Assert.Equal(int.MaxValue, selectedToolCount);
+        Assert.Equal(int.MaxValue, totalToolCount);
+    }
+
+    /// <summary>
+    /// Ensures negative integer count values are normalized to zero.
+    /// </summary>
+    [Fact]
+    public void TryParseRoutingMetaPayload_ClampsNegativeIntegerCountsToZero() {
+        var payload = """{"strategy":"weighted_heuristic","selectedToolCount":-4,"totalToolCount":-1}""";
 
         var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
 
