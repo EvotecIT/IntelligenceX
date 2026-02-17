@@ -203,6 +203,10 @@
     var changed = false;
     for (var i = 0; i < groupTools.length; i++) {
       var tool = groupTools[i];
+      var toolPackId = inferPackIdFromTool(tool);
+      if (!packIsAvailable(toolPackId)) {
+        continue;
+      }
       if (normalizeBool(tool.enabled) === enabled) {
         continue;
       }
@@ -399,17 +403,24 @@
       meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
       summaryRight.appendChild(meta);
 
+      var actionableTools = [];
+      for (var a = 0; a < groupTools.length; a++) {
+        if (packIsAvailable(inferPackIdFromTool(groupTools[a]))) {
+          actionableTools.push(groupTools[a]);
+        }
+      }
+
       var enabledCount = 0;
-      for (var c = 0; c < groupTools.length; c++) {
-        if (normalizeBool(groupTools[c].enabled)) {
+      for (var c = 0; c < actionableTools.length; c++) {
+        if (normalizeBool(actionableTools[c].enabled)) {
           enabledCount++;
         }
       }
-      var allEnabled = enabledCount === groupTools.length;
+      var allEnabled = actionableTools.length > 0 && enabledCount === actionableTools.length;
       var someEnabled = enabledCount > 0;
 
       var pill = document.createElement("span");
-      var packHasTools = groupTools.length > 0;
+      var packHasTools = actionableTools.length > 0;
       var isPackLoaded = packHasTools && allEnabled;
       pill.className = "options-pill" + (isPackLoaded && packAvailable ? "" : " off");
       if (!packAvailable) {

@@ -585,9 +585,12 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var signature = string.Join("|", unavailable
-            .Select(static pack => $"{pack.Id}:{pack.Reason}")
-            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        var signaturePayload = unavailable
+            .OrderBy(static pack => pack.Id, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static pack => pack.Reason, StringComparer.OrdinalIgnoreCase)
+            .Select(static pack => new { pack.Id, pack.Reason })
+            .ToArray();
+        var signature = JsonSerializer.Serialize(signaturePayload);
         if (!_startupUnavailablePackSignatures.Add(signature)) {
             return;
         }
