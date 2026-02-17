@@ -351,7 +351,10 @@ public sealed partial class MainWindow : Window {
                     OpenAIApiKey = pending.OpenAIApiKey,
                     ClearOpenAIApiKey = pending.ClearOpenAIApiKey,
                     OpenAIStreaming = pending.OpenAIStreaming,
-                    OpenAIAllowInsecureHttp = pending.OpenAIAllowInsecureHttp
+                    OpenAIAllowInsecureHttp = pending.OpenAIAllowInsecureHttp,
+                    EnablePowerShellPack = pending.EnablePowerShellPack,
+                    EnableTestimoXPack = pending.EnableTestimoXPack,
+                    EnableOfficeImoPack = pending.EnableOfficeImoPack
                 });
             var hasExe = File.Exists(exe);
             var psi = new ProcessStartInfo {

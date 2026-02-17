@@ -15,8 +15,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData(-1, 1)]
-    [InlineData(0, 1)]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
     [InlineData(1, 1)]
     [InlineData(2, 2)]
     [InlineData(5, 3)]
@@ -47,8 +47,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData("show latest failed logons", "ok", false, false, 0, 1, true)]
+    [InlineData("show latest failed logons", "ok", false, false, 0, 1, false)]
     [InlineData("show latest failed logons", "Findings: 4625 events are highest on DC01 between 02:00 and 05:00 UTC. Top source hosts are APP-17 and APP-22. Service account svc-backup is responsible for most failures and appears to have an outdated secret rotation. I already correlated event IDs 4625 and 4740, and lockouts are isolated to one OU. Recommended next step is to rotate the secret and re-run the report with a 6-hour window.", false, true, 0, 1, false)]
+    [InlineData("Could you check events from AD0, AD1 and AD2 for the last 24 hours and summarize the main risks and priorities to address first?", "Findings: 4625 events are highest on DC01 between 02:00 and 05:00 UTC. Top source hosts are APP-17 and APP-22. Service account svc-backup is responsible for most failures and appears to have an outdated secret rotation. I already correlated event IDs 4625 and 4740, and lockouts are isolated to one OU. Recommended next step is to rotate the secret and re-run the report with a 6-hour window.", true, true, 0, 1, true)]
     [InlineData("show latest failed logons", "ok", true, false, 0, 1, false)]
     [InlineData("show latest failed logons", "ok", false, false, 1, 1, false)]
     public void ResponseQualityReviewEval_ScenariosMatchExpectedDecision(
@@ -71,21 +72,73 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ResponseQualityReviewEval_AllowsLongDraftWithUnicodeQuestionSignal() {
+    public void ResponseQualityReviewEval_AllowsToolBackedLongDraftWithUnicodeQuestionSignal() {
         var draft =
             "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty " +
             "twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo " +
             "thirtythree thirtyfour thirtyfive thirtysix thirtyseven thirtyeight thirtynine forty？";
 
         var result = ChatServiceSession.ShouldAttemptResponseQualityReview(
-            "show latest failed logons",
+            "Could you check events from AD0, AD1 and AD2 for the last 24 hours and summarize the main risks and priorities to address first?",
             draft,
-            executionContractApplies: false,
-            hasToolActivity: false,
+            executionContractApplies: true,
+            hasToolActivity: true,
             reviewPassesUsed: 0,
             maxReviewPasses: 1);
 
         Assert.True(result);
+    }
+
+    [Fact]
+    public void SmartReviewDeltaBuffer_EnablesForActionOrientedRequestsWithReviewPasses() {
+        var request = new ChatRequest {
+            RequestId = "req",
+            Text = "Could you check events from AD0, AD1, and AD2 for the last 24 hours, list relevant failures, and summarize the top risks to fix first?",
+            Options = new ChatRequestOptions()
+        };
+
+        var result = ChatServiceSession.ShouldBufferDraftDeltasForSmartReview(request);
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void SmartReviewDeltaBuffer_DisablesWhenReviewPassesAreOff() {
+        var request = new ChatRequest {
+            RequestId = "req",
+            Text = "Could you check events from AD0, AD1, and AD2 for the last 24 hours, list relevant failures, and summarize the top risks to fix first?",
+            Options = new ChatRequestOptions {
+                MaxReviewPasses = 0
+            }
+        };
+
+        var result = ChatServiceSession.ShouldBufferDraftDeltasForSmartReview(request);
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void SmartReviewDeltaBuffer_DisablesForCasualTurns() {
+        var request = new ChatRequest {
+            RequestId = "req",
+            Text = "Hello Kai",
+            Options = new ChatRequestOptions()
+        };
+
+        var result = ChatServiceSession.ShouldBufferDraftDeltasForSmartReview(request);
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void SmartReviewDeltaBuffer_DisablesWhenPlanExecuteReviewLoopIsOff() {
+        var request = new ChatRequest {
+            RequestId = "req",
+            Text = "Could you check events from AD0, AD1, and AD2 for the last 24 hours, list relevant failures, and summarize the top risks to fix first?",
+            Options = new ChatRequestOptions {
+                PlanExecuteReviewLoop = false
+            }
+        };
+
+        var result = ChatServiceSession.ShouldBufferDraftDeltasForSmartReview(request);
+        Assert.False(result);
     }
 
     [Fact]

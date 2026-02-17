@@ -17,6 +17,9 @@ internal static class ServiceLaunchArguments {
         public bool ClearOpenAIApiKey { get; init; }
         public bool? OpenAIStreaming { get; init; }
         public bool? OpenAIAllowInsecureHttp { get; init; }
+        public bool? EnablePowerShellPack { get; init; }
+        public bool? EnableTestimoXPack { get; init; }
+        public bool? EnableOfficeImoPack { get; init; }
     }
 
     /// <summary>
@@ -71,6 +74,18 @@ internal static class ServiceLaunchArguments {
 
         if (profileOptions.OpenAIAllowInsecureHttp == true) {
             args.Add("--openai-allow-insecure-http");
+        }
+
+        if (profileOptions.EnablePowerShellPack.HasValue) {
+            args.Add(profileOptions.EnablePowerShellPack.Value ? "--enable-powershell-pack" : "--disable-powershell-pack");
+        }
+
+        if (profileOptions.EnableTestimoXPack.HasValue) {
+            args.Add(profileOptions.EnableTestimoXPack.Value ? "--enable-testimox-pack" : "--disable-testimox-pack");
+        }
+
+        if (profileOptions.EnableOfficeImoPack.HasValue) {
+            args.Add(profileOptions.EnableOfficeImoPack.Value ? "--enable-officeimo-pack" : "--disable-officeimo-pack");
         }
 
         return args;

@@ -59,9 +59,25 @@ public sealed partial class MainWindow : Window {
                 initialConnectException = ex;
 
                 if (await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false)) {
-                    try {
-                        await ConnectClientWithTimeoutAsync(client, pipeName, TimeSpan.FromSeconds(15)).ConfigureAwait(false);
-                    } catch (Exception ex2) {
+                    Exception? sidecarConnectException = null;
+                    var startupConnectTimeouts = new[] {
+                        TimeSpan.FromSeconds(15),
+                        TimeSpan.FromSeconds(30)
+                    };
+                    for (var attempt = 0; attempt < startupConnectTimeouts.Length; attempt++) {
+                        try {
+                            await ConnectClientWithTimeoutAsync(client, pipeName, startupConnectTimeouts[attempt]).ConfigureAwait(false);
+                            sidecarConnectException = null;
+                            break;
+                        } catch (Exception ex2) {
+                            sidecarConnectException = ex2;
+                            if (attempt + 1 < startupConnectTimeouts.Length) {
+                                await Task.Delay(TimeSpan.FromMilliseconds(350)).ConfigureAwait(false);
+                            }
+                        }
+                    }
+
+                    if (sidecarConnectException is not null) {
                         await client.DisposeAsync().ConfigureAwait(false);
                         _isConnected = false;
                         await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
@@ -70,7 +86,7 @@ public sealed partial class MainWindow : Window {
                             AppendSystem(SystemNotice.ConnectProbeFailed(FormatConnectError(initialConnectException)));
                         }
                         if (fromUserAction || _debugMode) {
-                            AppendSystem(SystemNotice.ConnectFailedAfterSidecarStart(FormatConnectError(ex2)));
+                            AppendSystem(SystemNotice.ConnectFailedAfterSidecarStart(FormatConnectError(sidecarConnectException)));
                         }
                         return;
                     }

@@ -297,6 +297,10 @@ internal sealed class ServiceOptions {
                 options.EnablePowerShellPack = true;
                 continue;
             }
+            if (arg is "--disable-powershell-pack") {
+                options.EnablePowerShellPack = false;
+                continue;
+            }
             if (arg is "--powershell-allow-write") {
                 options.PowerShellAllowWrite = true;
                 continue;
@@ -428,6 +432,7 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --ad-search-base        Active Directory base DN (optional; defaultNamingContext used otherwise).");
         Console.WriteLine("  --ad-max-results <N>    Max results returned by AD tools (default: 1000).");
         Console.WriteLine("  --enable-powershell-pack  Enable dangerous IX.PowerShell runtime tools (default: off).");
+        Console.WriteLine("  --disable-powershell-pack Disable IX.PowerShell runtime tools.");
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
         Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");

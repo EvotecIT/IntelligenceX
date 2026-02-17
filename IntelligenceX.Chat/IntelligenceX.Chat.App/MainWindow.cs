@@ -359,6 +359,9 @@ public sealed partial class MainWindow : Window {
         public bool ClearOpenAIApiKey { get; init; }
         public bool? OpenAIStreaming { get; init; }
         public bool? OpenAIAllowInsecureHttp { get; init; }
+        public bool? EnablePowerShellPack { get; init; }
+        public bool? EnableTestimoXPack { get; init; }
+        public bool? EnableOfficeImoPack { get; init; }
     }
 
     private sealed class MemoryDebugSnapshot {
