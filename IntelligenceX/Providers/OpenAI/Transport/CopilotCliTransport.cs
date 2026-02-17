@@ -20,7 +20,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     private readonly object _threadsLock = new();
     private readonly Dictionary<string, CopilotThreadState> _threads = new(StringComparer.Ordinal);
     private CopilotClient? _client;
-    private bool _disposed;
+    private int _disposeState;
 
     private sealed class CopilotThreadState {
         public CopilotThreadState(string model, CopilotSession session) {
@@ -55,11 +55,13 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
 
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = clientInfo; // Copilot CLI transport does not consume ClientInfo metadata.
         _ = await EnsureClientAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<HealthCheckResult> HealthCheckAsync(string? method, TimeSpan? timeout, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = method;
         var sw = Stopwatch.StartNew();
         using var timeoutCts = timeout.HasValue
@@ -80,6 +82,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     }
 
     public async Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         var client = await EnsureClientAsync(cancellationToken).ConfigureAwait(false);
         var auth = await client.GetAuthStatusAsync(cancellationToken).ConfigureAwait(false);
         if (!auth.IsAuthenticated) {
@@ -98,12 +101,14 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     }
 
     public Task LogoutAsync(CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = cancellationToken;
         // Copilot auth lifecycle is managed by Copilot CLI; explicit logout is not available in this transport.
         return Task.CompletedTask;
     }
 
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         var client = await EnsureClientAsync(cancellationToken).ConfigureAwait(false);
         var models = await client.ListModelsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -133,6 +138,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
 
     public async Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener, TimeSpan timeout, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = onUrl;
         _ = onPrompt;
         _ = useLocalListener;
@@ -163,6 +169,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     }
 
     public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = apiKey;
         _ = cancellationToken;
         throw new NotSupportedException("API key login is not supported with Copilot CLI transport.");
@@ -170,6 +177,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
 
     public async Task<ThreadInfo> StartThreadAsync(string model, string? currentDirectory, string? approvalPolicy,
         string? sandbox, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = currentDirectory;
         _ = approvalPolicy;
         _ = sandbox;
@@ -198,6 +206,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     }
 
     public Task<ThreadInfo> ResumeThreadAsync(string threadId, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = cancellationToken;
         if (string.IsNullOrWhiteSpace(threadId)) {
             throw new ArgumentException("Thread id cannot be empty.", nameof(threadId));
@@ -222,6 +231,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
 
     public async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken) {
+        ThrowIfDisposed();
         _ = currentDirectory;
         _ = approvalPolicy;
         _ = sandboxPolicy;
@@ -288,47 +298,90 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     }
 
     public void Dispose() {
-        if (_disposed) {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0) {
             return;
         }
-        _disposed = true;
 
-        lock (_threadsLock) {
-            foreach (var state in _threads.Values) {
-                try {
-                    state.Session.Dispose();
-                } catch {
-                    // Ignore session cleanup failures.
+        var gateEntered = false;
+        try {
+            _clientGate.Wait();
+            gateEntered = true;
+
+            lock (_threadsLock) {
+                foreach (var state in _threads.Values) {
+                    try {
+                        state.Session.Dispose();
+                    } catch {
+                        // Ignore session cleanup failures.
+                    }
                 }
+                _threads.Clear();
             }
-            _threads.Clear();
-        }
 
-        var client = _client;
-        _client = null;
-        if (client is null) {
-            return;
-        }
+            var client = _client;
+            _client = null;
+            if (client is null) {
+                return;
+            }
 
-        DetachClientEvents(client);
-        client.Dispose();
+            DetachClientEvents(client);
+            client.Dispose();
+        } finally {
+            if (gateEntered) {
+                _clientGate.Dispose();
+            }
+        }
     }
 
     private async Task<CopilotClient> EnsureClientAsync(CancellationToken cancellationToken) {
-        if (_client is not null) {
-            return _client;
+        ThrowIfDisposed();
+
+        var existing = _client;
+        if (existing is not null) {
+            ThrowIfDisposed();
+            return existing;
         }
 
-        await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var gateEntered = false;
         try {
-            if (_client is null) {
-                _client = await CopilotClient.StartAsync(_options, cancellationToken).ConfigureAwait(false);
-                AttachClientEvents(_client);
+            try {
+                await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                gateEntered = true;
+            } catch (ObjectDisposedException) {
+                throw CreateDisposedException();
             }
-            return _client;
+
+            ThrowIfDisposed();
+            if (_client is null) {
+                var client = await CopilotClient.StartAsync(_options, cancellationToken).ConfigureAwait(false);
+                if (Volatile.Read(ref _disposeState) != 0) {
+                    client.Dispose();
+                    throw CreateDisposedException();
+                }
+                _client = client;
+                AttachClientEvents(client);
+            }
+            var active = _client;
+            if (active is null) {
+                throw new InvalidOperationException("Copilot client initialization failed.");
+            }
+            ThrowIfDisposed();
+            return active;
         } finally {
-            _clientGate.Release();
+            if (gateEntered) {
+                _clientGate.Release();
+            }
         }
+    }
+
+    private void ThrowIfDisposed() {
+        if (Volatile.Read(ref _disposeState) != 0) {
+            throw CreateDisposedException();
+        }
+    }
+
+    private static ObjectDisposedException CreateDisposedException() {
+        return new ObjectDisposedException(nameof(CopilotCliTransport), "Copilot CLI transport has been disposed.");
     }
 
     private void AttachClientEvents(CopilotClient client) {
