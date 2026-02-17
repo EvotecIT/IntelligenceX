@@ -80,5 +80,7 @@ Get-IntelligenceXHealth -Copilot
 ## Next Docs
 
 - Quickstart: [PowerShell Quickstart](/docs/powershell/quickstart/)
+- Recipes: [PowerShell Cookbook](/docs/powershell/cookbook/)
+- Support: [PowerShell Troubleshooting](/docs/powershell/troubleshooting/)
 - Full cmdlet reference: [/api/powershell/](/api/powershell/)
 - Script examples: `Module/Examples`
