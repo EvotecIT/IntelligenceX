@@ -84,7 +84,7 @@ public sealed class AdLdapDiagnosticsTool : ActiveDirectoryToolBase, ITool {
                 cancellationToken)
             .ConfigureAwait(false);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: report,
             sourceRows: report.Servers,
@@ -92,7 +92,6 @@ public sealed class AdLdapDiagnosticsTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: LDAP Diagnostics (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response);
-        return response;
+            scanned: report.Servers.Count);
     }
 }

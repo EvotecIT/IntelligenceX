@@ -144,11 +144,7 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
             .Where(row => !legacyNtlmOnly || row.LegacyNtlmAllowed)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<LanManagerSettingsRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdLanManagerSettingsResult(
             DomainName: domainName,
@@ -161,7 +157,7 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
             Errors: errors,
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -169,7 +165,6 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: LAN Manager Settings (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("allow_lm_hash_only", allowLmHashOnly);
@@ -187,6 +182,5 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
                     meta.Add("explicit_domain_controllers", explicitDomainControllers.Count);
                 }
             });
-        return response;
     }
 }

@@ -149,11 +149,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
             .Where(row => !expiredOnly || row.EitherLapsExpiredCount > 0)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<LapsCoverageRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var projectedDomains = projectedRows
             .Select(static row => row.DomainName)
@@ -176,7 +172,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
             Rows: projectedRows,
             Details: projectedDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -184,7 +180,6 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: LAPS Coverage (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 if (coverageBelowPercent.HasValue) {
@@ -202,6 +197,5 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
                     meta.Add("forest_name", forestName);
                 }
             });
-        return response;
     }
 }
