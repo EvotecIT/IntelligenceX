@@ -79,9 +79,8 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             return Task.FromResult(ToolResponse.Error("invalid_argument", "summary_by must be one of: site, server."));
         }
 
-        IReadOnlyList<SiteConnectionInfo> filtered;
-        try {
-            filtered = ConnectionsExplorer.Get(new ConnectionsQuery {
+        if (!TryExecute(
+                action: () => ConnectionsExplorer.Get(new ConnectionsQuery {
                 Server = ReadStringArrayOrNull(arguments?.GetArray("server")),
                 ServerMatch = ReadStringArrayOrNull(arguments?.GetArray("server_match")),
                 Site = ReadStringArrayOrNull(arguments?.GetArray("site")),
@@ -91,9 +90,12 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 Transport = ToTransportFilter(transport),
                 State = ToStateFilter(state),
                 Origin = ToOriginFilter(origin)
-            });
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Replication connections query failed.", invalidOperationErrorCode: "query_failed"));
+            }),
+                result: out IReadOnlyList<SiteConnectionInfo> filtered,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Replication connections query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         if (summary) {
@@ -214,4 +216,5 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         };
     }
 }
+
 

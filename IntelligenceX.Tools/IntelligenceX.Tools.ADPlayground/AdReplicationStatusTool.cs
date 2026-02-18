@@ -54,11 +54,13 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             ? DomainHelper.EnumerateDomainControllers().Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
             : requestedComputerNames;
 
-        IReadOnlyList<ReplicationStatusInfo> allRows;
-        try {
-            allRows = StatusExplorer.GetStatusInfos(targetServers, healthOnly);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Replication status query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => StatusExplorer.GetStatusInfos(targetServers, healthOnly),
+                result: out IReadOnlyList<ReplicationStatusInfo> allRows,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Replication status query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var scanned = allRows.Count;
@@ -90,4 +92,5 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

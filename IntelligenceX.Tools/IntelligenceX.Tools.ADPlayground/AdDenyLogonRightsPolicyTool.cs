@@ -59,11 +59,13 @@ public sealed class AdDenyLogonRightsPolicyTool : ActiveDirectoryToolBase, ITool
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        DenyLogonRightsPolicyService.View view;
-        try {
-            view = DenyLogonRightsPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Deny-logon-rights policy query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => DenyLogonRightsPolicyService.Get(domainName),
+                result: out DenyLogonRightsPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Deny-logon-rights policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -107,4 +109,5 @@ public sealed class AdDenyLogonRightsPolicyTool : ActiveDirectoryToolBase, ITool
         return Task.FromResult(response);
     }
 }
+
 

@@ -59,11 +59,13 @@ public sealed class AdEnableDelegationPrivilegePolicyTool : ActiveDirectoryToolB
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        EnableDelegationPrivilegePolicyService.View view;
-        try {
-            view = EnableDelegationPrivilegePolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Enable-delegation-privilege policy query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => EnableDelegationPrivilegePolicyService.Get(domainName),
+                result: out EnableDelegationPrivilegePolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Enable-delegation-privilege policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -107,4 +109,5 @@ public sealed class AdEnableDelegationPrivilegePolicyTool : ActiveDirectoryToolB
         return Task.FromResult(response);
     }
 }
+
 

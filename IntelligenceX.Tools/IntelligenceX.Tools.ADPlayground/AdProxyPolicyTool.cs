@@ -63,11 +63,13 @@ public sealed class AdProxyPolicyTool : ActiveDirectoryToolBase, ITool {
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        ProxyPolicyService.View view;
-        try {
-            view = ProxyPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Proxy policy query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => ProxyPolicyService.Get(domainName),
+                result: out ProxyPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Proxy policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -115,4 +117,5 @@ public sealed class AdProxyPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

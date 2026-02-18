@@ -32,11 +32,13 @@ public sealed class AdRecycleBinLifetimeTool : ActiveDirectoryToolBase, ITool {
 
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
 
-        DeletedObjectLifetime lifetime;
-        try {
-            lifetime = new RecycleBinLifetimeReader().GetDeletedObjectLifetime(forestName);
-        } catch (System.Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Recycle bin lifetime query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => new RecycleBinLifetimeReader().GetDeletedObjectLifetime(forestName),
+                result: out DeletedObjectLifetime lifetime,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Recycle bin lifetime query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var model = new {

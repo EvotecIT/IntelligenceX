@@ -63,13 +63,15 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
         var scavengingEnabledOnly = ToolArgs.GetBoolean(arguments, "scavenging_enabled_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        IReadOnlyList<DnsZoneScavengingInfo> allZones;
-        try {
-            allZones = new DnsScavengingAnalyzer()
+        if (!TryExecute(
+                action: () => new DnsScavengingAnalyzer()
                 .GetScavengingSummary(dnsServer, cancellationToken)
-                .ToArray();
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "DNS scavenging query failed.", invalidOperationErrorCode: "query_failed"));
+                .ToArray(),
+                result: out IReadOnlyList<DnsZoneScavengingInfo> allZones,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "DNS scavenging query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = allZones
@@ -116,4 +118,5 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

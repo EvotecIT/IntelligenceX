@@ -64,9 +64,8 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         var includeHostResolution = ToolArgs.GetBoolean(arguments, "include_host_resolution", defaultValue: true);
         var includeDirectoryTopology = ToolArgs.GetBoolean(arguments, "include_directory_topology", defaultValue: true);
 
-        DirectoryDiscoveryDiagnosticsSnapshot snapshot;
-        try {
-            snapshot = DirectoryDiscoveryDiagnosticsService.GetSnapshot(
+        if (!TryExecute(
+                action: () => DirectoryDiscoveryDiagnosticsService.GetSnapshot(
                 new DirectoryDiscoveryDiagnosticsOptions {
                     ForestName = forestName,
                     Domains = domains.Count == 0 ? null : domains,
@@ -77,9 +76,12 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
                     LdapTimeoutMs = ldapTimeoutMs,
                     MaxIssues = maxIssues
                 },
-                cancellationToken);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Directory discovery diagnostics failed.", invalidOperationErrorCode: "query_failed"));
+                cancellationToken),
+                result: out DirectoryDiscoveryDiagnosticsSnapshot snapshot,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Directory discovery diagnostics failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var scanned = snapshot.Issues.Count;
@@ -122,4 +124,5 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         return Task.FromResult(response);
     }
 }
+
 

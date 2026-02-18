@@ -61,11 +61,13 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         var insecureEndpointsOnly = ToolArgs.GetBoolean(arguments, "insecure_endpoints_only", defaultValue: false);
         var maxDetailsPerCategory = ToolArgs.GetCappedInt32(arguments, "max_details_per_category", 200, 1, Options.MaxResults);
 
-        PkiConfiguration posture;
-        try {
-            posture = PkiApi.GetPosture(forestName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "PKI posture query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => PkiApi.GetPosture(forestName),
+                result: out PkiConfiguration posture,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "PKI posture query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var forest = posture.RocaConfirmed.ForestName;
@@ -152,4 +154,5 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

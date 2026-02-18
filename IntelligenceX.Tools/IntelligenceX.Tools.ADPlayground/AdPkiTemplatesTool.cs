@@ -61,11 +61,13 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
         var maxTakeoverRows = ToolArgs.GetCappedInt32(arguments, "max_takeover_rows", Options.MaxResults, 1, Options.MaxResults);
 
-        PkiTemplatesEvaluator.View view;
-        try {
-            view = PkiApi.GetTemplates(forestName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "PKI template query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => PkiApi.GetTemplates(forestName),
+                result: out PkiTemplatesEvaluator.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "PKI template query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
@@ -117,4 +119,5 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

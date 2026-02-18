@@ -49,12 +49,16 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         var mismatchedOnly = ToolArgs.GetBoolean(arguments, "mismatched_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        SchemaVersionInfo[] versions;
-        try {
-            var reader = new SchemaVersionReader();
-            versions = reader.GetSchemaVersions().ToArray();
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Schema version query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => {
+                    var reader = new SchemaVersionReader();
+                    return reader.GetSchemaVersions().ToArray();
+                },
+                result: out SchemaVersionInfo[] versions,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Schema version query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var referenceVersion = versions.Length > 0 ? versions[0].Version : (int?)null;
@@ -76,16 +80,15 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             Mismatches: mismatches,
             Versions: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "versions_view",
             title: "Active Directory: Schema Versions (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("max_results", maxResults);
                 meta.Add("mismatched_only", mismatchedOnly);

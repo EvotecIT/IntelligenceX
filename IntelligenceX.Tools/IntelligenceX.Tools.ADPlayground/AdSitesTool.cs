@@ -55,15 +55,17 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         var noDcOnly = ToolArgs.GetBoolean(arguments, "no_dc_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        IReadOnlyList<SiteInfoEx> allSites;
-        try {
-            allSites = TopologyService.GetSites(
-                forestName: forestName,
-                includeSubnets: includeSubnets,
-                includeOptions: includeOptions,
-                onlySitesWithoutDc: noDcOnly);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Site topology query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => TopologyService.GetSites(
+                    forestName: forestName,
+                    includeSubnets: includeSubnets,
+                    includeOptions: includeOptions,
+                    onlySitesWithoutDc: noDcOnly),
+                result: out IReadOnlyList<SiteInfoEx> allSites,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Site topology query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var scanned = allSites.Count;
@@ -79,16 +81,15 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Sites: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "sites_view",
             title: "Active Directory: Sites (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("max_results", maxResults);
                 meta.Add("include_subnets", includeSubnets);
@@ -101,4 +102,5 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

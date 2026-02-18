@@ -61,16 +61,22 @@ public sealed class AdFsmoRolesTool : ActiveDirectoryToolBase, ITool {
         var includeBestPractices = ToolArgs.GetBoolean(arguments, "include_best_practices", defaultValue: true);
 
         var checker = new FsmoRoleChecker();
-        IReadOnlyList<FsmoRoleHolder> holders;
-        IReadOnlyList<FsmoBestPracticeCheck> checks;
-        try {
-            holders = checker.GetRoleHolders(domainName).ToArray();
-            checks = includeBestPractices
-                ? checker.CheckBestPractices(domainName).ToArray()
-                : Array.Empty<FsmoBestPracticeCheck>();
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "FSMO query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => {
+                    var holders = checker.GetRoleHolders(domainName).ToArray();
+                    var checks = includeBestPractices
+                        ? checker.CheckBestPractices(domainName).ToArray()
+                        : Array.Empty<FsmoBestPracticeCheck>();
+                    return (Holders: (IReadOnlyList<FsmoRoleHolder>)holders, Checks: (IReadOnlyList<FsmoBestPracticeCheck>)checks);
+                },
+                result: out var query,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "FSMO query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
+        var holders = query.Holders;
+        var checks = query.Checks;
 
         var roleRows = holders
             .Select(static holder => new FsmoRoleRow(

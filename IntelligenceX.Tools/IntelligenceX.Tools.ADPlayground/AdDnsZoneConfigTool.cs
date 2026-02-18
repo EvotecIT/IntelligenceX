@@ -73,11 +73,13 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         var insecureUpdatesOnly = ToolArgs.GetBoolean(arguments, "insecure_updates_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        DnsZoneConfigService.QueryResult query;
-        try {
-            query = DnsZoneConfigService.GetZonesResult(dnsServer);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "DNS zone configuration query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => DnsZoneConfigService.GetZonesResult(dnsServer),
+                result: out DnsZoneConfigService.QueryResult query,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "DNS zone configuration query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var rows = query.Zones
@@ -113,16 +115,15 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Zones: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
             viewRowsPath: "zones_view",
             title: "Active Directory: DNS Zone Configuration (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("dns_server", dnsServer);
                 meta.Add("query_succeeded", query.QuerySucceeded);
@@ -139,4 +140,5 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

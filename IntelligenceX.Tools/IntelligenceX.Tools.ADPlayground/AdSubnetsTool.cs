@@ -58,11 +58,13 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
         if (summary) {
-            SubnetSummary summaryModel;
-            try {
-                summaryModel = TopologyService.GetSubnetSummary(forestName);
-            } catch (Exception ex) {
-                return Task.FromResult(ErrorFromException(ex, defaultMessage: "Subnet summary query failed.", invalidOperationErrorCode: "query_failed"));
+            if (!TryExecute(
+                    action: () => TopologyService.GetSubnetSummary(forestName),
+                    result: out SubnetSummary summaryModel,
+                    errorResponse: out var errorResponse,
+                    defaultErrorMessage: "Subnet summary query failed.",
+                    invalidOperationErrorCode: "query_failed")) {
+                return Task.FromResult(errorResponse!);
             }
 
             var scanned = summaryModel.BySite.Count;
@@ -96,11 +98,13 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(summaryResponse);
         }
 
-        IReadOnlyList<SubnetInfoEx> allSubnets;
-        try {
-            allSubnets = TopologyService.GetSubnets(forestName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Subnet query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => TopologyService.GetSubnets(forestName),
+                result: out IReadOnlyList<SubnetInfoEx> allSubnets,
+                errorResponse: out var rawErrorResponse,
+                defaultErrorMessage: "Subnet query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(rawErrorResponse!);
         }
 
         var scannedSubnets = allSubnets.Count;
@@ -135,4 +139,5 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 

@@ -106,6 +106,60 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Executes a query delegate and maps exceptions into a stable error envelope.
+    /// </summary>
+    protected static bool TryExecute<T>(
+        Func<T> action,
+        out T result,
+        out string? errorResponse,
+        string defaultErrorMessage,
+        string fallbackErrorCode = "query_failed",
+        string invalidOperationErrorCode = "invalid_argument") {
+        if (action is null) {
+            throw new ArgumentNullException(nameof(action));
+        }
+
+        try {
+            result = action();
+            errorResponse = null;
+            return true;
+        } catch (Exception ex) {
+            result = default!;
+            errorResponse = ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode, invalidOperationErrorCode);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the standard auto-column table envelope used by AD read tools.
+    /// </summary>
+    protected static string BuildAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int scanned,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            maxTop: maxTop,
+            baseTruncated: baseTruncated,
+            response: out var response,
+            scanned: scanned,
+            metaMutate: meta => {
+                metaMutate?.Invoke(meta);
+            });
+        return response;
+    }
+
+    /// <summary>
     /// Maps exceptions to stable tool-error envelopes and sanitized messages.
     /// </summary>
     protected static string ErrorFromException(

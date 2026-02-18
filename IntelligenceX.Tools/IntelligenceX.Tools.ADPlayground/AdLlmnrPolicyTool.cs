@@ -59,11 +59,13 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        LlmnrPolicyService.View view;
-        try {
-            view = LlmnrPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ErrorFromException(ex, defaultMessage: "LLMNR policy query failed.", invalidOperationErrorCode: "query_failed"));
+        if (!TryExecute(
+                action: () => LlmnrPolicyService.Get(domainName),
+                result: out LlmnrPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "LLMNR policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -107,4 +109,5 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
 
