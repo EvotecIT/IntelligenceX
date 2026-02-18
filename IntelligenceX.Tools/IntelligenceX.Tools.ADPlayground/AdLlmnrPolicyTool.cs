@@ -90,23 +90,21 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
             LlmnrDisabled: view.LlmnrDisabled,
             Attribution: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "attribution_view",
             title: "Active Directory: LLMNR Policy (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
 
