@@ -272,13 +272,58 @@ public sealed partial class MainWindow : Window {
         return Interlocked.Increment(ref _nextRequestId).ToString();
     }
 
-    private static async Task ConnectClientWithTimeoutAsync(ChatServiceClient client, string pipeName, TimeSpan timeout) {
+    internal static async Task<bool> TryAwaitConnectTaskSettlementAsync(Task connectTask, TimeSpan graceTimeout) {
+        if (connectTask is null) {
+            throw new ArgumentNullException(nameof(connectTask));
+        }
+
+        if (graceTimeout <= TimeSpan.Zero) {
+            return connectTask.IsCompleted;
+        }
+
+        try {
+            await connectTask.WaitAsync(graceTimeout).ConfigureAwait(false);
+            return true;
+        } catch (TimeoutException) {
+            return false;
+        }
+    }
+
+    private static async Task ConnectClientWithTimeoutAsync(
+        ChatServiceClient client,
+        string pipeName,
+        TimeSpan timeout,
+        TimeSpan hardTimeout) {
+        if (timeout <= TimeSpan.Zero) {
+            throw new TimeoutException("Timed out waiting for service pipe.");
+        }
+
+        var resolvedHardTimeout = hardTimeout <= TimeSpan.Zero || hardTimeout < timeout
+            ? timeout
+            : hardTimeout;
+
         using var cts = new CancellationTokenSource(timeout);
-        await client.ConnectAsync(pipeName, cts.Token).ConfigureAwait(true);
+        using var hardTimeoutCts = new CancellationTokenSource();
+        var connectTask = client.ConnectAsync(pipeName, cts.Token);
+        var hardTimeoutTask = Task.Delay(resolvedHardTimeout, hardTimeoutCts.Token);
+        var completed = await Task.WhenAny(connectTask, hardTimeoutTask).ConfigureAwait(true);
+        if (ReferenceEquals(completed, connectTask)) {
+            hardTimeoutCts.Cancel();
+            await connectTask.ConfigureAwait(true);
+            return;
+        }
+
+        cts.Cancel();
+        // Preserve original completion/failure if connect settles shortly after cancellation.
+        if (await TryAwaitConnectTaskSettlementAsync(connectTask, StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true)) {
+            return;
+        }
+
+        throw new TimeoutException("Timed out waiting for service pipe.");
     }
 
     private static string FormatConnectError(Exception ex) {
-        return ex is OperationCanceledException ? "Timed out waiting for service pipe." : ex.Message;
+        return ex is OperationCanceledException or TimeoutException ? "Timed out waiting for service pipe." : ex.Message;
     }
 
     private static bool IsDisconnectedError(Exception ex) {
