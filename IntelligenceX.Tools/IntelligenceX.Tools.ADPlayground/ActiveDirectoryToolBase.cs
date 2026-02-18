@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
+using ADPlayground.Gpo;
 using ADPlayground.Helpers;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
@@ -157,6 +159,56 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
                 metaMutate?.Invoke(meta);
             });
         return response;
+    }
+
+    /// <summary>
+    /// Builds filtered + capped policy-attribution rows using consistent configured-value semantics.
+    /// </summary>
+    protected static IReadOnlyList<PolicyAttribution> PreparePolicyAttributionRows(
+        IReadOnlyList<PolicyAttribution> attribution,
+        bool includeAttribution,
+        bool configuredAttributionOnly,
+        int maxResults,
+        out int scanned,
+        out bool truncated) {
+        var filtered = includeAttribution
+            ? attribution
+                .Where(static row => row is not null)
+                .Where(row => !configuredAttributionOnly || IsConfiguredAttributionValue(row.Effective))
+                .ToArray()
+            : Array.Empty<PolicyAttribution>();
+
+        scanned = filtered.Length;
+        if (scanned <= maxResults) {
+            truncated = false;
+            return filtered;
+        }
+
+        truncated = true;
+        return filtered.Take(maxResults).ToArray();
+    }
+
+    /// <summary>
+    /// Adds standard policy-attribution query metadata keys.
+    /// </summary>
+    protected static void AddStandardPolicyAttributionMeta(
+        JsonObject meta,
+        string domainName,
+        bool includeAttribution,
+        bool configuredAttributionOnly,
+        int maxResults) {
+        meta.Add("domain_name", domainName);
+        meta.Add("include_attribution", includeAttribution);
+        meta.Add("configured_attribution_only", configuredAttributionOnly);
+        meta.Add("max_results", maxResults);
+    }
+
+    /// <summary>
+    /// Determines whether policy-attribution effective value is configured.
+    /// </summary>
+    protected static bool IsConfiguredAttributionValue(string? effectiveValue) {
+        return !string.IsNullOrWhiteSpace(effectiveValue)
+               && !effectiveValue.TrimStart().StartsWith("Not configured", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
