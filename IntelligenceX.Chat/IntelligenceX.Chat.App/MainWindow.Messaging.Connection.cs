@@ -34,6 +34,10 @@ public sealed partial class MainWindow : Window {
         return StartupInitialPipeConnectColdStartTimeout;
     }
 
+    internal static bool ShouldDeferStartupModelProfileSync(bool captureStartupPhaseTelemetry) {
+        return captureStartupPhaseTelemetry;
+    }
+
     private async Task ConnectAsync(bool fromUserAction = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
@@ -169,17 +173,22 @@ public sealed partial class MainWindow : Window {
                 LogStartupConnectPhase("auth_refresh", "failed");
                 throw;
             }
-            try {
-                LogStartupConnectPhase("model_profile_sync", "begin");
-                await SyncConnectedServiceProfileAndModelsAsync(
-                    forceModelRefresh: false,
-                    setProfileNewThread: false,
-                    appendWarnings: false).ConfigureAwait(false);
-                LogStartupConnectPhase("model_profile_sync", "done");
-            } catch (Exception ex) {
-                LogStartupConnectPhase("model_profile_sync", "failed");
-                if (VerboseServiceLogs || _debugMode) {
-                    AppendSystem("Model/profile sync failed: " + ex.Message);
+            if (ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry)) {
+                LogStartupConnectPhase("model_profile_sync", "deferred");
+                QueueDeferredStartupModelProfileSync();
+            } else {
+                try {
+                    LogStartupConnectPhase("model_profile_sync", "begin");
+                    await SyncConnectedServiceProfileAndModelsAsync(
+                        forceModelRefresh: false,
+                        setProfileNewThread: false,
+                        appendWarnings: false).ConfigureAwait(false);
+                    LogStartupConnectPhase("model_profile_sync", "done");
+                } catch (Exception ex) {
+                    LogStartupConnectPhase("model_profile_sync", "failed");
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem("Model/profile sync failed: " + ex.Message);
+                    }
                 }
             }
         } finally {

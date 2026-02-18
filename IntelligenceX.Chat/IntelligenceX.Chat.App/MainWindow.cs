@@ -281,6 +281,7 @@ public sealed partial class MainWindow : Window {
     private bool _modelKickoffInProgress;
     private bool _autoSignInAttempted;
     private int _startupOnboardingDeferredQueued;
+    private int _startupModelProfileSyncDeferredQueued;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;
     private string? _sessionAssistantPersonaOverride;
@@ -527,6 +528,37 @@ public sealed partial class MainWindow : Window {
                 StartupLog.Write("StartupPhase.Onboarding done");
             } catch (Exception ex) {
                 StartupLog.Write("StartupPhase.Onboarding failed: " + ex.Message);
+            }
+        });
+    }
+
+    private void QueueDeferredStartupModelProfileSync() {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _startupModelProfileSyncDeferredQueued, 1, 0) != 0) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(150).ConfigureAwait(false);
+                if (_shutdownRequested) {
+                    return;
+                }
+
+                StartupLog.Write("StartupConnect.model_profile_sync begin");
+                await SyncConnectedServiceProfileAndModelsAsync(
+                    forceModelRefresh: false,
+                    setProfileNewThread: false,
+                    appendWarnings: false).ConfigureAwait(false);
+                StartupLog.Write("StartupConnect.model_profile_sync done");
+            } catch (Exception ex) {
+                StartupLog.Write("StartupConnect.model_profile_sync failed");
+                if (VerboseServiceLogs || _debugMode) {
+                    AppendSystem("Model/profile sync failed: " + ex.Message);
+                }
             }
         });
     }
