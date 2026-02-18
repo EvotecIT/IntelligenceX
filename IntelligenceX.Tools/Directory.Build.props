@@ -36,7 +36,7 @@
     <!-- Public package fallbacks for CI/consumers when local engine sources are unavailable. -->
     <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">2.0.5</MailozaurrNuGetVersion>
     <EventViewerXNuGetVersion Condition="'$(EventViewerXNuGetVersion)'==''">3.3.0</EventViewerXNuGetVersion>
-    <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.3</OfficeImoReaderNuGetVersion>
+    <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.5</OfficeImoReaderNuGetVersion>
   </PropertyGroup>
 
   <!-- Normalize caller-provided roots first. -->
