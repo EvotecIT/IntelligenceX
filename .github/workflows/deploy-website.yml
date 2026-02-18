@@ -113,14 +113,12 @@ jobs:
             cloudflare purge \
             --zone-id "${{ secrets.CLOUDFLARE_ZONE_ID_IX }}" \
             --token-env CLOUDFLARE_API_TOKEN \
-            --base-url "https://intelligencex.dev" \
-            --path "/,/docs/,/api/,/api/powershell/,/blog/,/showcase/,/search/,/sitemap/,/changelog/,/404.html,/sitemap.xml,/llms.txt,/llms-full.txt,/llms.json"
+            --site-config "Website/site.json"
 
       - name: Verify Cloudflare cache status (key routes)
         if: steps.cloudflare.outputs.enabled == 'true'
         run: |
           dotnet PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll \
             cloudflare verify \
-            --base-url "https://intelligencex.dev" \
-            --path "/,/docs/,/api/,/api/powershell/,/blog/,/showcase/,/search/,/sitemap/" \
+            --site-config "Website/site.json" \
             --warmup 1
