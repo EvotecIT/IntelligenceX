@@ -125,12 +125,11 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
 
                 items.Add(item);
             }
-        } catch (ArgumentException ex) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", ex.Message));
-        } catch (InvalidOperationException ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", ex.Message));
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"GPO list query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(
+                ex,
+                defaultMessage: "GPO list query failed.",
+                invalidOperationErrorCode: "query_failed"));
         }
 
         var result = new AdGpoListResult(

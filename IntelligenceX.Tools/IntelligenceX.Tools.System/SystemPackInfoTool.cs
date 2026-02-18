@@ -34,8 +34,12 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             tools: ToolRegistrySystemExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Call system_info or system_hardware_summary for baseline context.",
-                "Use list tools (processes/services/ports/adapters/firewall/disks/features) for evidence collection.",
+                "Use list tools (processes/services/ports/adapters/firewall/disks/features/apps/updates/bitlocker) for evidence collection.",
+                "Use system_rdp_posture/system_smb_posture/system_boot_configuration/system_bios_summary for host-hardening and firmware posture checks.",
                 "Use system_security_options when you need a registry-backed snapshot of Windows security-option posture.",
+                "Use system_time_sync for quick skew checks and w32time runtime status (local or remote).",
+                "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
+                "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
                 "Use optional projection arguments only when the user asks for specific columns or sorting."
             },
             flowSteps: new[] {
@@ -44,10 +48,13 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     suggestedTools: new[] { "system_info", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect process/network/security evidence",
-                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options" }),
+                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect storage/feature configuration evidence",
-                    suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list" })
+                    suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Assess monthly patch exposure and prioritization",
+                    suggestedTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" })
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
@@ -56,12 +63,16 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     primaryTools: new[] { "system_info", "system_hardware_identity", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.Capability(
                     id: "runtime_evidence",
-                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, and security-option posture.",
-                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options" }),
+                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, security-option posture, and time sync/BitLocker posture.",
+                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
                 ToolPackGuidance.Capability(
                     id: "platform_configuration",
-                    summary: "Inventory disks, devices, features, scheduled tasks, and optional WSL state.",
-                    primaryTools: new[] { "system_logical_disks_list", "system_disks_list", "system_devices_summary", "system_features_list", "system_scheduled_tasks_list", "wsl_status" })
+                    summary: "Inventory disks, devices, features, scheduled tasks, installed applications/updates, and optional WSL state.",
+                    primaryTools: new[] { "system_logical_disks_list", "system_disks_list", "system_devices_summary", "system_features_list", "system_scheduled_tasks_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary", "wsl_status" }),
+                ToolPackGuidance.Capability(
+                    id: "patch_intelligence",
+                    summary: "Provide month-scoped MSRC patch intelligence with CVE/KB metadata and severity/exploitation prioritization.",
+                    primaryTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" })
             },
             toolCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw engine arrays/objects. Do not rely only on *_view fields.",
