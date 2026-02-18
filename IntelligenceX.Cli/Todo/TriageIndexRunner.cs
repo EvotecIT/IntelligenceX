@@ -199,6 +199,22 @@ internal static class TriageIndexRunner {
         string MergeConflictRisk
     );
 
+    private const int ChurnHighChangedFilesThreshold = 120;
+    private const int ChurnHighChangeVolumeThreshold = 3500;
+    private const int ChurnHighCommentsThreshold = 35;
+    private const int ChurnHighCommitsThreshold = 35;
+    private const int ChurnMediumChangedFilesThreshold = 40;
+    private const int ChurnMediumChangeVolumeThreshold = 1200;
+    private const int ChurnMediumCommentsThreshold = 12;
+    private const int ChurnMediumCommitsThreshold = 15;
+    private const int ReviewLatencyLowAgeDaysThreshold = 2;
+    private const int ReviewLatencyMediumAgeDaysThreshold = 10;
+    private const int ReadyReviewLatencyLowAgeDaysThreshold = 1;
+    private const int ReadyReviewLatencyMediumAgeDaysThreshold = 4;
+    private const int PendingReviewLatencyHighAgeDaysThreshold = 4;
+    private const int ConflictRiskMediumAgeDaysThreshold = 14;
+    private const int ConflictRiskHighAgeDaysThreshold = 21;
+
     private sealed record IssueReferenceHint(
         int Number,
         double Confidence,
@@ -828,8 +844,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                       signals.Mergeable.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase) ||
                       signals.ReviewDecision.Equals("CHANGES_REQUESTED", StringComparison.OrdinalIgnoreCase) ||
                       signals.StatusCheckState.Equals("FAILURE", StringComparison.OrdinalIgnoreCase) ||
-                      signals.StatusCheckState.Equals("ERROR", StringComparison.OrdinalIgnoreCase) ||
-                      signals.StatusCheckState.Equals("PENDING", StringComparison.OrdinalIgnoreCase);
+                      signals.StatusCheckState.Equals("ERROR", StringComparison.OrdinalIgnoreCase);
 
         var mergeReadiness = blocked
             ? "blocked"
@@ -839,11 +854,22 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 ? "ready"
                 : "needs-review";
 
-        var churnRisk = blocked || changedFiles > 120 || changeVolume > 3500
+        var churnRisk = changedFiles >= ChurnHighChangedFilesThreshold ||
+                        changeVolume >= ChurnHighChangeVolumeThreshold ||
+                        signals.Comments >= ChurnHighCommentsThreshold ||
+                        signals.Commits >= ChurnHighCommitsThreshold
             ? "high"
-            : changedFiles > 40 || changeVolume > 1200 || signals.Comments > 20 || signals.Commits > 20
+            : changedFiles >= ChurnMediumChangedFilesThreshold ||
+              changeVolume >= ChurnMediumChangeVolumeThreshold ||
+              signals.Comments >= ChurnMediumCommentsThreshold ||
+              signals.Commits >= ChurnMediumCommitsThreshold
                 ? "medium"
                 : "low";
+        if ((signals.Mergeable.Equals("CONFLICTING", StringComparison.OrdinalIgnoreCase) ||
+             signals.Mergeable.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase)) &&
+            churnRisk.Equals("low", StringComparison.OrdinalIgnoreCase)) {
+            churnRisk = "medium";
+        }
 
         var freshness = ageDays switch {
             <= 1 => "fresh",
@@ -854,35 +880,75 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
 
         var checkHealth = signals.StatusCheckState.Trim().ToUpperInvariant() switch {
             "SUCCESS" => "healthy",
+            "NEUTRAL" => "healthy",
+            "SKIPPED" => "healthy",
             "PENDING" => "pending",
             "EXPECTED" => "pending",
+            "IN_PROGRESS" => "pending",
+            "QUEUED" => "pending",
             "FAILURE" => "failing",
             "ERROR" => "failing",
+            "CANCELLED" => "failing",
+            "TIMED_OUT" => "failing",
+            "ACTION_REQUIRED" => "failing",
+            "STARTUP_FAILURE" => "failing",
             _ => "unknown"
         };
 
         var reviewLatency = ageDays switch {
-            <= 2 => "low",
-            <= 7 => "medium",
+            <= ReviewLatencyLowAgeDaysThreshold => "low",
+            <= ReviewLatencyMediumAgeDaysThreshold => "medium",
             _ => "high"
         };
-        if (mergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase) && ageDays > 3) {
-            reviewLatency = "high";
-        } else if (mergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase) && ageDays > 1 &&
-                   reviewLatency.Equals("low", StringComparison.OrdinalIgnoreCase)) {
+        if (mergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase)) {
+            reviewLatency = ageDays switch {
+                <= ReadyReviewLatencyLowAgeDaysThreshold => "low",
+                <= ReadyReviewLatencyMediumAgeDaysThreshold => "medium",
+                _ => "high"
+            };
+        } else if (mergeReadiness.Equals("blocked", StringComparison.OrdinalIgnoreCase) &&
+                   reviewLatency.Equals("low", StringComparison.OrdinalIgnoreCase) &&
+                   ageDays > 2) {
             reviewLatency = "medium";
         }
-        if (checkHealth.Equals("pending", StringComparison.OrdinalIgnoreCase) && ageDays > 5) {
+        if (checkHealth.Equals("pending", StringComparison.OrdinalIgnoreCase) &&
+            ageDays > PendingReviewLatencyHighAgeDaysThreshold) {
             reviewLatency = "high";
+        }
+        if ((signals.Comments >= ChurnHighCommentsThreshold || signals.Commits >= ChurnHighCommitsThreshold) &&
+            !reviewLatency.Equals("high", StringComparison.OrdinalIgnoreCase)) {
+            reviewLatency = "high";
+        } else if ((signals.Comments >= ChurnMediumCommentsThreshold || signals.Commits >= ChurnMediumCommitsThreshold) &&
+                   reviewLatency.Equals("low", StringComparison.OrdinalIgnoreCase)) {
+            reviewLatency = "medium";
         }
 
         var mergeConflictRisk = signals.Mergeable.Trim().ToUpperInvariant() switch {
             "CONFLICTING" => "high",
-            "UNKNOWN" => sizeBand is "large" or "xlarge" || ageDays > 10 ? "high" : "medium",
-            "MERGEABLE" => sizeBand is "xlarge" || churnRisk.Equals("high", StringComparison.OrdinalIgnoreCase) || ageDays > 21
-                ? "medium"
-                : "low",
-            _ => sizeBand is "large" or "xlarge" ? "high" : "medium"
+            "UNKNOWN" => sizeBand is "xlarge" ||
+                         churnRisk.Equals("high", StringComparison.OrdinalIgnoreCase) ||
+                         ageDays > ConflictRiskHighAgeDaysThreshold
+                ? "high"
+                : sizeBand is "large" ||
+                  ageDays > 7 ||
+                  checkHealth is "pending" or "failing"
+                    ? "medium"
+                    : "low",
+            "MERGEABLE" => sizeBand is "xlarge" &&
+                           churnRisk.Equals("high", StringComparison.OrdinalIgnoreCase) &&
+                           ageDays > ConflictRiskHighAgeDaysThreshold
+                ? "high"
+                : sizeBand is "large" or "xlarge" ||
+                  churnRisk is "medium" or "high" ||
+                  ageDays > ConflictRiskMediumAgeDaysThreshold ||
+                  checkHealth is "pending" or "failing"
+                    ? "medium"
+                    : "low",
+            _ => sizeBand is "xlarge" || churnRisk.Equals("high", StringComparison.OrdinalIgnoreCase)
+                ? "high"
+                : sizeBand is "large" || ageDays > 10
+                    ? "medium"
+                    : "low"
         };
 
         return new PullRequestOperationalSignals(sizeBand, churnRisk, mergeReadiness, freshness, checkHealth, reviewLatency,
