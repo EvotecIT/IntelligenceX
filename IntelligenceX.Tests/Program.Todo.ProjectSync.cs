@@ -17,6 +17,10 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Signal Quality", StringComparer.OrdinalIgnoreCase), "has Signal Quality");
         AssertEqual(true, names.Contains("Signal Quality Score", StringComparer.OrdinalIgnoreCase), "has Signal Quality Score");
         AssertEqual(true, names.Contains("Signal Quality Notes", StringComparer.OrdinalIgnoreCase), "has Signal Quality Notes");
+        AssertEqual(true, names.Contains("PR Size", StringComparer.OrdinalIgnoreCase), "has PR Size");
+        AssertEqual(true, names.Contains("PR Churn Risk", StringComparer.OrdinalIgnoreCase), "has PR Churn Risk");
+        AssertEqual(true, names.Contains("PR Merge Readiness", StringComparer.OrdinalIgnoreCase), "has PR Merge Readiness");
+        AssertEqual(true, names.Contains("PR Freshness", StringComparer.OrdinalIgnoreCase), "has PR Freshness");
         AssertEqual(true, names.Contains("Tags", StringComparer.OrdinalIgnoreCase), "has Tags");
         AssertEqual(true, names.Contains("Tag Confidence Summary", StringComparer.OrdinalIgnoreCase), "has Tag Confidence Summary");
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
@@ -160,6 +164,10 @@ internal static partial class Program {
         "Description/context is sparse.",
         "No labels present."
       ],
+      "prSizeBand": "xsmall",
+      "prChurnRisk": "low",
+      "prMergeReadiness": "ready",
+      "prFreshness": "fresh",
       "tags": [ "security", "api" ],
       "tagConfidences": {
         "security": 0.91,
@@ -188,6 +196,10 @@ internal static partial class Program {
         AssertEqual(true, entry.SignalQualityScore.HasValue, "signal quality score parsed");
         AssertEqual(42.5, entry.SignalQualityScore!.Value, "signal quality score value");
         AssertEqual(true, (entry.SignalQualityReasons?.Count ?? 0) == 2, "signal quality reasons parsed");
+        AssertEqual("xsmall", entry.PullRequestSize, "pull request size parsed");
+        AssertEqual("low", entry.PullRequestChurnRisk, "pull request churn risk parsed");
+        AssertEqual("ready", entry.PullRequestMergeReadiness, "pull request merge readiness parsed");
+        AssertEqual("fresh", entry.PullRequestFreshness, "pull request freshness parsed");
     }
 
     private static void TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr() {
