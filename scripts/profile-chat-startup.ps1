@@ -124,17 +124,22 @@ for ($i = 1; $i -le $Runs; $i++) {
         state            = $state
         startup_log_path = $archivedStartupLogPath
         total_ms         = Get-DurationMs (Get-MarkerTimestamp $lines 'Program.Main enter') (Get-MarkerTimestamp $lines 'MainWindow.StartupFlow done')
+        startup_webview_ms = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupPhase.WebView begin') (Get-MarkerTimestamp $lines 'StartupPhase.WebView done')
+        ensure_webview_ms  = Get-DurationMs (Get-MarkerTimestamp $lines 'EnsureWebViewInitializedAsync begin') (Get-MarkerTimestamp $lines 'EnsureWebViewInitializedAsync ok')
         connect_ms       = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupPhase.Connect begin') (Get-MarkerTimestamp $lines 'StartupPhase.Connect done')
         hello_ms         = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupConnect.hello begin') (Get-MarkerTimestamp $lines 'StartupConnect.hello done')
         list_tools_ms    = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupConnect.list_tools begin') (Get-MarkerTimestamp $lines 'StartupConnect.list_tools done')
         auth_refresh_ms  = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupConnect.auth_refresh begin') (Get-MarkerTimestamp $lines 'StartupConnect.auth_refresh done')
         model_sync_ms    = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupConnect.model_profile_sync begin') (Get-MarkerTimestamp $lines 'StartupConnect.model_profile_sync done')
+        startup_webview_budget_exhausted = [bool]($lines | Where-Object { $_ -match 'StartupPhase.WebView budget_exhausted' } | Select-Object -First 1)
+        startup_webview_deferred = [bool]($lines | Where-Object { $_ -match 'StartupPhase.WebView deferred' } | Select-Object -First 1)
+        startup_webview_eventual_done = [bool]($lines | Where-Object { $_ -match 'StartupPhase.WebView eventual_done' } | Select-Object -First 1)
         hello_deferred   = [bool]($lines | Where-Object { $_ -match 'StartupConnect.hello deferred' } | Select-Object -First 1)
         model_deferred   = [bool]($lines | Where-Object { $_ -match 'StartupConnect.model_profile_sync deferred' } | Select-Object -First 1)
     }
 
     $runResults.Add([pscustomobject]$run)
-    Write-Host ("Run {0}/{1}: state={2}, total={3}ms, connect={4}ms, hello={5}ms" -f $i, $Runs, $run.state, $run.total_ms, $run.connect_ms, $run.hello_ms)
+    Write-Host ("Run {0}/{1}: state={2}, total={3}ms, startup_webview={4}ms, connect={5}ms, hello={6}ms" -f $i, $Runs, $run.state, $run.total_ms, $run.startup_webview_ms, $run.connect_ms, $run.hello_ms)
 }
 
 $completedRuns = @($runResults | Where-Object { $_.state -eq 'done' })
@@ -148,14 +153,21 @@ $summary = [pscustomobject]@{
     runs_requested       = $Runs
     runs_completed       = $completedRuns.Count
     avg_total_ms         = Get-Average ($completedRuns | ForEach-Object { $_.total_ms })
+    avg_startup_webview_ms = Get-Average ($completedRuns | ForEach-Object { $_.startup_webview_ms })
+    avg_ensure_webview_ms  = Get-Average ($completedRuns | ForEach-Object { $_.ensure_webview_ms })
     avg_connect_ms       = Get-Average ($completedRuns | ForEach-Object { $_.connect_ms })
     avg_hello_ms         = Get-Average ($completedRuns | ForEach-Object { $_.hello_ms })
     avg_list_tools_ms    = Get-Average ($completedRuns | ForEach-Object { $_.list_tools_ms })
     avg_auth_refresh_ms  = Get-Average ($completedRuns | ForEach-Object { $_.auth_refresh_ms })
     avg_model_sync_ms    = Get-Average ($completedRuns | ForEach-Object { $_.model_sync_ms })
     avg_warm_total_ms    = Get-Average ($warmRuns | ForEach-Object { $_.total_ms })
+    avg_warm_startup_webview_ms = Get-Average ($warmRuns | ForEach-Object { $_.startup_webview_ms })
+    avg_warm_ensure_webview_ms  = Get-Average ($warmRuns | ForEach-Object { $_.ensure_webview_ms })
     avg_warm_connect_ms  = Get-Average ($warmRuns | ForEach-Object { $_.connect_ms })
     avg_warm_hello_ms    = Get-Average ($warmRuns | ForEach-Object { $_.hello_ms })
+    startup_webview_budget_exhausted_runs = @($completedRuns | Where-Object { $_.startup_webview_budget_exhausted }).Count
+    startup_webview_deferred_runs = @($completedRuns | Where-Object { $_.startup_webview_deferred }).Count
+    startup_webview_eventual_done_runs = @($completedRuns | Where-Object { $_.startup_webview_eventual_done }).Count
     hello_deferred_runs  = @($completedRuns | Where-Object { $_.hello_deferred }).Count
     model_deferred_runs  = @($completedRuns | Where-Object { $_.model_deferred }).Count
 }
