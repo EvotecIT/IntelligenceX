@@ -114,6 +114,10 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
+    internal static bool ShouldDeferStartupWebViewPostInitialization(bool captureStartupPhaseTelemetry) {
+        return captureStartupPhaseTelemetry;
+    }
+
     private async Task ConnectAsync(bool fromUserAction = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {

@@ -320,6 +320,7 @@ public sealed partial class MainWindow : Window {
     private int _startupOnboardingDeferredQueued;
     private int _startupConnectMetadataDeferredQueued;
     private int _startupModelProfileSyncDeferredQueued;
+    private int _startupWebViewPostInitDeferredQueued;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;
     private string? _sessionAssistantPersonaOverride;
@@ -961,6 +962,37 @@ public sealed partial class MainWindow : Window {
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
+    private async Task ApplyWebViewPostInitializationAsync() {
+        await SetStatusAsync(_statusText, _statusTone, _usageLimitSwitchRecommended).ConfigureAwait(false);
+        await RenderTranscriptAsync().ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+    }
+
+    private void QueueDeferredStartupWebViewPostInitialization() {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _startupWebViewPostInitDeferredQueued, 1, 0) != 0) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(75).ConfigureAwait(false);
+                if (_shutdownRequested) {
+                    return;
+                }
+
+                StartupLog.Write("StartupPhase.WebView.post_init begin");
+                await ApplyWebViewPostInitializationAsync().ConfigureAwait(false);
+                StartupLog.Write("StartupPhase.WebView.post_init done");
+            } catch (Exception ex) {
+                StartupLog.Write("StartupPhase.WebView.post_init failed: " + ex.Message);
+            }
+        });
+    }
+
     private void QueueDeferredStartupOnboarding() {
         if (_shutdownRequested) {
             return;
@@ -1217,9 +1249,13 @@ public sealed partial class MainWindow : Window {
                 RefreshGlobalWheelHookPolicy();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
-            await SetStatusAsync(_statusText, _statusTone, _usageLimitSwitchRecommended).ConfigureAwait(false);
-            await RenderTranscriptAsync().ConfigureAwait(false);
-            await PublishOptionsStateAsync().ConfigureAwait(false);
+            var captureStartupPhaseTelemetry = Volatile.Read(ref _startupFlowState) == 1;
+            if (ShouldDeferStartupWebViewPostInitialization(captureStartupPhaseTelemetry)) {
+                StartupLog.Write("StartupPhase.WebView.post_init deferred");
+                QueueDeferredStartupWebViewPostInitialization();
+            } else {
+                await ApplyWebViewPostInitializationAsync().ConfigureAwait(false);
+            }
             RecordStartupWebViewEnsureCompletion(
                 ensureDuration: ensureWebViewStopwatch.Elapsed,
                 budgetExceeded: Volatile.Read(ref _startupWebViewBudgetExceededThisRun) != 0);
