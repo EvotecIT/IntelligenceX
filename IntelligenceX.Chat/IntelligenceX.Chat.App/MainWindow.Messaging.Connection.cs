@@ -30,6 +30,13 @@ public sealed partial class MainWindow : Window {
     private async Task ConnectAsync(bool fromUserAction = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
+            var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == 1;
+            void LogStartupConnectPhase(string phase, string state) {
+                if (captureStartupPhaseTelemetry) {
+                    StartupLog.Write("StartupConnect." + phase + " " + state);
+                }
+            }
+
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 _isConnected = true;
                 StopAutoReconnectLoop();
@@ -54,12 +61,18 @@ public sealed partial class MainWindow : Window {
             Exception? initialConnectException = null;
 
             try {
+                LogStartupConnectPhase("pipe_connect.initial", "begin");
                 await ConnectClientWithTimeoutAsync(client, pipeName, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                LogStartupConnectPhase("pipe_connect.initial", "done");
             } catch (Exception ex) {
+                LogStartupConnectPhase("pipe_connect.initial", "failed");
                 initialConnectException = ex;
 
+                LogStartupConnectPhase("ensure_sidecar", "begin");
                 if (await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false)) {
+                    LogStartupConnectPhase("ensure_sidecar", "done");
                     Exception? sidecarConnectException = null;
+                    LogStartupConnectPhase("pipe_connect.retry", "begin");
                     for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
                         try {
                             await ConnectClientWithTimeoutAsync(client, pipeName, StartupConnectRetryTimeouts[attempt]).ConfigureAwait(false);
@@ -78,6 +91,7 @@ public sealed partial class MainWindow : Window {
                     }
 
                     if (sidecarConnectException is not null) {
+                        LogStartupConnectPhase("pipe_connect.retry", "failed");
                         await client.DisposeAsync().ConfigureAwait(false);
                         _isConnected = false;
                         await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
@@ -90,7 +104,9 @@ public sealed partial class MainWindow : Window {
                         }
                         return;
                     }
+                    LogStartupConnectPhase("pipe_connect.retry", "done");
                 } else {
+                    LogStartupConnectPhase("ensure_sidecar", "failed");
                     await client.DisposeAsync().ConfigureAwait(false);
                     _isConnected = false;
                     await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
@@ -109,9 +125,12 @@ public sealed partial class MainWindow : Window {
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
 
             try {
+                LogStartupConnectPhase("hello", "begin");
                 var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                 _sessionPolicy = hello.Policy;
+                LogStartupConnectPhase("hello", "done");
             } catch (Exception ex) {
+                LogStartupConnectPhase("hello", "failed");
                 _sessionPolicy = null;
                 if (VerboseServiceLogs || _debugMode) {
                     AppendSystem(SystemNotice.HelloFailed(ex.Message));
@@ -119,9 +138,12 @@ public sealed partial class MainWindow : Window {
             }
 
             try {
+                LogStartupConnectPhase("list_tools", "begin");
                 var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                 UpdateToolCatalog(toolList.Tools);
+                LogStartupConnectPhase("list_tools", "done");
             } catch (Exception ex) {
+                LogStartupConnectPhase("list_tools", "failed");
                 if (VerboseServiceLogs || _debugMode) {
                     AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
                 }
@@ -130,13 +152,23 @@ public sealed partial class MainWindow : Window {
             AppendStartupToolHealthWarningsFromPolicy();
             AppendUnavailablePacksFromPolicy();
 
-            _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+            LogStartupConnectPhase("auth_refresh", "begin");
             try {
+                _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+                LogStartupConnectPhase("auth_refresh", "done");
+            } catch {
+                LogStartupConnectPhase("auth_refresh", "failed");
+                throw;
+            }
+            try {
+                LogStartupConnectPhase("model_profile_sync", "begin");
                 await SyncConnectedServiceProfileAndModelsAsync(
                     forceModelRefresh: false,
                     setProfileNewThread: false,
                     appendWarnings: false).ConfigureAwait(false);
+                LogStartupConnectPhase("model_profile_sync", "done");
             } catch (Exception ex) {
+                LogStartupConnectPhase("model_profile_sync", "failed");
                 if (VerboseServiceLogs || _debugMode) {
                     AppendSystem("Model/profile sync failed: " + ex.Message);
                 }
