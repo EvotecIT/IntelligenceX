@@ -393,10 +393,16 @@ internal static partial class Program {
         AssertEqual("low", readySignals.ChurnRisk, "low churn risk");
         AssertEqual("ready", readySignals.MergeReadiness, "ready merge readiness");
         AssertEqual("fresh", readySignals.Freshness, "freshness classification");
+        AssertEqual("healthy", readySignals.CheckHealth, "healthy checks classification");
+        AssertEqual("low", readySignals.ReviewLatency, "low review latency classification");
+        AssertEqual("low", readySignals.MergeConflictRisk, "low merge conflict risk classification");
         AssertEqual("xlarge", blockedSignals!.SizeBand, "xlarge size");
         AssertEqual("high", blockedSignals.ChurnRisk, "high churn risk");
         AssertEqual("blocked", blockedSignals.MergeReadiness, "blocked merge readiness");
         AssertEqual("stale", blockedSignals.Freshness, "stale freshness");
+        AssertEqual("failing", blockedSignals.CheckHealth, "failing checks classification");
+        AssertEqual("high", blockedSignals.ReviewLatency, "high review latency classification");
+        AssertEqual("high", blockedSignals.MergeConflictRisk, "high merge conflict risk classification");
     }
 #endif
 }

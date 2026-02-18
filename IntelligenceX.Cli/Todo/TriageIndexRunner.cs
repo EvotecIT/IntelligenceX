@@ -193,7 +193,10 @@ internal static class TriageIndexRunner {
         string SizeBand,
         string ChurnRisk,
         string MergeReadiness,
-        string Freshness
+        string Freshness,
+        string CheckHealth,
+        string ReviewLatency,
+        string MergeConflictRisk
     );
 
     private sealed record IssueReferenceHint(
@@ -849,7 +852,41 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             _ => "stale"
         };
 
-        return new PullRequestOperationalSignals(sizeBand, churnRisk, mergeReadiness, freshness);
+        var checkHealth = signals.StatusCheckState.Trim().ToUpperInvariant() switch {
+            "SUCCESS" => "healthy",
+            "PENDING" => "pending",
+            "EXPECTED" => "pending",
+            "FAILURE" => "failing",
+            "ERROR" => "failing",
+            _ => "unknown"
+        };
+
+        var reviewLatency = ageDays switch {
+            <= 2 => "low",
+            <= 7 => "medium",
+            _ => "high"
+        };
+        if (mergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase) && ageDays > 3) {
+            reviewLatency = "high";
+        } else if (mergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase) && ageDays > 1 &&
+                   reviewLatency.Equals("low", StringComparison.OrdinalIgnoreCase)) {
+            reviewLatency = "medium";
+        }
+        if (checkHealth.Equals("pending", StringComparison.OrdinalIgnoreCase) && ageDays > 5) {
+            reviewLatency = "high";
+        }
+
+        var mergeConflictRisk = signals.Mergeable.Trim().ToUpperInvariant() switch {
+            "CONFLICTING" => "high",
+            "UNKNOWN" => sizeBand is "large" or "xlarge" || ageDays > 10 ? "high" : "medium",
+            "MERGEABLE" => sizeBand is "xlarge" || churnRisk.Equals("high", StringComparison.OrdinalIgnoreCase) || ageDays > 21
+                ? "medium"
+                : "low",
+            _ => sizeBand is "large" or "xlarge" ? "high" : "medium"
+        };
+
+        return new PullRequestOperationalSignals(sizeBand, churnRisk, mergeReadiness, freshness, checkHealth, reviewLatency,
+            mergeConflictRisk);
     }
 
     internal static CategoryTagInference InferCategoryAndTagsWithConfidence(TriageIndexItem item) {
@@ -1797,6 +1834,9 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                     prChurnRisk = operationalSignals?.ChurnRisk,
                     prMergeReadiness = operationalSignals?.MergeReadiness,
                     prFreshness = operationalSignals?.Freshness,
+                    prCheckHealth = operationalSignals?.CheckHealth,
+                    prReviewLatency = operationalSignals?.ReviewLatency,
+                    prMergeConflictRisk = operationalSignals?.MergeConflictRisk,
                     score = item.Score,
                     scoreReasons = item.ScoreReasons,
                     signals = new {
@@ -1872,6 +1912,22 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                         recent = pullRequestSignalValues.Count(value => value.Freshness.Equals("recent", StringComparison.OrdinalIgnoreCase)),
                         aging = pullRequestSignalValues.Count(value => value.Freshness.Equals("aging", StringComparison.OrdinalIgnoreCase)),
                         stale = pullRequestSignalValues.Count(value => value.Freshness.Equals("stale", StringComparison.OrdinalIgnoreCase))
+                    },
+                    checkHealth = new {
+                        healthy = pullRequestSignalValues.Count(value => value.CheckHealth.Equals("healthy", StringComparison.OrdinalIgnoreCase)),
+                        pending = pullRequestSignalValues.Count(value => value.CheckHealth.Equals("pending", StringComparison.OrdinalIgnoreCase)),
+                        failing = pullRequestSignalValues.Count(value => value.CheckHealth.Equals("failing", StringComparison.OrdinalIgnoreCase)),
+                        unknown = pullRequestSignalValues.Count(value => value.CheckHealth.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+                    },
+                    reviewLatency = new {
+                        low = pullRequestSignalValues.Count(value => value.ReviewLatency.Equals("low", StringComparison.OrdinalIgnoreCase)),
+                        medium = pullRequestSignalValues.Count(value => value.ReviewLatency.Equals("medium", StringComparison.OrdinalIgnoreCase)),
+                        high = pullRequestSignalValues.Count(value => value.ReviewLatency.Equals("high", StringComparison.OrdinalIgnoreCase))
+                    },
+                    mergeConflictRisk = new {
+                        low = pullRequestSignalValues.Count(value => value.MergeConflictRisk.Equals("low", StringComparison.OrdinalIgnoreCase)),
+                        medium = pullRequestSignalValues.Count(value => value.MergeConflictRisk.Equals("medium", StringComparison.OrdinalIgnoreCase)),
+                        high = pullRequestSignalValues.Count(value => value.MergeConflictRisk.Equals("high", StringComparison.OrdinalIgnoreCase))
                     }
                 }
             },
@@ -1940,6 +1996,22 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             $"{pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase))}/" +
             $"{pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("needs-review", StringComparison.OrdinalIgnoreCase))}/" +
             $"{pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("blocked", StringComparison.OrdinalIgnoreCase))}");
+        sb.AppendLine(
+            $"- PR check health (healthy/pending/failing/unknown): " +
+            $"{pullRequestSignalValues.Count(value => value.CheckHealth.Equals("healthy", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.CheckHealth.Equals("pending", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.CheckHealth.Equals("failing", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.CheckHealth.Equals("unknown", StringComparison.OrdinalIgnoreCase))}");
+        sb.AppendLine(
+            $"- PR review latency (low/medium/high): " +
+            $"{pullRequestSignalValues.Count(value => value.ReviewLatency.Equals("low", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.ReviewLatency.Equals("medium", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.ReviewLatency.Equals("high", StringComparison.OrdinalIgnoreCase))}");
+        sb.AppendLine(
+            $"- PR merge conflict risk (low/medium/high): " +
+            $"{pullRequestSignalValues.Count(value => value.MergeConflictRisk.Equals("low", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.MergeConflictRisk.Equals("medium", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.MergeConflictRisk.Equals("high", StringComparison.OrdinalIgnoreCase))}");
         sb.AppendLine();
         sb.AppendLine("## Best PR Candidates");
         sb.AppendLine();

@@ -70,7 +70,10 @@ internal static class ProjectSyncRunner {
         string? PullRequestSize = null,
         string? PullRequestChurnRisk = null,
         string? PullRequestMergeReadiness = null,
-        string? PullRequestFreshness = null
+        string? PullRequestFreshness = null,
+        string? PullRequestCheckHealth = null,
+        string? PullRequestReviewLatency = null,
+        string? PullRequestMergeConflictRisk = null
     );
 
     private sealed class Options {
@@ -555,6 +558,9 @@ internal static class ProjectSyncRunner {
                 var pullRequestChurnRisk = NormalizePullRequestChurnRisk(ReadNullableString(item, "prChurnRisk"));
                 var pullRequestMergeReadiness = NormalizePullRequestMergeReadiness(ReadNullableString(item, "prMergeReadiness"));
                 var pullRequestFreshness = NormalizePullRequestFreshness(ReadNullableString(item, "prFreshness"));
+                var pullRequestCheckHealth = NormalizePullRequestCheckHealth(ReadNullableString(item, "prCheckHealth"));
+                var pullRequestReviewLatency = NormalizePullRequestReviewLatency(ReadNullableString(item, "prReviewLatency"));
+                var pullRequestMergeConflictRisk = NormalizePullRequestMergeConflictRisk(ReadNullableString(item, "prMergeConflictRisk"));
                 var existingLabels = ReadStringArray(item, "labels");
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
@@ -645,7 +651,10 @@ internal static class ProjectSyncRunner {
                     PullRequestSize: pullRequestSize,
                     PullRequestChurnRisk: pullRequestChurnRisk,
                     PullRequestMergeReadiness: pullRequestMergeReadiness,
-                    PullRequestFreshness: pullRequestFreshness
+                    PullRequestFreshness: pullRequestFreshness,
+                    PullRequestCheckHealth: pullRequestCheckHealth,
+                    PullRequestReviewLatency: pullRequestReviewLatency,
+                    PullRequestMergeConflictRisk: pullRequestMergeConflictRisk
                 );
             }
         }
@@ -809,6 +818,46 @@ internal static class ProjectSyncRunner {
             "recent" => "recent",
             "aging" => "aging",
             "stale" => "stale",
+            _ => null
+        };
+    }
+
+    private static string? NormalizePullRequestCheckHealth(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch {
+            "healthy" => "healthy",
+            "pending" => "pending",
+            "failing" => "failing",
+            "unknown" => "unknown",
+            _ => null
+        };
+    }
+
+    private static string? NormalizePullRequestReviewLatency(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch {
+            "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
+            _ => null
+        };
+    }
+
+    private static string? NormalizePullRequestMergeConflictRisk(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch {
+            "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
             _ => null
         };
     }
@@ -1166,6 +1215,39 @@ internal static class ProjectSyncRunner {
                 await client.SetSingleSelectFieldAsync(projectId, itemId, pullRequestFreshnessField.Id, optionId).ConfigureAwait(false);
             } else {
                 await client.ClearFieldAsync(projectId, itemId, pullRequestFreshnessField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("PR Check Health", out var pullRequestCheckHealthField)) {
+            if (isPullRequest &&
+                !string.IsNullOrWhiteSpace(entry.PullRequestCheckHealth) &&
+                TryResolveOptionId(pullRequestCheckHealthField, entry.PullRequestCheckHealth, out var optionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, pullRequestCheckHealthField.Id, optionId).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, pullRequestCheckHealthField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("PR Review Latency", out var pullRequestReviewLatencyField)) {
+            if (isPullRequest &&
+                !string.IsNullOrWhiteSpace(entry.PullRequestReviewLatency) &&
+                TryResolveOptionId(pullRequestReviewLatencyField, entry.PullRequestReviewLatency, out var optionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, pullRequestReviewLatencyField.Id, optionId).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, pullRequestReviewLatencyField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("PR Merge Conflict Risk", out var pullRequestMergeConflictRiskField)) {
+            if (isPullRequest &&
+                !string.IsNullOrWhiteSpace(entry.PullRequestMergeConflictRisk) &&
+                TryResolveOptionId(pullRequestMergeConflictRiskField, entry.PullRequestMergeConflictRisk, out var optionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, pullRequestMergeConflictRiskField.Id, optionId).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, pullRequestMergeConflictRiskField.Id).ConfigureAwait(false);
             }
             updated++;
         }

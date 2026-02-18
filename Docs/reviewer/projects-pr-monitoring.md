@@ -18,7 +18,7 @@ These commands are assistive. They are not an autonomous production decision sys
 - GitHub Project field sync for triage at scale (`project-init`, `project-sync`, `project-bootstrap`).
 - Maintainer-assist view checklist and apply plan generation (`project-view-checklist`, `project-view-apply`).
 - Signal quality grading (`high`/`medium`/`low`) to separate strong recommendations from weak-context items.
-- Operational PR signals (`PR Size`, `PR Churn Risk`, `PR Merge Readiness`, `PR Freshness`) for faster triage.
+- Operational PR signals (`PR Size`, `PR Churn Risk`, `PR Merge Readiness`, `PR Freshness`, `PR Check Health`, `PR Review Latency`, `PR Merge Conflict Risk`) for faster triage.
 
 ## Recommended end-to-end flow
 
