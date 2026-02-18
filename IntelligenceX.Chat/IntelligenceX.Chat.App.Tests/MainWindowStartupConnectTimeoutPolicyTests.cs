@@ -305,4 +305,17 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         var shouldDefer = MainWindow.ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry);
         Assert.Equal(expected, shouldDefer);
     }
+
+    /// <summary>
+    /// Ensures startup webview post-init state sync is deferred only during startup flow telemetry capture.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ShouldDeferStartupWebViewPostInitialization_ReturnsExpectedValue(
+        bool captureStartupPhaseTelemetry,
+        bool expected) {
+        var shouldDefer = MainWindow.ShouldDeferStartupWebViewPostInitialization(captureStartupPhaseTelemetry);
+        Assert.Equal(expected, shouldDefer);
+    }
 }
