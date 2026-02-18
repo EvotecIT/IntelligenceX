@@ -25,8 +25,9 @@ internal static partial class Program {
             new DateTimeOffset(2026, 02, 15, 23, 10, 00, TimeSpan.Zero));
 
         AssertContainsText(markdown, "intelligencex:project-view-apply", "apply marker present");
-        AssertContainsText(markdown, "Default view coverage: 1/4", "coverage reflects missing defaults");
+        AssertContainsText(markdown, "Default view coverage: 1/5", "coverage reflects missing defaults");
         AssertContainsText(markdown, "- [ ] **Merge Candidates** (`TABLE`)", "missing default view listed");
+        AssertContainsText(markdown, "- [ ] **Issue Ops** (`TABLE`)", "missing issue ops view listed");
         AssertContainsText(markdown, "Suggested columns:", "suggested columns guidance included");
         AssertContainsText(markdown, "Select `+ New view` in GitHub Projects.", "manual apply step present");
         AssertContainsText(markdown, "public API surface does not expose direct project view creation", "platform note present");
@@ -52,7 +53,7 @@ internal static partial class Program {
             directCreateSupported: true,
             new DateTimeOffset(2026, 02, 15, 23, 15, 00, TimeSpan.Zero));
 
-        AssertContainsText(markdown, "Default view coverage: 4/4", "coverage reflects all defaults present");
+        AssertContainsText(markdown, "Default view coverage: 5/5", "coverage reflects all defaults present");
         AssertContainsText(markdown, "Missing default views: 0", "missing count is zero");
         AssertContainsText(markdown, "- [x] All recommended IX default views are present.", "completed checklist message");
         AssertContainsText(markdown, "Direct API view-create support: available", "capability line included");

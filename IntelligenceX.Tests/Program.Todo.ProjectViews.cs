@@ -14,6 +14,7 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("IX Queue", StringComparer.OrdinalIgnoreCase), "default queue view present");
         AssertEqual(true, names.Contains("Merge Candidates", StringComparer.OrdinalIgnoreCase), "merge candidates view present");
         AssertEqual(true, names.Contains("Vision Review", StringComparer.OrdinalIgnoreCase), "vision review view present");
+        AssertEqual(true, names.Contains("Issue Ops", StringComparer.OrdinalIgnoreCase), "issue ops view present");
         AssertEqual(true, names.Contains("Duplicate Clusters", StringComparer.OrdinalIgnoreCase), "duplicate clusters view present");
         AssertEqual(true,
             IntelligenceX.Cli.Todo.ProjectViewCatalog.DefaultViews.All(view => view.SuggestedColumns.Count > 0),
@@ -31,6 +32,7 @@ internal static partial class Program {
             .ToList();
 
         AssertEqual(true, missing.Contains("Merge Candidates", StringComparer.OrdinalIgnoreCase), "missing merge candidates detected");
+        AssertEqual(true, missing.Contains("Issue Ops", StringComparer.OrdinalIgnoreCase), "missing issue ops detected");
         AssertEqual(true, missing.Contains("Duplicate Clusters", StringComparer.OrdinalIgnoreCase), "missing duplicate clusters detected");
         AssertEqual(false, missing.Contains("IX Queue", StringComparer.OrdinalIgnoreCase), "existing queue view not flagged");
     }

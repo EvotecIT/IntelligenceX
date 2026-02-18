@@ -79,6 +79,26 @@ internal static class ProjectViewCatalog {
                 "Category"
             }),
         new ProjectViewDefinition(
+            "Issue Ops",
+            "TABLE",
+            "Issue-first operations queue for stale infra blockers and applicability review signals.",
+            "is:open \"Triage Kind\":\"issue\"",
+            new[] {
+                "Title",
+                "Status",
+                "Triage Kind",
+                "Issue Review Action",
+                "Issue Review Action Confidence",
+                "Matched Pull Request",
+                "Matched Pull Request Confidence",
+                "Related Pull Requests",
+                "Signal Quality",
+                "Signal Quality Score",
+                "Triage Score",
+                "Category",
+                "Duplicate Cluster"
+            }),
+        new ProjectViewDefinition(
             "Duplicate Clusters",
             "TABLE",
             "Items that belong to duplicate clusters and need consolidation.",
