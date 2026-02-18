@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -222,24 +221,23 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
-    /// Ensures startup cold-connect path skips settlement grace and returns immediately after cancellation.
+    /// Ensures startup cold-connect path skips settlement grace without awaiting or observing the connect task.
     /// </summary>
     [Fact]
-    public async Task TryPreserveConnectCompletionAfterCancellationAsync_ReturnsFalseImmediately_WhenSettlementDisabled() {
+    public async Task TryPreserveConnectCompletionAfterCancellationAsync_ReturnsFalseWithoutAwaiting_WhenSettlementDisabled() {
         var pending = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = Task.Run(async () => {
-            await Task.Delay(200);
-            pending.TrySetResult(null);
-        });
 
-        var sw = Stopwatch.StartNew();
-        var settled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+        var pendingSettled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
             pending.Task,
             allowSettlementGrace: false);
-        sw.Stop();
 
-        Assert.False(settled);
-        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(150), "Settlement-disabled path should not wait for connect task completion.");
+        Assert.False(pendingSettled);
+        Assert.False(pending.Task.IsCompleted);
+
+        var faultedSettled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+            Task.FromException(new InvalidOperationException("connect-fault")),
+            allowSettlementGrace: false);
+        Assert.False(faultedSettled);
     }
 
     /// <summary>
