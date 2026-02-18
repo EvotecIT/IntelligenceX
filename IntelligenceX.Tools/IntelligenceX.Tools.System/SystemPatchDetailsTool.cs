@@ -126,11 +126,7 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             .ThenBy(static x => x.CveId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<PatchDetailsInfo> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
         var summary = BuildSummary(filtered);
         var release = new DateTime(year, month, 1).ToString("yyyy-MM");
 
@@ -154,7 +150,7 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             Summary: summary,
             Patches: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -162,7 +158,6 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             title: "System patch details (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("max_results", maxResults);

@@ -61,7 +61,7 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
         try {
             query = BitLocker.Get(computerName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"BitLocker status query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "BitLocker status query failed."));
         }
 
         var filtered = query
@@ -69,11 +69,7 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
             .Where(x => !encryptedOnly || x.EncryptionPercentage > 0)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<BitLockerVolumeInfo> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new SystemBitlockerStatusResult(
             ComputerName: target,
@@ -83,7 +79,7 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
             Truncated: truncated,
             Volumes: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -91,7 +87,6 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
             title: "BitLocker status (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("computer_name", target);

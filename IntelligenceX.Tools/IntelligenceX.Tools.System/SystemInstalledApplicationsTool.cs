@@ -61,7 +61,7 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
         try {
             query = InstalledApplications.Query(computerName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Installed applications query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Installed applications query failed."));
         }
 
         var filtered = query
@@ -71,11 +71,7 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
                 || x.Publisher?.Contains(publisherContains, StringComparison.OrdinalIgnoreCase) == true)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<InstalledApplicationInfo> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new SystemInstalledApplicationsResult(
             ComputerName: target,
@@ -85,7 +81,7 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
             Truncated: truncated,
             Applications: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -93,7 +89,6 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
             title: "Installed applications (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("computer_name", target);
@@ -108,4 +103,3 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-

@@ -210,11 +210,7 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                 ComplianceState: state));
         }
 
-        var scanned = complianceRows.Count;
-        IReadOnlyList<ComplianceRow> rows = scanned > maxResults
-            ? complianceRows.Take(maxResults).ToArray()
-            : complianceRows;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(complianceRows, maxResults, out var scanned, out var truncated);
         var summary = BuildSummary(complianceRows);
         var release = new DateTime(year, month, 1).ToString("yyyy-MM");
 
@@ -241,7 +237,7 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             Summary: summary,
             Compliance: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -249,7 +245,6 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             title: "Patch compliance (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("computer_name", target);
