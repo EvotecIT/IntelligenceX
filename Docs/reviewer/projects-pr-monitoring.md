@@ -16,6 +16,7 @@ These commands are assistive. They are not an autonomous production decision sys
 - Backlog indexing and duplicate clustering across open PRs/issues (`build-triage-index`).
 - Scope alignment checks against `VISION.md` (`vision-check`).
 - Issue applicability review for stale/no-longer-applicable infra blockers (`issue-review`).
+- Issue applicability proposed actions (`close`, `keep-open`, `needs-human-review`) with confidence scoring and safety signals.
 - GitHub Project field sync for triage at scale (`project-init`, `project-sync`, `project-bootstrap`).
 - Maintainer-assist view checklist and apply plan generation (`project-view-checklist`, `project-view-apply`).
 - Signal quality grading (`high`/`medium`/`low`) to separate strong recommendations from weak-context items.
@@ -41,7 +42,7 @@ intelligencex todo sync-bot-feedback --repo EvotecIT/IntelligenceX
 intelligencex todo build-triage-index --repo EvotecIT/IntelligenceX
 
 # 3) Review infra blocker issue applicability (dry-run, with streak state)
-intelligencex todo issue-review --repo EvotecIT/IntelligenceX --min-consecutive-candidates 2 --state-path artifacts/triage/ix-issue-review-state.json
+intelligencex todo issue-review --repo EvotecIT/IntelligenceX --proposal-only --min-consecutive-candidates 2 --min-auto-close-confidence 80 --state-path artifacts/triage/ix-issue-review-state.json
 
 # 4) Check backlog against VISION.md
 intelligencex todo vision-check --repo EvotecIT/IntelligenceX --vision VISION.md
@@ -77,7 +78,22 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 - Manual auto-close: use `workflow_dispatch` with:
   - `apply_close=true`
   - `confirm_apply_close=CLOSE_ISSUES`
+  - `min_auto_close_confidence` (default `80`)
   - optional label policy (`allow_labels`, `deny_labels`)
+
+### Issue-review confidence signals
+
+`issue-review` now emits a proposed action and confidence score for each issue:
+
+- `proposedAction`: `close`, `keep-open`, `needs-human-review`, `ignore`
+- `actionConfidence`: `0-100` with level hints (`high`/`medium`/`low`)
+- `confidenceSignals`: explainable signal list (for example stale bucket, recent activity, linked PR age, reopened count)
+
+Safety behavior:
+
+- Auto-close requires both policy eligibility and confidence threshold (`--min-auto-close-confidence`).
+- Recently active issues and reopened issues are downgraded to `needs-human-review`.
+- Use `--proposal-only` for calibration runs where any close operation must be blocked.
 
 ## Permissions and safety
 

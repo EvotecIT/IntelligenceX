@@ -160,6 +160,7 @@
         "Name": "footer-docs",
         "Items": [
           { "Title": "Reviewer", "Url": "/docs/reviewer/overview/" },
+          { "Title": "Project Ops", "Url": "/docs/project-ops/overview/" },
           { "Title": "IX Chat", "Url": "/docs/chat/overview/" },
           { "Title": "IX Tools", "Url": "/docs/tools/overview/" },
           { "Title": "CLI Tools", "Url": "/docs/cli/overview/" },

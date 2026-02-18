@@ -72,7 +72,11 @@ internal static class IssueReviewRunner {
         IReadOnlyList<int> LinkedPullRequests,
         IReadOnlyList<string> LinkedPullRequestStates,
         string Reason,
-        IReadOnlyList<string> Labels
+        IReadOnlyList<string> Labels,
+        string ProposedAction = "needs-human-review",
+        int ActionConfidence = 0,
+        IReadOnlyList<string>? ConfidenceSignals = null,
+        int ReopenedCount = 0
     );
 
     internal sealed record IssueReviewPolicy(
@@ -92,9 +96,11 @@ internal static class IssueReviewRunner {
         public int MaxIssues { get; set; } = 300;
         public int StaleDays { get; set; } = 14;
         public int MinConsecutiveCandidatesForClose { get; set; } = 1;
+        public int MinAutoCloseConfidence { get; set; } = 80;
         public string? StatePath { get; set; } = Path.Combine("artifacts", "triage", "ix-issue-review-state.json");
         public List<string> AutoCloseAllowLabels { get; } = new();
         public List<string> AutoCloseDenyLabels { get; } = new();
+        public bool ProposalOnly { get; set; }
         public bool ApplyClose { get; set; }
         public string CloseReason { get; set; } = "completed";
         public bool CommentOnClose { get; set; } = true;
@@ -148,6 +154,15 @@ internal static class IssueReviewRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--min-auto-close-confidence":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minAutoCloseConfidence)) {
+                        options.MinAutoCloseConfidence = Math.Max(0, Math.Min(minAutoCloseConfidence, 100));
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 case "--state-path":
                     if (i + 1 < args.Length) {
                         options.StatePath = args[++i];
@@ -189,6 +204,9 @@ internal static class IssueReviewRunner {
                     break;
                 case "--apply-close":
                     options.ApplyClose = true;
+                    break;
+                case "--proposal-only":
+                    options.ProposalOnly = true;
                     break;
                 case "--close-reason":
                     if (i + 1 < args.Length) {
@@ -235,6 +253,11 @@ internal static class IssueReviewRunner {
             options.ParseFailed = true;
             options.ShowHelp = true;
         }
+        if (options.ApplyClose && options.ProposalOnly) {
+            Console.Error.WriteLine("`--apply-close` and `--proposal-only` cannot be used together.");
+            options.ParseFailed = true;
+            options.ShowHelp = true;
+        }
 
         return options;
     }
@@ -261,10 +284,12 @@ internal static class IssueReviewRunner {
         Console.WriteLine("  --max-issues <n>            Open issues to scan (1-2000, default: 300)");
         Console.WriteLine("  --stale-days <n>            Age threshold for stale infra issues without PR links (default: 14)");
         Console.WriteLine("  --min-consecutive-candidates <n>  Consecutive no-longer-applicable runs required for auto-close (default: 1)");
+        Console.WriteLine("  --min-auto-close-confidence <0-100>  Minimum confidence required for auto-close (default: 80)");
         Console.WriteLine("  --state-path <path>         Candidate state path for consecutive tracking (default: artifacts/triage/ix-issue-review-state.json)");
         Console.WriteLine("  --no-state                  Disable candidate streak persistence");
         Console.WriteLine("  --allow-label <label>       Require at least one of these labels for auto-close (repeatable)");
         Console.WriteLine("  --deny-label <label>        Never auto-close issues with these labels (repeatable)");
+        Console.WriteLine("  --proposal-only             Force advisory output mode (never close issues)");
         Console.WriteLine("  --apply-close               Close no-longer-applicable issues (default: dry-run)");
         Console.WriteLine("  --close-reason <completed|not-planned>  Reason used when closing issues (default: completed)");
         Console.WriteLine("  --no-comment                Do not post a managed IX close note");
@@ -333,8 +358,36 @@ internal static class IssueReviewRunner {
                 options.MinConsecutiveCandidatesForClose);
             assessments.Add(assessment);
         }
+        var issueByNumber = issues.ToDictionary(value => value.Number);
+        var enrichedAssessments = new List<IssueReviewAssessment>(assessments.Count);
+        foreach (var assessment in assessments) {
+            if (!issueByNumber.TryGetValue(assessment.Number, out var issue)) {
+                enrichedAssessments.Add(assessment);
+                continue;
+            }
+
+            int? reopenedCount = null;
+            if (assessment.IsInfraBlocker &&
+                (assessment.Classification.Equals("no-longer-applicable", StringComparison.OrdinalIgnoreCase) ||
+                 assessment.Classification.Equals("needs-review", StringComparison.OrdinalIgnoreCase))) {
+                reopenedCount = await TryFetchReopenedCountAsync(options.Repo, assessment.Number).ConfigureAwait(false);
+            }
+
+            var enriched = EnrichWithActionSignals(
+                assessment,
+                issue,
+                pullRequestsByNumber,
+                nowUtc,
+                options.MinAutoCloseConfidence,
+                reopenedCount);
+            enrichedAssessments.Add(enriched);
+        }
+        assessments = enrichedAssessments;
+
         assessments = assessments
             .OrderBy(value => ClassificationRank(value.Classification))
+            .ThenBy(value => ProposedActionRank(value.ProposedAction))
+            .ThenByDescending(value => value.ActionConfidence)
             .ThenByDescending(value => value.CandidateStreak)
             .ThenByDescending(value => value.AgeDays)
             .ThenBy(value => value.Number)
@@ -344,7 +397,10 @@ internal static class IssueReviewRunner {
             .Where(value => value.Classification.Equals("no-longer-applicable", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var autoCloseCandidates = assessments
-            .Where(value => value.EligibleForAutoClose)
+            .Where(value =>
+                value.EligibleForAutoClose &&
+                value.ProposedAction.Equals("close", StringComparison.OrdinalIgnoreCase) &&
+                value.ActionConfidence >= options.MinAutoCloseConfidence)
             .ToList();
 
         var closedIssueNumbers = new List<int>();
@@ -376,10 +432,13 @@ internal static class IssueReviewRunner {
         Console.WriteLine($"No-longer-applicable candidates: {noLongerApplicableCandidates.Count}");
         Console.WriteLine($"Auto-close eligible this run: {autoCloseCandidates.Count}");
         Console.WriteLine($"Min consecutive candidates required: {options.MinConsecutiveCandidatesForClose}");
+        Console.WriteLine($"Min auto-close confidence: {options.MinAutoCloseConfidence}");
         Console.WriteLine(options.StatePath is null
             ? "State persistence: disabled."
             : $"State persistence: {options.StatePath}");
-        Console.WriteLine(options.ApplyClose
+        Console.WriteLine(options.ProposalOnly
+            ? "Proposal-only mode: close operations disabled."
+            : options.ApplyClose
             ? $"Closed by automation: {closedIssueNumbers.Count}"
             : "Dry-run mode: no issues were closed (use --apply-close to close candidates).");
         return 0;
@@ -705,6 +764,137 @@ internal static class IssueReviewRunner {
         return false;
     }
 
+    private static async Task<int?> TryFetchReopenedCountAsync(string repo, int issueNumber) {
+        var (code, stdout, stderr) = await GhCli.RunAsync(
+            TimeSpan.FromSeconds(45),
+            "api",
+            $"repos/{repo}/issues/{issueNumber.ToString(CultureInfo.InvariantCulture)}/events?per_page=100").ConfigureAwait(false);
+        if (code != 0) {
+            Console.Error.WriteLine(
+                $"Warning: failed to query issue events for #{issueNumber}: {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}");
+            return null;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(stdout);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) {
+                return 0;
+            }
+
+            var count = 0;
+            foreach (var entry in doc.RootElement.EnumerateArray()) {
+                var kind = ReadString(entry, "event");
+                if (kind.Equals("reopened", StringComparison.OrdinalIgnoreCase)) {
+                    count++;
+                }
+            }
+            return count;
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Warning: failed to parse issue events for #{issueNumber}: {ex.Message}");
+            return null;
+        }
+    }
+
+    internal static IssueReviewAssessment EnrichWithActionSignals(
+        IssueReviewAssessment assessment,
+        IssueReviewCandidateIssue issue,
+        IReadOnlyDictionary<int, PullRequestReference> pullRequestsByNumber,
+        DateTimeOffset nowUtc,
+        int minAutoCloseConfidence,
+        int? reopenedCount) {
+        var signals = new List<string>();
+        var proposedAction = assessment.Classification.ToLowerInvariant() switch {
+            "no-longer-applicable" when assessment.EligibleForAutoClose => "close",
+            "active" => "keep-open",
+            "out-of-scope" => "ignore",
+            _ => "needs-human-review"
+        };
+        var confidence = assessment.Classification.ToLowerInvariant() switch {
+            "no-longer-applicable" => 72,
+            "active" => 78,
+            "out-of-scope" => 82,
+            _ => 58
+        };
+
+        if (assessment.AgeDays >= 30) {
+            confidence += 10;
+            signals.Add("stale_days_bucket:>=30d(+10)");
+        } else if (assessment.AgeDays >= 14) {
+            confidence += 6;
+            signals.Add("stale_days_bucket:14-29d(+6)");
+        } else if (assessment.AgeDays <= 2) {
+            confidence -= 16;
+            signals.Add("stale_days_bucket:<=2d(-16)");
+        }
+
+        if (assessment.AgeDays <= 2) {
+            confidence -= 15;
+            signals.Add("recent_issue_activity:high(-15)");
+        } else if (assessment.AgeDays <= 7) {
+            confidence -= 8;
+            signals.Add("recent_issue_activity:medium(-8)");
+        } else {
+            confidence += 4;
+            signals.Add("recent_issue_activity:low(+4)");
+        }
+
+        if (issue.Labels.Any(label => label.Equals("ix/decision:accept", StringComparison.OrdinalIgnoreCase))) {
+            confidence -= 25;
+            signals.Add("maintainer_decision_accept(-25)");
+            proposedAction = "needs-human-review";
+        }
+
+        var linkedResolvedAges = new List<double>();
+        foreach (var number in assessment.LinkedPullRequests) {
+            if (!pullRequestsByNumber.TryGetValue(number, out var reference)) {
+                continue;
+            }
+            var resolvedAt = reference.MergedAtUtc ?? reference.ClosedAtUtc;
+            if (!resolvedAt.HasValue) {
+                continue;
+            }
+            linkedResolvedAges.Add(Math.Max(0, (nowUtc - resolvedAt.Value).TotalDays));
+        }
+        if (linkedResolvedAges.Count > 0) {
+            var minLinkedPrAge = linkedResolvedAges.Min();
+            if (minLinkedPrAge < 3) {
+                confidence -= 12;
+                signals.Add("linked_pr_age:<3d(-12)");
+            } else if (minLinkedPrAge >= 14) {
+                confidence += 8;
+                signals.Add("linked_pr_age:>=14d(+8)");
+            } else {
+                signals.Add("linked_pr_age:3-13d(+0)");
+            }
+        }
+
+        var reopenSignalCount = Math.Max(0, reopenedCount ?? 0);
+        if (reopenedCount.HasValue) {
+            if (reopenSignalCount > 0) {
+                var penalty = Math.Min(35, reopenSignalCount * 12);
+                confidence -= penalty;
+                signals.Add($"reopened_count:{reopenSignalCount}(-{penalty})");
+            } else {
+                confidence += 4;
+                signals.Add("reopened_count:0(+4)");
+            }
+        }
+
+        confidence = Math.Clamp(confidence, 0, 100);
+        if (proposedAction.Equals("close", StringComparison.OrdinalIgnoreCase)) {
+            if (reopenSignalCount > 0 || assessment.AgeDays <= 2 || confidence < minAutoCloseConfidence) {
+                proposedAction = "needs-human-review";
+            }
+        }
+
+        return assessment with {
+            ProposedAction = proposedAction,
+            ActionConfidence = confidence,
+            ConfidenceSignals = signals,
+            ReopenedCount = reopenSignalCount
+        };
+    }
+
     private static async Task TryCommentOnClosedIssueAsync(string repo, IssueReviewAssessment assessment, string closeReason) {
         var body = new StringBuilder();
         body.AppendLine(ManagedCommentMarker);
@@ -712,6 +902,7 @@ internal static class IssueReviewRunner {
         body.AppendLine();
         body.AppendLine($"- Classification: `{assessment.Classification}`");
         body.AppendLine($"- Reason: {assessment.Reason}");
+        body.AppendLine($"- Proposed action: `{assessment.ProposedAction}` ({assessment.ActionConfidence}/100)");
         body.AppendLine($"- Close reason: `{closeReason}`");
         if (assessment.LinkedPullRequestStates.Count > 0) {
             body.AppendLine($"- Linked PR states: {string.Join(", ", assessment.LinkedPullRequestStates)}");
@@ -743,9 +934,11 @@ internal static class IssueReviewRunner {
                 maxIssues = options.MaxIssues,
                 staleDays = options.StaleDays,
                 minConsecutiveCandidatesForClose = options.MinConsecutiveCandidatesForClose,
+                minAutoCloseConfidence = options.MinAutoCloseConfidence,
                 statePath = options.StatePath,
                 autoCloseAllowLabels = options.AutoCloseAllowLabels,
                 autoCloseDenyLabels = options.AutoCloseDenyLabels,
+                proposalOnly = options.ProposalOnly,
                 applyClose = options.ApplyClose,
                 closeReason = options.CloseReason
             },
@@ -753,7 +946,14 @@ internal static class IssueReviewRunner {
                 openIssuesScanned = assessments.Count,
                 infraBlockers = infra.Count,
                 noLongerApplicable = infra.Count(value => value.Classification.Equals("no-longer-applicable", StringComparison.OrdinalIgnoreCase)),
-                autoCloseEligible = infra.Count(value => value.EligibleForAutoClose),
+                autoCloseEligible = infra.Count(value =>
+                    value.EligibleForAutoClose &&
+                    value.ProposedAction.Equals("close", StringComparison.OrdinalIgnoreCase) &&
+                    value.ActionConfidence >= options.MinAutoCloseConfidence),
+                proposedClose = assessments.Count(value => value.ProposedAction.Equals("close", StringComparison.OrdinalIgnoreCase)),
+                proposedKeepOpen = assessments.Count(value => value.ProposedAction.Equals("keep-open", StringComparison.OrdinalIgnoreCase)),
+                proposedNeedsHumanReview = assessments.Count(value => value.ProposedAction.Equals("needs-human-review", StringComparison.OrdinalIgnoreCase)),
+                proposedIgnore = assessments.Count(value => value.ProposedAction.Equals("ignore", StringComparison.OrdinalIgnoreCase)),
                 needsReview = infra.Count(value => value.Classification.Equals("needs-review", StringComparison.OrdinalIgnoreCase)),
                 active = infra.Count(value => value.Classification.Equals("active", StringComparison.OrdinalIgnoreCase)),
                 closedByAutomation = closedIssueNumbers.Count
@@ -767,6 +967,11 @@ internal static class IssueReviewRunner {
                 classification = value.Classification,
                 eligibleForAutoClose = value.EligibleForAutoClose,
                 candidateStreak = value.CandidateStreak,
+                proposedAction = value.ProposedAction,
+                actionConfidence = value.ActionConfidence,
+                actionConfidenceLevel = ConfidenceLevel(value.ActionConfidence),
+                confidenceSignals = value.ConfidenceSignals ?? Array.Empty<string>(),
+                reopenedCount = value.ReopenedCount,
                 ageDays = value.AgeDays,
                 linkedPullRequests = value.LinkedPullRequests,
                 linkedPullRequestStates = value.LinkedPullRequestStates,
@@ -800,10 +1005,14 @@ internal static class IssueReviewRunner {
         builder.AppendLine($"- Open issues scanned: {assessments.Count}");
         builder.AppendLine($"- Infra blockers detected: {infra.Count}");
         builder.AppendLine($"- No-longer-applicable: {noLongerApplicable.Count}");
-        builder.AppendLine($"- Auto-close eligible: {noLongerApplicable.Count(value => value.EligibleForAutoClose)}");
+        builder.AppendLine($"- Auto-close eligible: {noLongerApplicable.Count(value => value.EligibleForAutoClose && value.ProposedAction.Equals("close", StringComparison.OrdinalIgnoreCase) && value.ActionConfidence >= options.MinAutoCloseConfidence)}");
         builder.AppendLine($"- Needs review: {needsReview.Count}");
         builder.AppendLine($"- Active infra blockers: {active.Count}");
         builder.AppendLine($"- Min consecutive candidates for close: {options.MinConsecutiveCandidatesForClose}");
+        builder.AppendLine($"- Min auto-close confidence: {options.MinAutoCloseConfidence}");
+        builder.AppendLine($"- Proposed action `close`: {assessments.Count(value => value.ProposedAction.Equals("close", StringComparison.OrdinalIgnoreCase))}");
+        builder.AppendLine($"- Proposed action `keep-open`: {assessments.Count(value => value.ProposedAction.Equals("keep-open", StringComparison.OrdinalIgnoreCase))}");
+        builder.AppendLine($"- Proposed action `needs-human-review`: {assessments.Count(value => value.ProposedAction.Equals("needs-human-review", StringComparison.OrdinalIgnoreCase))}");
         builder.AppendLine(options.StatePath is null
             ? "- State path: disabled"
             : $"- State path: `{options.StatePath}`");
@@ -813,7 +1022,9 @@ internal static class IssueReviewRunner {
         if (options.AutoCloseDenyLabels.Count > 0) {
             builder.AppendLine($"- Auto-close deny labels: `{string.Join("`, `", options.AutoCloseDenyLabels)}`");
         }
-        builder.AppendLine(options.ApplyClose
+        builder.AppendLine(options.ProposalOnly
+            ? "- Proposal-only mode: close operations disabled."
+            : options.ApplyClose
             ? $"- Closed by automation: {closedIssueNumbers.Count}"
             : "- Dry-run mode: no issues were closed.");
         builder.AppendLine();
@@ -842,8 +1053,9 @@ internal static class IssueReviewRunner {
             var eligibility = item.EligibleForAutoClose
                 ? " | eligible auto-close"
                 : string.Empty;
+            var action = $" | action {item.ProposedAction} ({item.ActionConfidence}/100,{ConfidenceLevel(item.ActionConfidence)})";
             builder.AppendLine(
-                $"- #{item.Number} [{item.Title}]({item.Url}) | age {item.AgeDays.ToString("0.0", CultureInfo.InvariantCulture)}d{streak}{eligibility} | linked PRs: {linked} | {item.Reason}");
+                $"- #{item.Number} [{item.Title}]({item.Url}) | age {item.AgeDays.ToString("0.0", CultureInfo.InvariantCulture)}d{streak}{eligibility}{action} | linked PRs: {linked} | {item.Reason}");
         }
         builder.AppendLine();
     }
@@ -854,6 +1066,24 @@ internal static class IssueReviewRunner {
             "needs-review" => 1,
             "active" => 2,
             _ => 3
+        };
+    }
+
+    private static int ProposedActionRank(string proposedAction) {
+        return proposedAction.ToLowerInvariant() switch {
+            "close" => 0,
+            "needs-human-review" => 1,
+            "keep-open" => 2,
+            "ignore" => 3,
+            _ => 4
+        };
+    }
+
+    private static string ConfidenceLevel(int confidence) {
+        return confidence switch {
+            >= 80 => "high",
+            >= 60 => "medium",
+            _ => "low"
         };
     }
 

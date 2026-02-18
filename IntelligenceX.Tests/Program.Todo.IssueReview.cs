@@ -144,5 +144,89 @@ internal static partial class Program {
         AssertEqual(false, deniedAssessment.EligibleForAutoClose, "denied eligibility");
         AssertEqual(true, deniedAssessment.Reason.Contains("Denied/protected", StringComparison.OrdinalIgnoreCase), "denied reason");
     }
+
+    private static void TestIssueReviewActionSignalsDowngradeCloseProposalWhenReopenedOrTooFresh() {
+        var now = DateTimeOffset.UtcNow;
+        var issue = new IntelligenceX.Cli.Todo.IssueReviewRunner.IssueReviewCandidateIssue(
+            Number: 440,
+            Title: "Infra blocker: PR #438 checks stuck in Setup .NET",
+            Body: "Tracking after retries.",
+            Url: "https://github.com/EvotecIT/IntelligenceX/issues/440",
+            UpdatedAtUtc: now.AddDays(-1),
+            Labels: new[] { "infra-blocker" });
+        var pullRequests = new Dictionary<int, IntelligenceX.Cli.Todo.IssueReviewRunner.PullRequestReference> {
+            [438] = new(
+                Number: 438,
+                Title: "Fix setup checks",
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/438",
+                State: "MERGED",
+                MergedAtUtc: now.AddDays(-1),
+                ClosedAtUtc: now.AddDays(-1))
+        };
+
+        var baseline = IntelligenceX.Cli.Todo.IssueReviewRunner.AssessIssueForApplicability(
+            issue,
+            "EvotecIT/IntelligenceX",
+            pullRequests,
+            now,
+            staleDays: 14);
+        var signaled = IntelligenceX.Cli.Todo.IssueReviewRunner.EnrichWithActionSignals(
+            baseline,
+            issue,
+            pullRequests,
+            now,
+            minAutoCloseConfidence: 80,
+            reopenedCount: 1);
+
+        AssertEqual("no-longer-applicable", baseline.Classification, "baseline classification");
+        AssertEqual(true, baseline.EligibleForAutoClose, "baseline eligibility");
+        AssertEqual("needs-human-review", signaled.ProposedAction, "proposal downgraded");
+        AssertEqual(true, signaled.ActionConfidence < 80, "confidence below threshold");
+        AssertEqual(1, signaled.ReopenedCount, "reopened count persisted");
+    }
+
+    private static void TestIssueReviewActionSignalsKeepCloseProposalWhenSignalsStrong() {
+        var now = DateTimeOffset.UtcNow;
+        var issue = new IntelligenceX.Cli.Todo.IssueReviewRunner.IssueReviewCandidateIssue(
+            Number: 362,
+            Title: "Infra blocker: PR #359 checks failing with no space left on device",
+            Body: "Tracking infra incident.",
+            Url: "https://github.com/EvotecIT/IntelligenceX/issues/362",
+            UpdatedAtUtc: now.AddDays(-28),
+            Labels: new[] { "infra-blocker", "close-approved" });
+        var pullRequests = new Dictionary<int, IntelligenceX.Cli.Todo.IssueReviewRunner.PullRequestReference> {
+            [359] = new(
+                Number: 359,
+                Title: "Runner disk cleanup",
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/359",
+                State: "MERGED",
+                MergedAtUtc: now.AddDays(-21),
+                ClosedAtUtc: now.AddDays(-21))
+        };
+        var policy = IntelligenceX.Cli.Todo.IssueReviewRunner.BuildPolicy(
+            new[] { "close-approved" },
+            Array.Empty<string>());
+        var baseline = IntelligenceX.Cli.Todo.IssueReviewRunner.AssessIssueForApplicability(
+            issue,
+            "EvotecIT/IntelligenceX",
+            pullRequests,
+            now,
+            staleDays: 14,
+            policy,
+            previousCandidateStreak: 2,
+            minConsecutiveCandidatesForClose: 2);
+        var signaled = IntelligenceX.Cli.Todo.IssueReviewRunner.EnrichWithActionSignals(
+            baseline,
+            issue,
+            pullRequests,
+            now,
+            minAutoCloseConfidence: 80,
+            reopenedCount: 0);
+
+        AssertEqual(true, baseline.EligibleForAutoClose, "baseline eligibility");
+        AssertEqual("close", signaled.ProposedAction, "proposal close");
+        AssertEqual(true, signaled.ActionConfidence >= 80, "confidence threshold");
+        AssertEqual(true, signaled.ConfidenceSignals is { Count: > 0 }, "signals present");
+    }
 #endif
 }

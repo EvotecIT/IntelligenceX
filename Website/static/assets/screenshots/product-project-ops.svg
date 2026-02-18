@@ -1,0 +1,47 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Project Ops dashboard screenshot">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071525"/>
+      <stop offset="1" stop-color="#0F2A44"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="140" y1="120" x2="1140" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#11253A"/>
+      <stop offset="1" stop-color="#0B1D31"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect x="64" y="48" width="1152" height="624" rx="20" fill="#081424" stroke="#1A3958"/>
+  <rect x="64" y="48" width="1152" height="72" rx="20" fill="#0E2236"/>
+  <circle cx="102" cy="84" r="9" fill="#2F5B84"/>
+  <circle cx="132" cy="84" r="9" fill="#2F5B84"/>
+  <circle cx="162" cy="84" r="9" fill="#2F5B84"/>
+  <rect x="214" y="66" width="340" height="36" rx="8" fill="#102A43"/>
+  <text x="244" y="90" fill="#9EC7EE" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">Project Ops • Issue Review</text>
+
+  <rect x="106" y="148" width="1068" height="498" rx="14" fill="url(#panel)" stroke="#1A3958"/>
+  <rect x="142" y="186" width="992" height="52" rx="10" fill="#0D2237"/>
+  <text x="172" y="219" fill="#7FAED8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Infra blockers with suggested action and confidence</text>
+
+  <rect x="142" y="258" width="992" height="66" rx="8" fill="#0A1D31"/>
+  <text x="168" y="288" fill="#D8EBFF" font-family="Segoe UI, Arial, sans-serif" font-size="17">#362 Infra blocker: PR checks failing with no space left on device</text>
+  <text x="168" y="309" fill="#78A9D2" font-family="Segoe UI, Arial, sans-serif" font-size="14">Action: close • Confidence: 91/high • Signals: stale + linked PR age + no reopen</text>
+  <rect x="1008" y="275" width="110" height="30" rx="15" fill="#133E2B" stroke="#2F8D5C"/>
+  <text x="1043" y="295" fill="#9EF0C1" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">CLOSE</text>
+
+  <rect x="142" y="338" width="992" height="66" rx="8" fill="#0A1D31"/>
+  <text x="168" y="368" fill="#D8EBFF" font-family="Segoe UI, Arial, sans-serif" font-size="17">#440 Infra blocker: PR checks stuck in Setup .NET</text>
+  <text x="168" y="389" fill="#78A9D2" font-family="Segoe UI, Arial, sans-serif" font-size="14">Action: needs-human-review • Confidence: 63/medium • Signals: fresh activity + reopened</text>
+  <rect x="916" y="355" width="202" height="30" rx="15" fill="#3B2F10" stroke="#A88933"/>
+  <text x="946" y="375" fill="#F6DCA4" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">NEEDS HUMAN REVIEW</text>
+
+  <rect x="142" y="418" width="992" height="66" rx="8" fill="#0A1D31"/>
+  <text x="168" y="448" fill="#D8EBFF" font-family="Segoe UI, Arial, sans-serif" font-size="17">#345 CI infra: website build runner dependencies unavailable</text>
+  <text x="168" y="469" fill="#78A9D2" font-family="Segoe UI, Arial, sans-serif" font-size="14">Action: keep-open • Confidence: 86/high • Signals: open linked PR + active updates</text>
+  <rect x="980" y="435" width="138" height="30" rx="15" fill="#102F49" stroke="#2C6B9A"/>
+  <text x="1014" y="455" fill="#9FD3FF" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">KEEP OPEN</text>
+
+  <rect x="142" y="510" width="300" height="100" rx="10" fill="#0D2237"/>
+  <text x="168" y="545" fill="#7FAED8" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">Run summary</text>
+  <text x="168" y="568" fill="#D8EBFF" font-family="Segoe UI, Arial, sans-serif" font-size="14">Proposed close: 4</text>
+  <text x="168" y="590" fill="#D8EBFF" font-family="Segoe UI, Arial, sans-serif" font-size="14">Needs review: 3</text>
+</svg>

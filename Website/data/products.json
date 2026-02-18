@@ -61,5 +61,16 @@
     "featured": false,
     "install": "Install-Module IntelligenceX",
     "screenshot": "/assets/screenshots/product-powershell.svg"
+  },
+  {
+    "title": "Project Ops",
+    "description": "GitHub Project triage control plane with issue-review, backlog signal scoring, and maintainer-first operations for stale or invalid work.",
+    "icon": "project-ops",
+    "link": "/docs/project-ops/overview/",
+    "tag": "Operations",
+    "badge": "First Party",
+    "featured": false,
+    "install": "intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT",
+    "screenshot": "/assets/screenshots/product-project-ops.svg"
   }
 ]
