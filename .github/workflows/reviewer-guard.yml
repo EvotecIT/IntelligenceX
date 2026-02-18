@@ -28,8 +28,19 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const headSha = context.payload.pull_request.head.sha;
+            const headBranch = context.payload.pull_request.head.ref;
+            const action = context.payload.action ?? "unknown";
+            const prUpdatedAtMs = Date.parse(context.payload.pull_request?.updated_at ?? "");
+            const prCreatedAtMs = Date.parse(context.payload.pull_request?.created_at ?? "");
+            const triggerAtMs = Number.isFinite(prUpdatedAtMs)
+              ? prUpdatedAtMs
+              : (Number.isFinite(prCreatedAtMs) ? prCreatedAtMs : Date.now());
+            const triggerWindowSkewMs = 2 * 60 * 1000;
+            const triggerWindowStartMs = triggerAtMs - triggerWindowSkewMs;
             const maxAttempts = 40;
             const pollMs = 15000;
+
+            core.info(`Scoping reviewer runs for action=${action}, branch=${headBranch}, head_sha=${headSha}, trigger_window_start=${new Date(triggerWindowStartMs).toISOString()}.`);
 
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
               const runs = await github.rest.actions.listWorkflowRuns({
@@ -37,11 +48,16 @@ jobs:
                 repo,
                 workflow_id: "review-intelligencex.yml",
                 event: "pull_request",
+                branch: headBranch,
                 head_sha: headSha,
                 per_page: 20
               });
 
-              const workflowRuns = runs.data.workflow_runs || [];
+              const workflowRuns = (runs.data.workflow_runs || [])
+                .filter(run => {
+                  const createdAtMs = Date.parse(run.created_at ?? "");
+                  return Number.isFinite(createdAtMs) && createdAtMs >= triggerWindowStartMs;
+                });
               if (workflowRuns.length > 0) {
                 const latest = workflowRuns
                   .slice()
@@ -58,7 +74,7 @@ jobs:
                   return;
                 }
               } else {
-                core.info("No IntelligenceX Review run found yet for this head SHA.");
+                core.info("No scoped IntelligenceX Review run found yet for this trigger window.");
               }
 
               await new Promise(resolve => setTimeout(resolve, pollMs));
