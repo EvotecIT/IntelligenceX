@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -9,6 +10,8 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// Normalizes common LLM markdown artifacts before UI rendering.
 /// </summary>
 internal static class TranscriptMarkdownNormalizer {
+    private const int StrongFlattenMaxIterations = 32;
+
     private static readonly Regex EmojiWordJoinRegex = new(
         @"([✅☑✔❌⚠🔥])(?!\s)(?=[\p{L}\p{N}])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -68,10 +71,6 @@ internal static class TranscriptMarkdownNormalizer {
     private static readonly Regex UnmatchedInlineCodeTailRegex = new(
         @"`[^\r\n]*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
-
-    private static readonly Regex InlineCodePlaceholderRegex = new(
-        "\u001FIXCODE(?<index>\\d+)\u001E",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NestedStrongSpanRegex = new(
         @"\*\*(?<inner>[^*\r\n]+)\*\*",
@@ -148,7 +147,7 @@ internal static class TranscriptMarkdownNormalizer {
         }
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
-            var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans);
+            var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans, out var tokenPrefix);
             var value = protectedInlineCode;
             value = EmojiWordJoinRegex.Replace(value, "$1 ");
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
@@ -197,7 +196,7 @@ internal static class TranscriptMarkdownNormalizer {
             value = LeadingWhitespaceInsideStrongOpenRegex.Replace(value, "**");
             value = ExpandCollapsedMetricLines(value);
             value = ConvertLegacyMetricMarkdown(value);
-            return RestoreInlineCodeSpans(value, codeSpans);
+            return RestoreInlineCodeSpans(value, codeSpans, tokenPrefix);
         });
     }
 
@@ -261,9 +260,9 @@ internal static class TranscriptMarkdownNormalizer {
             return body;
         }
 
-        var protectedBody = ProtectInlineCodeSpans(body, out var codeSpans);
+        var protectedBody = ProtectInlineCodeSpans(body, out var codeSpans, out var tokenPrefix);
         var flattened = FlattenNestedStrongSpans(protectedBody);
-        return RestoreInlineCodeSpans(flattened, codeSpans);
+        return RestoreInlineCodeSpans(flattened, codeSpans, tokenPrefix);
     }
 
     private static string FlattenNestedStrongSpans(string input) {
@@ -272,7 +271,7 @@ internal static class TranscriptMarkdownNormalizer {
         }
 
         string current = input;
-        while (true) {
+        for (var i = 0; i < StrongFlattenMaxIterations; i++) {
             var next = NestedStrongSpanRegex.Replace(
                 current,
                 static match => match.Groups["inner"].Value);
@@ -282,36 +281,46 @@ internal static class TranscriptMarkdownNormalizer {
 
             current = next;
         }
+
+        return current;
     }
 
-    private static string ProtectInlineCodeSpans(string input, out List<string> codeSpans) {
+    private static string ProtectInlineCodeSpans(string input, out List<string> codeSpans, out string tokenPrefix) {
         var capturedCodeSpans = new List<string>();
         if (string.IsNullOrEmpty(input) || input.IndexOf('`', StringComparison.Ordinal) < 0) {
             codeSpans = capturedCodeSpans;
+            tokenPrefix = string.Empty;
             return input;
         }
+        var prefix = "\u001FIXCODE_" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + "_";
 
         var protectedInput = InlineCodeSpanRegex.Replace(input, match => {
             var index = capturedCodeSpans.Count;
             capturedCodeSpans.Add(match.Value);
-            return "\u001FIXCODE" + index.ToString() + "\u001E";
+            return prefix + index.ToString(CultureInfo.InvariantCulture) + "\u001E";
         });
         protectedInput = UnmatchedInlineCodeTailRegex.Replace(protectedInput, match => {
             var index = capturedCodeSpans.Count;
             capturedCodeSpans.Add(match.Value);
-            return "\u001FIXCODE" + index.ToString() + "\u001E";
+            return prefix + index.ToString(CultureInfo.InvariantCulture) + "\u001E";
         });
 
+        tokenPrefix = prefix;
         codeSpans = capturedCodeSpans;
         return protectedInput;
     }
 
-    private static string RestoreInlineCodeSpans(string input, IReadOnlyList<string> codeSpans) {
-        if (codeSpans.Count == 0 || string.IsNullOrEmpty(input)) {
+    private static string RestoreInlineCodeSpans(string input, IReadOnlyList<string> codeSpans, string tokenPrefix) {
+        if (codeSpans.Count == 0 || string.IsNullOrEmpty(input) || string.IsNullOrEmpty(tokenPrefix)) {
             return input;
         }
-        return InlineCodePlaceholderRegex.Replace(input, match => {
-            if (!int.TryParse(match.Groups["index"].Value, out var index)) {
+
+        var placeholderRegex = new Regex(
+            Regex.Escape(tokenPrefix) + "(?<index>\\d+)\u001E",
+            RegexOptions.CultureInvariant);
+
+        return placeholderRegex.Replace(input, match => {
+            if (!int.TryParse(match.Groups["index"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var index)) {
                 return match.Value;
             }
 

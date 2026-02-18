@@ -273,4 +273,19 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         Assert.Contains("`a**b seen, mostly from **Service Control Manager**.**", normalized, System.StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures placeholder-like user content is preserved when inline-code spans are protected/restored.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesPlaceholderLikeUserContent() {
+        var sentinel = "\u001FIXCODE0\u001E";
+        var text = "- Signal **prefix " + sentinel + " and `a**b` from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains(sentinel, normalized, System.StringComparison.Ordinal);
+        Assert.Contains("`a**b`", normalized, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+    }
 }
