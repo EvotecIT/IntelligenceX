@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -93,8 +94,6 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var warnings = new List<string>(_startupWarnings);
-        var hasNewWarnings = false;
         var cache = LoadStartupToolHealthCache();
         var cacheUpdated = false;
 
@@ -132,11 +131,7 @@ internal sealed partial class ChatServiceSession {
                     ? "[tool health notice]"
                     : "[tool health]";
                 var warning = $"{prefix}[{sourceLabel}][{packLabel}] {probe.ToolName} failed ({NormalizeHealthErrorCode(probe.ErrorCode)}): {NormalizeHealthError(probe.Error)}";
-                if (!warnings.Any(existing => string.Equals(existing, warning, StringComparison.OrdinalIgnoreCase))) {
-                    warnings.Add(warning);
-                    hasNewWarnings = true;
-                    Console.Error.WriteLine($"[pack warning] {warning}");
-                }
+                RecordStartupWarning(warning);
 
                 var errorCode = NormalizeHealthErrorCode(probe.ErrorCode);
                 var nextFailureCount = ResolveNextFailureCount(cachedFailure, errorCode);
@@ -162,9 +157,6 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (hasNewWarnings) {
-            _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 96);
-        }
     }
 
     private static HashSet<ToolPackSourceKind>? BuildSourceKindFilter(IReadOnlyList<ToolPackSourceKind>? sourceKinds) {
@@ -470,29 +462,90 @@ internal sealed partial class ChatServiceSession {
         public int ConsecutiveFailures { get; set; } = 1;
     }
 
-    private async Task RunStartupToolHealthPrimingAsync(CancellationToken cancellationToken) {
+    private void RecordStartupWarning(string? warning) {
+        var normalized = (warning ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        if (_startupWarnings.Any(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase))) {
+            return;
+        }
+
+        var warnings = new List<string>(_startupWarnings) {
+            normalized
+        };
+        _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 96);
+        Trace.TraceWarning(normalized);
+    }
+
+    internal static string BuildStartupToolHealthPrimingFailureWarning(Exception ex) {
+        return $"[tool health] Startup probe priming failed: {CompactStartupToolHealthException(ex)}";
+    }
+
+    internal static async Task RunStartupToolHealthPrimingAsync(
+        Func<CancellationToken, Task> primeAsync,
+        Action<string> recordWarning,
+        TimeSpan primeBudget,
+        CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(primeAsync);
+        ArgumentNullException.ThrowIfNull(recordWarning);
+
         try {
             using var startupToolHealthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            startupToolHealthCts.CancelAfter(StartupToolHealthPrimeBudget);
-            await PrimeStartupToolHealthWarningsAsync(startupToolHealthCts.Token).ConfigureAwait(false);
+            if (primeBudget > TimeSpan.Zero) {
+                startupToolHealthCts.CancelAfter(primeBudget);
+            }
+
+            await primeAsync(startupToolHealthCts.Token).ConfigureAwait(false);
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // Session shutdown canceled startup priming.
         } catch (Exception ex) {
-            Console.Error.WriteLine($"[tool health] Startup probe priming failed: {CompactStartupToolHealthException(ex)}");
+            recordWarning(BuildStartupToolHealthPrimingFailureWarning(ex));
         }
     }
 
-    private static async Task AwaitStartupToolHealthPrimingForHelloAsync(Task startupToolHealthPrimeTask, CancellationToken cancellationToken) {
+    private Task RunStartupToolHealthPrimingAsync(CancellationToken cancellationToken) {
+        return RunStartupToolHealthPrimingAsync(
+            PrimeStartupToolHealthWarningsAsync,
+            RecordStartupWarning,
+            StartupToolHealthPrimeBudget,
+            cancellationToken);
+    }
+
+    private static Task AwaitStartupToolHealthPrimingForHelloAsync(Task startupToolHealthPrimeTask, CancellationToken cancellationToken) {
+        return AwaitStartupToolHealthPrimingForHelloAsync(startupToolHealthPrimeTask, StartupToolHealthHelloWaitBudget, cancellationToken);
+    }
+
+    internal static async Task AwaitStartupToolHealthPrimingForHelloAsync(
+        Task startupToolHealthPrimeTask,
+        TimeSpan waitBudget,
+        CancellationToken cancellationToken) {
         if (startupToolHealthPrimeTask.IsCompleted) {
             await startupToolHealthPrimeTask.ConfigureAwait(false);
             return;
         }
 
+        if (waitBudget <= TimeSpan.Zero) {
+            return;
+        }
+
         using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var delayTask = Task.Delay(StartupToolHealthHelloWaitBudget, waitCts.Token);
-        var completedTask = await Task.WhenAny(startupToolHealthPrimeTask, delayTask).ConfigureAwait(false);
-        if (completedTask == startupToolHealthPrimeTask) {
+        var delayTask = Task.Delay(waitBudget, waitCts.Token);
+
+        Task completedTask;
+        try {
+            completedTask = await Task.WhenAny(startupToolHealthPrimeTask, delayTask).ConfigureAwait(false);
+        } finally {
             waitCts.Cancel();
+            try {
+                await delayTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Expected when startup priming completes before the wait budget.
+            }
+        }
+
+        if (completedTask == startupToolHealthPrimeTask) {
             await startupToolHealthPrimeTask.ConfigureAwait(false);
         }
     }
