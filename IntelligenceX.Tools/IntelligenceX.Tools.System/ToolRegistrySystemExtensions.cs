@@ -63,6 +63,7 @@ public static class ToolRegistrySystemExtensions {
         yield return new SystemWhoAmITool(options);
         yield return new SystemProcessListTool(options);
         yield return new SystemNetworkAdaptersTool(options);
+        yield return new SystemPatchDetailsTool(options);
 
         if (OperatingSystem.IsWindows()) {
             yield return new SystemPortsListTool(options);
@@ -71,6 +72,15 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemFirewallRulesTool(options);
             yield return new SystemFirewallProfilesTool(options);
             yield return new SystemSecurityOptionsTool(options);
+            yield return new SystemRdpPostureTool(options);
+            yield return new SystemSmbPostureTool(options);
+            yield return new SystemBootConfigurationTool(options);
+            yield return new SystemBiosSummaryTool(options);
+            yield return new SystemTimeSyncTool(options);
+            yield return new SystemBitlockerStatusTool(options);
+            yield return new SystemInstalledApplicationsTool(options);
+            yield return new SystemUpdatesInstalledTool(options);
+            yield return new SystemPatchComplianceTool(options);
             yield return new SystemLogicalDisksListTool(options);
             yield return new SystemDisksListTool(options);
             yield return new SystemDevicesSummaryTool(options);
