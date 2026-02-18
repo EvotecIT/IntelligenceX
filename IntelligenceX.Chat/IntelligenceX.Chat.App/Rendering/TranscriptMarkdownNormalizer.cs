@@ -10,6 +10,8 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// Normalizes common LLM markdown artifacts before UI rendering.
 /// </summary>
 internal static class TranscriptMarkdownNormalizer {
+    // Hard stop for nested-strong flattening; 32 iterations safely handles deeply nested artifacts
+    // while guaranteeing convergence on malformed inputs.
     private const int StrongFlattenMaxIterations = 32;
 
     private static readonly Regex EmojiWordJoinRegex = new(
@@ -71,6 +73,10 @@ internal static class TranscriptMarkdownNormalizer {
     private static readonly Regex UnmatchedInlineCodeTailRegex = new(
         @"`[^\r\n]*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
+
+    private static readonly Regex InlineCodePlaceholderRegex = new(
+        "\u001FIXCODE_(?<prefix>[0-9a-f]{32})_(?<index>\\d+)\u001E",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NestedStrongSpanRegex = new(
         @"\*\*(?<inner>[^*\r\n]+)\*\*",
@@ -315,11 +321,11 @@ internal static class TranscriptMarkdownNormalizer {
             return input;
         }
 
-        var placeholderRegex = new Regex(
-            Regex.Escape(tokenPrefix) + "(?<index>\\d+)\u001E",
-            RegexOptions.CultureInvariant);
+        return InlineCodePlaceholderRegex.Replace(input, match => {
+            if (!match.Value.StartsWith(tokenPrefix, StringComparison.Ordinal)) {
+                return match.Value;
+            }
 
-        return placeholderRegex.Replace(input, match => {
             if (!int.TryParse(match.Groups["index"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var index)) {
                 return match.Value;
             }
