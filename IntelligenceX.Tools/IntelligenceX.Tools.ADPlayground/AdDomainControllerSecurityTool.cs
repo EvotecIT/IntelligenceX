@@ -163,11 +163,7 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
             .Where(row => !insecureOnly || row.AnyFinding)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<DomainControllerSecurityRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdDomainControllerSecurityResult(
             DomainName: domainName,
@@ -180,7 +176,7 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
             Errors: errors,
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -188,7 +184,6 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
             title: "Active Directory: Domain Controller Security (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("insecure_only", insecureOnly);
@@ -204,6 +199,5 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
                     meta.Add("domain_controller", domainController);
                 }
             });
-        return response;
     }
 }

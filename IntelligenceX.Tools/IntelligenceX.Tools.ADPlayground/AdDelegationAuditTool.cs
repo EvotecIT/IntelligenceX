@@ -79,7 +79,7 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
         }
 
         var result = queryResult!;
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Results,
@@ -87,7 +87,6 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Delegation Audit (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.IsTruncated,
-            response: out var response);
-        return Task.FromResult(response);
+            scanned: result.Results.Count));
     }
 }

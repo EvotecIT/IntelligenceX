@@ -74,9 +74,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                 return Task.FromResult(errorResponse!);
             }
 
-            var scanned = allSummary.Count;
-            var rows = scanned > maxResults ? allSummary.Take(maxResults).ToArray() : allSummary;
-            var truncated = scanned > rows.Count;
+            var rows = CapRows(allSummary, maxResults, out var scanned, out var truncated);
 
             var result = new AdSiteCoverageSummaryResult(
                 ForestName: forestName,
@@ -85,7 +83,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                 Truncated: truncated,
                 Summary: rows);
 
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            return Task.FromResult(BuildAutoTableResponse(
                 arguments: arguments,
                 model: result,
                 sourceRows: rows,
@@ -93,7 +91,6 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                 title: "Active Directory: Site Coverage (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: truncated,
-                response: out var summaryResponse,
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
@@ -102,8 +99,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                     if (!string.IsNullOrWhiteSpace(forestName)) {
                         meta.Add("forest_name", forestName);
                     }
-                });
-            return Task.FromResult(summaryResponse);
+                }));
         }
 
         if (!TryExecute(
@@ -115,17 +111,9 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(rawErrorResponse!);
         }
 
-        var summaryScanned = report.Summary.Count;
-        var sitesScanned = report.Sites.Count;
-        var subnetsScanned = report.Subnets.Count;
-
-        var summaryRows = summaryScanned > maxResults ? report.Summary.Take(maxResults).ToArray() : report.Summary;
-        var siteRows = sitesScanned > maxResults ? report.Sites.Take(maxResults).ToArray() : report.Sites;
-        var subnetRows = subnetsScanned > maxResults ? report.Subnets.Take(maxResults).ToArray() : report.Subnets;
-
-        var summaryTruncated = summaryScanned > summaryRows.Count;
-        var sitesTruncated = sitesScanned > siteRows.Count;
-        var subnetsTruncated = subnetsScanned > subnetRows.Count;
+        var summaryRows = CapRows(report.Summary, maxResults, out var summaryScanned, out var summaryTruncated);
+        var siteRows = CapRows(report.Sites, maxResults, out var sitesScanned, out var sitesTruncated);
+        var subnetRows = CapRows(report.Subnets, maxResults, out var subnetsScanned, out var subnetsTruncated);
 
         var rawResult = new AdSiteCoverageRawResult(
             ForestName: forestName,
@@ -140,7 +128,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
             Sites: siteRows,
             Subnets: subnetRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: rawResult,
             sourceRows: summaryRows,
@@ -148,7 +136,6 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Site Coverage (raw preview)",
             maxTop: MaxViewTop,
             baseTruncated: summaryTruncated || sitesTruncated || subnetsTruncated,
-            response: out var rawResponse,
             scanned: summaryScanned,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
@@ -161,8 +148,6 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(rawResponse);
+            }));
     }
 }
-

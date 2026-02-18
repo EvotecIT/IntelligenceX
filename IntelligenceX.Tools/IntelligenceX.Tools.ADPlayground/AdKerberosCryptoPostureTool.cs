@@ -98,11 +98,7 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
             }
         }
 
-        var scanned = rows.Count;
-        IReadOnlyList<KerberosCryptoPostureRow> projectedRows = scanned > maxResults
-            ? rows.Take(maxResults).ToArray()
-            : rows;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(rows, maxResults, out var scanned, out var truncated);
 
         var result = new AdKerberosCryptoPostureResult(
             DomainName: domainName,
@@ -113,7 +109,7 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
             Errors: errors,
             Domains: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -121,7 +117,6 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
             title: "Active Directory: Kerberos Crypto Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("max_results", maxResults);
@@ -133,6 +128,5 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
                     meta.Add("forest_name", forestName);
                 }
             });
-        return response;
     }
 }

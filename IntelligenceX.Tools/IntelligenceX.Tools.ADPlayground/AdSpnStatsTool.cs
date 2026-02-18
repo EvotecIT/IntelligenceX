@@ -88,7 +88,7 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
 
         var stats = await SpnStatsService.QueryAsync(query, cancellationToken).ConfigureAwait(false);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: stats,
             sourceRows: stats.ServiceClasses,
@@ -96,8 +96,6 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: SPN Stats (preview)",
             maxTop: MaxViewTop,
             baseTruncated: stats.Truncated,
-            response: out var response,
             scanned: stats.ScannedObjects);
-        return response;
     }
 }

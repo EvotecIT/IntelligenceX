@@ -162,6 +162,24 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Caps a row collection by max-results and returns standard scanned/truncated counters.
+    /// </summary>
+    protected static IReadOnlyList<TRow> CapRows<TRow>(
+        IReadOnlyList<TRow> allRows,
+        int maxResults,
+        out int scanned,
+        out bool truncated) {
+        scanned = allRows.Count;
+        if (scanned <= maxResults) {
+            truncated = false;
+            return allRows;
+        }
+
+        truncated = true;
+        return allRows.Take(maxResults).ToArray();
+    }
+
+    /// <summary>
     /// Builds filtered + capped policy-attribution rows using consistent configured-value semantics.
     /// </summary>
     protected static IReadOnlyList<PolicyAttribution> PreparePolicyAttributionRows(

@@ -312,21 +312,6 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             });
     }
 
-    private static IReadOnlyList<TRow> CapRows<TRow>(
-        IReadOnlyList<TRow> allRows,
-        int maxResults,
-        out int scanned,
-        out bool truncated) {
-        scanned = allRows.Count;
-        if (scanned <= maxResults) {
-            truncated = false;
-            return allRows;
-        }
-
-        truncated = true;
-        return allRows.Take(maxResults).ToArray();
-    }
-
     private static AdTrustResult CreateResult(
         string Mode,
         TrustRequestContext context,
@@ -376,7 +361,7 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         bool truncated,
         int scanned,
         Action<JsonObject> metaMutate) {
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return BuildAutoTableResponse(
             arguments: arguments,
             model: model,
             sourceRows: sourceRows,
@@ -384,10 +369,8 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             title: title,
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: metaMutate);
-        return response;
     }
 
     private static bool IsOneOf(string value, params string[] allowed) {

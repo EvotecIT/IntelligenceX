@@ -134,7 +134,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 SiteLinks: links,
                 ScheduleRows: scheduleRows);
 
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            return Task.FromResult(BuildAutoTableResponse(
                 arguments: arguments,
                 model: scheduleResult,
                 sourceRows: scheduleRows,
@@ -142,7 +142,6 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 title: "Active Directory: Site Link Schedules (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: truncatedScheduleRows,
-                response: out var scheduleResponse,
                 scanned: scannedScheduleRows,
                 metaMutate: meta => {
                     meta.Add("mode", "schedule");
@@ -153,13 +152,10 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                     if (!string.IsNullOrWhiteSpace(forestName)) {
                         meta.Add("forest_name", forestName);
                     }
-                });
-            return Task.FromResult(scheduleResponse);
+                }));
         }
 
-        var scanned = links.Count;
-        var rows = scanned > maxResults ? links.Take(maxResults).ToArray() : links;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(links, maxResults, out var scanned, out var truncated);
 
         var result = new AdSiteLinksResult(
             ForestName: forestName,
