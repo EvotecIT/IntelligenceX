@@ -24,4 +24,17 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         var timeout = MainWindow.ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
         Assert.Equal(TimeSpan.FromMilliseconds(expectedTimeoutMs), timeout);
     }
+
+    /// <summary>
+    /// Ensures model/profile sync is deferred only during startup flow telemetry capture.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ShouldDeferStartupModelProfileSync_ReturnsExpectedValue(
+        bool captureStartupPhaseTelemetry,
+        bool expected) {
+        var shouldDefer = MainWindow.ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry);
+        Assert.Equal(expected, shouldDefer);
+    }
 }
