@@ -147,12 +147,8 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
 
         var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var projectedDetails = details
-            .Where(detail => projectedDomains.Contains(detail.DomainName))
-            .ToArray();
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
+        var projectedDetails = FilterByProjectedSet(details, projectedDomains, static detail => detail.DomainName);
 
         var result = new AdLapsCoverageResult(
             DomainName: domainName,

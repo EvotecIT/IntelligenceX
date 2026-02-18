@@ -110,17 +110,9 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
             errors: errors,
             cancellationToken: cancellationToken);
 
-        var scanned = summaries.Count;
-        IReadOnlyList<DangerousExtendedRightsSummaryRow> projectedRows = scanned > maxResults
-            ? summaries.Take(maxResults).ToArray()
-            : summaries;
-        var truncated = scanned > projectedRows.Count;
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var projectedDetails = details
-            .Where(detail => projectedDomains.Contains(detail.DomainName))
-            .ToArray();
+        var projectedRows = CapRows(summaries, maxResults, out var scanned, out var truncated);
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
+        var projectedDetails = FilterByProjectedSet(details, projectedDomains, static detail => detail.DomainName);
 
         var result = new AdDangerousExtendedRightsResult(
             DomainName: domainName,

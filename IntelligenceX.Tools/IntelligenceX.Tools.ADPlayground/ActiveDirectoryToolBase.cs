@@ -192,6 +192,58 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Builds a projected key set from row values using case-insensitive matching.
+    /// </summary>
+    protected static HashSet<string> BuildProjectedSet<TRow>(
+        IReadOnlyList<TRow> rows,
+        Func<TRow, string?> keySelector) {
+        if (rows is null) {
+            throw new ArgumentNullException(nameof(rows));
+        }
+        if (keySelector is null) {
+            throw new ArgumentNullException(nameof(keySelector));
+        }
+
+        var projected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows) {
+            var key = keySelector(row);
+            if (!string.IsNullOrWhiteSpace(key)) {
+                projected.Add(key);
+            }
+        }
+
+        return projected;
+    }
+
+    /// <summary>
+    /// Filters details by a projected key set.
+    /// </summary>
+    protected static IReadOnlyList<TDetail> FilterByProjectedSet<TDetail>(
+        IReadOnlyList<TDetail> details,
+        IReadOnlySet<string> projectedKeys,
+        Func<TDetail, string?> keySelector) {
+        if (details is null) {
+            throw new ArgumentNullException(nameof(details));
+        }
+        if (projectedKeys is null) {
+            throw new ArgumentNullException(nameof(projectedKeys));
+        }
+        if (keySelector is null) {
+            throw new ArgumentNullException(nameof(keySelector));
+        }
+        if (details.Count == 0 || projectedKeys.Count == 0) {
+            return Array.Empty<TDetail>();
+        }
+
+        return details
+            .Where(detail => {
+                var key = keySelector(detail);
+                return !string.IsNullOrWhiteSpace(key) && projectedKeys.Contains(key);
+            })
+            .ToArray();
+    }
+
+    /// <summary>
     /// Builds filtered + capped policy-attribution rows using consistent configured-value semantics.
     /// </summary>
     protected static IReadOnlyList<PolicyAttribution> PreparePolicyAttributionRows(

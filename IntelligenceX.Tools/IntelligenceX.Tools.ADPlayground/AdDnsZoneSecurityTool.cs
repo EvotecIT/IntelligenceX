@@ -157,22 +157,14 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
             .Where(row => row.BroadWriteAceCount >= broadWriteMin)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<DnsZoneSecurityRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var projectedZones = projectedRows
-            .Select(static row => $"{row.DomainName}|{row.ZoneName}")
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var projectedOffending = offendingRows
-            .Where(row => projectedDomains.Contains(row.DomainName))
-            .Where(row => projectedZones.Contains($"{row.DomainName}|{row.ZoneName}"))
-            .ToArray();
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
+        var projectedZones = BuildProjectedSet(projectedRows, static row => $"{row.DomainName}|{row.ZoneName}");
+        var projectedOffending = FilterByProjectedSet(
+            FilterByProjectedSet(offendingRows, projectedDomains, static row => row.DomainName),
+            projectedZones,
+            static row => $"{row.DomainName}|{row.ZoneName}");
 
         var result = new AdDnsZoneSecurityResult(
             DomainName: domainName,
