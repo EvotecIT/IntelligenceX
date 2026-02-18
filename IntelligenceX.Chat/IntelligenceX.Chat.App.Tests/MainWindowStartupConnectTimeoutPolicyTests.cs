@@ -26,6 +26,51 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures startup-only connect budget is enabled exclusively for non-user startup flow connects.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, null)]
+    [InlineData(true, false, null)]
+    [InlineData(false, false, null)]
+    [InlineData(false, true, 4000)]
+    public void ResolveStartupConnectBudget_ReturnsExpectedBudget(
+        bool fromUserAction,
+        bool captureStartupPhaseTelemetry,
+        int? expectedTimeoutMs) {
+        var timeout = MainWindow.ResolveStartupConnectBudget(fromUserAction, captureStartupPhaseTelemetry);
+        var expected = expectedTimeoutMs.HasValue
+            ? TimeSpan.FromMilliseconds(expectedTimeoutMs.Value)
+            : (TimeSpan?)null;
+        Assert.Equal(expected, timeout);
+    }
+
+    /// <summary>
+    /// Ensures connect attempt timeout is capped by remaining startup budget, including exhaustion behavior.
+    /// </summary>
+    [Theory]
+    [InlineData(2000, null, 0, true, 2000)]
+    [InlineData(2000, 4000, 1000, true, 2000)]
+    [InlineData(6000, 4000, 1000, true, 3000)]
+    [InlineData(2000, 4000, 3900, true, 100)]
+    [InlineData(2000, 4000, 3950, false, 0)]
+    [InlineData(2000, 4000, 4000, false, 0)]
+    public void TryResolveStartupConnectAttemptTimeout_UsesBudgetCap(
+        int requestedTimeoutMs,
+        int? budgetMs,
+        int elapsedMs,
+        bool expectedResolved,
+        int expectedTimeoutMs) {
+        var resolved = MainWindow.TryResolveStartupConnectAttemptTimeout(
+            requestedTimeout: TimeSpan.FromMilliseconds(requestedTimeoutMs),
+            startupConnectBudget: budgetMs.HasValue ? TimeSpan.FromMilliseconds(budgetMs.Value) : null,
+            startupConnectElapsed: TimeSpan.FromMilliseconds(elapsedMs),
+            timeout: out var timeout);
+
+        Assert.Equal(expectedResolved, resolved);
+        Assert.Equal(TimeSpan.FromMilliseconds(expectedTimeoutMs), timeout);
+    }
+
+    /// <summary>
     /// Ensures model/profile sync is deferred only during startup flow telemetry capture.
     /// </summary>
     [Theory]
