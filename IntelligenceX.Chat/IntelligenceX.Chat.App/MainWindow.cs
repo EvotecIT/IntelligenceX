@@ -223,6 +223,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _startupWebViewBudgetCacheSync = new();
     private StartupWebViewBudgetCacheEntry _startupWebViewBudgetCache = StartupWebViewBudgetCacheEntry.Default;
     private int _startupWebViewBudgetExceededThisRun;
+    private int _serviceStagingCleanupInFlight;
 
     private ChatServiceClient? _client;
     private string? _threadId;
