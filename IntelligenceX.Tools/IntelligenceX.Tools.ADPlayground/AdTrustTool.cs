@@ -190,13 +190,13 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
                 invalidOperationErrorCode: "query_failed");
         }
 
-        var scanned = allIssues.Count;
-        var rows = scanned > context.MaxResults ? allIssues.Take(context.MaxResults).ToArray() : allIssues;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdTrustResult(
+        var rows = CapRows(allIssues, context.MaxResults, out var scanned, out var truncated);
+        var result = CreateResult(
             Mode: "communication_issues",
-            ForestName: context.ForestName,
+            context: context,
+            Scanned: scanned,
+            Truncated: truncated,
+            TotalFiltered: scanned,
             Recursive: false,
             SkipValidation: true,
             Status: "any",
@@ -205,13 +205,6 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             Impermeability: false,
             TrustType: "any",
             Direction: "any",
-            SummaryBy: "direction",
-            Scanned: scanned,
-            Truncated: truncated,
-            TotalFiltered: scanned,
-            Items: Array.Empty<TrustExplorer.Assessment>(),
-            SummaryRows: Array.Empty<TrustSummaryRow>(),
-            MatrixRows: Array.Empty<TrustSummaryMatrixRow>(),
             CommunicationIssues: rows);
 
         return BuildViewResponse(
@@ -235,29 +228,14 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         JsonObject? arguments,
         TrustRequestContext context,
         IReadOnlyList<TrustExplorer.Assessment> filtered) {
-        var scanned = filtered.Count;
-        var rows = scanned > context.MaxResults ? filtered.Take(context.MaxResults).ToArray() : filtered;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdTrustResult(
+        var rows = CapRows(filtered, context.MaxResults, out var scanned, out var truncated);
+        var result = CreateResult(
             Mode: "raw",
-            ForestName: context.ForestName,
-            Recursive: context.Recursive,
-            SkipValidation: context.SkipValidation,
-            Status: context.Status,
-            InactiveDays: context.InactiveDays,
-            OldProtocol: context.OldProtocol,
-            Impermeability: context.Impermeability,
-            TrustType: context.TrustType,
-            Direction: context.Direction,
-            SummaryBy: "direction",
+            context: context,
             Scanned: scanned,
             Truncated: truncated,
             TotalFiltered: scanned,
-            Items: rows,
-            SummaryRows: Array.Empty<TrustSummaryRow>(),
-            MatrixRows: Array.Empty<TrustSummaryMatrixRow>(),
-            CommunicationIssues: Array.Empty<TrustCommunicationIssue>());
+            Items: rows);
 
         return BuildViewResponse(
             arguments: arguments,
@@ -279,29 +257,15 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         string summaryBy,
         IReadOnlyList<TrustExplorer.Assessment> filtered) {
         var allRows = TrustExplorerFilter.GetSummaryBy(filtered, summaryBy.Equals("type", StringComparison.OrdinalIgnoreCase) ? "Type" : "Direction");
-        var scanned = allRows.Count;
-        var rows = scanned > context.MaxResults ? allRows.Take(context.MaxResults).ToArray() : allRows;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdTrustResult(
+        var rows = CapRows(allRows, context.MaxResults, out var scanned, out var truncated);
+        var result = CreateResult(
             Mode: "summary",
-            ForestName: context.ForestName,
-            Recursive: context.Recursive,
-            SkipValidation: context.SkipValidation,
-            Status: context.Status,
-            InactiveDays: context.InactiveDays,
-            OldProtocol: context.OldProtocol,
-            Impermeability: context.Impermeability,
-            TrustType: context.TrustType,
-            Direction: context.Direction,
+            context: context,
             SummaryBy: summaryBy,
             Scanned: scanned,
             Truncated: truncated,
             TotalFiltered: filtered.Count,
-            Items: Array.Empty<TrustExplorer.Assessment>(),
-            SummaryRows: rows,
-            MatrixRows: Array.Empty<TrustSummaryMatrixRow>(),
-            CommunicationIssues: Array.Empty<TrustCommunicationIssue>());
+            SummaryRows: rows);
 
         return BuildViewResponse(
             arguments: arguments,
@@ -324,29 +288,14 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         TrustRequestContext context,
         IReadOnlyList<TrustExplorer.Assessment> filtered) {
         var allRows = TrustExplorerFilter.GetSummaryMatrix(filtered);
-        var scanned = allRows.Count;
-        var rows = scanned > context.MaxResults ? allRows.Take(context.MaxResults).ToArray() : allRows;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdTrustResult(
+        var rows = CapRows(allRows, context.MaxResults, out var scanned, out var truncated);
+        var result = CreateResult(
             Mode: "summary_matrix",
-            ForestName: context.ForestName,
-            Recursive: context.Recursive,
-            SkipValidation: context.SkipValidation,
-            Status: context.Status,
-            InactiveDays: context.InactiveDays,
-            OldProtocol: context.OldProtocol,
-            Impermeability: context.Impermeability,
-            TrustType: context.TrustType,
-            Direction: context.Direction,
-            SummaryBy: "direction",
+            context: context,
             Scanned: scanned,
             Truncated: truncated,
             TotalFiltered: filtered.Count,
-            Items: Array.Empty<TrustExplorer.Assessment>(),
-            SummaryRows: Array.Empty<TrustSummaryRow>(),
-            MatrixRows: rows,
-            CommunicationIssues: Array.Empty<TrustCommunicationIssue>());
+            MatrixRows: rows);
 
         return BuildViewResponse(
             arguments: arguments,
@@ -361,6 +310,61 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("total_filtered", filtered.Count);
                 meta.Add("max_results", context.MaxResults);
             });
+    }
+
+    private static IReadOnlyList<TRow> CapRows<TRow>(
+        IReadOnlyList<TRow> allRows,
+        int maxResults,
+        out int scanned,
+        out bool truncated) {
+        scanned = allRows.Count;
+        if (scanned <= maxResults) {
+            truncated = false;
+            return allRows;
+        }
+
+        truncated = true;
+        return allRows.Take(maxResults).ToArray();
+    }
+
+    private static AdTrustResult CreateResult(
+        string Mode,
+        TrustRequestContext context,
+        int Scanned,
+        bool Truncated,
+        int TotalFiltered,
+        bool? Recursive = null,
+        bool? SkipValidation = null,
+        string? Status = null,
+        int? InactiveDays = null,
+        bool? OldProtocol = null,
+        bool? Impermeability = null,
+        string? TrustType = null,
+        string? Direction = null,
+        string? SummaryBy = null,
+        IReadOnlyList<TrustExplorer.Assessment>? Items = null,
+        IReadOnlyList<TrustSummaryRow>? SummaryRows = null,
+        IReadOnlyList<TrustSummaryMatrixRow>? MatrixRows = null,
+        IReadOnlyList<TrustCommunicationIssue>? CommunicationIssues = null) {
+        return new AdTrustResult(
+            Mode: Mode,
+            ForestName: context.ForestName,
+            Recursive: Recursive ?? context.Recursive,
+            SkipValidation: SkipValidation ?? context.SkipValidation,
+            Status: Status ?? context.Status,
+            InactiveDays: InactiveDays ?? context.InactiveDays,
+            OldProtocol: OldProtocol ?? context.OldProtocol,
+            Impermeability: Impermeability ?? context.Impermeability,
+            TrustType: TrustType ?? context.TrustType,
+            Direction: Direction ?? context.Direction,
+            SummaryBy: SummaryBy ?? "direction",
+            Scanned: Scanned,
+            Truncated: Truncated,
+            TotalFiltered: TotalFiltered,
+            Items: Items ?? Array.Empty<TrustExplorer.Assessment>(),
+            SummaryRows: SummaryRows ?? Array.Empty<TrustSummaryRow>(),
+            MatrixRows: MatrixRows ?? Array.Empty<TrustSummaryMatrixRow>(),
+            CommunicationIssues: CommunicationIssues ?? Array.Empty<TrustCommunicationIssue>());
     }
 
     private static string BuildViewResponse<TRow>(

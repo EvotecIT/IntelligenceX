@@ -72,31 +72,21 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             installedAfterUtc = parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
         }
 
-        var rows = new List<UpdateInfo>();
-        try {
-            rows.AddRange(Updates.GetInstalled(computerName));
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Installed updates query failed: {ex.Message}"));
-        }
-
-        var isLocalTarget = string.IsNullOrWhiteSpace(computerName)
-            || string.Equals(computerName, ".", StringComparison.Ordinal)
-            || string.Equals(target, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
-        var pendingIncluded = false;
-        if (includePendingLocal && isLocalTarget) {
-            try {
-                rows.AddRange(Updates.GetPending());
-                pendingIncluded = true;
-            } catch {
-                pendingIncluded = false;
-            }
+        if (!TryGetInstalledAndPendingUpdates(
+                computerName: computerName,
+                target: target,
+                includePendingLocal: includePendingLocal,
+                updates: out var rows,
+                pendingIncluded: out var pendingIncluded,
+                errorResponse: out var updateError)) {
+            return Task.FromResult(updateError!);
         }
 
         var filtered = rows
             .Where(x => string.IsNullOrWhiteSpace(titleContains)
                 || x.Title.Contains(titleContains, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(kbContains)
-                || (x.Kb?.Contains(kbContains, StringComparison.OrdinalIgnoreCase) ?? false))
+                || SystemPatchKbNormalization.MatchesContainsFilter(new[] { x.Kb, x.Title }, kbContains))
             .Where(x => !installedAfterUtc.HasValue
                 || (x.InstalledOn.HasValue && x.InstalledOn.Value.ToUniversalTime() >= installedAfterUtc.Value))
             .ToArray();
@@ -146,4 +136,3 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
