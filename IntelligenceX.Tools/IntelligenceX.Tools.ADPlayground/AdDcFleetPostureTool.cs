@@ -81,27 +81,23 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 2000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for DC fleet posture query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "DC fleet posture",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var summaryRows = new List<DcFleetPostureRow>(targetDomains.Length);
         var detailRows = new List<DcFleetPostureDomainDetails>(targetDomains.Length);
         var errors = new List<DcFleetPostureError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var view = FleetPostureService.Evaluate(domain, cancellationToken: cancellationToken);
                 summaryRows.Add(new DcFleetPostureRow(
                     DomainName: view.DomainName,
@@ -122,10 +118,10 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
                         ManagedBySet: view.ManagedBySet.Take(maxDetailRowsPerDomain).ToArray(),
                         NonAdministrativeOwners: view.NonAdministrativeOwners.Take(maxDetailRowsPerDomain).ToArray()));
                 }
-            } catch (Exception ex) {
-                errors.Add(new DcFleetPostureError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DcFleetPostureError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = summaryRows.Count;
         IReadOnlyList<DcFleetPostureRow> projectedRows = scanned > maxResults

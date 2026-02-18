@@ -84,26 +84,22 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
                 "domain_controller requires domain_name so audit and policy context can be resolved.");
         }
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for domain-controller-security query. Provide domain_name or ensure forest discovery is available.");
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "domain-controller-security",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return targetDomainError!;
         }
 
         var rows = new List<DomainControllerSecurityRow>(targetDomains.Length * 8);
         var errors = new List<DomainControllerSecurityError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        await RunPerTargetCollectionAsync(
+                targets: targetDomains,
+                collectAsync: async domain => {
                 var snapshot = string.IsNullOrWhiteSpace(domainController)
                     ? await DomainControllerSecurityService.GetSnapshotAsync(domain, cancellationToken).ConfigureAwait(false)
                     : await DomainControllerSecurityService.GetSnapshotForControllerAsync(domain, domainController!, cancellationToken).ConfigureAwait(false);
@@ -154,10 +150,10 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
                         MissingAdvancedAuditPolicy: missingAdvanced,
                         AnyFinding: anyFinding));
                 }
-            } catch (Exception ex) {
-                errors.Add(new DomainControllerSecurityError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DomainControllerSecurityError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var filtered = rows
             .Where(row => !insecureOnly || row.AnyFinding)

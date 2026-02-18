@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ADPlayground;
 using ADPlayground.Gpo;
 using ADPlayground.Helpers;
 using IntelligenceX.Json;
@@ -440,5 +441,99 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             MaxResults: ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults));
         errorResponse = null;
         return true;
+    }
+
+    /// <summary>
+    /// Resolves target domains from an explicit domain name or forest discovery.
+    /// </summary>
+    protected static bool TryResolveTargetDomains(
+        string? domainName,
+        string? forestName,
+        CancellationToken cancellationToken,
+        string queryName,
+        out string[] targetDomains,
+        out string? errorResponse) {
+        targetDomains = string.IsNullOrWhiteSpace(domainName)
+            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
+                .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .Select(static x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : new[] { domainName! };
+
+        if (targetDomains.Length > 0) {
+            errorResponse = null;
+            return true;
+        }
+
+        var name = string.IsNullOrWhiteSpace(queryName) ? "query" : queryName.Trim();
+        errorResponse = ToolResponse.Error(
+            "query_failed",
+            $"No domains resolved for {name} query. Provide domain_name or ensure forest discovery is available.");
+        return false;
+    }
+
+    /// <summary>
+    /// Executes per-target collection action with per-target exception mapping.
+    /// </summary>
+    protected static void RunPerTargetCollection<TTarget, TError>(
+        IEnumerable<TTarget> targets,
+        Action<TTarget> collect,
+        Func<TTarget, Exception, TError> errorFactory,
+        ICollection<TError> errors,
+        CancellationToken cancellationToken) {
+        if (targets is null) {
+            throw new ArgumentNullException(nameof(targets));
+        }
+        if (collect is null) {
+            throw new ArgumentNullException(nameof(collect));
+        }
+        if (errorFactory is null) {
+            throw new ArgumentNullException(nameof(errorFactory));
+        }
+        if (errors is null) {
+            throw new ArgumentNullException(nameof(errors));
+        }
+
+        foreach (var target in targets) {
+            cancellationToken.ThrowIfCancellationRequested();
+            try {
+                collect(target);
+            } catch (Exception ex) {
+                errors.Add(errorFactory(target, ex));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Executes per-target asynchronous collection action with per-target exception mapping.
+    /// </summary>
+    protected static async Task RunPerTargetCollectionAsync<TTarget, TError>(
+        IEnumerable<TTarget> targets,
+        Func<TTarget, Task> collectAsync,
+        Func<TTarget, Exception, TError> errorFactory,
+        ICollection<TError> errors,
+        CancellationToken cancellationToken) {
+        if (targets is null) {
+            throw new ArgumentNullException(nameof(targets));
+        }
+        if (collectAsync is null) {
+            throw new ArgumentNullException(nameof(collectAsync));
+        }
+        if (errorFactory is null) {
+            throw new ArgumentNullException(nameof(errorFactory));
+        }
+        if (errors is null) {
+            throw new ArgumentNullException(nameof(errors));
+        }
+
+        foreach (var target in targets) {
+            cancellationToken.ThrowIfCancellationRequested();
+            try {
+                await collectAsync(target).ConfigureAwait(false);
+            } catch (Exception ex) {
+                errors.Add(errorFactory(target, ex));
+            }
+        }
     }
 }

@@ -70,27 +70,23 @@ public sealed class AdShadowCredentialsRiskTool : ActiveDirectoryToolBase, ITool
         var maxFindingsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_findings_per_domain", 100, 1, Options.MaxResults);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for shadow credentials risk query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "shadow credentials risk",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var summaries = new List<ShadowCredentialsRiskSummaryRow>(targetDomains.Length);
         var details = new List<ShadowCredentialsRiskDetail>(targetDomains.Length);
         var errors = new List<ShadowCredentialsRiskError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var view = ShadowCredentialsRiskService.Evaluate(domain);
                 summaries.Add(new ShadowCredentialsRiskSummaryRow(
                     DomainName: view.DomainName,
@@ -100,10 +96,10 @@ public sealed class AdShadowCredentialsRiskTool : ActiveDirectoryToolBase, ITool
                     Findings: includeFindings
                         ? view.Findings.Take(maxFindingsPerDomain).ToArray()
                         : Array.Empty<ShadowCredentialsRiskService.Finding>()));
-            } catch (Exception ex) {
-                errors.Add(new ShadowCredentialsRiskError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new ShadowCredentialsRiskError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = summaries.Count;
         IReadOnlyList<ShadowCredentialsRiskSummaryRow> projectedRows = scanned > maxResults

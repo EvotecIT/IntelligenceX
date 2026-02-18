@@ -70,26 +70,22 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
         var identityContains = ToolArgs.GetOptionalTrimmed(arguments, "identity_contains");
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for DNS delegation query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "DNS delegation",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<DnsDelegationRow>(targetDomains.Length * 20);
         var errors = new List<DnsDelegationError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var snapshot = DnsDelegationService.GetSnapshot(domain);
                 foreach (var record in snapshot.Delegations) {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -110,10 +106,10 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
                         Sid: record.Sid,
                         Rights: record.Rights.ToString()));
                 }
-            } catch (Exception ex) {
-                errors.Add(new DnsDelegationError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DnsDelegationError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = rows.Count;
         IReadOnlyList<DnsDelegationRow> projectedRows = scanned > maxResults

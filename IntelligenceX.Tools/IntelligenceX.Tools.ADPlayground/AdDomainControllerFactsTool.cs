@@ -81,26 +81,22 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
         var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 3000, 300, 60000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for domain-controller-facts query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "domain-controller-facts",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<DomainControllerFactRow>(targetDomains.Length * 8);
         var errors = new List<DomainControllerFactsError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var facts = DomainControllerFactsService.GetFacts(domain, timeoutMs, additionalAttributes);
                 foreach (var fact in facts.Values.OrderBy(static x => x.Server, StringComparer.OrdinalIgnoreCase)) {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -129,10 +125,10 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
                         AdditionalAttributeCount: fact.Attributes.Count,
                         Attributes: attributes));
                 }
-            } catch (Exception ex) {
-                errors.Add(new DomainControllerFactsError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DomainControllerFactsError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = rows.Count;
         IReadOnlyList<DomainControllerFactRow> projectedRows = scanned > maxResults

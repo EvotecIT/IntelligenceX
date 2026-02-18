@@ -91,27 +91,23 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 5000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for registration posture query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "registration posture",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<RegistrationPostureRow>(targetDomains.Length);
         var details = new List<RegistrationPostureDetailRow>(targetDomains.Length * 3);
         var errors = new List<RegistrationPostureError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var domainDn = DomainHelper.DomainNameToDistinguishedName(domain);
                 var view = RegistrationPostureService.Evaluate(domain, domainDn);
 
@@ -134,10 +130,10 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
                         details.Add(MapDetail(view.DomainName, "missing_subnet", item));
                     }
                 }
-            } catch (Exception ex) {
-                errors.Add(new RegistrationPostureError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new RegistrationPostureError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !dnsFailedOnly || row.DnsResolveFailedCount > 0)

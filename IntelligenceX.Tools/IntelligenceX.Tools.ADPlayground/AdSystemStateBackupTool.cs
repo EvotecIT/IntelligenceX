@@ -74,26 +74,22 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
         var staleOnly = ToolArgs.GetBoolean(arguments, "stale_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for System State backup query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "System State backup",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<SystemStateBackupRow>(targetDomains.Length * 8);
         var errors = new List<SystemStateBackupError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var checker = new SystemStateBackupChecker(
                     thresholdDays: thresholdDays,
                     enumerateDcs: () => DomainHelper.EnumerateDomainControllers(domain, cancellationToken: cancellationToken));
@@ -112,10 +108,10 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
                         IsStale: isStale,
                         ThresholdDays: thresholdDays));
                 }
-            } catch (Exception ex) {
-                errors.Add(new SystemStateBackupError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new SystemStateBackupError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !missingOnly || row.IsMissing)

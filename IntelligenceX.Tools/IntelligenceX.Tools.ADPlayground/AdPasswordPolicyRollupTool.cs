@@ -81,27 +81,23 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
         var maxPsoRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_pso_rows_per_domain", 100, 1, Options.MaxResults);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for password policy rollup query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "password policy rollup",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var summaries = new List<PasswordPolicyRollupSummaryRow>(targetDomains.Length);
         var details = new List<PasswordPolicyRollupDetail>(targetDomains.Length);
         var errors = new List<PasswordPolicyRollupError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var rollup = PasswordPolicyRollupService.Evaluate(domain, psoMinLength, psoHistoryMin);
                 summaries.Add(new PasswordPolicyRollupSummaryRow(
                     DomainName: rollup.DomainName,
@@ -117,10 +113,10 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
                     Psos: includePsoDetails
                         ? rollup.Psos.Take(maxPsoRowsPerDomain).ToArray()
                         : Array.Empty<PasswordPolicyInfo>()));
-            } catch (Exception ex) {
-                errors.Add(new PasswordPolicyRollupError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new PasswordPolicyRollupError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = summaries.Count;
         IReadOnlyList<PasswordPolicyRollupSummaryRow> projectedRows = scanned > maxResults

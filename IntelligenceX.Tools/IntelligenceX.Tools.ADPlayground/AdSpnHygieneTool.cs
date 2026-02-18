@@ -90,27 +90,23 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
         var maxInvalidSpnSample = ToolArgs.GetCappedInt32(arguments, "max_invalid_spn_sample", 25, 1, 200);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for SPN hygiene query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "SPN hygiene",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var summaries = new List<SpnHygieneSummaryRow>(targetDomains.Length);
         var details = new List<SpnHygieneDetail>(targetDomains.Length);
         var errors = new List<SpnHygieneError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var snapshot = SpnHygieneService.Evaluate(
                     domainName: domain,
                     allowlist: allowlist,
@@ -143,10 +139,10 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
                     UnresolvableTargets: includeInvalidSpnSample
                         ? snapshot.UnresolvableTargets.Take(maxInvalidSpnSample).ToArray()
                         : Array.Empty<SpnHygieneService.SpnInvalidEntry>()));
-            } catch (Exception ex) {
-                errors.Add(new SpnHygieneError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new SpnHygieneError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = summaries.Count;
         IReadOnlyList<SpnHygieneSummaryRow> projectedRows = scanned > maxResults

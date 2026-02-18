@@ -73,34 +73,42 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
         var missingForwardersOnly = ToolArgs.GetBoolean(arguments, "missing_forwarders_only", defaultValue: false);
         var maxServers = ToolArgs.GetCappedInt32(arguments, "max_servers", 200, 1, 5000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var errors = new List<DnsServerConfigError>();
 
         var servers = new List<string>(maxServers);
         if (explicitServers.Count > 0) {
             servers.AddRange(explicitServers.Take(maxServers));
         } else {
-            var targetDomains = string.IsNullOrWhiteSpace(domainName)
-                ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Select(static x => x.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray()
-                : new[] { domainName! };
-
-            foreach (var domain in targetDomains) {
-                cancellationToken.ThrowIfCancellationRequested();
-                foreach (var dc in DomainHelper.EnumerateDomainControllers(domain, cancellationToken: cancellationToken)) {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (!servers.Contains(dc, StringComparer.OrdinalIgnoreCase)) {
-                        servers.Add(dc);
-                    }
-                    if (servers.Count >= maxServers) {
-                        break;
-                    }
-                }
-                if (servers.Count >= maxServers) {
-                    break;
-                }
+            if (!TryResolveTargetDomains(
+                    domainName: domainName,
+                    forestName: forestName,
+                    cancellationToken: cancellationToken,
+                    queryName: "DNS server configuration discovery",
+                    targetDomains: out var targetDomains,
+                    errorResponse: out _)) {
+                targetDomains = Array.Empty<string>();
             }
+
+            RunPerTargetCollection(
+                targets: targetDomains,
+                collect: domain => {
+                    if (servers.Count >= maxServers) {
+                        return;
+                    }
+
+                    foreach (var dc in DomainHelper.EnumerateDomainControllers(domain, cancellationToken: cancellationToken)) {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (!servers.Contains(dc, StringComparer.OrdinalIgnoreCase)) {
+                            servers.Add(dc);
+                        }
+                        if (servers.Count >= maxServers) {
+                            break;
+                        }
+                    }
+                },
+                errorFactory: (domain, ex) => new DnsServerConfigError(domain, ToCollectorErrorMessage(ex)),
+                errors: errors,
+                cancellationToken: cancellationToken);
         }
 
         if (servers.Count == 0) {
@@ -110,11 +118,9 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
         }
 
         var rows = new List<DnsServerConfigRow>(servers.Count);
-        var errors = new List<DnsServerConfigError>();
-
-        foreach (var server in servers) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: servers,
+            collect: server => {
                 var cfg = DnsServerConfigService.GetConfig(server);
                 var forwarders = cfg.Forwarders ?? Array.Empty<string>();
                 rows.Add(new DnsServerConfigRow(
@@ -123,10 +129,10 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
                     ForwarderCount: forwarders.Length,
                     Forwarders: forwarders,
                     MissingForwarders: forwarders.Length == 0));
-            } catch (Exception ex) {
-                errors.Add(new DnsServerConfigError(server, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (server, ex) => new DnsServerConfigError(server, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !recursionDisabledOnly || row.RecursionEnabled == false)

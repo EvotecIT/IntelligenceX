@@ -78,13 +78,13 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
         var errors = new List<LanManagerSettingsError>();
 
         if (explicitDomainControllers.Count > 0) {
-            foreach (var dc in explicitDomainControllers.Take(maxDomainControllers)) {
-                cancellationToken.ThrowIfCancellationRequested();
-                try {
+            await RunPerTargetCollectionAsync(
+                    targets: explicitDomainControllers.Take(maxDomainControllers),
+                    collectAsync: async dc => {
                     var status = await LanManagerSettingsService.GetStatusForControllerAsync(dc, cancellationToken).ConfigureAwait(false);
                     if (status is null) {
                         errors.Add(new LanManagerSettingsError(dc, "Controller status was unavailable."));
-                        continue;
+                        return;
                     }
 
                     rows.Add(new LanManagerSettingsRow(
@@ -94,28 +94,28 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
                         LmCompatibilityLevel: status.LmCompatibilityLevel,
                         AllowsLmHash: !status.NoLmHash,
                         LegacyNtlmAllowed: status.LmCompatibilityLevel.GetValueOrDefault() < 5));
-                } catch (Exception ex) {
-                    errors.Add(new LanManagerSettingsError(dc, ToCollectorErrorMessage(ex)));
-                }
-            }
+                },
+                errorFactory: (dc, ex) => new LanManagerSettingsError(dc, ToCollectorErrorMessage(ex)),
+                errors: errors,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         } else {
-            var targetDomains = string.IsNullOrWhiteSpace(domainName)
-                ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Select(static x => x.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray()
-                : new[] { domainName! };
-
-            if (targetDomains.Length == 0) {
-                return ToolResponse.Error(
-                    "query_failed",
-                    "No domains resolved for LAN Manager settings query. Provide domain_name/domain_controllers or ensure forest discovery is available.");
+            if (!TryResolveTargetDomains(
+                    domainName: domainName,
+                    forestName: forestName,
+                    cancellationToken: cancellationToken,
+                    queryName: "LAN Manager settings",
+                    targetDomains: out var targetDomains,
+                    errorResponse: out var targetDomainError)) {
+                return targetDomainError!;
             }
 
-            foreach (var domain in targetDomains) {
-                cancellationToken.ThrowIfCancellationRequested();
-                try {
+            await RunPerTargetCollectionAsync(
+                    targets: targetDomains,
+                    collectAsync: async domain => {
+                    if (rows.Count >= maxDomainControllers) {
+                        return;
+                    }
+
                     var snapshot = await LanManagerSettingsService.GetSnapshotAsync(domain, cancellationToken).ConfigureAwait(false);
                     foreach (var status in snapshot.DomainControllers) {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -130,13 +130,10 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
                             break;
                         }
                     }
-                    if (rows.Count >= maxDomainControllers) {
-                        break;
-                    }
-                } catch (Exception ex) {
-                    errors.Add(new LanManagerSettingsError(domain, ToCollectorErrorMessage(ex)));
-                }
-            }
+                },
+                errorFactory: (domain, ex) => new LanManagerSettingsError(domain, ToCollectorErrorMessage(ex)),
+                errors: errors,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         var filtered = rows
