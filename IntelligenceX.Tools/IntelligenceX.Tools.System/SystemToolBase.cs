@@ -13,7 +13,6 @@ namespace IntelligenceX.Tools.System;
 /// Base class for system tools with shared option validation.
 /// </summary>
 public abstract class SystemToolBase : ToolBase {
-    private const int MaxErrorMessageLength = 300;
     private static readonly string[] AllowedPatchSeverities = {
         "Critical",
         "Important",
@@ -61,28 +60,13 @@ public abstract class SystemToolBase : ToolBase {
         string defaultMessage = "System query failed.",
         string fallbackErrorCode = "query_failed",
         string invalidOperationErrorCode = "invalid_argument") {
-        if (exception is null) {
-            throw new ArgumentNullException(nameof(exception));
-        }
-
-        var safeDefault = string.IsNullOrWhiteSpace(defaultMessage)
-            ? "System query failed."
-            : defaultMessage.Trim();
-
-        return exception switch {
-            OperationCanceledException => ToolResponse.Error("cancelled", "Operation was cancelled.", isTransient: true),
-            ArgumentException => ToolResponse.Error("invalid_argument", SanitizeErrorMessage(exception.Message, safeDefault)),
-            InvalidOperationException => ToolResponse.Error(
-                string.IsNullOrWhiteSpace(invalidOperationErrorCode) ? "invalid_argument" : invalidOperationErrorCode,
-                SanitizeErrorMessage(exception.Message, safeDefault)),
-            FormatException => ToolResponse.Error("invalid_argument", SanitizeErrorMessage(exception.Message, safeDefault)),
-            UnauthorizedAccessException => ToolResponse.Error("access_denied", SanitizeErrorMessage(exception.Message, "Access denied while querying system data.")),
-            TimeoutException => ToolResponse.Error("timeout", SanitizeErrorMessage(exception.Message, "System query timed out."), isTransient: true),
-            NotSupportedException => ToolResponse.Error("not_supported", SanitizeErrorMessage(exception.Message, safeDefault)),
-            _ => ToolResponse.Error(
-                string.IsNullOrWhiteSpace(fallbackErrorCode) ? "query_failed" : fallbackErrorCode,
-                safeDefault)
-        };
+        return ToolExceptionMapper.ErrorFromException(
+            exception,
+            defaultMessage: string.IsNullOrWhiteSpace(defaultMessage) ? "System query failed." : defaultMessage,
+            unauthorizedMessage: "Access denied while querying system data.",
+            timeoutMessage: "System query timed out.",
+            fallbackErrorCode: fallbackErrorCode,
+            invalidOperationErrorCode: invalidOperationErrorCode);
     }
 
     /// <summary>
@@ -348,30 +332,5 @@ public abstract class SystemToolBase : ToolBase {
         return string.IsNullOrWhiteSpace(computerName)
                || string.Equals(computerName, ".", StringComparison.Ordinal)
                || string.Equals(target, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string SanitizeErrorMessage(string? message, string fallback) {
-        var safeFallback = string.IsNullOrWhiteSpace(fallback) ? "Operation failed." : fallback.Trim();
-        if (string.IsNullOrWhiteSpace(message)) {
-            return safeFallback;
-        }
-
-        var compact = message
-            .Replace('\r', ' ')
-            .Replace('\n', ' ')
-            .Replace('\t', ' ')
-            .Trim();
-
-        while (compact.Contains("  ", StringComparison.Ordinal)) {
-            compact = compact.Replace("  ", " ", StringComparison.Ordinal);
-        }
-
-        if (compact.Length == 0) {
-            return safeFallback;
-        }
-
-        return compact.Length <= MaxErrorMessageLength
-            ? compact
-            : compact.Substring(0, MaxErrorMessageLength).TrimEnd() + "...";
     }
 }
