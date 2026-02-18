@@ -139,6 +139,7 @@ public sealed partial class MainWindow : Window {
 
     private readonly DispatcherQueue _dispatcher;
     private readonly WebView2 _webView;
+    private readonly Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment?> _webViewEnvironmentTask;
     private delegate IntPtr WindowProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -458,6 +459,7 @@ public sealed partial class MainWindow : Window {
 
         _webView = new WebView2();
         Content = _webView;
+        _webViewEnvironmentTask = CreateWebViewEnvironmentAsync();
         ConfigureWindowPlacement();
 
         Activated += (_, args) => {
@@ -516,6 +518,18 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             Interlocked.Exchange(ref _startupFlowState, 0);
             StartupLog.Write("MainWindow.StartupFlow failed: " + ex);
+        }
+    }
+
+    private static async Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment?> CreateWebViewEnvironmentAsync() {
+        try {
+            StartupLog.Write("EnsureWebViewInitializedAsync.env_prewarm begin");
+            var environment = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync().AsTask().ConfigureAwait(false);
+            StartupLog.Write("EnsureWebViewInitializedAsync.env_prewarm done");
+            return environment;
+        } catch (Exception ex) {
+            StartupLog.Write("EnsureWebViewInitializedAsync.env_prewarm failed: " + ex.Message);
+            return null;
         }
     }
 
@@ -755,6 +769,7 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
+            var webViewEnvironment = await _webViewEnvironmentTask.ConfigureAwait(false);
             Task navReadyTask = Task.CompletedTask;
             await RunOnUiThreadAsync(async () => {
                 if (_webViewReady) {
@@ -765,7 +780,11 @@ public sealed partial class MainWindow : Window {
                 InstallWindowMessageHook();
                 RefreshGlobalWheelHookPolicy();
                 StartupLog.Write("EnsureWebViewInitializedAsync.ensure_core begin");
-                await _webView.EnsureCoreWebView2Async().AsTask().ConfigureAwait(false);
+                if (webViewEnvironment is null) {
+                    await _webView.EnsureCoreWebView2Async().AsTask().ConfigureAwait(false);
+                } else {
+                    await _webView.EnsureCoreWebView2Async(webViewEnvironment).AsTask().ConfigureAwait(false);
+                }
                 StartupLog.Write("EnsureWebViewInitializedAsync.ensure_core done");
                 _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
