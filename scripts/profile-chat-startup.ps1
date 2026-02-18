@@ -7,6 +7,11 @@ param(
     [int] $TimeoutSeconds = 75,
     [ValidateRange(0, 120)]
     [int] $PostStartupGraceSeconds = 0,
+    [switch] $SimulateSlowHardware,
+    [ValidateRange(1, 32)]
+    [int] $SimulatedSlowHardwareMaxLogicalCores = 2,
+    [ValidateSet('Idle', 'BelowNormal', 'Normal')]
+    [string] $SimulatedSlowHardwarePriorityClass = 'BelowNormal',
     [string] $ArchiveLogsDirectory,
     [string] $OutFile
 )
@@ -31,6 +36,29 @@ $startupLogPath = Join-Path $env:TEMP 'IntelligenceX.Chat\app-startup.log'
 $resolvedArchiveLogsDirectory = $null
 if (-not [string]::IsNullOrWhiteSpace($ArchiveLogsDirectory)) {
     $resolvedArchiveLogsDirectory = [System.IO.Path]::GetFullPath($ArchiveLogsDirectory)
+}
+
+function Resolve-SlowHardwareSimulationProfile {
+    if (-not $SimulateSlowHardware) {
+        return $null
+    }
+
+    $logicalCoreCount = [Environment]::ProcessorCount
+    $targetCoreCount = [Math]::Min($logicalCoreCount, [Math]::Max(1, $SimulatedSlowHardwareMaxLogicalCores))
+
+    [long]$affinityMaskValue = 0
+    for ($core = 0; $core -lt $targetCoreCount; $core++) {
+        $affinityMaskValue = $affinityMaskValue -bor ([long]1 -shl $core)
+    }
+
+    return [pscustomobject]@{
+        enabled             = $true
+        host_logical_cores  = $logicalCoreCount
+        target_logical_cores = $targetCoreCount
+        priority_class      = $SimulatedSlowHardwarePriorityClass
+        affinity_mask_value = $affinityMaskValue
+        affinity_mask       = ('0x{0:X}' -f $affinityMaskValue)
+    }
 }
 
 function Stop-ChatProcesses {
@@ -86,6 +114,15 @@ function Get-MarkerIntValue([string[]] $lines, [string] $marker) {
     return $null
 }
 
+$slowHardwareSimulationProfile = Resolve-SlowHardwareSimulationProfile
+if ($null -ne $slowHardwareSimulationProfile) {
+    Write-Host ("Slow hardware simulation enabled: target_cores={0}/{1}, priority={2}, affinity={3}" -f
+        $slowHardwareSimulationProfile.target_logical_cores,
+        $slowHardwareSimulationProfile.host_logical_cores,
+        $slowHardwareSimulationProfile.priority_class,
+        $slowHardwareSimulationProfile.affinity_mask)
+}
+
 $runResults = New-Object System.Collections.Generic.List[object]
 
 for ($i = 1; $i -le $Runs; $i++) {
@@ -95,6 +132,21 @@ for ($i = 1; $i -le $Runs; $i++) {
     }
 
     $process = Start-Process -FilePath $ExePath -PassThru
+    $slowHardwareSimulationApplied = $false
+    $slowHardwareSimulationError = $null
+    if ($null -ne $slowHardwareSimulationProfile) {
+        try {
+            if (-not $process.HasExited) {
+                $process.ProcessorAffinity = [IntPtr]$slowHardwareSimulationProfile.affinity_mask_value
+                $process.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::$SimulatedSlowHardwarePriorityClass
+                $slowHardwareSimulationApplied = $true
+            }
+        } catch {
+            $slowHardwareSimulationError = $_.Exception.Message
+            Write-Warning ("Slow hardware simulation was not applied on run {0}: {1}" -f $i, $slowHardwareSimulationError)
+        }
+    }
+
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $state = 'timeout'
 
@@ -152,6 +204,8 @@ for ($i = 1; $i -le $Runs; $i++) {
         startup_webview_eventual_done = [bool]($lines | Where-Object { $_ -match 'StartupPhase.WebView eventual_done' } | Select-Object -First 1)
         hello_deferred   = [bool]($lines | Where-Object { $_ -match 'StartupConnect.hello deferred' } | Select-Object -First 1)
         model_deferred   = [bool]($lines | Where-Object { $_ -match 'StartupConnect.model_profile_sync deferred' } | Select-Object -First 1)
+        slow_hardware_simulation_applied = $slowHardwareSimulationApplied
+        slow_hardware_simulation_error = $slowHardwareSimulationError
     }
 
     $runResults.Add([pscustomobject]$run)
@@ -190,6 +244,23 @@ $summary = [pscustomobject]@{
     startup_webview_eventual_done_runs = @($completedRuns | Where-Object { $_.startup_webview_eventual_done }).Count
     hello_deferred_runs  = @($completedRuns | Where-Object { $_.hello_deferred }).Count
     model_deferred_runs  = @($completedRuns | Where-Object { $_.model_deferred }).Count
+    slow_hardware_simulation_enabled = $null -ne $slowHardwareSimulationProfile
+    slow_hardware_simulation_applied_runs = @($completedRuns | Where-Object { $_.slow_hardware_simulation_applied }).Count
+    slow_hardware_simulation_failed_runs = @($completedRuns | Where-Object { -not [string]::IsNullOrWhiteSpace($_.slow_hardware_simulation_error) }).Count
+}
+
+$slowHardwareSimulationReport = if ($null -eq $slowHardwareSimulationProfile) {
+    [pscustomobject]@{
+        enabled = $false
+    }
+} else {
+    [pscustomobject]@{
+        enabled = $true
+        host_logical_cores = $slowHardwareSimulationProfile.host_logical_cores
+        target_logical_cores = $slowHardwareSimulationProfile.target_logical_cores
+        priority_class = $slowHardwareSimulationProfile.priority_class
+        affinity_mask = $slowHardwareSimulationProfile.affinity_mask
+    }
 }
 
 $report = [pscustomobject]@{
@@ -197,6 +268,7 @@ $report = [pscustomobject]@{
     exe_path      = $ExePath
     startup_log   = $startupLogPath
     archive_logs_directory = $resolvedArchiveLogsDirectory
+    simulation    = $slowHardwareSimulationReport
     summary       = $summary
     runs          = $runResults
 }
