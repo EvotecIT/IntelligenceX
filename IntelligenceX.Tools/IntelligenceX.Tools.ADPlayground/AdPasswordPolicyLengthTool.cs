@@ -87,7 +87,7 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
                         RecommendedMinimumLength = recommendedMinimumLength
                     }));
             } catch (Exception ex) {
-                errors.Add(new PasswordPolicyLengthError(domain, ex.Message));
+                errors.Add(new PasswordPolicyLengthError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

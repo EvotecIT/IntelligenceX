@@ -138,7 +138,7 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
                     }
                 }
             } catch (Exception ex) {
-                errors.Add(new DuplicateAccountsError(domain, ex.Message));
+                errors.Add(new DuplicateAccountsError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

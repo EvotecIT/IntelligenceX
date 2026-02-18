@@ -125,7 +125,7 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
                     NullSessionAllowed: nullSessionAllowed,
                     AnyInsecure: anonymousSamAllowed || nullSessionAllowed));
             } catch (Exception ex) {
-                errors.Add(new NullSessionPostureError(dc, ex.Message));
+                errors.Add(new NullSessionPostureError(dc, ToCollectorErrorMessage(ex)));
             }
         }
 

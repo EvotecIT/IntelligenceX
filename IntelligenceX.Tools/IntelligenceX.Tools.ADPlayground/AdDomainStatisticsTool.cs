@@ -108,7 +108,7 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
                     RecommendedFunctionalLevelLabel: snapshot.RecommendedFunctionalLevelLabel,
                     FunctionalLevelGap: snapshot.FunctionalLevelGap));
             } catch (Exception ex) {
-                errors.Add(new DomainStatisticsError(domain, ex.Message));
+                errors.Add(new DomainStatisticsError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

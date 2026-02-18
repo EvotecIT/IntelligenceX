@@ -152,7 +152,7 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
                     }
                 }
             } catch (Exception ex) {
-                errors.Add(new DnsZoneSecurityError(domain, ex.Message));
+                errors.Add(new DnsZoneSecurityError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

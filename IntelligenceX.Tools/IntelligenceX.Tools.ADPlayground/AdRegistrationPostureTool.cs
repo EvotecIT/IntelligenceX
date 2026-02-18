@@ -135,7 +135,7 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
                     }
                 }
             } catch (Exception ex) {
-                errors.Add(new RegistrationPostureError(domain, ex.Message));
+                errors.Add(new RegistrationPostureError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

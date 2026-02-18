@@ -80,7 +80,7 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
             try {
                 rows.Add(KrbtgtHealthService.GetSnapshot(domain, ageThresholdDays));
             } catch (Exception ex) {
-                errors.Add(new KrbtgtHealthError(domain, ex.Message));
+                errors.Add(new KrbtgtHealthError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

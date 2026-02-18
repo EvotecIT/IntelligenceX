@@ -15,6 +15,7 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private static readonly IReadOnlyList<string> AdditionalUnconfiguredAttributionValues = new[] { "Off" };
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_defender_asr_policy",
@@ -84,6 +85,7 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
             includeAttribution: includeAttribution,
             configuredAttributionOnly: configuredAttributionOnly,
             maxResults: maxResults,
+            additionalUnconfiguredValues: AdditionalUnconfiguredAttributionValues,
             scanned: out var scanned,
             truncated: out var truncated);
 
@@ -123,5 +125,4 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
 

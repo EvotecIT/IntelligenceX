@@ -113,7 +113,7 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
                         ThresholdDays: thresholdDays));
                 }
             } catch (Exception ex) {
-                errors.Add(new SystemStateBackupError(domain, ex.Message));
+                errors.Add(new SystemStateBackupError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

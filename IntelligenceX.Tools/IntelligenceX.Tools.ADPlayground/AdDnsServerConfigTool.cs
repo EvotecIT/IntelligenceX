@@ -124,7 +124,7 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
                     Forwarders: forwarders,
                     MissingForwarders: forwarders.Length == 0));
             } catch (Exception ex) {
-                errors.Add(new DnsServerConfigError(server, ex.Message));
+                errors.Add(new DnsServerConfigError(server, ToCollectorErrorMessage(ex)));
             }
         }
 

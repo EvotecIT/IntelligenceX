@@ -86,7 +86,9 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             .Where(x => string.IsNullOrWhiteSpace(titleContains)
                 || x.Title.Contains(titleContains, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(kbContains)
-                || SystemPatchKbNormalization.MatchesContainsFilter(new[] { x.Kb, x.Title }, kbContains))
+                || SystemPatchKbNormalization.MatchesContainsFilter(
+                    SystemPatchKbNormalization.NormalizeDistinct(new[] { x.Kb, x.Title }),
+                    kbContains))
             .Where(x => !installedAfterUtc.HasValue
                 || (x.InstalledOn.HasValue && x.InstalledOn.Value.ToUniversalTime() >= installedAfterUtc.Value))
             .ToArray();

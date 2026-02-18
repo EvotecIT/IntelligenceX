@@ -110,7 +110,7 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
                         ? view.Items.Take(maxFindingsPerDomain).ToArray()
                         : Array.Empty<DangerousExtendedRightsService.Finding>()));
             } catch (Exception ex) {
-                errors.Add(new DangerousExtendedRightsError(domain, ex.Message));
+                errors.Add(new DangerousExtendedRightsError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

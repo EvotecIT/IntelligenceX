@@ -144,7 +144,7 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
                         ? snapshot.UnresolvableTargets.Take(maxInvalidSpnSample).ToArray()
                         : Array.Empty<SpnHygieneService.SpnInvalidEntry>()));
             } catch (Exception ex) {
-                errors.Add(new SpnHygieneError(domain, ex.Message));
+                errors.Add(new SpnHygieneError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

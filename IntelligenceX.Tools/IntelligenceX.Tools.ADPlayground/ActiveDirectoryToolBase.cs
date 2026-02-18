@@ -189,10 +189,31 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         int maxResults,
         out int scanned,
         out bool truncated) {
+        return PreparePolicyAttributionRows(
+            attribution,
+            includeAttribution,
+            configuredAttributionOnly,
+            maxResults,
+            additionalUnconfiguredValues: null,
+            out scanned,
+            out truncated);
+    }
+
+    /// <summary>
+    /// Builds filtered + capped policy-attribution rows using consistent configured-value semantics.
+    /// </summary>
+    protected static IReadOnlyList<PolicyAttribution> PreparePolicyAttributionRows(
+        IReadOnlyList<PolicyAttribution> attribution,
+        bool includeAttribution,
+        bool configuredAttributionOnly,
+        int maxResults,
+        IReadOnlyList<string>? additionalUnconfiguredValues,
+        out int scanned,
+        out bool truncated) {
         var filtered = includeAttribution
             ? attribution
                 .Where(static row => row is not null)
-                .Where(row => !configuredAttributionOnly || IsConfiguredAttributionValue(row.Effective))
+                .Where(row => !configuredAttributionOnly || IsConfiguredAttributionValue(row.Effective, additionalUnconfiguredValues))
                 .ToArray()
             : Array.Empty<PolicyAttribution>();
 
@@ -224,9 +245,32 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     /// <summary>
     /// Determines whether policy-attribution effective value is configured.
     /// </summary>
-    protected static bool IsConfiguredAttributionValue(string? effectiveValue) {
-        return !string.IsNullOrWhiteSpace(effectiveValue)
-               && !effectiveValue.TrimStart().StartsWith("Not configured", StringComparison.OrdinalIgnoreCase);
+    protected static bool IsConfiguredAttributionValue(string? effectiveValue, IReadOnlyList<string>? additionalUnconfiguredValues = null) {
+        if (string.IsNullOrWhiteSpace(effectiveValue)) {
+            return false;
+        }
+
+        var trimmed = effectiveValue.Trim();
+        if (trimmed.StartsWith("Not configured", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (additionalUnconfiguredValues is null || additionalUnconfiguredValues.Count == 0) {
+            return true;
+        }
+
+        for (var i = 0; i < additionalUnconfiguredValues.Count; i++) {
+            var candidate = additionalUnconfiguredValues[i];
+            if (string.IsNullOrWhiteSpace(candidate)) {
+                continue;
+            }
+
+            if (string.Equals(trimmed, candidate.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -287,5 +331,12 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         return compact.Length <= MaxErrorMessageLength
             ? compact
             : compact.Substring(0, MaxErrorMessageLength).TrimEnd() + "...";
+    }
+
+    /// <summary>
+    /// Normalizes a collector exception message before adding it to per-domain/per-target error rows.
+    /// </summary>
+    protected static string ToCollectorErrorMessage(Exception? exception, string fallback = "Active Directory query failed.") {
+        return SanitizeErrorMessage(exception?.Message, fallback);
     }
 }

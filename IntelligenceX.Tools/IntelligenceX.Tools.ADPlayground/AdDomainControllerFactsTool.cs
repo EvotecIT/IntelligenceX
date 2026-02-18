@@ -130,7 +130,7 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
                         Attributes: attributes));
                 }
             } catch (Exception ex) {
-                errors.Add(new DomainControllerFactsError(domain, ex.Message));
+                errors.Add(new DomainControllerFactsError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

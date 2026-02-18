@@ -155,7 +155,7 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
                         AnyFinding: anyFinding));
                 }
             } catch (Exception ex) {
-                errors.Add(new DomainControllerSecurityError(domain, ex.Message));
+                errors.Add(new DomainControllerSecurityError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 
