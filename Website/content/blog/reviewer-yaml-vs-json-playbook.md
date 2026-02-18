@@ -24,6 +24,7 @@ And there is one precedence rule:
 `defaults -> reviewer.json -> environment/workflow inputs`
 
 In Actions, `with:` inputs become `INPUT_*` variables, so they can override JSON.
+These overrides are per key, not full-object replacement.
 
 ## Real Failure Pattern
 
@@ -90,7 +91,7 @@ When changing reviewer behavior:
 
 1. Change one source at a time.
 2. Open a small PR.
-3. Confirm `review / review` ran.
+3. Confirm the default reviewer check (`review / review`) ran.
 4. Check footer metadata for expected `Mode` and `Length`.
 5. If analysis is on, confirm policy/findings sections match expectations.
 

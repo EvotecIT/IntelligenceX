@@ -84,6 +84,9 @@ jobs:
     secrets: inherit
 ```
 
+`reviewer_source: source` is best when you want the latest workflow/reviewer behavior from source.
+Use `reviewer_source: release` when you prefer a packaged release artifact for tighter version control.
+
 ## Inputs → environment mapping (short)
 
 The reusable workflow maps `with:` inputs to environment variables the reviewer reads.

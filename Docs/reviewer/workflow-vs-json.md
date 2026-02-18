@@ -25,6 +25,7 @@ Reviewer settings are applied in this order:
 
 That means workflow inputs and env values override JSON values.
 Outside GitHub Actions, direct `REVIEW_*` (and provider-specific) environment variables have the same override effect.
+Overrides are applied per key (not as a full-object replacement), so only explicitly supplied keys win.
 
 ## What Belongs Where
 
