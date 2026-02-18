@@ -249,4 +249,27 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("<strong>Replication + DC health snapshot</strong>", html);
         Assert.DoesNotContain("**", html);
     }
+
+    /// <summary>
+    /// Ensures display HTML repairs malformed AD comparison bullets and nested strong markers.
+    /// </summary>
+    [Fact]
+    public void Format_RepairsAdComparisonBulletArtifactsForDisplayHtml() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 18, 19, 3, 10, DateTimeKind.Local);
+        var text = "-AD1 starkes Muster\n-** AD2** eher Secure-Channel\n- Signal **AD1 has very high `7034/7023` volume, mostly from **Service Control Manager**.**";
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("AD1 starkes Muster", html);
+        Assert.Contains("<strong>AD2</strong> eher Secure-Channel", html);
+        Assert.Contains("Signal", html);
+        Assert.Contains("7034/7023", html);
+        Assert.Contains("from Service Control Manager.", html);
+        Assert.DoesNotContain("-AD1", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("from **Service", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("**.**", html, StringComparison.Ordinal);
+    }
 }

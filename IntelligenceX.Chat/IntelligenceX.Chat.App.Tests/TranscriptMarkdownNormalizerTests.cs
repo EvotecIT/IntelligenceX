@@ -210,4 +210,98 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         Assert.Equal(text, normalized);
     }
+
+    /// <summary>
+    /// Ensures malformed bullet spacing at line start is normalized for transcript readability.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FixesLineStartBulletSpacingArtifacts() {
+        var text = "-AD1 starkes Muster\n-** AD2** eher Secure-Channel";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- AD1 starkes Muster\n- **AD2** eher Secure-Channel", normalized);
+    }
+
+    /// <summary>
+    /// Ensures nested strong markers inside signal bullets are flattened into one strong span.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FlattensNestedStrongMarkersInsideSignalBullets() {
+        var text = "- Signal **AD1 has very high `7034/7023` volume, mostly from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- Signal **AD1 has very high `7034/7023` volume, mostly from Service Control Manager.**", normalized);
+        Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures dash-prefixed command flags and numeric literals are not rewritten as malformed list bullets.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotRewriteDashPrefixedFlagsOrNumbers() {
+        var text = "-X POST\n-1 means one\n-k keepalive";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures signal-line cleanup preserves literal double-asterisk tokens inside inline code spans.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesLiteralDoubleAsterisksInsideSignalCodeSpan() {
+        var text = "- Signal **pattern `a**b` seen, mostly from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("`a**b`", normalized, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+        Assert.Equal("- Signal **pattern `a**b` seen, mostly from Service Control Manager.**", normalized);
+    }
+
+    /// <summary>
+    /// Ensures unmatched inline-code tails are preserved and do not get corrupted by strong-span flattening.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesUnmatchedInlineCodeTailInSignalBullets() {
+        var text = "- Signal **pattern `a**b seen, mostly from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("`a**b seen, mostly from **Service Control Manager**.**", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures placeholder-like user content is preserved when inline-code spans are protected/restored.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesPlaceholderLikeUserContent() {
+        var sentinel = "\u001FIXCODE0\u001E";
+        var text = "- Signal **prefix " + sentinel + " and `a**b` from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains(sentinel, normalized, System.StringComparison.Ordinal);
+        Assert.Contains("`a**b`", normalized, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures repeated normalization runs remain stable once malformed transcript artifacts are repaired.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_IsIdempotentForSignalAndBulletArtifacts() {
+        var text =
+            "-AD1 starkes Muster\n"
+            + "-** AD2** eher Secure-Channel\n"
+            + "- Signal **pattern `a**b` seen, mostly from **Service Control Manager**.**";
+
+        var once = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        var twice = TranscriptMarkdownNormalizer.NormalizeForRendering(once);
+
+        Assert.Equal(once, twice);
+    }
 }
