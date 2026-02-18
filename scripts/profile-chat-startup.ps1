@@ -115,6 +115,132 @@ function Get-MarkerIntValue([string[]] $lines, [string] $marker) {
     return $null
 }
 
+function Parse-NullableInt([string] $value) {
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
+
+    $parsed = 0
+    if ([int]::TryParse($value, [ref]$parsed)) {
+        return $parsed
+    }
+
+    return $null
+}
+
+function Get-OrCreate-ConnectAttemptRecord([hashtable] $attemptMap, [System.Collections.Generic.List[string]] $attemptOrder, [string] $phase, [int] $attempt) {
+    $key = $phase + '|' + $attempt
+    if (-not $attemptMap.ContainsKey($key)) {
+        $attemptMap[$key] = [ordered]@{
+            phase               = $phase
+            attempt             = $attempt
+            status              = $null
+            requested_timeout_ms = $null
+            timeout_ms          = $null
+            hard_timeout_ms     = $null
+            budget_remaining_ms = $null
+            elapsed_ms          = $null
+            error_type          = $null
+            error               = $null
+            guardrail           = $null
+            outlier             = $false
+        }
+        $attemptOrder.Add($key) | Out-Null
+    }
+
+    return $attemptMap[$key]
+}
+
+function Parse-StartupConnectAttemptDiagnostics([string[]] $lines) {
+    $attemptMap = @{}
+    $attemptOrder = New-Object System.Collections.Generic.List[string]
+    $attemptOutlierCount = 0
+    $totalOutlierCount = 0
+    $guardrailAbortCount = 0
+    $timeoutFailureCount = 0
+    $ensureSidecarElapsedMs = $null
+
+    foreach ($line in $lines) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        if ($line -match 'StartupConnect\.ensure_sidecar elapsed_ms=(?<elapsed>\d+)') {
+            $ensureSidecarElapsedMs = [int]$Matches['elapsed']
+            continue
+        }
+
+        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry)|ensure_sidecar)\s+(?:attempt=(?<attempt>\d+)\s+)?outlier elapsed_ms=(?<elapsed>\d+)\s+threshold_ms=(?<threshold>\d+)') {
+            $totalOutlierCount++
+            $phase = $Matches['phase']
+            if ($phase.StartsWith('pipe_connect.', [StringComparison]::Ordinal)) {
+                $attemptOutlierCount++
+                if (-not [string]::IsNullOrWhiteSpace($Matches['attempt'])) {
+                    $attempt = [int]$Matches['attempt']
+                    $attemptRecord = Get-OrCreate-ConnectAttemptRecord $attemptMap $attemptOrder $phase $attempt
+                    $attemptRecord.outlier = $true
+                }
+            }
+            continue
+        }
+
+        if ($line -match 'StartupConnect\.pipe_connect\.retry attempt=(?<attempt>\d+) guardrail=(?<guardrail>[a-zA-Z0-9_\-]+)') {
+            $attempt = [int]$Matches['attempt']
+            $attemptRecord = Get-OrCreate-ConnectAttemptRecord $attemptMap $attemptOrder 'pipe_connect.retry' $attempt
+            $attemptRecord.guardrail = $Matches['guardrail']
+            if ($attemptRecord.guardrail -eq 'abort_after_timeout') {
+                $guardrailAbortCount++
+            }
+            continue
+        }
+
+        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry)) attempt=(?<attempt>\d+) start requested_timeout_ms=(?<requested>\d+) timeout_ms=(?<timeout>\d+) hard_timeout_ms=(?<hard>\d+) budget_remaining_ms=(?<budget>[a-zA-Z0-9_\-]+)') {
+            $phase = $Matches['phase']
+            $attempt = [int]$Matches['attempt']
+            $attemptRecord = Get-OrCreate-ConnectAttemptRecord $attemptMap $attemptOrder $phase $attempt
+            $attemptRecord.requested_timeout_ms = [int]$Matches['requested']
+            $attemptRecord.timeout_ms = [int]$Matches['timeout']
+            $attemptRecord.hard_timeout_ms = [int]$Matches['hard']
+            $attemptRecord.budget_remaining_ms = Parse-NullableInt $Matches['budget']
+            continue
+        }
+
+        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry)) attempt=(?<attempt>\d+) (?<status>success|failed) elapsed_ms=(?<elapsed>\d+)(?: error_type=(?<errorType>\S+))?(?: error=(?<error>.*))?') {
+            $phase = $Matches['phase']
+            $attempt = [int]$Matches['attempt']
+            $attemptRecord = Get-OrCreate-ConnectAttemptRecord $attemptMap $attemptOrder $phase $attempt
+            $attemptRecord.status = $Matches['status']
+            $attemptRecord.elapsed_ms = [int]$Matches['elapsed']
+            $attemptRecord.error_type = if ([string]::IsNullOrWhiteSpace($Matches['errorType'])) { $null } else { $Matches['errorType'] }
+            $attemptRecord.error = if ([string]::IsNullOrWhiteSpace($Matches['error'])) { $null } else { $Matches['error'] }
+
+            $isTimeoutFailure = $attemptRecord.status -eq 'failed' -and (
+                $attemptRecord.error_type -eq 'TimeoutException' -or
+                $attemptRecord.error_type -eq 'OperationCanceledException' -or
+                ($attemptRecord.error -is [string] -and $attemptRecord.error.Contains('Timed out', [StringComparison]::OrdinalIgnoreCase))
+            )
+            if ($isTimeoutFailure) {
+                $timeoutFailureCount++
+            }
+            continue
+        }
+    }
+
+    $attempts = New-Object System.Collections.Generic.List[object]
+    foreach ($key in $attemptOrder) {
+        $attempts.Add([pscustomobject]$attemptMap[$key])
+    }
+
+    return [pscustomobject]@{
+        attempts                = $attempts
+        attempt_outlier_count   = $attemptOutlierCount
+        total_outlier_count     = $totalOutlierCount
+        ensure_sidecar_elapsed_ms = $ensureSidecarElapsedMs
+        guardrail_abort_count   = $guardrailAbortCount
+        timeout_failure_count   = $timeoutFailureCount
+    }
+}
+
 $slowHardwareSimulationProfile = Resolve-SlowHardwareSimulationProfile
 if ($null -ne $slowHardwareSimulationProfile) {
     Write-Host ("Slow hardware simulation enabled: target_cores={0}/{1}, priority={2}, affinity={3}" -f
@@ -185,6 +311,7 @@ for ($i = 1; $i -le $Runs; $i++) {
         $archivedStartupLogPath = Join-Path $resolvedArchiveLogsDirectory ("run-{0:D2}-{1}.log" -f $i, $state)
         Copy-Item -Path $startupLogPath -Destination $archivedStartupLogPath -Force
     }
+    $connectAttemptDiagnostics = Parse-StartupConnectAttemptDiagnostics $lines
 
     $run = [ordered]@{
         run              = $i
@@ -205,6 +332,14 @@ for ($i = 1; $i -le $Runs; $i++) {
         startup_webview_eventual_done = [bool]($lines | Where-Object { $_ -match 'StartupPhase.WebView eventual_done' } | Select-Object -First 1)
         hello_deferred   = [bool]($lines | Where-Object { $_ -match 'StartupConnect.hello deferred' } | Select-Object -First 1)
         model_deferred   = [bool]($lines | Where-Object { $_ -match 'StartupConnect.model_profile_sync deferred' } | Select-Object -First 1)
+        startup_connect_attempt_count = $connectAttemptDiagnostics.attempts.Count
+        startup_connect_attempt_avg_elapsed_ms = Get-Average ($connectAttemptDiagnostics.attempts | ForEach-Object { $_.elapsed_ms })
+        startup_connect_attempt_outlier_count = $connectAttemptDiagnostics.attempt_outlier_count
+        startup_connect_outlier_count = $connectAttemptDiagnostics.total_outlier_count
+        startup_connect_ensure_sidecar_elapsed_ms = $connectAttemptDiagnostics.ensure_sidecar_elapsed_ms
+        startup_connect_guardrail_abort_count = $connectAttemptDiagnostics.guardrail_abort_count
+        startup_connect_timeout_failure_count = $connectAttemptDiagnostics.timeout_failure_count
+        startup_connect_attempts = $connectAttemptDiagnostics.attempts
         slow_hardware_simulation_applied = $slowHardwareSimulationApplied
         slow_hardware_simulation_error = $slowHardwareSimulationError
     }
@@ -240,6 +375,17 @@ $summary = [pscustomobject]@{
     avg_warm_webview_env_prewarm_ms = Get-Average ($warmRuns | ForEach-Object { $_.webview_env_prewarm_ms })
     avg_warm_connect_ms  = Get-Average ($warmRuns | ForEach-Object { $_.connect_ms })
     avg_warm_hello_ms    = Get-Average ($warmRuns | ForEach-Object { $_.hello_ms })
+    avg_startup_connect_attempt_count = Get-Average ($completedRuns | ForEach-Object { $_.startup_connect_attempt_count })
+    avg_startup_connect_attempt_avg_elapsed_ms = Get-Average ($completedRuns | ForEach-Object { $_.startup_connect_attempt_avg_elapsed_ms })
+    avg_startup_connect_ensure_sidecar_elapsed_ms = Get-Average ($completedRuns | ForEach-Object { $_.startup_connect_ensure_sidecar_elapsed_ms })
+    startup_connect_attempt_outlier_runs = @($completedRuns | Where-Object { $_.startup_connect_attempt_outlier_count -gt 0 }).Count
+    startup_connect_attempt_outlier_total = [int](($completedRuns | Measure-Object -Property startup_connect_attempt_outlier_count -Sum).Sum)
+    startup_connect_outlier_runs = @($completedRuns | Where-Object { $_.startup_connect_outlier_count -gt 0 }).Count
+    startup_connect_outlier_total = [int](($completedRuns | Measure-Object -Property startup_connect_outlier_count -Sum).Sum)
+    startup_connect_guardrail_abort_runs = @($completedRuns | Where-Object { $_.startup_connect_guardrail_abort_count -gt 0 }).Count
+    startup_connect_guardrail_abort_total = [int](($completedRuns | Measure-Object -Property startup_connect_guardrail_abort_count -Sum).Sum)
+    startup_connect_timeout_failure_runs = @($completedRuns | Where-Object { $_.startup_connect_timeout_failure_count -gt 0 }).Count
+    startup_connect_timeout_failure_total = [int](($completedRuns | Measure-Object -Property startup_connect_timeout_failure_count -Sum).Sum)
     startup_webview_budget_exhausted_runs = @($completedRuns | Where-Object { $_.startup_webview_budget_exhausted }).Count
     startup_webview_deferred_runs = @($completedRuns | Where-Object { $_.startup_webview_deferred }).Count
     startup_webview_eventual_done_runs = @($completedRuns | Where-Object { $_.startup_webview_eventual_done }).Count
