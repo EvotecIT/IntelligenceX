@@ -40,19 +40,19 @@ function Extract-Section([string] $Content, [string] $SectionName) {
 }
 
 function Test-ReviewerConfigSkippedNoChanges([string] $Content) {
-    $lines = $Content -split "`r?`n"
-    $summaryLine = $lines |
-        Where-Object { $_ -match "(?i)^\s*-\s*File:\s+\.intelligencex[\\/]+reviewer\.json\b" } |
-        Select-Object -First 1
-    if (-not [string]::IsNullOrWhiteSpace($summaryLine)) {
-        return ($summaryLine -match "(?i)\bskip\b" -and $summaryLine -match "(?i)\bno\s*changes?\b")
-    }
-
-    $fallbackLine = [regex]::Match($Content, "(?is)File:\s+\.intelligencex[\\/]+reviewer\.json\b[^\r\n]*")
-    if (-not $fallbackLine.Success) {
+    $summaryLine = [regex]::Match(
+        $Content,
+        "(?is)File:\s+\.intelligencex[\\/]+reviewer\.json\b(?<suffix>[^\r\n]*)"
+    )
+    if (-not $summaryLine.Success) {
         return $false
     }
-    return ($fallbackLine.Value -match "(?i)\bskip\b" -and $fallbackLine.Value -match "(?i)\bno\s*changes?\b")
+
+    $suffix = $summaryLine.Groups["suffix"].Value
+    return (
+        ($suffix -match "(?i)\b(skip|unchanged)\b") -or
+        ($suffix -match "(?i)\bno\s*changes?\b")
+    )
 }
 
 if ([string]::IsNullOrWhiteSpace($Repo)) {
