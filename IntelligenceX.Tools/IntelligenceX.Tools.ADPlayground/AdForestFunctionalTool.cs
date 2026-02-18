@@ -89,9 +89,9 @@ public sealed class AdForestFunctionalTool : ActiveDirectoryToolBase, ITool {
                     .ToArray();
             }
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                $"Forest functional posture query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(
+                ex,
+                defaultMessage: "Forest functional posture query failed."));
         }
 
         var summaryRow = new ForestFunctionalSummaryRow(

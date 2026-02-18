@@ -51,9 +51,10 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
                 defaultBaseDn: ToolArgs.NormalizeOptional(Options.DefaultSearchBaseDn),
                 cancellationToken: cancellationToken);
         } catch (Exception ex) {
+            var message = SanitizeErrorMessage(ex.Message, "AD context discovery failed.");
             return Task.FromResult(ToolResponse.Error(
                 "not_configured",
-                $"AD context discovery failed: {ex.Message}",
+                message,
                 hints: new[] {
                     "Try providing domain_controller (FQDN) and/or search_base_dn (DN).",
                     "Use ad_domain_info to validate RootDSE connectivity."
@@ -64,9 +65,10 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
         try {
             info = DomainInfoService.Query(context.DomainController, cancellationToken);
         } catch (Exception ex) {
+            var message = SanitizeErrorMessage(ex.Message, "AD RootDSE query failed after context discovery.");
             return Task.FromResult(ToolResponse.Error(
                 "not_configured",
-                $"AD RootDSE query failed after context discovery: {ex.Message}",
+                message,
                 hints: new[] {
                     "Verify LDAP connectivity to the discovered domain controller.",
                     "Provide domain_controller explicitly if auto-discovery chose an unreachable endpoint."

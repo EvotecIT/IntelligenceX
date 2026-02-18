@@ -75,9 +75,9 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
             snapshot = DsHeuristicsService.GetSnapshot(forestName);
             details = DsHeuristicsService.Decode(snapshot.Raw);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                $"dsHeuristics query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(
+                ex,
+                defaultMessage: "dsHeuristics query failed."));
         }
 
         var summary = new DsHeuristicsSummaryRow(

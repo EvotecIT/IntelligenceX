@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
@@ -227,6 +228,25 @@ public class SourceGuardrailTests {
                 foreach (var banned in bannedSnippets) {
                     Assert.DoesNotContain(banned, source);
                 }
+            }
+        }
+    }
+
+    [Fact]
+    public void ActiveDirectoryTools_ShouldNotLeakRawExceptionMessagesInToolErrors() {
+        var repoRoot = FindRepoRoot();
+        var folder = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground");
+        var files = Directory.EnumerateFiles(folder, "*Tool.cs", SearchOption.TopDirectoryOnly);
+        var errorCallPattern = new Regex(
+            @"ToolResponse\.Error\([\s\S]*?\);",
+            RegexOptions.CultureInvariant);
+
+        foreach (var file in files) {
+            var source = File.ReadAllText(file);
+            foreach (Match match in errorCallPattern.Matches(source)) {
+                Assert.True(
+                    !match.Value.Contains("ex.Message", StringComparison.Ordinal),
+                    $"Tool should not pass raw ex.Message into ToolResponse.Error: {Path.GetFileName(file)}");
             }
         }
     }
