@@ -80,12 +80,12 @@ jobs:
       review_config_path: .intelligencex/reviewer.json
       mode: hybrid
       length: medium
-      style: direct
     secrets: inherit
 ```
 
 `reviewer_source: source` is best when you want the latest workflow/reviewer behavior from source.
 Use `reviewer_source: release` when you prefer a packaged release artifact for tighter version control.
+Use `style` (review tone/style profile) and `output_style` (rendering preset) as optional inputs when needed.
 
 ## Inputs → environment mapping (short)
 
