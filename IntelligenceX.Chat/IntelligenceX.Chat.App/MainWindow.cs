@@ -70,6 +70,19 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
+    private const int StartupWebViewBudgetFastEnsureThresholdMs = 1200;
+    private const int StartupWebViewBudgetMediumEnsureThresholdMs = 2000;
+    private const int StartupWebViewBudgetSlowEnsureThresholdMs = 3000;
+    private const int StartupWebViewBudgetFastMs = 2200;
+    private const int StartupWebViewBudgetMediumMs = 2800;
+    private const int StartupWebViewBudgetSlowMs = 3400;
+    private const int StartupWebViewBudgetMinimumMs = 2000;
+    private const int StartupWebViewBudgetAdaptiveHeadroomMs = 1100;
+    private const int StartupWebViewBudgetAdaptiveMinStableCompletions = 2;
+    private const int StartupWebViewBudgetAdaptiveCooldownRunsAfterExhaustion = 2;
+    private const int StartupWebViewBudgetAdaptiveMaxStableCompletions = 8;
+    private const int StartupWebViewBudgetMaxConsecutiveExhaustions = 8;
+    private const string StartupWebViewBudgetCacheFileName = "startup-webview-budget-cache-v1.json";
     private static readonly TimeSpan[] StartupConnectRetryTimeouts = {
         TimeSpan.FromSeconds(6),
         TimeSpan.FromSeconds(10),
@@ -192,6 +205,9 @@ public sealed partial class MainWindow : Window {
     private bool _webViewReady;
     private bool _startupInitialized;
     private int _startupFlowState;
+    private readonly object _startupWebViewBudgetCacheSync = new();
+    private StartupWebViewBudgetCacheEntry _startupWebViewBudgetCache = StartupWebViewBudgetCacheEntry.Default;
+    private int _startupWebViewBudgetExceededThisRun;
 
     private ChatServiceClient? _client;
     private string? _threadId;
@@ -460,6 +476,7 @@ public sealed partial class MainWindow : Window {
         _webView = new WebView2();
         Content = _webView;
         _webViewEnvironmentTask = CreateWebViewEnvironmentAsync();
+        _startupWebViewBudgetCache = LoadStartupWebViewBudgetCache();
         ConfigureWindowPlacement();
 
         Activated += (_, args) => {
@@ -492,15 +509,35 @@ public sealed partial class MainWindow : Window {
 
     private async Task RunStartupFlowAsync() {
         try {
+            Interlocked.Exchange(ref _startupWebViewBudgetExceededThisRun, 0);
             StartupLog.Write("MainWindow.StartupFlow begin");
             StartupLog.Write("StartupPhase.WebView begin");
-            var startupWebViewBudget = ResolveStartupWebViewBudget(Volatile.Read(ref _startupFlowState) == 1);
+            var startupWebViewBudgetCache = SnapshotStartupWebViewBudgetCache();
+            var startupWebViewBudget = ResolveStartupWebViewBudget(
+                captureStartupPhaseTelemetry: Volatile.Read(ref _startupFlowState) == 1,
+                lastEnsureWebViewMs: startupWebViewBudgetCache.LastEnsureWebViewMs,
+                consecutiveBudgetExhaustions: startupWebViewBudgetCache.ConsecutiveBudgetExhaustions,
+                consecutiveStableCompletions: startupWebViewBudgetCache.ConsecutiveStableCompletions,
+                adaptiveCooldownRunsRemaining: startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining);
+            if (startupWebViewBudget.HasValue) {
+                StartupLog.Write("StartupPhase.WebView budget_ms=" + Math.Round(startupWebViewBudget.Value.TotalMilliseconds).ToString(CultureInfo.InvariantCulture));
+                StartupLog.Write(
+                    "StartupPhase.WebView budget_policy last_ensure_ms="
+                    + (startupWebViewBudgetCache.LastEnsureWebViewMs?.ToString(CultureInfo.InvariantCulture) ?? "null")
+                    + " exhausted_count="
+                    + startupWebViewBudgetCache.ConsecutiveBudgetExhaustions.ToString(CultureInfo.InvariantCulture)
+                    + " stable_count="
+                    + startupWebViewBudgetCache.ConsecutiveStableCompletions.ToString(CultureInfo.InvariantCulture)
+                    + " cooldown_runs="
+                    + startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining.ToString(CultureInfo.InvariantCulture));
+            }
             var webViewInitializationTask = EnsureWebViewInitializedAsync();
             if (await TryAwaitStartupWebViewWithinBudgetAsync(webViewInitializationTask, startupWebViewBudget).ConfigureAwait(false)) {
                 StartupLog.Write("StartupPhase.WebView done");
             } else {
                 StartupLog.Write("StartupPhase.WebView budget_exhausted");
                 StartupLog.Write("StartupPhase.WebView deferred");
+                MarkStartupWebViewBudgetExhausted();
                 ObserveDeferredStartupWebViewInitialization(webViewInitializationTask);
             }
             StartupLog.Write("StartupPhase.AppState begin");
@@ -534,7 +571,209 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static TimeSpan? ResolveStartupWebViewBudget(bool captureStartupPhaseTelemetry) {
-        return captureStartupPhaseTelemetry ? StartupWebViewBudget : null;
+        return ResolveStartupWebViewBudget(
+            captureStartupPhaseTelemetry,
+            lastEnsureWebViewMs: null,
+            consecutiveBudgetExhaustions: 0,
+            consecutiveStableCompletions: 0,
+            adaptiveCooldownRunsRemaining: 0);
+    }
+
+    internal static TimeSpan? ResolveStartupWebViewBudget(
+        bool captureStartupPhaseTelemetry,
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining) {
+        if (!captureStartupPhaseTelemetry) {
+            return null;
+        }
+
+        var budgetMs = ResolveStartupWebViewBudgetMilliseconds(
+            lastEnsureWebViewMs,
+            consecutiveBudgetExhaustions,
+            consecutiveStableCompletions,
+            adaptiveCooldownRunsRemaining);
+        return TimeSpan.FromMilliseconds(budgetMs);
+    }
+
+    internal static int ResolveStartupWebViewBudgetMilliseconds(
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining) {
+        var conservativeBudgetMs = (int)Math.Round(StartupWebViewBudget.TotalMilliseconds);
+        var normalizedExhaustions = Math.Max(0, consecutiveBudgetExhaustions);
+        var normalizedStableCompletions = Math.Max(0, consecutiveStableCompletions);
+        var normalizedCooldownRuns = Math.Max(0, adaptiveCooldownRunsRemaining);
+
+        if (normalizedCooldownRuns > 0) {
+            return conservativeBudgetMs;
+        }
+
+        if (normalizedExhaustions > 0 && normalizedStableCompletions < StartupWebViewBudgetAdaptiveMinStableCompletions) {
+            return conservativeBudgetMs;
+        }
+
+        if (normalizedStableCompletions < StartupWebViewBudgetAdaptiveMinStableCompletions) {
+            return conservativeBudgetMs;
+        }
+
+        if (!lastEnsureWebViewMs.HasValue || lastEnsureWebViewMs.Value <= 0) {
+            return conservativeBudgetMs;
+        }
+
+        var measuredEnsureMs = lastEnsureWebViewMs.Value;
+        var adaptiveBudgetMs = measuredEnsureMs switch {
+            <= StartupWebViewBudgetFastEnsureThresholdMs => StartupWebViewBudgetFastMs,
+            <= StartupWebViewBudgetMediumEnsureThresholdMs => StartupWebViewBudgetMediumMs,
+            <= StartupWebViewBudgetSlowEnsureThresholdMs => StartupWebViewBudgetSlowMs,
+            _ => conservativeBudgetMs
+        };
+        if (adaptiveBudgetMs >= conservativeBudgetMs) {
+            return conservativeBudgetMs;
+        }
+
+        var marginAwareBudgetMs = Math.Max(
+            adaptiveBudgetMs,
+            measuredEnsureMs + StartupWebViewBudgetAdaptiveHeadroomMs);
+        return Math.Clamp(marginAwareBudgetMs, StartupWebViewBudgetMinimumMs, conservativeBudgetMs);
+    }
+
+    private StartupWebViewBudgetCacheEntry SnapshotStartupWebViewBudgetCache() {
+        lock (_startupWebViewBudgetCacheSync) {
+            return _startupWebViewBudgetCache;
+        }
+    }
+
+    private void MarkStartupWebViewBudgetExhausted() {
+        Interlocked.Exchange(ref _startupWebViewBudgetExceededThisRun, 1);
+
+        lock (_startupWebViewBudgetCacheSync) {
+            var nextExhaustions = Math.Min(
+                StartupWebViewBudgetMaxConsecutiveExhaustions,
+                Math.Max(0, _startupWebViewBudgetCache.ConsecutiveBudgetExhaustions) + 1);
+            _startupWebViewBudgetCache = _startupWebViewBudgetCache with {
+                ConsecutiveBudgetExhaustions = nextExhaustions,
+                ConsecutiveStableCompletions = 0,
+                AdaptiveCooldownRunsRemaining = Math.Max(
+                    StartupWebViewBudgetAdaptiveCooldownRunsAfterExhaustion,
+                    _startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining),
+                UpdatedUtc = DateTime.UtcNow
+            };
+
+            SaveStartupWebViewBudgetCache(_startupWebViewBudgetCache);
+        }
+    }
+
+    private void RecordStartupWebViewEnsureCompletion(TimeSpan ensureDuration, bool budgetExceeded) {
+        var ensureMs = (int)Math.Round(Math.Max(0, ensureDuration.TotalMilliseconds));
+        StartupLog.Write("StartupPhase.WebView ensure_ms=" + ensureMs.ToString(CultureInfo.InvariantCulture));
+
+        lock (_startupWebViewBudgetCacheSync) {
+            var exhaustionCount = budgetExceeded
+                ? Math.Min(
+                    StartupWebViewBudgetMaxConsecutiveExhaustions,
+                    Math.Max(1, _startupWebViewBudgetCache.ConsecutiveBudgetExhaustions))
+                : 0;
+            var stableCompletions = budgetExceeded
+                ? 0
+                : Math.Min(
+                    StartupWebViewBudgetAdaptiveMaxStableCompletions,
+                    Math.Max(0, _startupWebViewBudgetCache.ConsecutiveStableCompletions) + 1);
+            var cooldownRunsRemaining = budgetExceeded
+                ? Math.Max(
+                    StartupWebViewBudgetAdaptiveCooldownRunsAfterExhaustion,
+                    _startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining)
+                : Math.Max(0, _startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining - 1);
+            _startupWebViewBudgetCache = _startupWebViewBudgetCache with {
+                LastEnsureWebViewMs = ensureMs,
+                ConsecutiveBudgetExhaustions = exhaustionCount,
+                ConsecutiveStableCompletions = stableCompletions,
+                AdaptiveCooldownRunsRemaining = cooldownRunsRemaining,
+                UpdatedUtc = DateTime.UtcNow
+            };
+
+            SaveStartupWebViewBudgetCache(_startupWebViewBudgetCache);
+        }
+    }
+
+    private static StartupWebViewBudgetCacheEntry LoadStartupWebViewBudgetCache() {
+        var path = ResolveStartupWebViewBudgetCachePath();
+        if (!File.Exists(path)) {
+            return StartupWebViewBudgetCacheEntry.Default;
+        }
+
+        try {
+            var json = File.ReadAllText(path);
+            var payload = JsonSerializer.Deserialize<StartupWebViewBudgetCachePayload>(json);
+            if (payload is null) {
+                return StartupWebViewBudgetCacheEntry.Default;
+            }
+
+            DateTime? updatedUtc = null;
+            if (!string.IsNullOrWhiteSpace(payload.UpdatedUtc)
+                && DateTime.TryParse(
+                    payload.UpdatedUtc,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var parsedUpdatedUtc)) {
+                updatedUtc = parsedUpdatedUtc.ToUniversalTime();
+            }
+
+            var lastEnsureMs = payload.LastEnsureWebViewMs;
+            if (lastEnsureMs.HasValue && lastEnsureMs.Value <= 0) {
+                lastEnsureMs = null;
+            }
+
+            var exhaustionCount = Math.Max(0, payload.ConsecutiveBudgetExhaustions);
+            exhaustionCount = Math.Min(StartupWebViewBudgetMaxConsecutiveExhaustions, exhaustionCount);
+            var stableCompletions = Math.Max(0, payload.ConsecutiveStableCompletions);
+            stableCompletions = Math.Min(StartupWebViewBudgetAdaptiveMaxStableCompletions, stableCompletions);
+            var cooldownRunsRemaining = Math.Max(0, payload.AdaptiveCooldownRunsRemaining);
+            cooldownRunsRemaining = Math.Min(StartupWebViewBudgetAdaptiveMaxStableCompletions, cooldownRunsRemaining);
+
+            return new StartupWebViewBudgetCacheEntry(
+                lastEnsureMs,
+                exhaustionCount,
+                stableCompletions,
+                cooldownRunsRemaining,
+                updatedUtc);
+        } catch {
+            return StartupWebViewBudgetCacheEntry.Default;
+        }
+    }
+
+    private static void SaveStartupWebViewBudgetCache(StartupWebViewBudgetCacheEntry cache) {
+        try {
+            var path = ResolveStartupWebViewBudgetCachePath();
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory)) {
+                Directory.CreateDirectory(directory);
+            }
+
+            var payload = new StartupWebViewBudgetCachePayload {
+                LastEnsureWebViewMs = cache.LastEnsureWebViewMs,
+                ConsecutiveBudgetExhaustions = Math.Max(0, cache.ConsecutiveBudgetExhaustions),
+                ConsecutiveStableCompletions = Math.Max(0, cache.ConsecutiveStableCompletions),
+                AdaptiveCooldownRunsRemaining = Math.Max(0, cache.AdaptiveCooldownRunsRemaining),
+                UpdatedUtc = cache.UpdatedUtc?.ToString("O")
+            };
+
+            var json = JsonSerializer.Serialize(payload);
+            File.WriteAllText(path, json);
+        } catch {
+            // Startup budget cache is best-effort only.
+        }
+    }
+
+    private static string ResolveStartupWebViewBudgetCachePath() {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData)) {
+            return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", StartupWebViewBudgetCacheFileName);
+        }
+
+        return Path.Combine(localAppData, "IntelligenceX.Chat", StartupWebViewBudgetCacheFileName);
     }
 
     private static async Task<bool> TryAwaitStartupWebViewWithinBudgetAsync(Task webViewInitializationTask, TimeSpan? startupWebViewBudget) {
@@ -769,6 +1008,7 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
+            var ensureWebViewStopwatch = Stopwatch.StartNew();
             var webViewEnvironment = await _webViewEnvironmentTask.ConfigureAwait(false);
             Task navReadyTask = Task.CompletedTask;
             await RunOnUiThreadAsync(async () => {
@@ -832,6 +1072,9 @@ public sealed partial class MainWindow : Window {
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
             await RenderTranscriptAsync().ConfigureAwait(false);
             await PublishOptionsStateAsync().ConfigureAwait(false);
+            RecordStartupWebViewEnsureCompletion(
+                ensureDuration: ensureWebViewStopwatch.Elapsed,
+                budgetExceeded: Volatile.Read(ref _startupWebViewBudgetExceededThisRun) != 0);
             StartupLog.Write("EnsureWebViewInitializedAsync ok");
         } catch (Exception ex) {
             StartupLog.Write("EnsureWebViewInitializedAsync failed: " + ex);
@@ -988,5 +1231,27 @@ public sealed partial class MainWindow : Window {
         }
 
         return false;
+    }
+
+    private sealed record StartupWebViewBudgetCacheEntry(
+        int? LastEnsureWebViewMs,
+        int ConsecutiveBudgetExhaustions,
+        int ConsecutiveStableCompletions,
+        int AdaptiveCooldownRunsRemaining,
+        DateTime? UpdatedUtc) {
+        public static StartupWebViewBudgetCacheEntry Default { get; } = new(
+            LastEnsureWebViewMs: null,
+            ConsecutiveBudgetExhaustions: 0,
+            ConsecutiveStableCompletions: 0,
+            AdaptiveCooldownRunsRemaining: 0,
+            UpdatedUtc: null);
+    }
+
+    private sealed class StartupWebViewBudgetCachePayload {
+        public int? LastEnsureWebViewMs { get; set; }
+        public int ConsecutiveBudgetExhaustions { get; set; }
+        public int ConsecutiveStableCompletions { get; set; }
+        public int AdaptiveCooldownRunsRemaining { get; set; }
+        public string? UpdatedUtc { get; set; }
     }
 }

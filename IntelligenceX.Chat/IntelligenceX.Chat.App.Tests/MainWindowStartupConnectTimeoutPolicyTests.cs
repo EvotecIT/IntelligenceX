@@ -61,6 +61,39 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures adaptive startup WebView budget remains conservative by default,
+    /// tightens only after stable completions, and falls back with cooldown after exhaustion.
+    /// </summary>
+    [Theory]
+    [InlineData(false, null, 0, 0, 0, null)]
+    [InlineData(true, null, 0, 0, 0, 4000)]
+    [InlineData(true, 900, 0, 1, 0, 4000)]
+    [InlineData(true, 900, 0, 2, 0, 2200)]
+    [InlineData(true, 1600, 0, 2, 0, 2800)]
+    [InlineData(true, 2600, 0, 2, 0, 3700)]
+    [InlineData(true, 3050, 0, 2, 0, 4000)]
+    [InlineData(true, 900, 1, 0, 2, 4000)]
+    [InlineData(true, 900, 0, 3, 1, 4000)]
+    public void ResolveStartupWebViewBudget_AdaptivePolicyIsHardwareSafe(
+        bool captureStartupPhaseTelemetry,
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining,
+        int? expectedTimeoutMs) {
+        var timeout = MainWindow.ResolveStartupWebViewBudget(
+            captureStartupPhaseTelemetry,
+            lastEnsureWebViewMs,
+            consecutiveBudgetExhaustions,
+            consecutiveStableCompletions,
+            adaptiveCooldownRunsRemaining);
+        var expected = expectedTimeoutMs.HasValue
+            ? TimeSpan.FromMilliseconds(expectedTimeoutMs.Value)
+            : (TimeSpan?)null;
+        Assert.Equal(expected, timeout);
+    }
+
+    /// <summary>
     /// Ensures connect attempt timeout is capped by remaining startup budget, including exhaustion behavior.
     /// </summary>
     [Theory]
