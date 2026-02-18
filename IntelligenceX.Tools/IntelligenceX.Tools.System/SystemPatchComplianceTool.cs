@@ -17,13 +17,6 @@ namespace IntelligenceX.Tools.System;
 public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
     private const int MaxViewTop = 5000;
 
-    private static readonly string[] AllowedSeverities = {
-        "Critical",
-        "Important",
-        "Moderate",
-        "Low"
-    };
-
     private static readonly ToolDefinition DefinitionValue = new(
         "system_patch_compliance",
         "Correlate monthly MSRC patch details with installed updates to estimate host patch compliance for KB-backed vulnerabilities.",
@@ -112,43 +105,20 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
         var includePendingLocal = ToolArgs.GetBoolean(arguments, "include_pending_local", defaultValue: false);
         var missingOnly = ToolArgs.GetBoolean(arguments, "missing_only", defaultValue: false);
 
-        var nowUtc = DateTime.UtcNow;
-        var year = nowUtc.Year;
-        var month = nowUtc.Month;
-
-        var yearRaw = arguments?.GetInt64("year");
-        var monthRaw = arguments?.GetInt64("month");
-        if (yearRaw.HasValue) {
-            if (yearRaw.Value < 2000 || yearRaw.Value > 2100) {
-                return ToolResponse.Error("invalid_argument", "year must be between 2000 and 2100.");
-            }
-            year = (int)yearRaw.Value;
+        if (!TryResolvePatchReleaseWindow(arguments, out var year, out var month, out var releaseError)) {
+            return releaseError!;
         }
-        if (monthRaw.HasValue) {
-            if (monthRaw.Value < 1 || monthRaw.Value > 12) {
-                return ToolResponse.Error("invalid_argument", "month must be between 1 and 12.");
-            }
-            month = (int)monthRaw.Value;
+        if (!TryResolvePatchProductFilter(
+                arguments,
+                out var productFamily,
+                out var productVersion,
+                out var productBuild,
+                out var productEdition,
+                out var productError)) {
+            return productError!;
         }
-
-        var productFamily = ToolArgs.GetOptionalTrimmed(arguments, "product_family");
-        var productVersion = ToolArgs.GetOptionalTrimmed(arguments, "product_version");
-        var productBuild = ToolArgs.GetOptionalTrimmed(arguments, "product_build");
-        var productEdition = ToolArgs.GetOptionalTrimmed(arguments, "product_edition");
-        if (string.IsNullOrWhiteSpace(productFamily)
-            && (!string.IsNullOrWhiteSpace(productVersion)
-                || !string.IsNullOrWhiteSpace(productBuild)
-                || !string.IsNullOrWhiteSpace(productEdition))) {
-            return ToolResponse.Error("invalid_argument", "product_family is required when product_version/product_build/product_edition is provided.");
-        }
-
-        var severityRaw = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("severity"));
-        var severity = new List<string>(severityRaw.Count);
-        foreach (var item in severityRaw) {
-            if (!TryNormalizeSeverity(item, out var normalized)) {
-                return ToolResponse.Error("invalid_argument", "severity contains unsupported value. Allowed: Critical, Important, Moderate, Low.");
-            }
-            severity.Add(normalized);
+        if (!TryResolvePatchSeverityAllowlist(arguments, out var severity, out var severityError)) {
+            return severityError!;
         }
 
         var exploitedOnly = ToolArgs.GetBoolean(arguments, "exploited_only", defaultValue: false);
@@ -157,24 +127,16 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
         var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        IReadOnlyList<PatchDetailsInfo> monthly;
-        try {
-            if (!string.IsNullOrWhiteSpace(productFamily)) {
-                var descriptor = new ProductDescriptor {
-                    Family = productFamily!,
-                    Version = productVersion ?? string.Empty,
-                    Build = productBuild,
-                    Edition = productEdition
-                };
-                monthly = await PatchDetails.GetForProductsAsync(
-                    products: new[] { descriptor },
-                    since: new DateTime(year, month, 1),
-                    ct: cancellationToken).ConfigureAwait(false);
-            } else {
-                monthly = await PatchDetails.GetMonthlyAsync(year, month, cancellationToken).ConfigureAwait(false);
-            }
-        } catch (Exception ex) {
-            return ErrorFromException(ex, defaultMessage: "Patch details query failed.");
+        var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
+            year: year,
+            month: month,
+            productFamily: productFamily,
+            productVersion: productVersion,
+            productBuild: productBuild,
+            productEdition: productEdition,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (patchError is not null) {
+            return patchError;
         }
 
         if (!TryGetInstalledAndPendingUpdates(
@@ -291,59 +253,28 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("computer_name", target);
-                meta.Add("year", year);
-                meta.Add("month", month);
-                meta.Add("release", release);
                 meta.Add("max_results", maxResults);
                 meta.Add("include_pending_local", includePendingLocal);
                 meta.Add("pending_included", pendingIncluded);
+                AddPatchFilterMeta(
+                    meta: meta,
+                    year: year,
+                    month: month,
+                    release: release,
+                    productFamily: productFamily,
+                    productVersion: productVersion,
+                    productBuild: productBuild,
+                    productEdition: productEdition,
+                    severity: severity,
+                    exploitedOnly: exploitedOnly,
+                    publiclyDisclosedOnly: publiclyDisclosedOnly,
+                    cveContains: cveContains,
+                    kbContains: kbContains);
                 if (missingOnly) {
                     meta.Add("missing_only", true);
                 }
-                if (!string.IsNullOrWhiteSpace(productFamily)) {
-                    meta.Add("product_family", productFamily);
-                }
-                if (!string.IsNullOrWhiteSpace(productVersion)) {
-                    meta.Add("product_version", productVersion);
-                }
-                if (!string.IsNullOrWhiteSpace(productBuild)) {
-                    meta.Add("product_build", productBuild);
-                }
-                if (!string.IsNullOrWhiteSpace(productEdition)) {
-                    meta.Add("product_edition", productEdition);
-                }
-                if (severity.Count > 0) {
-                    meta.Add("severity", string.Join(", ", severity));
-                }
-                if (exploitedOnly) {
-                    meta.Add("exploited_only", true);
-                }
-                if (publiclyDisclosedOnly) {
-                    meta.Add("publicly_disclosed_only", true);
-                }
-                if (!string.IsNullOrWhiteSpace(cveContains)) {
-                    meta.Add("cve_contains", cveContains);
-                }
-                if (!string.IsNullOrWhiteSpace(kbContains)) {
-                    meta.Add("kb_contains", kbContains);
-                }
             });
         return response;
-    }
-
-    private static bool TryNormalizeSeverity(string input, out string normalized) {
-        normalized = string.Empty;
-        if (string.IsNullOrWhiteSpace(input)) {
-            return false;
-        }
-
-        foreach (var allowed in AllowedSeverities) {
-            if (allowed.Equals(input.Trim(), StringComparison.OrdinalIgnoreCase)) {
-                normalized = allowed;
-                return true;
-            }
-        }
-        return false;
     }
 
     private static PatchComplianceSummary BuildSummary(IReadOnlyList<ComplianceRow> rows) {

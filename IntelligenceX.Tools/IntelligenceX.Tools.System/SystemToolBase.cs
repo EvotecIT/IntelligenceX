@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using ComputerX.PatchDetails;
 using ComputerX.Updates;
+using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.System;
@@ -10,6 +14,12 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public abstract class SystemToolBase : ToolBase {
     private const int MaxErrorMessageLength = 300;
+    private static readonly string[] AllowedPatchSeverities = {
+        "Critical",
+        "Important",
+        "Moderate",
+        "Low"
+    };
 
     /// <summary>
     /// Shared options for system tools.
@@ -107,6 +117,195 @@ public abstract class SystemToolBase : ToolBase {
         updates = rows;
         errorResponse = null;
         return true;
+    }
+
+    /// <summary>
+    /// Resolves patch release year/month from arguments with defaults and validation.
+    /// </summary>
+    protected static bool TryResolvePatchReleaseWindow(
+        JsonObject? arguments,
+        out int year,
+        out int month,
+        out string? errorResponse) {
+        var nowUtc = DateTime.UtcNow;
+        year = nowUtc.Year;
+        month = nowUtc.Month;
+        errorResponse = null;
+
+        var yearRaw = arguments?.GetInt64("year");
+        var monthRaw = arguments?.GetInt64("month");
+        if (yearRaw.HasValue) {
+            if (yearRaw.Value < 2000 || yearRaw.Value > 2100) {
+                errorResponse = ToolResponse.Error("invalid_argument", "year must be between 2000 and 2100.");
+                return false;
+            }
+            year = (int)yearRaw.Value;
+        }
+
+        if (monthRaw.HasValue) {
+            if (monthRaw.Value < 1 || monthRaw.Value > 12) {
+                errorResponse = ToolResponse.Error("invalid_argument", "month must be between 1 and 12.");
+                return false;
+            }
+            month = (int)monthRaw.Value;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves optional mapped product filter arguments used by patch tools.
+    /// </summary>
+    protected static bool TryResolvePatchProductFilter(
+        JsonObject? arguments,
+        out string? productFamily,
+        out string? productVersion,
+        out string? productBuild,
+        out string? productEdition,
+        out string? errorResponse) {
+        productFamily = ToolArgs.GetOptionalTrimmed(arguments, "product_family");
+        productVersion = ToolArgs.GetOptionalTrimmed(arguments, "product_version");
+        productBuild = ToolArgs.GetOptionalTrimmed(arguments, "product_build");
+        productEdition = ToolArgs.GetOptionalTrimmed(arguments, "product_edition");
+        errorResponse = null;
+
+        if (string.IsNullOrWhiteSpace(productFamily)
+            && (!string.IsNullOrWhiteSpace(productVersion)
+                || !string.IsNullOrWhiteSpace(productBuild)
+                || !string.IsNullOrWhiteSpace(productEdition))) {
+            errorResponse = ToolResponse.Error(
+                "invalid_argument",
+                "product_family is required when product_version/product_build/product_edition is provided.");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves optional severity allowlist for patch tools.
+    /// </summary>
+    protected static bool TryResolvePatchSeverityAllowlist(
+        JsonObject? arguments,
+        out IReadOnlyList<string> severity,
+        out string? errorResponse) {
+        var severityRaw = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("severity"));
+        var normalized = new List<string>(severityRaw.Count);
+        foreach (var item in severityRaw) {
+            if (!TryNormalizePatchSeverity(item, out var allowedSeverity)) {
+                severity = Array.Empty<string>();
+                errorResponse = ToolResponse.Error(
+                    "invalid_argument",
+                    "severity contains unsupported value. Allowed: Critical, Important, Moderate, Low.");
+                return false;
+            }
+
+            normalized.Add(allowedSeverity);
+        }
+
+        severity = normalized;
+        errorResponse = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Loads monthly patch details with optional mapped product filtering.
+    /// </summary>
+    protected static async Task<(IReadOnlyList<PatchDetailsInfo> Data, string? ErrorResponse)> TryGetMonthlyPatchDetailsAsync(
+        int year,
+        int month,
+        string? productFamily,
+        string? productVersion,
+        string? productBuild,
+        string? productEdition,
+        CancellationToken cancellationToken) {
+        try {
+            if (!string.IsNullOrWhiteSpace(productFamily)) {
+                var descriptor = new ProductDescriptor {
+                    Family = productFamily,
+                    Version = productVersion ?? string.Empty,
+                    Build = productBuild,
+                    Edition = productEdition
+                };
+
+                var filtered = await PatchDetails.GetForProductsAsync(
+                    products: new[] { descriptor },
+                    since: new DateTime(year, month, 1),
+                    ct: cancellationToken).ConfigureAwait(false);
+                return (filtered, null);
+            }
+
+            var monthly = await PatchDetails.GetMonthlyAsync(year, month, cancellationToken).ConfigureAwait(false);
+            return (monthly, null);
+        } catch (Exception ex) {
+            return (Array.Empty<PatchDetailsInfo>(), ErrorFromException(ex, defaultMessage: "Patch details query failed."));
+        }
+    }
+
+    /// <summary>
+    /// Adds standard patch filter metadata fields shared by patch tools.
+    /// </summary>
+    protected static void AddPatchFilterMeta(
+        JsonObject meta,
+        int year,
+        int month,
+        string release,
+        string? productFamily,
+        string? productVersion,
+        string? productBuild,
+        string? productEdition,
+        IReadOnlyList<string> severity,
+        bool exploitedOnly,
+        bool publiclyDisclosedOnly,
+        string? cveContains,
+        string? kbContains) {
+        meta.Add("year", year);
+        meta.Add("month", month);
+        meta.Add("release", release);
+        meta.Add("product_mapped_filter_applied", !string.IsNullOrWhiteSpace(productFamily));
+        if (!string.IsNullOrWhiteSpace(productFamily)) {
+            meta.Add("product_family", productFamily);
+        }
+        if (!string.IsNullOrWhiteSpace(productVersion)) {
+            meta.Add("product_version", productVersion);
+        }
+        if (!string.IsNullOrWhiteSpace(productBuild)) {
+            meta.Add("product_build", productBuild);
+        }
+        if (!string.IsNullOrWhiteSpace(productEdition)) {
+            meta.Add("product_edition", productEdition);
+        }
+        if (severity.Count > 0) {
+            meta.Add("severity", string.Join(", ", severity));
+        }
+        if (exploitedOnly) {
+            meta.Add("exploited_only", true);
+        }
+        if (publiclyDisclosedOnly) {
+            meta.Add("publicly_disclosed_only", true);
+        }
+        if (!string.IsNullOrWhiteSpace(cveContains)) {
+            meta.Add("cve_contains", cveContains);
+        }
+        if (!string.IsNullOrWhiteSpace(kbContains)) {
+            meta.Add("kb_contains", kbContains);
+        }
+    }
+
+    private static bool TryNormalizePatchSeverity(string input, out string normalized) {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(input)) {
+            return false;
+        }
+
+        foreach (var allowed in AllowedPatchSeverities) {
+            if (allowed.Equals(input.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                normalized = allowed;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsLocalTarget(string? computerName, string target) {
