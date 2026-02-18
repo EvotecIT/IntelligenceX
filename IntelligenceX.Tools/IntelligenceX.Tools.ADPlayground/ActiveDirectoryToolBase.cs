@@ -157,7 +157,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         int scanned,
         int maxTop,
         Action<JsonObject>? metaMutate = null) {
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return ToolQueryHelpers.BuildAutoTableResponse(
             arguments: arguments,
             model: model,
             sourceRows: sourceRows,
@@ -165,12 +165,8 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             title: title,
             maxTop: maxTop,
             baseTruncated: baseTruncated,
-            response: out var response,
             scanned: scanned,
-            metaMutate: meta => {
-                metaMutate?.Invoke(meta);
-            });
-        return response;
+            metaMutate: metaMutate);
     }
 
     /// <summary>
@@ -181,14 +177,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         int maxResults,
         out int scanned,
         out bool truncated) {
-        scanned = allRows.Count;
-        if (scanned <= maxResults) {
-            truncated = false;
-            return allRows;
-        }
-
-        truncated = true;
-        return allRows.Take(maxResults).ToArray();
+        return ToolQueryHelpers.CapRows(allRows, maxResults, out scanned, out truncated);
     }
 
     /// <summary>
@@ -197,22 +186,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     protected static HashSet<string> BuildProjectedSet<TRow>(
         IReadOnlyList<TRow> rows,
         Func<TRow, string?> keySelector) {
-        if (rows is null) {
-            throw new ArgumentNullException(nameof(rows));
-        }
-        if (keySelector is null) {
-            throw new ArgumentNullException(nameof(keySelector));
-        }
-
-        var projected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in rows) {
-            var key = keySelector(row);
-            if (!string.IsNullOrWhiteSpace(key)) {
-                projected.Add(key);
-            }
-        }
-
-        return projected;
+        return ToolQueryHelpers.BuildProjectedSet(rows, keySelector);
     }
 
     /// <summary>
@@ -222,25 +196,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         IReadOnlyList<TDetail> details,
         IReadOnlySet<string> projectedKeys,
         Func<TDetail, string?> keySelector) {
-        if (details is null) {
-            throw new ArgumentNullException(nameof(details));
-        }
-        if (projectedKeys is null) {
-            throw new ArgumentNullException(nameof(projectedKeys));
-        }
-        if (keySelector is null) {
-            throw new ArgumentNullException(nameof(keySelector));
-        }
-        if (details.Count == 0 || projectedKeys.Count == 0) {
-            return Array.Empty<TDetail>();
-        }
-
-        return details
-            .Where(detail => {
-                var key = keySelector(detail);
-                return !string.IsNullOrWhiteSpace(key) && projectedKeys.Contains(key);
-            })
-            .ToArray();
+        return ToolQueryHelpers.FilterByProjectedSet(details, projectedKeys, keySelector);
     }
 
     /// <summary>

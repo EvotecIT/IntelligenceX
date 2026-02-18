@@ -93,11 +93,7 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
                 || (x.InstalledOn.HasValue && x.InstalledOn.Value.ToUniversalTime() >= installedAfterUtc.Value))
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<UpdateInfo> viewRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > viewRows.Count;
+        var viewRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new SystemUpdatesInstalledResult(
             ComputerName: target,
@@ -110,7 +106,7 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             Truncated: truncated,
             Updates: viewRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: viewRows,
@@ -118,7 +114,6 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             title: "System updates (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("computer_name", target);

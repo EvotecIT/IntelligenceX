@@ -292,6 +292,42 @@ public abstract class SystemToolBase : ToolBase {
         }
     }
 
+    /// <summary>
+    /// Caps a row collection by max-results and returns standard scanned/truncated counters.
+    /// </summary>
+    protected static IReadOnlyList<TRow> CapRows<TRow>(
+        IReadOnlyList<TRow> allRows,
+        int maxResults,
+        out int scanned,
+        out bool truncated) {
+        return ToolQueryHelpers.CapRows(allRows, maxResults, out scanned, out truncated);
+    }
+
+    /// <summary>
+    /// Builds the standard auto-column table envelope used by System read tools.
+    /// </summary>
+    protected static string BuildAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int scanned,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        return ToolQueryHelpers.BuildAutoTableResponse(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            maxTop: maxTop,
+            baseTruncated: baseTruncated,
+            scanned: scanned,
+            metaMutate: metaMutate);
+    }
+
     private static bool TryNormalizePatchSeverity(string input, out string normalized) {
         normalized = string.Empty;
         if (string.IsNullOrWhiteSpace(input)) {
