@@ -985,10 +985,12 @@ public sealed partial class MainWindow : Window {
                 }
 
                 StartupLog.Write("StartupPhase.WebView.post_init begin");
-                await ApplyWebViewPostInitializationAsync().ConfigureAwait(false);
+                await RunOnUiThreadAsync(() => ApplyWebViewPostInitializationAsync()).ConfigureAwait(false);
                 StartupLog.Write("StartupPhase.WebView.post_init done");
             } catch (Exception ex) {
                 StartupLog.Write("StartupPhase.WebView.post_init failed: " + ex.Message);
+            } finally {
+                Interlocked.Exchange(ref _startupWebViewPostInitDeferredQueued, 0);
             }
         });
     }
