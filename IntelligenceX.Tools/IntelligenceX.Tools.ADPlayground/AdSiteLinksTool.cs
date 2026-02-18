@@ -70,7 +70,10 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
             try {
                 summaryModel = TopologyService.GetSiteLinksSummary(forestName);
             } catch (Exception ex) {
-                return Task.FromResult(ToolResponse.Error("query_failed", $"Site links summary query failed: {ex.Message}"));
+                return Task.FromResult(ErrorFromException(
+                    ex,
+                    defaultMessage: "Site links summary query failed.",
+                    invalidOperationErrorCode: "query_failed"));
             }
 
             var summaryResult = new AdSiteLinksSummaryResult(
@@ -111,14 +114,17 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 hasScheduleOnly: hasSchedule,
                 requiredOptions: requiredOptions);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Site links query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(
+                ex,
+                defaultMessage: "Site links query failed.",
+                invalidOperationErrorCode: "query_failed"));
         }
 
         if (expandSchedule) {
-            var allScheduleRows = ExpandScheduleRows(links);
-            var scannedScheduleRows = allScheduleRows.Count;
-            var scheduleRows = scannedScheduleRows > maxResults ? allScheduleRows.Take(maxResults).ToArray() : allScheduleRows;
-            var truncatedScheduleRows = scannedScheduleRows > scheduleRows.Count;
+            var (scheduleRows, scannedScheduleRows, truncatedScheduleRows) = ExpandScheduleRowsCapped(
+                links,
+                maxResults,
+                cancellationToken);
 
             var scheduleResult = new AdSiteLinksResult(
                 ForestName: forestName,
@@ -235,8 +241,13 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
             .Replace(" ", "_", StringComparison.Ordinal);
     }
 
-    private static IReadOnlyList<SiteLinkScheduleRow> ExpandScheduleRows(IReadOnlyList<SiteLinkInfoEx> links) {
-        var rows = new List<SiteLinkScheduleRow>(links.Count * 7);
+    private static (IReadOnlyList<SiteLinkScheduleRow> Rows, int Scanned, bool Truncated) ExpandScheduleRowsCapped(
+        IReadOnlyList<SiteLinkInfoEx> links,
+        int maxResults,
+        CancellationToken cancellationToken) {
+        var rows = new List<SiteLinkScheduleRow>(Math.Min(Math.Max(maxResults, 1), 512));
+        var scanned = 0;
+        var truncated = false;
 
         foreach (var link in links) {
             if (!link.HasSchedule || link.AllowedHoursGrid is null || link.AllowedHoursGrid.Count == 0) {
@@ -244,10 +255,18 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
             }
 
             for (var day = 0; day < link.AllowedHoursGrid.Count; day++) {
-                var allowedHours = new List<int>(24);
+                cancellationToken.ThrowIfCancellationRequested();
+                scanned++;
+                if (rows.Count >= maxResults) {
+                    truncated = true;
+                    continue;
+                }
+
+                List<int>? allowedHours = null;
                 var dayGrid = link.AllowedHoursGrid[day];
                 for (var hour = 0; hour < dayGrid.Count; hour++) {
                     if (dayGrid[hour]) {
+                        allowedHours ??= new List<int>(24);
                         allowedHours.Add(hour);
                     }
                 }
@@ -255,12 +274,12 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 rows.Add(new SiteLinkScheduleRow {
                     Name = link.Name,
                     Day = DayOfWeekName(day),
-                    AllowedHours = allowedHours
+                    AllowedHours = allowedHours ?? new List<int>()
                 });
             }
         }
 
-        return rows;
+        return (rows, scanned, truncated);
     }
 
     private static string DayOfWeekName(int dayIndex) {
