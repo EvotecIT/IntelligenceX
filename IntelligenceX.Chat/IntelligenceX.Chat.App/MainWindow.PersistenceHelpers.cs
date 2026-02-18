@@ -286,23 +286,24 @@ public sealed partial class MainWindow : Window {
             : hardTimeout;
 
         using var cts = new CancellationTokenSource(timeout);
+        using var hardTimeoutCts = new CancellationTokenSource();
         var connectTask = client.ConnectAsync(pipeName, cts.Token);
-        var hardTimeoutTask = Task.Delay(resolvedHardTimeout);
+        var hardTimeoutTask = Task.Delay(resolvedHardTimeout, hardTimeoutCts.Token);
         var completed = await Task.WhenAny(connectTask, hardTimeoutTask).ConfigureAwait(true);
-        if (!ReferenceEquals(completed, connectTask)) {
-            try {
-                cts.Cancel();
-            } catch {
-                // Ignore.
-            }
-
-            _ = connectTask.ContinueWith(static t => {
-                _ = t.Exception;
-            }, TaskContinuationOptions.OnlyOnFaulted);
-            throw new TimeoutException("Timed out waiting for service pipe.");
+        if (ReferenceEquals(completed, connectTask)) {
+            hardTimeoutCts.Cancel();
+            await connectTask.ConfigureAwait(true);
+            return;
         }
 
-        await connectTask.ConfigureAwait(true);
+        cts.Cancel();
+        try {
+            // Preserve original completion/failure if connect settles shortly after cancellation.
+            await connectTask.WaitAsync(StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true);
+            return;
+        } catch (TimeoutException) {
+            throw new TimeoutException("Timed out waiting for service pipe.");
+        }
     }
 
     private static string FormatConnectError(Exception ex) {
