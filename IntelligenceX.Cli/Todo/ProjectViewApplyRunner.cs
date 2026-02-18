@@ -185,6 +185,7 @@ internal static class ProjectViewApplyRunner {
                 builder.AppendLine($"- [ ] **{view.Name}** (`{view.Layout}`)");
                 builder.AppendLine($"  Suggested filter: `{view.Filter}`");
                 builder.AppendLine($"  Purpose: {view.Description}");
+                builder.AppendLine($"  Suggested columns: {string.Join(", ", view.SuggestedColumns)}");
             }
         }
 
@@ -193,7 +194,7 @@ internal static class ProjectViewApplyRunner {
         builder.AppendLine();
         builder.AppendLine($"1. Open project: {projectUrl}");
         builder.AppendLine("2. Select `+ New view` in GitHub Projects.");
-        builder.AppendLine("3. For each unchecked checklist item above, use the exact view name/layout and suggested filter.");
+        builder.AppendLine("3. For each unchecked checklist item above, use the exact view name/layout, suggested filter, and suggested columns.");
         builder.AppendLine("4. Re-run `intelligencex todo project-view-apply` to confirm coverage.");
 
         if (!directCreateSupported) {

@@ -26,6 +26,7 @@ internal static partial class Program {
         AssertContainsText(markdown, "Default view coverage: 1/4", "coverage reflects missing defaults");
         AssertContainsText(markdown, "- [x] **IX Queue** (`TABLE`) - present", "existing default view checked");
         AssertContainsText(markdown, "- [ ] **Merge Candidates** (`TABLE`) - missing", "missing default view unchecked");
+        AssertContainsText(markdown, "Suggested columns:", "suggested columns guidance included");
         AssertContainsText(markdown, "https://github.com/orgs/EvotecIT/projects/123/views/1", "existing view link included");
     }
 

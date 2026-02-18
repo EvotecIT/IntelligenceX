@@ -18,6 +18,7 @@ internal static class ProjectSyncRunner {
     private const double RejectVisionConfidenceThreshold = 0.70;
     private const double AcceptVisionConfidenceThreshold = 0.68;
     private const double MergeCandidateScoreThreshold = 82.0;
+    private const double LowSignalQualityScoreThreshold = 50.0;
 
     internal sealed record RelatedIssueCandidate(
         int Number,
@@ -62,7 +63,10 @@ internal static class ProjectSyncRunner {
         IReadOnlyList<RelatedPullRequestCandidate>? RelatedPullRequests = null,
         IReadOnlyList<string>? ExistingLabels = null,
         double? CategoryConfidence = null,
-        IReadOnlyDictionary<string, double>? TagConfidences = null
+        IReadOnlyDictionary<string, double>? TagConfidences = null,
+        string? SignalQuality = null,
+        double? SignalQualityScore = null,
+        IReadOnlyList<string>? SignalQualityReasons = null
     );
 
     private sealed class Options {
@@ -540,6 +544,9 @@ internal static class ProjectSyncRunner {
                 var categoryConfidence = ReadNullableDouble(item, "categoryConfidence");
                 var tags = ReadStringArray(item, "tags");
                 var tagConfidences = ReadStringDoubleMap(item, "tagConfidences");
+                var signalQuality = NormalizeSignalQuality(ReadNullableString(item, "signalQuality"));
+                var signalQualityScore = ReadNullableDouble(item, "signalQualityScore");
+                var signalQualityReasons = ReadStringArray(item, "signalQualityReasons");
                 var existingLabels = ReadStringArray(item, "labels");
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
@@ -623,7 +630,10 @@ internal static class ProjectSyncRunner {
                     RelatedPullRequests: relatedPullRequests,
                     ExistingLabels: existingLabels,
                     CategoryConfidence: categoryConfidence,
-                    TagConfidences: tagConfidences
+                    TagConfidences: tagConfidences,
+                    SignalQuality: signalQuality,
+                    SignalQualityScore: signalQualityScore,
+                    SignalQualityReasons: signalQualityReasons
                 );
             }
         }
@@ -664,7 +674,8 @@ internal static class ProjectSyncRunner {
                         RelatedIssues: Array.Empty<RelatedIssueCandidate>(),
                         SuggestedDecision: null,
                         RelatedPullRequests: Array.Empty<RelatedPullRequestCandidate>(),
-                        ExistingLabels: Array.Empty<string>()
+                        ExistingLabels: Array.Empty<string>(),
+                        SignalQualityReasons: Array.Empty<string>()
                     );
                 }
             }
@@ -722,6 +733,19 @@ internal static class ProjectSyncRunner {
         };
     }
 
+    private static string? NormalizeSignalQuality(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch {
+            "high" => "high",
+            "medium" => "medium",
+            "low" => "low",
+            _ => null
+        };
+    }
+
     private static string? SuggestMaintainerDecision(
         ProjectSyncEntry entry,
         bool isBestPullRequest,
@@ -736,6 +760,10 @@ internal static class ProjectSyncRunner {
 
         if (visionFit == "likely-out-of-scope" && visionConfidence >= RejectVisionConfidenceThreshold) {
             return "reject";
+        }
+
+        if (IsLowSignalQuality(entry)) {
+            return "defer";
         }
 
         var blockedBySignals = prSignals is not null && IsBlockedByReviewOrChecks(prSignals);
@@ -758,6 +786,16 @@ internal static class ProjectSyncRunner {
         }
 
         return "defer";
+    }
+
+    private static bool IsLowSignalQuality(ProjectSyncEntry entry) {
+        if (!string.IsNullOrWhiteSpace(entry.SignalQuality) &&
+            entry.SignalQuality.Equals("low", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return entry.SignalQualityScore.HasValue &&
+               entry.SignalQualityScore.Value < LowSignalQualityScoreThreshold;
     }
 
     private static bool IsStronglyReadyForMerge(PullRequestDecisionSignals signals) {
@@ -992,6 +1030,35 @@ internal static class ProjectSyncRunner {
             updated++;
         }
 
+        if (fields.TryGetValue("Signal Quality", out var signalQualityField)) {
+            if (!string.IsNullOrWhiteSpace(entry.SignalQuality) &&
+                TryResolveOptionId(signalQualityField, entry.SignalQuality, out var signalQualityOptionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, signalQualityField.Id, signalQualityOptionId).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, signalQualityField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("Signal Quality Score", out var signalQualityScoreField)) {
+            if (entry.SignalQualityScore.HasValue) {
+                await client.SetNumberFieldAsync(projectId, itemId, signalQualityScoreField.Id, entry.SignalQualityScore.Value).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, signalQualityScoreField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("Signal Quality Notes", out var signalQualityNotesField)) {
+            var notes = BuildSignalQualityNotesFieldValue(entry, maxReasons: 4);
+            if (!string.IsNullOrWhiteSpace(notes)) {
+                await client.SetTextFieldAsync(projectId, itemId, signalQualityNotesField.Id, notes).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, signalQualityNotesField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
         if (fields.TryGetValue("Tags", out var tagsField) && entry.Tags.Count > 0) {
             await client.SetTextFieldAsync(projectId, itemId, tagsField.Id, string.Join(", ", entry.Tags)).ConfigureAwait(false);
             updated++;
@@ -1199,6 +1266,10 @@ internal static class ProjectSyncRunner {
             labels.Add(decisionLabel);
         }
 
+        if (IsLowSignalQuality(entry)) {
+            labels.Add("ix/signal:low");
+        }
+
         if (!string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
             labels.Add("ix/duplicate:clustered");
         }
@@ -1313,6 +1384,21 @@ internal static class ProjectSyncRunner {
         }
 
         return string.Join(Environment.NewLine, summaryLines);
+    }
+
+    internal static string BuildSignalQualityNotesFieldValue(ProjectSyncEntry entry, int maxReasons) {
+        var limit = Math.Max(1, Math.Min(maxReasons, 10));
+        var reasons = (entry.SignalQualityReasons ?? Array.Empty<string>())
+            .Where(reason => !string.IsNullOrWhiteSpace(reason))
+            .Select(reason => reason.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToList();
+        if (reasons.Count == 0) {
+            return string.Empty;
+        }
+
+        return string.Join(Environment.NewLine, reasons);
     }
 
     internal static string BuildRelatedPullRequestsFieldValue(ProjectSyncEntry entry, int maxPullRequests) {

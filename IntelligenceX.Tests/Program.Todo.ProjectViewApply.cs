@@ -27,6 +27,7 @@ internal static partial class Program {
         AssertContainsText(markdown, "intelligencex:project-view-apply", "apply marker present");
         AssertContainsText(markdown, "Default view coverage: 1/4", "coverage reflects missing defaults");
         AssertContainsText(markdown, "- [ ] **Merge Candidates** (`TABLE`)", "missing default view listed");
+        AssertContainsText(markdown, "Suggested columns:", "suggested columns guidance included");
         AssertContainsText(markdown, "Select `+ New view` in GitHub Projects.", "manual apply step present");
         AssertContainsText(markdown, "public API surface does not expose direct project view creation", "platform note present");
     }

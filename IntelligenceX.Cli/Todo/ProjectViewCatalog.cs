@@ -8,7 +8,8 @@ internal sealed record ProjectViewDefinition(
     string Name,
     string Layout,
     string Description,
-    string Filter
+    string Filter,
+    IReadOnlyList<string> SuggestedColumns
 );
 
 internal static class ProjectViewCatalog {
@@ -16,23 +17,64 @@ internal static class ProjectViewCatalog {
         new ProjectViewDefinition(
             "IX Queue",
             "TABLE",
-            "Primary triage queue for open backlog items.",
-            "is:open"),
+            "Primary pull-request triage queue with decision and confidence signals visible.",
+            "is:open \"Triage Kind\":\"pull_request\"",
+            new[] {
+                "Title",
+                "Status",
+                "Triage Kind",
+                "Signal Quality",
+                "Signal Quality Score",
+                "Vision Fit",
+                "IX Suggested Decision",
+                "Triage Score",
+                "Category",
+                "Category Confidence",
+                "Matched Issue",
+                "Duplicate Cluster"
+            }),
         new ProjectViewDefinition(
             "Merge Candidates",
             "TABLE",
-            "Items with high merge readiness and aligned signals.",
-            "is:open \"IX Suggested Decision\":\"merge-candidate\""),
+            "High-readiness pull requests that are candidates for maintainer merge review.",
+            "is:open \"IX Suggested Decision\":\"merge-candidate\"",
+            new[] {
+                "Title",
+                "Status",
+                "Signal Quality",
+                "Vision Fit",
+                "IX Suggested Decision",
+                "Triage Score",
+                "Category",
+                "Matched Issue"
+            }),
         new ProjectViewDefinition(
             "Vision Review",
             "BOARD",
-            "Items grouped by vision-fit outcomes for maintainer review.",
-            "is:open"),
+            "Maintainer board grouped by vision-fit outcomes with low-signal items visible.",
+            "is:open",
+            new[] {
+                "Title",
+                "Status",
+                "Vision Fit",
+                "Signal Quality",
+                "IX Suggested Decision",
+                "Category"
+            }),
         new ProjectViewDefinition(
             "Duplicate Clusters",
             "TABLE",
             "Items that belong to duplicate clusters and need consolidation.",
-            "is:open \"Duplicate Cluster\":*")
+            "is:open \"Duplicate Cluster\":*",
+            new[] {
+                "Title",
+                "Status",
+                "Duplicate Cluster",
+                "Canonical Item",
+                "Signal Quality",
+                "Triage Score",
+                "Category"
+            })
     };
 
     public static IReadOnlyList<ProjectViewDefinition> FindMissingDefaultViews(

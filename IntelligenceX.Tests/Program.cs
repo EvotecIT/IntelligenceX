@@ -461,6 +461,7 @@ internal static partial class Program {
         failed += Run("Todo triage index issue-PR URL match", TestTriageIndexMatchIssueToPullRequestsSupportsPullRequestUrlReference);
         failed += Run("Todo triage index category/tag inference", TestTriageIndexInferCategoryAndTagsDetectsSecurity);
         failed += Run("Todo triage index category/tag confidence inference", TestTriageIndexInferCategoryAndTagsWithConfidenceUsesEvidenceStrength);
+        failed += Run("Todo triage index signal-quality inference", TestTriageIndexAssessSignalQualityDistinguishesStrongAndWeakContext);
         failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
         failed += Run("Todo vision check explicit reject policy precedence", TestVisionCheckExplicitRejectPolicyTakesPrecedence);
@@ -495,6 +496,7 @@ internal static partial class Program {
         failed += Run("Todo project sync labels use issue related pull-request fallback", TestProjectSyncBuildLabelsUsesIssueRelatedPullRequestFallbackWhenMatchedPullRequestMissing);
         failed += Run("Todo project sync decision suggests merge-candidate", TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr);
         failed += Run("Todo project sync decision suggests defer for blocked PR", TestProjectSyncBuildEntriesSuggestsDeferForBlockedPr);
+        failed += Run("Todo project sync decision suggests defer for low-signal PR", TestProjectSyncBuildEntriesSuggestsDeferForLowSignalPr);
         failed += Run("Todo project sync derives issue pull-request matches", TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches);
         failed += Run("Todo project sync preserves higher-confidence issue-side pull-request matches", TestProjectSyncBuildEntriesPreservesHigherConfidenceIssueSidePullRequestMatch);
         failed += Run("Todo project sync uses issue related pull-request fallback", TestProjectSyncBuildEntriesUsesIssueRelatedPullRequestFallback);

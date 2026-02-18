@@ -17,6 +17,7 @@ These commands are assistive. They are not an autonomous production decision sys
 - Scope alignment checks against `VISION.md` (`vision-check`).
 - GitHub Project field sync for triage at scale (`project-init`, `project-sync`, `project-bootstrap`).
 - Maintainer-assist view checklist and apply plan generation (`project-view-checklist`, `project-view-apply`).
+- Signal quality grading (`high`/`medium`/`low`) to separate strong recommendations from weak-context items.
 
 ## Recommended end-to-end flow
 
@@ -67,6 +68,7 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 - Project setup and sync requires GitHub `project` scope (`read:project` also required for sync reads).
 - Issue-posting helpers require issue write permission.
 - Use `--dry-run` on sync commands before enabling mutating operations.
+- Treat low-signal items (`Signal Quality = low`, `ix/signal:low`) as context-gathering tasks, not decision-ready recommendations.
 
 ## Related docs
 

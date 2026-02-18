@@ -28,6 +28,13 @@ internal static class ProjectFieldCatalog {
             "ci"
         }),
         new ProjectFieldDefinition("Category Confidence", "NUMBER", Array.Empty<string>()),
+        new ProjectFieldDefinition("Signal Quality", "SINGLE_SELECT", new[] {
+            "high",
+            "medium",
+            "low"
+        }),
+        new ProjectFieldDefinition("Signal Quality Score", "NUMBER", Array.Empty<string>()),
+        new ProjectFieldDefinition("Signal Quality Notes", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Tags", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Tag Confidence Summary", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue", "TEXT", Array.Empty<string>()),

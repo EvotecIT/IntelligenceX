@@ -14,6 +14,9 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Vision Confidence", StringComparer.OrdinalIgnoreCase), "has Vision Confidence");
         AssertEqual(true, names.Contains("Category", StringComparer.OrdinalIgnoreCase), "has Category");
         AssertEqual(true, names.Contains("Category Confidence", StringComparer.OrdinalIgnoreCase), "has Category Confidence");
+        AssertEqual(true, names.Contains("Signal Quality", StringComparer.OrdinalIgnoreCase), "has Signal Quality");
+        AssertEqual(true, names.Contains("Signal Quality Score", StringComparer.OrdinalIgnoreCase), "has Signal Quality Score");
+        AssertEqual(true, names.Contains("Signal Quality Notes", StringComparer.OrdinalIgnoreCase), "has Signal Quality Notes");
         AssertEqual(true, names.Contains("Tags", StringComparer.OrdinalIgnoreCase), "has Tags");
         AssertEqual(true, names.Contains("Tag Confidence Summary", StringComparer.OrdinalIgnoreCase), "has Tag Confidence Summary");
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
@@ -37,6 +40,7 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/decision:defer", StringComparer.OrdinalIgnoreCase), "decision defer label");
         AssertEqual(true, labels.Contains("ix/decision:reject", StringComparer.OrdinalIgnoreCase), "decision reject label");
         AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision merge-candidate label");
+        AssertEqual(true, labels.Contains("ix/signal:low", StringComparer.OrdinalIgnoreCase), "signal low label");
         AssertEqual(true, labels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "issue linked-pr label");
         AssertEqual(true, labels.Contains("ix/match:needs-review-pr", StringComparer.OrdinalIgnoreCase), "issue needs-review-pr label");
     }
@@ -150,6 +154,12 @@ internal static partial class Program {
       "url": "https://github.com/EvotecIT/IntelligenceX/pull/410",
       "category": "security",
       "categoryConfidence": 0.83,
+      "signalQuality": "low",
+      "signalQualityScore": 42.5,
+      "signalQualityReasons": [
+        "Description/context is sparse.",
+        "No labels present."
+      ],
       "tags": [ "security", "api" ],
       "tagConfidences": {
         "security": 0.91,
@@ -174,6 +184,10 @@ internal static partial class Program {
         AssertEqual(true, entry.TagConfidences!.ContainsKey("security"), "security tag confidence key");
         AssertEqual(0.91, entry.TagConfidences["security"], "security tag confidence value");
         AssertEqual(0.57, entry.TagConfidences["api"], "api tag confidence value");
+        AssertEqual("low", entry.SignalQuality, "signal quality parsed");
+        AssertEqual(true, entry.SignalQualityScore.HasValue, "signal quality score parsed");
+        AssertEqual(42.5, entry.SignalQualityScore!.Value, "signal quality score value");
+        AssertEqual(true, (entry.SignalQualityReasons?.Count ?? 0) == 2, "signal quality reasons parsed");
     }
 
     private static void TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr() {
@@ -273,6 +287,59 @@ internal static partial class Program {
         AssertEqual("defer", pr.SuggestedDecision, "blocked PR suggestion");
     }
 
+    private static void TestProjectSyncBuildEntriesSuggestsDeferForLowSignalPr() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "pr#37",
+      "kind": "pull_request",
+      "number": 37,
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/37",
+      "score": 94.6,
+      "signalQuality": "low",
+      "signalQualityScore": 41.0,
+      "signals": {
+        "pullRequest": {
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "reviewDecision": "APPROVED",
+          "statusCheckState": "SUCCESS"
+        }
+      }
+    }
+  ],
+  "bestPullRequests": [
+    {
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/37"
+    }
+  ]
+}
+""";
+
+        const string visionJson = """
+{
+  "assessments": [
+    {
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/37",
+      "classification": "aligned",
+      "confidence": 0.92
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        using var visionDoc = System.Text.Json.JsonDocument.Parse(visionJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            visionDoc.RootElement,
+            100);
+
+        var pr = entries.Single(item => item.Url.EndsWith("/pull/37", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("defer", pr.SuggestedDecision, "low signal PR is deferred");
+    }
+
     private static void TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch() {
         var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
             Number: 42,
@@ -364,13 +431,16 @@ internal static partial class Program {
             MatchedIssueConfidence: 0.62,
             VisionFit: null,
             VisionConfidence: null,
-            SuggestedDecision: "defer"
+            SuggestedDecision: "defer",
+            SignalQuality: "low",
+            SignalQualityScore: 41.2
         );
 
         var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
         AssertEqual(true, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "low confidence match review label");
         AssertEqual(false, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "low confidence should not be linked-issue");
         AssertEqual(true, labels.Contains("ix/decision:defer", StringComparer.OrdinalIgnoreCase), "decision defer label");
+        AssertEqual(true, labels.Contains("ix/signal:low", StringComparer.OrdinalIgnoreCase), "low signal label");
     }
 
     private static void TestProjectSyncBuildLabelsUsesRelatedIssueFallbackWhenMatchedIssueMissing() {

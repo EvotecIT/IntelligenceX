@@ -15,6 +15,9 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Merge Candidates", StringComparer.OrdinalIgnoreCase), "merge candidates view present");
         AssertEqual(true, names.Contains("Vision Review", StringComparer.OrdinalIgnoreCase), "vision review view present");
         AssertEqual(true, names.Contains("Duplicate Clusters", StringComparer.OrdinalIgnoreCase), "duplicate clusters view present");
+        AssertEqual(true,
+            IntelligenceX.Cli.Todo.ProjectViewCatalog.DefaultViews.All(view => view.SuggestedColumns.Count > 0),
+            "default views expose suggested columns guidance");
     }
 
     private static void TestProjectViewCatalogFindMissingDefaultViewsReturnsMissingOnly() {

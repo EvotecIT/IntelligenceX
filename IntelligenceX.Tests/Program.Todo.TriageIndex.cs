@@ -287,5 +287,70 @@ internal static partial class Program {
         AssertEqual("feature", weakInference.Category, "weak inference fallback category");
         AssertEqual(true, weakInference.CategoryConfidence < 0.62, "weak category confidence below labeling threshold");
     }
+
+    private static void TestTriageIndexAssessSignalQualityDistinguishesStrongAndWeakContext() {
+        var now = DateTimeOffset.UtcNow;
+        var strong = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#700",
+            "pull_request",
+            700,
+            "Harden authentication token validation in reviewer pipeline",
+            "https://example/pr/700",
+            now,
+            new[] { "security", "reviewer" },
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Harden authentication token validation in reviewer pipeline"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Harden authentication token validation in reviewer pipeline"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Security hardening for auth token validation with explicit issue linkage and tests"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "MERGEABLE", "APPROVED", "SUCCESS", 9, 140, 21, 3, 4, "dev"),
+            null
+        );
+        var weak = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#701",
+            "pull_request",
+            701,
+            "Fix",
+            "https://example/pr/701",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Fix"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Fix"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Fix"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "UNKNOWN", string.Empty, string.Empty, 0, 0, 0, 0, 0, "dev"),
+            null
+        );
+
+        var strongInference = IntelligenceX.Cli.Todo.TriageIndexRunner.InferCategoryAndTagsWithConfidence(strong);
+        var weakInference = IntelligenceX.Cli.Todo.TriageIndexRunner.InferCategoryAndTagsWithConfidence(weak);
+        var strongQuality = IntelligenceX.Cli.Todo.TriageIndexRunner.AssessSignalQuality(
+            strong,
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.ItemEnrichment(
+                strongInference.Category,
+                strongInference.CategoryConfidence,
+                strongInference.Tags,
+                strongInference.TagConfidences,
+                MatchedIssueUrl: "https://example/issues/1",
+                MatchedIssueConfidence: 0.91,
+                RelatedIssues: Array.Empty<IntelligenceX.Cli.Todo.TriageIndexRunner.RelatedIssueCandidate>(),
+                MatchedPullRequestUrl: null,
+                MatchedPullRequestConfidence: null,
+                RelatedPullRequests: Array.Empty<IntelligenceX.Cli.Todo.TriageIndexRunner.RelatedPullRequestCandidate>()));
+        var weakQuality = IntelligenceX.Cli.Todo.TriageIndexRunner.AssessSignalQuality(
+            weak,
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.ItemEnrichment(
+                weakInference.Category,
+                weakInference.CategoryConfidence,
+                weakInference.Tags,
+                weakInference.TagConfidences,
+                MatchedIssueUrl: null,
+                MatchedIssueConfidence: null,
+                RelatedIssues: Array.Empty<IntelligenceX.Cli.Todo.TriageIndexRunner.RelatedIssueCandidate>(),
+                MatchedPullRequestUrl: null,
+                MatchedPullRequestConfidence: null,
+                RelatedPullRequests: Array.Empty<IntelligenceX.Cli.Todo.TriageIndexRunner.RelatedPullRequestCandidate>()));
+
+        AssertEqual(true, strongQuality.Score > weakQuality.Score, "strong signal quality score is higher");
+        AssertEqual("high", strongQuality.Level, "strong signal quality level");
+        AssertEqual("low", weakQuality.Level, "weak signal quality level");
+    }
 #endif
 }

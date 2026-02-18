@@ -19,6 +19,7 @@ internal static class RepositoryLabelManager {
         "ix/vision:",
         "ix/match:",
         "ix/decision:",
+        "ix/signal:",
         "ix/duplicate:"
     };
 
