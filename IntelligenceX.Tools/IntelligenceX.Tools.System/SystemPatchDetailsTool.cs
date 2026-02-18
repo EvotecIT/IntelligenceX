@@ -156,7 +156,7 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             .Where(x => string.IsNullOrWhiteSpace(cveContains)
                 || x.CveId.Contains(cveContains, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(kbContains)
-                || (x.Kbs?.Any(kb => kb.Contains(kbContains, StringComparison.OrdinalIgnoreCase)) ?? false))
+                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, kbContains))
             .Where(x => productNameContains.Count == 0
                 || (x.Products?.Any(product =>
                     productNameContains.Any(filter => product.Contains(filter, StringComparison.OrdinalIgnoreCase))) ?? false))
@@ -308,10 +308,8 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
                 highestRated.Add(x.CveId);
             }
 
-            foreach (var kb in x.Kbs ?? Array.Empty<string>()) {
-                if (!string.IsNullOrWhiteSpace(kb)) {
-                    newKbs.Add(kb);
-                }
+            foreach (var kb in SystemPatchKbNormalization.NormalizeDistinct(x.Kbs)) {
+                newKbs.Add(kb);
             }
         }
 

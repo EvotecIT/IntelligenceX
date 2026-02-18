@@ -134,8 +134,8 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 default:
                     return Error("invalid_argument", "Unsupported probe_kind.");
             }
-        } catch (InvalidOperationException ex) {
-            return Error("invalid_argument", ex.Message);
+        } catch (Exception ex) {
+            return ErrorFromException(ex, defaultMessage: "Monitoring probe execution failed.");
         }
 
         if (!includeChildren) {

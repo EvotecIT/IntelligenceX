@@ -232,7 +232,7 @@ public sealed partial class AdMonitoringProbeRunTool {
                     reply = await ping.SendPingAsync(target, timeoutMs).ConfigureAwait(false);
                 } catch (Exception ex) {
                     failures++;
-                    error = ex.Message;
+                    error = SanitizeErrorMessage(ex.Message, "Ping attempt failed.");
                     if (attempt + 1 < attempts && retryDelay > TimeSpan.Zero) {
                         await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
                     }

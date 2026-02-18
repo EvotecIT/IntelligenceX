@@ -199,10 +199,10 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
 
         var installedKbSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var update in updates) {
-            foreach (var kb in EnumerateKbs(update.Kb)) {
+            foreach (var kb in SystemPatchKbNormalization.EnumerateNormalized(update.Kb)) {
                 installedKbSet.Add(kb);
             }
-            foreach (var kb in EnumerateKbs(update.Title)) {
+            foreach (var kb in SystemPatchKbNormalization.EnumerateNormalized(update.Title)) {
                 installedKbSet.Add(kb);
             }
         }
@@ -218,18 +218,14 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             .Where(x => string.IsNullOrWhiteSpace(cveContains)
                 || x.CveId.Contains(cveContains, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(kbContains)
-                || (x.Kbs?.Any(kb => kb.Contains(kbContains, StringComparison.OrdinalIgnoreCase)) ?? false))
+                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, kbContains))
             .OrderByDescending(static x => x.IsExploited)
             .ThenByDescending(static x => x.Published ?? DateTime.MinValue)
             .ThenBy(static x => x.CveId, StringComparer.OrdinalIgnoreCase);
 
         var complianceRows = new List<ComplianceRow>();
         foreach (var item in filtered) {
-            var expected = item.Kbs?
-                .SelectMany(EnumerateKbs)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-                .ToArray() ?? Array.Empty<string>();
+            var expected = SystemPatchKbNormalization.NormalizeDistinct(item.Kbs);
 
             var installed = expected
                 .Where(installedKbSet.Contains)
@@ -240,7 +236,7 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                 .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            var state = expected.Length == 0
+            var state = expected.Count == 0
                 ? "unknown_no_kb"
                 : missing.Length == 0
                     ? "installed"
@@ -358,30 +354,6 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             }
         }
         return false;
-    }
-
-    private static IEnumerable<string> EnumerateKbs(string? input) {
-        if (string.IsNullOrWhiteSpace(input)) {
-            yield break;
-        }
-
-        var s = input!;
-        for (var i = 0; i < s.Length - 2; i++) {
-            if ((s[i] == 'K' || s[i] == 'k') && (s[i + 1] == 'B' || s[i + 1] == 'b')) {
-                var j = i + 2;
-                while (j < s.Length && char.IsWhiteSpace(s[j])) {
-                    j++;
-                }
-                var start = j;
-                while (j < s.Length && char.IsDigit(s[j])) {
-                    j++;
-                }
-                if (j > start) {
-                    yield return "KB" + s.Substring(start, j - start);
-                }
-                i = j;
-            }
-        }
     }
 
     private static PatchComplianceSummary BuildSummary(IReadOnlyList<ComplianceRow> rows) {

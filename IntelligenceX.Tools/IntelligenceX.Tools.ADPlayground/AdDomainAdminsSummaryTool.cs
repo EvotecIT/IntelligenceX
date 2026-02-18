@@ -42,7 +42,7 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
         var usersOnly = arguments?.GetBoolean("users_only") ?? false;
         var computersOnly = arguments?.GetBoolean("computers_only") ?? false;
         if (usersOnly && computersOnly) {
-            return Error("users_only and computers_only cannot both be true.");
+            return Error("invalid_argument", "users_only and computers_only cannot both be true.");
         }
 
         var includeMembers = arguments?.GetBoolean("include_members") ?? true;
@@ -70,10 +70,8 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
                 .ConfigureAwait(false);
 
             return ToolResponse.OkModel(summary);
-        } catch (InvalidOperationException ex) {
-            return Error(ex.Message);
-        } catch (ArgumentException ex) {
-            return Error(ex.Message);
+        } catch (Exception ex) {
+            return ErrorFromException(ex, defaultMessage: "Domain Admins summary query failed.");
         }
     }
 }
