@@ -70,17 +70,13 @@ public sealed class AdTerminalServicesTimeoutPolicyTool : ActiveDirectoryToolBas
             return Task.FromResult(ToolResponse.Error("query_failed", message));
         }
 
-        var attributionRows = includeAttribution
-            ? view.Attribution
-                .Where(row => !configuredAttributionOnly || !string.IsNullOrWhiteSpace(row.Effective))
-                .ToArray()
-            : Array.Empty<PolicyAttribution>();
-
-        var scanned = attributionRows.Length;
-        IReadOnlyList<PolicyAttribution> rows = scanned > maxResults
-            ? attributionRows.Take(maxResults).ToArray()
-            : attributionRows;
-        var truncated = scanned > rows.Count;
+        var rows = PreparePolicyAttributionRows(
+            attribution: view.Attribution,
+            includeAttribution: includeAttribution,
+            configuredAttributionOnly: configuredAttributionOnly,
+            maxResults: maxResults,
+            scanned: out var scanned,
+            truncated: out var truncated);
 
         var result = new AdTerminalServicesTimeoutPolicyResult(
             DomainName: domainName,
@@ -105,10 +101,7 @@ public sealed class AdTerminalServicesTimeoutPolicyTool : ActiveDirectoryToolBas
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("include_attribution", includeAttribution);
-                meta.Add("configured_attribution_only", configuredAttributionOnly);
-                meta.Add("max_results", maxResults);
+                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
             }));
     }
 }

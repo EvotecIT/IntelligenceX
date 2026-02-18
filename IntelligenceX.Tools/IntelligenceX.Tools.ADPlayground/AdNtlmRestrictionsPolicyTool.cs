@@ -69,17 +69,13 @@ public sealed class AdNtlmRestrictionsPolicyTool : ActiveDirectoryToolBase, IToo
             return Task.FromResult(errorResponse!);
         }
 
-        var attributionRows = includeAttribution
-            ? view.Attribution
-                .Where(row => !configuredAttributionOnly || !string.IsNullOrWhiteSpace(row.Effective) && !string.Equals(row.Effective, "Not configured", StringComparison.OrdinalIgnoreCase))
-                .ToArray()
-            : Array.Empty<PolicyAttribution>();
-
-        var scanned = attributionRows.Length;
-        IReadOnlyList<PolicyAttribution> rows = scanned > maxResults
-            ? attributionRows.Take(maxResults).ToArray()
-            : attributionRows;
-        var truncated = scanned > rows.Count;
+        var rows = PreparePolicyAttributionRows(
+            attribution: view.Attribution,
+            includeAttribution: includeAttribution,
+            configuredAttributionOnly: configuredAttributionOnly,
+            maxResults: maxResults,
+            scanned: out var scanned,
+            truncated: out var truncated);
 
         var result = new AdNtlmRestrictionsPolicyResult(
             DomainName: domainName,
@@ -102,10 +98,7 @@ public sealed class AdNtlmRestrictionsPolicyTool : ActiveDirectoryToolBase, IToo
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("include_attribution", includeAttribution);
-                meta.Add("configured_attribution_only", configuredAttributionOnly);
-                meta.Add("max_results", maxResults);
+                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
             }));
     }
 }

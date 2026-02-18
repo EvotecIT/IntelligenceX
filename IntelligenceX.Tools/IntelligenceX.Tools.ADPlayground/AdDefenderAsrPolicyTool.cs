@@ -79,17 +79,13 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(errorResponse!);
         }
 
-        var attributionRows = includeAttribution
-            ? view.Attribution
-                .Where(row => !configuredAttributionOnly || !string.IsNullOrWhiteSpace(row.Effective) && !string.Equals(row.Effective, "Not configured", StringComparison.OrdinalIgnoreCase) && !string.Equals(row.Effective, "Off", StringComparison.OrdinalIgnoreCase))
-                .ToArray()
-            : Array.Empty<PolicyAttribution>();
-
-        var scanned = attributionRows.Length;
-        IReadOnlyList<PolicyAttribution> rows = scanned > maxResults
-            ? attributionRows.Take(maxResults).ToArray()
-            : attributionRows;
-        var truncated = scanned > rows.Count;
+        var rows = PreparePolicyAttributionRows(
+            attribution: view.Attribution,
+            includeAttribution: includeAttribution,
+            configuredAttributionOnly: configuredAttributionOnly,
+            maxResults: maxResults,
+            scanned: out var scanned,
+            truncated: out var truncated);
 
         var result = new AdDefenderAsrPolicyResult(
             DomainName: domainName,
@@ -122,10 +118,7 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             maxTop: MaxViewTop,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("include_attribution", includeAttribution);
-                meta.Add("configured_attribution_only", configuredAttributionOnly);
-                meta.Add("max_results", maxResults);
+                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
             });
         return Task.FromResult(response);
     }
