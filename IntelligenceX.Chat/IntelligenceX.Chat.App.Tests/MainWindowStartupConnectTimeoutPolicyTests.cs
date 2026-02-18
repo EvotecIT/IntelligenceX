@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -169,6 +170,37 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         int expectedHardTimeoutMs) {
         var hardTimeout = MainWindow.ResolveConnectAttemptHardTimeout(TimeSpan.FromMilliseconds(timeoutMs));
         Assert.Equal(TimeSpan.FromMilliseconds(expectedHardTimeoutMs), hardTimeout);
+    }
+
+    /// <summary>
+    /// Ensures post-cancel connect settlement treats near-boundary successful completion as success.
+    /// </summary>
+    [Fact]
+    public async Task TryAwaitConnectTaskSettlementAsync_ReturnsTrue_WhenTaskCompletesWithinGrace() {
+        var connectTask = Task.Delay(30);
+        var settled = await MainWindow.TryAwaitConnectTaskSettlementAsync(connectTask, TimeSpan.FromMilliseconds(200));
+        Assert.True(settled);
+    }
+
+    /// <summary>
+    /// Ensures post-cancel connect settlement preserves original connect task failures.
+    /// </summary>
+    [Fact]
+    public async Task TryAwaitConnectTaskSettlementAsync_PropagatesFaults() {
+        var connectTask = Task.FromException(new InvalidOperationException("connect-fault"));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await MainWindow.TryAwaitConnectTaskSettlementAsync(connectTask, TimeSpan.FromMilliseconds(200)));
+        Assert.Equal("connect-fault", ex.Message);
+    }
+
+    /// <summary>
+    /// Ensures post-cancel connect settlement reports timeout when task does not settle within grace.
+    /// </summary>
+    [Fact]
+    public async Task TryAwaitConnectTaskSettlementAsync_ReturnsFalse_WhenTaskDoesNotCompleteWithinGrace() {
+        var pending = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var settled = await MainWindow.TryAwaitConnectTaskSettlementAsync(pending.Task, TimeSpan.FromMilliseconds(50));
+        Assert.False(settled);
     }
 
     /// <summary>

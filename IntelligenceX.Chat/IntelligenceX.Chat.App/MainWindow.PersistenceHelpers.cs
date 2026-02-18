@@ -272,6 +272,23 @@ public sealed partial class MainWindow : Window {
         return Interlocked.Increment(ref _nextRequestId).ToString();
     }
 
+    internal static async Task<bool> TryAwaitConnectTaskSettlementAsync(Task connectTask, TimeSpan graceTimeout) {
+        if (connectTask is null) {
+            throw new ArgumentNullException(nameof(connectTask));
+        }
+
+        if (graceTimeout <= TimeSpan.Zero) {
+            return connectTask.IsCompleted;
+        }
+
+        try {
+            await connectTask.WaitAsync(graceTimeout).ConfigureAwait(false);
+            return true;
+        } catch (TimeoutException) {
+            return false;
+        }
+    }
+
     private static async Task ConnectClientWithTimeoutAsync(
         ChatServiceClient client,
         string pipeName,
@@ -297,13 +314,12 @@ public sealed partial class MainWindow : Window {
         }
 
         cts.Cancel();
-        try {
-            // Preserve original completion/failure if connect settles shortly after cancellation.
-            await connectTask.WaitAsync(StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true);
+        // Preserve original completion/failure if connect settles shortly after cancellation.
+        if (await TryAwaitConnectTaskSettlementAsync(connectTask, StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true)) {
             return;
-        } catch (TimeoutException) {
-            throw new TimeoutException("Timed out waiting for service pipe.");
         }
+
+        throw new TimeoutException("Timed out waiting for service pipe.");
     }
 
     private static string FormatConnectError(Exception ex) {
