@@ -82,27 +82,23 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for LAPS schema posture query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "LAPS schema posture",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<LapsSchemaPostureRow>(targetDomains.Length);
         var details = new List<LapsSchemaPostureDetail>(targetDomains.Length);
         var errors = new List<LapsSchemaPostureError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var legacy = LapsLegacySearchFlagsService.Evaluate(domain);
                 var modern = LapsModernSchemaService.Evaluate(domain);
 
@@ -134,10 +130,10 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
                         LegacyAttributeDn: legacy.AttributeDn,
                         ModernSchemaDn: modern.SchemaDn));
                 }
-            } catch (Exception ex) {
-                errors.Add(new LapsSchemaPostureError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new LapsSchemaPostureError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !onlyFindings || row.AnyFinding)

@@ -90,18 +90,14 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 5000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for duplicate-account query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "duplicate-account",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<DuplicateAccountsRow>(targetDomains.Length);
@@ -109,9 +105,9 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
         var duplicateDetails = new List<DuplicateAccountsDuplicateDetailRow>(targetDomains.Length * 4);
         var errors = new List<DuplicateAccountsError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var view = DuplicateAccountService.Evaluate(domain);
                 rows.Add(new DuplicateAccountsRow(
                     DomainName: view.DomainName,
@@ -137,10 +133,10 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
                             ObjectClasses: duplicate.ObjectClasses));
                     }
                 }
-            } catch (Exception ex) {
-                errors.Add(new DuplicateAccountsError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DuplicateAccountsError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !conflictsOnly || row.ConflictObjectCount > 0)

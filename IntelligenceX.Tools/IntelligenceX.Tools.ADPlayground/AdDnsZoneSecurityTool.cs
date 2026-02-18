@@ -92,27 +92,23 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
         var maxOffendingRows = ToolArgs.GetCappedInt32(arguments, "max_offending_rows", 500, 1, 50000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for DNS zone security query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "DNS zone security",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<DnsZoneSecurityRow>(targetDomains.Length * 10);
         var offendingRows = new List<DnsZoneSecurityOffendingRow>(maxOffendingRows);
         var errors = new List<DnsZoneSecurityError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var snapshot = DnsZoneSecurityService.GetSnapshot(domain);
                 foreach (var zone in snapshot.Zones) {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -151,10 +147,10 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
                         }
                     }
                 }
-            } catch (Exception ex) {
-                errors.Add(new DnsZoneSecurityError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DnsZoneSecurityError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !exposedOnly || row.AnyExposure)

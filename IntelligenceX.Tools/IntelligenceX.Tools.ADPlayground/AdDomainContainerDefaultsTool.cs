@@ -67,25 +67,21 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
         var changedOnly = ToolArgs.GetBoolean(arguments, "changed_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for domain-container-defaults query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "domain-container-defaults",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<DomainContainerDefaultsRow>(targetDomains.Length);
         var errors = new List<DomainContainerDefaultsError>();
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var snapshot = DomainContainerDefaultsService.GetSnapshot(domain);
                 var anyChanged = snapshot.ComputerContainerChanged || snapshot.UserContainerChanged;
                 rows.Add(new DomainContainerDefaultsRow(
@@ -95,10 +91,10 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
                     ComputerContainerChanged: snapshot.ComputerContainerChanged,
                     UserContainerChanged: snapshot.UserContainerChanged,
                     AnyChanged: anyChanged));
-            } catch (Exception ex) {
-                errors.Add(new DomainContainerDefaultsError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new DomainContainerDefaultsError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !changedOnly || row.AnyChanged)

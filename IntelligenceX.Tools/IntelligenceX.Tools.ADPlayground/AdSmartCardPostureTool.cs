@@ -78,27 +78,23 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
         var maxFindingRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_finding_rows_per_domain", 100, 1, Options.MaxResults);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for smart-card posture query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "smart-card posture",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var summaries = new List<SmartCardPostureSummaryRow>(targetDomains.Length);
         var details = new List<SmartCardPostureDetail>(targetDomains.Length);
         var errors = new List<SmartCardPostureError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var domainDn = DomainHelper.DomainNameToDistinguishedName(domain);
                 var view = SmartCardPostureService.Evaluate(domain, domainDn);
                 summaries.Add(new SmartCardPostureSummaryRow(
@@ -119,10 +115,10 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
                     SmartCardPwdOld: includeDetails
                         ? view.SmartCardPwdOld.Take(maxFindingRowsPerDomain).ToArray()
                         : Array.Empty<SmartCardPostureService.Finding>()));
-            } catch (Exception ex) {
-                errors.Add(new SmartCardPostureError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new SmartCardPostureError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var scanned = summaries.Count;
         IReadOnlyList<SmartCardPostureSummaryRow> projectedRows = scanned > maxResults

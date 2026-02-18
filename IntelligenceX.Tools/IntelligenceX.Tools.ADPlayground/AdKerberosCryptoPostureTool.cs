@@ -65,25 +65,21 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for Kerberos crypto posture query. Provide domain_name or ensure forest discovery is available.");
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "Kerberos crypto posture",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return targetDomainError!;
         }
 
         var rows = new List<KerberosCryptoPostureRow>(targetDomains.Length);
         var errors = new List<KerberosCryptoPostureError>();
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        await RunPerTargetCollectionAsync(
+                targets: targetDomains,
+                collectAsync: async domain => {
                 var view = await KerberosCryptoPostureService.EvaluateAsync(domain).ConfigureAwait(false);
                 rows.Add(new KerberosCryptoPostureRow(
                     DomainName: view.DomainName,
@@ -93,10 +89,10 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
                     ComputersAesDisabled: view.ComputersAesDisabled,
                     UsersPreAuthDisabled: view.UsersPreAuthDisabled,
                     TotalSignals: view.UsersRc4Only + view.ComputersRc4Only + view.UsersAesDisabled + view.ComputersAesDisabled + view.UsersPreAuthDisabled));
-            } catch (Exception ex) {
-                errors.Add(new KerberosCryptoPostureError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new KerberosCryptoPostureError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var projectedRows = CapRows(rows, maxResults, out var scanned, out var truncated);
 

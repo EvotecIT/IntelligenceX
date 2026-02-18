@@ -79,27 +79,23 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
         var maxOuRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_ou_rows_per_domain", 100, 1, 5000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for OU protection query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "OU protection",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<OuProtectionRow>(targetDomains.Length);
         var details = new List<OuProtectionDetailRow>(targetDomains.Length * 4);
         var errors = new List<OuProtectionError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var snapshot = OuProtectionService.GetSnapshot(domain);
                 var total = snapshot.Ous.Count;
                 var unprotected = snapshot.Ous
@@ -126,10 +122,10 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
                             DistinguishedName: ou.DistinguishedName));
                     }
                 }
-            } catch (Exception ex) {
-                errors.Add(new OuProtectionError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new OuProtectionError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !unprotectedOnly || row.UnprotectedCount > 0)

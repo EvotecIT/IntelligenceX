@@ -94,27 +94,23 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
         var maxSampleRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_sample_rows_per_domain", 50, 1, 1000);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for LAPS coverage query. Provide domain_name or ensure forest discovery is available.");
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "LAPS coverage",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return targetDomainError!;
         }
 
         var rows = new List<LapsCoverageRow>(targetDomains.Length);
         var details = new List<LapsCoverageDetail>(targetDomains.Length);
         var errors = new List<LapsCoverageError>();
 
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        await RunPerTargetCollectionAsync(
+                targets: targetDomains,
+                collectAsync: async domain => {
                 var view = await LapsCoverageService.EvaluateAsync(domain).ConfigureAwait(false);
                 rows.Add(new LapsCoverageRow(
                     DomainName: view.DomainName,
@@ -139,10 +135,10 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
                         MissingDsrmLaps: view.MissingDsrmLaps.Take(maxSampleRowsPerDomain).ToArray(),
                         ExpiredDsrmLaps: view.ExpiredDsrmLaps.Take(maxSampleRowsPerDomain).ToArray()));
                 }
-            } catch (Exception ex) {
-                errors.Add(new LapsCoverageError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new LapsCoverageError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var filtered = rows
             .Where(row => !coverageBelowPercent.HasValue || row.EitherLapsCoveragePercent < coverageBelowPercent.Value)

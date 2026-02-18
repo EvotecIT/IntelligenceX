@@ -79,27 +79,22 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
         var includeSpns = ToolArgs.GetBoolean(arguments, "include_spns", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for Azure AD SSO posture query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "Azure AD SSO posture",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<AzureAdSsoRow>(targetDomains.Length);
         var details = new List<AzureAdSsoDetail>(targetDomains.Length);
         var errors = new List<AzureAdSsoError>();
-
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var snapshot = AzureAdSsoService.GetSnapshot(domain);
                 var risky = snapshot.Present && snapshot.UnconstrainedDelegation == true;
                 rows.Add(new AzureAdSsoRow(
@@ -114,10 +109,10 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
                     DomainName: domain,
                     AccountDn: snapshot.AccountDn,
                     Spns: includeSpns ? snapshot.Spns : Array.Empty<string>()));
-            } catch (Exception ex) {
-                errors.Add(new AzureAdSsoError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new AzureAdSsoError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !onlyPresent || row.SeamlessSsoPresent)

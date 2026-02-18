@@ -69,25 +69,21 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        var targetDomains = string.IsNullOrWhiteSpace(domainName)
-            ? DomainHelper.EnumerateForestDomainNames(forestName, cancellationToken)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : new[] { domainName! };
-
-        if (targetDomains.Length == 0) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                "No domains resolved for machine-account-quota query. Provide domain_name or ensure forest discovery is available."));
+        if (!TryResolveTargetDomains(
+                domainName: domainName,
+                forestName: forestName,
+                cancellationToken: cancellationToken,
+                queryName: "machine-account-quota",
+                targetDomains: out var targetDomains,
+                errorResponse: out var targetDomainError)) {
+            return Task.FromResult(targetDomainError!);
         }
 
         var rows = new List<MachineAccountQuotaRow>(targetDomains.Length);
         var errors = new List<MachineAccountQuotaError>();
-        foreach (var domain in targetDomains) {
-            cancellationToken.ThrowIfCancellationRequested();
-            try {
+        RunPerTargetCollection(
+            targets: targetDomains,
+            collect: domain => {
                 var view = MachineAccountQuotaEvaluator.Evaluate(domain);
                 var isKnown = view.MachineAccountQuota >= 0;
                 var exceedsThreshold = isKnown && view.MachineAccountQuota > threshold;
@@ -97,10 +93,10 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
                     IsKnown: isKnown,
                     ExceedsThreshold: exceedsThreshold,
                     Threshold: threshold));
-            } catch (Exception ex) {
-                errors.Add(new MachineAccountQuotaError(domain, ToCollectorErrorMessage(ex)));
-            }
-        }
+            },
+            errorFactory: (domain, ex) => new MachineAccountQuotaError(domain, ToCollectorErrorMessage(ex)),
+            errors: errors,
+            cancellationToken: cancellationToken);
 
         var filtered = rows
             .Where(row => !riskyOnly || row.ExceedsThreshold)
