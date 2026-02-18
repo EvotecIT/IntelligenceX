@@ -69,6 +69,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(true, null, 0, 0, 0, null, 4000)]
     [InlineData(true, 900, 0, 1, 0, null, 4000)]
     [InlineData(true, 900, 0, 2, 0, null, 2200)]
+    [InlineData(true, 900, 0, 2, 0, 2500, 2200)]
     [InlineData(true, 900, 0, 2, 0, 4000, 3700)]
     [InlineData(true, 900, 0, 3, 0, 3700, 3400)]
     [InlineData(true, 1600, 0, 2, 0, 4000, 3700)]

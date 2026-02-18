@@ -525,6 +525,12 @@ public sealed partial class MainWindow : Window {
                 adaptiveCooldownRunsRemaining: startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining,
                 lastAppliedBudgetMs: startupWebViewBudgetCache.LastAppliedBudgetMs);
             if (startupWebViewBudget.HasValue) {
+                var startupWebViewBudgetDecision = ResolveStartupWebViewBudgetDecision(
+                    startupWebViewBudgetCache.LastEnsureWebViewMs,
+                    startupWebViewBudgetCache.ConsecutiveBudgetExhaustions,
+                    startupWebViewBudgetCache.ConsecutiveStableCompletions,
+                    startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining,
+                    startupWebViewBudgetCache.LastAppliedBudgetMs);
                 StartupLog.Write("StartupPhase.WebView budget_ms=" + Math.Round(startupWebViewBudget.Value.TotalMilliseconds).ToString(CultureInfo.InvariantCulture));
                 StartupLog.Write(
                     "StartupPhase.WebView budget_policy last_ensure_ms="
@@ -537,6 +543,7 @@ public sealed partial class MainWindow : Window {
                     + startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining.ToString(CultureInfo.InvariantCulture)
                     + " last_budget_ms="
                     + (startupWebViewBudgetCache.LastAppliedBudgetMs?.ToString(CultureInfo.InvariantCulture) ?? "null"));
+                StartupLog.Write("StartupPhase.WebView budget_reason=" + startupWebViewBudgetDecision.Reason);
             }
             RecordStartupWebViewBudgetSelection(startupWebViewBudget);
             var webViewInitializationTask = EnsureWebViewInitializedAsync();
@@ -612,36 +619,59 @@ public sealed partial class MainWindow : Window {
         int consecutiveStableCompletions,
         int adaptiveCooldownRunsRemaining,
         int? lastAppliedBudgetMs) {
+        return ResolveStartupWebViewBudgetDecision(
+            lastEnsureWebViewMs,
+            consecutiveBudgetExhaustions,
+            consecutiveStableCompletions,
+            adaptiveCooldownRunsRemaining,
+            lastAppliedBudgetMs).BudgetMs;
+    }
+
+    private static StartupWebViewBudgetDecision ResolveStartupWebViewBudgetDecision(
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining,
+        int? lastAppliedBudgetMs) {
         var conservativeBudgetMs = (int)Math.Round(StartupWebViewBudget.TotalMilliseconds);
         var normalizedExhaustions = Math.Max(0, consecutiveBudgetExhaustions);
         var normalizedStableCompletions = Math.Max(0, consecutiveStableCompletions);
         var normalizedCooldownRuns = Math.Max(0, adaptiveCooldownRunsRemaining);
 
         if (normalizedCooldownRuns > 0) {
-            return conservativeBudgetMs;
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "cooldown_conservative");
         }
 
         if (normalizedExhaustions > 0 && normalizedStableCompletions < StartupWebViewBudgetAdaptiveMinStableCompletions) {
-            return conservativeBudgetMs;
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "exhaustion_conservative");
         }
 
         if (normalizedStableCompletions < StartupWebViewBudgetAdaptiveMinStableCompletions) {
-            return conservativeBudgetMs;
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "insufficient_stability");
         }
 
         if (!lastEnsureWebViewMs.HasValue || lastEnsureWebViewMs.Value <= 0) {
-            return conservativeBudgetMs;
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "missing_last_ensure");
         }
 
         var measuredEnsureMs = lastEnsureWebViewMs.Value;
+        var tierReason = "conservative_tier";
         var adaptiveBudgetMs = measuredEnsureMs switch {
             <= StartupWebViewBudgetFastEnsureThresholdMs => StartupWebViewBudgetFastMs,
             <= StartupWebViewBudgetMediumEnsureThresholdMs => StartupWebViewBudgetMediumMs,
             <= StartupWebViewBudgetSlowEnsureThresholdMs => StartupWebViewBudgetSlowMs,
             _ => conservativeBudgetMs
         };
+        if (adaptiveBudgetMs == StartupWebViewBudgetFastMs) {
+            tierReason = "fast_tier";
+        } else if (adaptiveBudgetMs == StartupWebViewBudgetMediumMs) {
+            tierReason = "medium_tier";
+        } else if (adaptiveBudgetMs == StartupWebViewBudgetSlowMs) {
+            tierReason = "slow_tier";
+        }
+
         if (adaptiveBudgetMs >= conservativeBudgetMs) {
-            return conservativeBudgetMs;
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "conservative_tier");
         }
 
         var marginAwareBudgetMs = Math.Max(
@@ -649,18 +679,22 @@ public sealed partial class MainWindow : Window {
             measuredEnsureMs + StartupWebViewBudgetAdaptiveHeadroomMs);
         var clampedBudgetMs = Math.Clamp(marginAwareBudgetMs, StartupWebViewBudgetMinimumMs, conservativeBudgetMs);
         if (!lastAppliedBudgetMs.HasValue || lastAppliedBudgetMs.Value <= 0) {
-            return clampedBudgetMs;
+            return new StartupWebViewBudgetDecision(clampedBudgetMs, tierReason + "_new");
         }
 
         var previousBudgetMs = Math.Clamp(lastAppliedBudgetMs.Value, StartupWebViewBudgetMinimumMs, conservativeBudgetMs);
         if (clampedBudgetMs >= previousBudgetMs) {
-            return clampedBudgetMs;
+            return new StartupWebViewBudgetDecision(clampedBudgetMs, tierReason + "_nondecreasing");
         }
 
         var downshiftFloorMs = Math.Max(
             StartupWebViewBudgetMinimumMs,
             previousBudgetMs - StartupWebViewBudgetAdaptiveMaxDownshiftPerRunMs);
-        return Math.Max(clampedBudgetMs, downshiftFloorMs);
+        if (clampedBudgetMs < downshiftFloorMs) {
+            return new StartupWebViewBudgetDecision(downshiftFloorMs, tierReason + "_downshift_capped");
+        }
+
+        return new StartupWebViewBudgetDecision(clampedBudgetMs, tierReason + "_downshift_full");
     }
 
     private StartupWebViewBudgetCacheEntry SnapshotStartupWebViewBudgetCache() {
@@ -1309,4 +1343,6 @@ public sealed partial class MainWindow : Window {
         public int? LastAppliedBudgetMs { get; set; }
         public string? UpdatedUtc { get; set; }
     }
+
+    private sealed record StartupWebViewBudgetDecision(int BudgetMs, string Reason);
 }
