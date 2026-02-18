@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -218,6 +219,41 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         var pending = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var settled = await MainWindow.TryAwaitConnectTaskSettlementAsync(pending.Task, TimeSpan.FromMilliseconds(50));
         Assert.False(settled);
+    }
+
+    /// <summary>
+    /// Ensures startup cold-connect path skips settlement grace and returns immediately after cancellation.
+    /// </summary>
+    [Fact]
+    public async Task TryPreserveConnectCompletionAfterCancellationAsync_ReturnsFalseImmediately_WhenSettlementDisabled() {
+        var pending = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = Task.Run(async () => {
+            await Task.Delay(200);
+            pending.TrySetResult(null);
+        });
+
+        var sw = Stopwatch.StartNew();
+        var settled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+            pending.Task,
+            allowSettlementGrace: false);
+        sw.Stop();
+
+        Assert.False(settled);
+        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(50), "Settlement-disabled path should not wait for connect task completion.");
+    }
+
+    /// <summary>
+    /// Ensures startup reconnect paths still preserve near-boundary connect completion when settlement grace is enabled.
+    /// </summary>
+    [Fact]
+    public async Task TryPreserveConnectCompletionAfterCancellationAsync_ReturnsTrue_WhenSettlementEnabledAndTaskSettles() {
+        var connectTask = Task.Delay(30);
+
+        var settled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+            connectTask,
+            allowSettlementGrace: true);
+
+        Assert.True(settled);
     }
 
     /// <summary>

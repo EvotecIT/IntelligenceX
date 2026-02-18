@@ -34,6 +34,10 @@ public sealed partial class MainWindow : Window {
         return StartupInitialPipeConnectColdStartTimeout;
     }
 
+    /// <summary>
+    /// Applies settlement grace only when we expect an in-flight reconnect to succeed (user action or known-running sidecar).
+    /// Cold startup probes skip grace because they always continue into ensure-sidecar + retry.
+    /// </summary>
     internal static bool ShouldUseStartupInitialConnectSettlementGrace(bool fromUserAction, bool hasTrackedRunningServiceProcess) {
         return fromUserAction || hasTrackedRunningServiceProcess;
     }
