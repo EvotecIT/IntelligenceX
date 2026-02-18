@@ -17,13 +17,30 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(true, true, 2000)]
     [InlineData(true, false, 2000)]
     [InlineData(false, true, 2000)]
-    [InlineData(false, false, 150)]
+    [InlineData(false, false, 100)]
     public void ResolveStartupInitialPipeConnectTimeout_ReturnsExpectedTimeout(
         bool fromUserAction,
         bool hasTrackedRunningServiceProcess,
         int expectedTimeoutMs) {
         var timeout = MainWindow.ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
         Assert.Equal(TimeSpan.FromMilliseconds(expectedTimeoutMs), timeout);
+    }
+
+    /// <summary>
+    /// Ensures startup initial connect settlement grace is only enabled for user action
+    /// or known-running sidecar reconnect paths, and skipped for cold-start probes.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
+    public void ShouldUseStartupInitialConnectSettlementGrace_ReturnsExpectedValue(
+        bool fromUserAction,
+        bool hasTrackedRunningServiceProcess,
+        bool expected) {
+        var shouldUseGrace = MainWindow.ShouldUseStartupInitialConnectSettlementGrace(fromUserAction, hasTrackedRunningServiceProcess);
+        Assert.Equal(expected, shouldUseGrace);
     }
 
     /// <summary>

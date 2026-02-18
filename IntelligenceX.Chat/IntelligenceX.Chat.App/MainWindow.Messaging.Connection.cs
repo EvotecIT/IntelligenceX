@@ -34,6 +34,10 @@ public sealed partial class MainWindow : Window {
         return StartupInitialPipeConnectColdStartTimeout;
     }
 
+    internal static bool ShouldUseStartupInitialConnectSettlementGrace(bool fromUserAction, bool hasTrackedRunningServiceProcess) {
+        return fromUserAction || hasTrackedRunningServiceProcess;
+    }
+
     internal static TimeSpan? ResolveStartupConnectBudget(bool fromUserAction, bool captureStartupPhaseTelemetry) {
         if (fromUserAction || !captureStartupPhaseTelemetry) {
             return null;
@@ -244,6 +248,7 @@ public sealed partial class MainWindow : Window {
             Exception? initialConnectException = null;
             var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
             var initialPipeConnectTimeout = ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
+            var useInitialSettlementGrace = ShouldUseStartupInitialConnectSettlementGrace(fromUserAction, hasTrackedRunningServiceProcess);
             var connected = false;
             var initialAttemptElapsed = TimeSpan.Zero;
             Stopwatch? initialAttemptStopwatch = null;
@@ -257,7 +262,12 @@ public sealed partial class MainWindow : Window {
                 var initialHardTimeout = ResolveConnectAttemptHardTimeout(initialAttemptTimeout);
                 LogConnectAttemptStart("pipe_connect.initial", 1, initialPipeConnectTimeout, initialAttemptTimeout, initialHardTimeout);
                 initialAttemptStopwatch = Stopwatch.StartNew();
-                await ConnectClientWithTimeoutAsync(client, pipeName, initialAttemptTimeout, initialHardTimeout).ConfigureAwait(false);
+                await ConnectClientWithTimeoutAsync(
+                    client,
+                    pipeName,
+                    initialAttemptTimeout,
+                    initialHardTimeout,
+                    allowSettlementGrace: useInitialSettlementGrace).ConfigureAwait(false);
                 initialAttemptElapsed = initialAttemptStopwatch.Elapsed;
                 LogConnectAttemptResult("pipe_connect.initial", 1, success: true, attemptElapsed: initialAttemptElapsed, exception: null);
                 LogStartupConnectPhase("pipe_connect.initial", "done");
