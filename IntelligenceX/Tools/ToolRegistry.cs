@@ -20,9 +20,19 @@ public sealed class ToolRegistry {
     public IToolWriteGovernanceRuntime? WriteGovernanceRuntime { get; set; }
 
     /// <summary>
+    /// Append-only audit sink used to persist write authorization events.
+    /// </summary>
+    public IToolWriteAuditSink? WriteAuditSink { get; set; }
+
+    /// <summary>
     /// When true, write-intent calls are rejected if no <see cref="WriteGovernanceRuntime"/> is configured.
     /// </summary>
     public bool RequireWriteGovernanceRuntime { get; set; } = true;
+
+    /// <summary>
+    /// When true, write-intent calls are rejected when no <see cref="WriteAuditSink"/> is configured.
+    /// </summary>
+    public bool RequireWriteAuditSinkForWriteOperations { get; set; }
 
     /// <summary>
     /// Registers a tool.
@@ -177,57 +187,314 @@ public sealed class ToolRegistry {
             if (contract is not null &&
                 contract.IsWriteCapable &&
                 contract.IsWriteRequested(arguments)) {
+                ToolWriteGovernanceRequest request = CreateGovernanceRequest(arguments, contract);
+
                 if (contract.RequireExplicitConfirmation && !contract.HasExplicitConfirmation(arguments)) {
-                    return ToolOutputEnvelope.Error(
-                        errorCode: "write_confirmation_required",
-                        error: $"Tool '{_definition.Name}' requires explicit write confirmation via '{contract.ConfirmationArgumentName}=true'.",
-                        hints: new[] {
+                    ToolWriteGovernanceResult denied = new() {
+                        IsAuthorized = false,
+                        ErrorCode = ToolWriteGovernanceErrorCodes.WriteConfirmationRequired,
+                        Error = $"Tool '{_definition.Name}' requires explicit write confirmation via '{contract.ConfirmationArgumentName}=true'.",
+                        Hints = new[] {
                             $"Set {contract.ConfirmationArgumentName}=true to confirm write intent.",
                             "Provide governance metadata for immutable audit and rollback tracking."
                         },
-                        isTransient: false);
+                        MissingRequirements = new[] { contract.ConfirmationArgumentName },
+                        IsTransient = false,
+                        ExecutionId = request.ExecutionId,
+                        AuditCorrelationId = request.AuditCorrelationId
+                    };
+                    ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, denied);
+                    if (appendFailure is not null) {
+                        return CreateGovernanceErrorOutput(
+                            appendFailure,
+                            ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
+                            $"Write governance audit append failed for tool '{_definition.Name}'.");
+                    }
+
+                    return CreateGovernanceErrorOutput(
+                        denied,
+                        ToolWriteGovernanceErrorCodes.WriteConfirmationRequired,
+                        $"Tool '{_definition.Name}' requires explicit write confirmation via '{contract.ConfirmationArgumentName}=true'.");
                 }
 
                 if (contract.RequiresGovernanceAuthorization) {
+                    if (_owner.RequireWriteAuditSinkForWriteOperations && _owner.WriteAuditSink is null) {
+                        ToolWriteGovernanceResult denied = new() {
+                            IsAuthorized = false,
+                            ErrorCode = ToolWriteGovernanceErrorCodes.WriteAuditSinkRequired,
+                            Error = $"Tool '{_definition.Name}' requires a configured write audit sink for write operations.",
+                            Hints = new[] {
+                                "Configure ToolRegistry.WriteAuditSink.",
+                                $"Required contract: {contract.GovernanceContractId}."
+                            },
+                            MissingRequirements = new[] { "write_audit_sink" },
+                            IsTransient = false,
+                            ExecutionId = request.ExecutionId,
+                            AuditCorrelationId = request.AuditCorrelationId
+                        };
+                        return CreateGovernanceErrorOutput(
+                            denied,
+                            ToolWriteGovernanceErrorCodes.WriteAuditSinkRequired,
+                            $"Tool '{_definition.Name}' requires a configured write audit sink for write operations.");
+                    }
+
                     if (_owner.WriteGovernanceRuntime is null) {
                         if (_owner.RequireWriteGovernanceRuntime) {
-                            return ToolOutputEnvelope.Error(
-                                errorCode: "write_governance_runtime_required",
-                                error: $"Tool '{_definition.Name}' requires a configured write governance runtime.",
-                                hints: new[] {
+                            ToolWriteGovernanceResult denied = new() {
+                                IsAuthorized = false,
+                                ErrorCode = ToolWriteGovernanceErrorCodes.WriteGovernanceRuntimeRequired,
+                                Error = $"Tool '{_definition.Name}' requires a configured write governance runtime.",
+                                Hints = new[] {
                                     "Configure ToolRegistry.WriteGovernanceRuntime.",
                                     $"Required contract: {contract.GovernanceContractId}."
                                 },
-                                isTransient: false);
+                                MissingRequirements = new[] { "write_governance_runtime" },
+                                IsTransient = false,
+                                ExecutionId = request.ExecutionId,
+                                AuditCorrelationId = request.AuditCorrelationId
+                            };
+                            ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, denied);
+                            if (appendFailure is not null) {
+                                return CreateGovernanceErrorOutput(
+                                    appendFailure,
+                                    ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
+                                    $"Write governance audit append failed for tool '{_definition.Name}'.");
+                            }
+
+                            return CreateGovernanceErrorOutput(
+                                denied,
+                                ToolWriteGovernanceErrorCodes.WriteGovernanceRuntimeRequired,
+                                $"Tool '{_definition.Name}' requires a configured write governance runtime.");
                         }
                     } else {
-                        ToolWriteGovernanceResult authorization = _owner.WriteGovernanceRuntime.Authorize(
-                            new ToolWriteGovernanceRequest {
-                                ToolName = _definition.Name,
-                                CanonicalToolName = _definition.CanonicalName,
-                                GovernanceContractId = contract.GovernanceContractId,
-                                Arguments = arguments,
-                                ConfirmationArgumentName = contract.ConfirmationArgumentName
-                            });
+                        ToolWriteGovernanceResult authorization = _owner.WriteGovernanceRuntime.Authorize(request);
+                        ToolWriteGovernanceResult normalizedAuthorization = NormalizeDeniedAuthorizationResult(authorization);
+                        ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, normalizedAuthorization);
+                        if (appendFailure is not null) {
+                            return CreateGovernanceErrorOutput(
+                                appendFailure,
+                                ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
+                                $"Write governance audit append failed for tool '{_definition.Name}'.");
+                        }
 
-                        if (!authorization.IsAuthorized) {
-                            string errorCode = string.IsNullOrWhiteSpace(authorization.ErrorCode)
-                                ? "write_governance_denied"
-                                : authorization.ErrorCode;
-                            string error = string.IsNullOrWhiteSpace(authorization.Error)
-                                ? $"Write authorization denied for tool '{_definition.Name}'."
-                                : authorization.Error;
-                            return ToolOutputEnvelope.Error(
-                                errorCode: errorCode,
-                                error: error,
-                                hints: authorization.Hints,
-                                isTransient: authorization.IsTransient);
+                        if (!normalizedAuthorization.IsAuthorized) {
+                            return CreateGovernanceErrorOutput(
+                                normalizedAuthorization,
+                                ToolWriteGovernanceErrorCodes.WriteGovernanceDenied,
+                                $"Write authorization denied for tool '{_definition.Name}'.");
                         }
                     }
                 }
             }
 
             return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+        }
+
+        private ToolWriteGovernanceRequest CreateGovernanceRequest(
+            JsonObject? arguments,
+            ToolWriteGovernanceContract contract) {
+            string executionIdArgumentName = ToolWriteGovernanceArgumentNames.ExecutionId;
+            string actorIdArgumentName = ToolWriteGovernanceArgumentNames.ActorId;
+            string changeReasonArgumentName = ToolWriteGovernanceArgumentNames.ChangeReason;
+            string rollbackPlanIdArgumentName = ToolWriteGovernanceArgumentNames.RollbackPlanId;
+            string rollbackProviderIdArgumentName = ToolWriteGovernanceArgumentNames.RollbackProviderId;
+            string auditCorrelationIdArgumentName = ToolWriteGovernanceArgumentNames.AuditCorrelationId;
+
+            if (_owner.WriteGovernanceRuntime is ToolWriteGovernanceStrictRuntime strictRuntime) {
+                executionIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.ExecutionIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.ExecutionId);
+                actorIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.ActorIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.ActorId);
+                changeReasonArgumentName = NormalizeArgumentName(
+                    strictRuntime.ChangeReasonArgumentName,
+                    ToolWriteGovernanceArgumentNames.ChangeReason);
+                rollbackPlanIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.RollbackPlanIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.RollbackPlanId);
+                rollbackProviderIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.RollbackProviderIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.RollbackProviderId);
+                auditCorrelationIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.AuditCorrelationIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.AuditCorrelationId);
+            }
+
+            string executionId = ReadArgumentWithFallback(
+                arguments,
+                ToolWriteGovernanceArgumentNames.ExecutionId,
+                executionIdArgumentName);
+            string auditCorrelationId = ReadArgumentWithFallback(
+                arguments,
+                ToolWriteGovernanceArgumentNames.AuditCorrelationId,
+                auditCorrelationIdArgumentName);
+            if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
+                auditCorrelationId = executionId;
+            }
+
+            return new ToolWriteGovernanceRequest {
+                ToolName = _definition.Name,
+                CanonicalToolName = _definition.CanonicalName,
+                GovernanceContractId = contract.GovernanceContractId,
+                Arguments = arguments,
+                ConfirmationArgumentName = contract.ConfirmationArgumentName,
+                ExecutionId = executionId,
+                ActorId = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.ActorId,
+                    actorIdArgumentName),
+                ChangeReason = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.ChangeReason,
+                    changeReasonArgumentName),
+                RollbackPlanId = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.RollbackPlanId,
+                    rollbackPlanIdArgumentName),
+                RollbackProviderId = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.RollbackProviderId,
+                    rollbackProviderIdArgumentName),
+                AuditCorrelationId = auditCorrelationId
+            };
+        }
+
+        private ToolWriteGovernanceResult? AppendWriteAuditRecord(
+            ToolWriteGovernanceRequest request,
+            ToolWriteGovernanceResult authorization) {
+            IToolWriteAuditSink? sink = _owner.WriteAuditSink;
+            if (sink is null) {
+                return null;
+            }
+
+            string executionId = string.IsNullOrWhiteSpace(authorization.ExecutionId)
+                ? request.ExecutionId
+                : authorization.ExecutionId;
+            string auditCorrelationId = string.IsNullOrWhiteSpace(authorization.AuditCorrelationId)
+                ? request.AuditCorrelationId
+                : authorization.AuditCorrelationId;
+            if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
+                auditCorrelationId = executionId;
+            }
+
+            ToolWriteAuditRecord record = new() {
+                TimestampUtc = DateTimeOffset.UtcNow,
+                ToolName = _definition.Name,
+                CanonicalToolName = _definition.CanonicalName,
+                GovernanceContractId = request.GovernanceContractId,
+                IsAuthorized = authorization.IsAuthorized,
+                ErrorCode = authorization.ErrorCode,
+                Error = authorization.Error,
+                ExecutionId = executionId,
+                AuditCorrelationId = auditCorrelationId,
+                ActorId = request.ActorId,
+                ChangeReason = request.ChangeReason,
+                RollbackPlanId = request.RollbackPlanId,
+                ImmutableAuditProviderId = authorization.ImmutableAuditProviderId,
+                RollbackProviderId = string.IsNullOrWhiteSpace(authorization.RollbackProviderId)
+                    ? request.RollbackProviderId
+                    : authorization.RollbackProviderId
+            };
+
+            try {
+                sink.Append(record);
+                return null;
+            } catch (Exception ex) {
+                return new ToolWriteGovernanceResult {
+                    IsAuthorized = false,
+                    ErrorCode = ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
+                    Error = $"Write governance audit append failed for tool '{_definition.Name}'. {ex.Message}",
+                    Hints = new[] {
+                        "Ensure ToolRegistry.WriteAuditSink is available and append-only.",
+                        "Retry when audit sink health is restored."
+                    },
+                    IsTransient = true,
+                    ExecutionId = executionId,
+                    AuditCorrelationId = auditCorrelationId,
+                    ImmutableAuditProviderId = authorization.ImmutableAuditProviderId,
+                    RollbackProviderId = string.IsNullOrWhiteSpace(authorization.RollbackProviderId)
+                        ? request.RollbackProviderId
+                        : authorization.RollbackProviderId
+                };
+            }
+        }
+
+        private static string ReadArgument(JsonObject? arguments, string argumentName) {
+            if (arguments is null || string.IsNullOrWhiteSpace(argumentName)) {
+                return string.Empty;
+            }
+
+            string? value = arguments.GetString(argumentName);
+            return value?.Trim() ?? string.Empty;
+        }
+
+        private static string ReadArgumentWithFallback(
+            JsonObject? arguments,
+            string primaryArgumentName,
+            string fallbackArgumentName) {
+            string primaryValue = ReadArgument(arguments, primaryArgumentName);
+            if (!string.IsNullOrWhiteSpace(primaryValue)) {
+                return primaryValue;
+            }
+
+            if (string.Equals(primaryArgumentName, fallbackArgumentName, StringComparison.Ordinal)) {
+                return primaryValue;
+            }
+
+            return ReadArgument(arguments, fallbackArgumentName);
+        }
+
+        private static string NormalizeArgumentName(string candidate, string fallback) {
+            if (string.IsNullOrWhiteSpace(candidate)) {
+                return fallback;
+            }
+
+            return candidate.Trim();
+        }
+
+        private ToolWriteGovernanceResult NormalizeDeniedAuthorizationResult(ToolWriteGovernanceResult authorization) {
+            if (authorization.IsAuthorized) {
+                return authorization;
+            }
+
+            if (!string.IsNullOrWhiteSpace(authorization.ErrorCode) && !string.IsNullOrWhiteSpace(authorization.Error)) {
+                return authorization;
+            }
+
+            return new ToolWriteGovernanceResult {
+                IsAuthorized = false,
+                ErrorCode = string.IsNullOrWhiteSpace(authorization.ErrorCode)
+                    ? ToolWriteGovernanceErrorCodes.WriteGovernanceDenied
+                    : authorization.ErrorCode,
+                Error = string.IsNullOrWhiteSpace(authorization.Error)
+                    ? $"Write authorization denied for tool '{_definition.Name}'."
+                    : authorization.Error,
+                MissingRequirements = authorization.MissingRequirements,
+                Hints = authorization.Hints,
+                IsTransient = authorization.IsTransient,
+                ExecutionId = authorization.ExecutionId,
+                AuditCorrelationId = authorization.AuditCorrelationId,
+                ImmutableAuditProviderId = authorization.ImmutableAuditProviderId,
+                RollbackProviderId = authorization.RollbackProviderId
+            };
+        }
+
+        private static string CreateGovernanceErrorOutput(
+            ToolWriteGovernanceResult result,
+            string defaultErrorCode,
+            string defaultError) {
+            string errorCode = string.IsNullOrWhiteSpace(result.ErrorCode)
+                ? defaultErrorCode
+                : result.ErrorCode;
+            string error = string.IsNullOrWhiteSpace(result.Error)
+                ? defaultError
+                : result.Error;
+            return ToolOutputEnvelope.Error(
+                errorCode: errorCode,
+                error: error,
+                hints: result.Hints,
+                isTransient: result.IsTransient);
         }
     }
 }

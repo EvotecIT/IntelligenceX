@@ -40,27 +40,47 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
     /// <summary>
     /// Execution id argument name.
     /// </summary>
-    public string ExecutionIdArgumentName { get; set; } = "write_execution_id";
+    public string ExecutionIdArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.ExecutionId;
 
     /// <summary>
     /// Actor id argument name.
     /// </summary>
-    public string ActorIdArgumentName { get; set; } = "write_actor_id";
+    public string ActorIdArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.ActorId;
 
     /// <summary>
     /// Change reason argument name.
     /// </summary>
-    public string ChangeReasonArgumentName { get; set; } = "write_change_reason";
+    public string ChangeReasonArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.ChangeReason;
 
     /// <summary>
     /// Rollback plan id argument name.
     /// </summary>
-    public string RollbackPlanIdArgumentName { get; set; } = "write_rollback_plan_id";
+    public string RollbackPlanIdArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.RollbackPlanId;
+
+    /// <summary>
+    /// Optional rollback provider id argument name.
+    /// </summary>
+    public string RollbackProviderIdArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.RollbackProviderId;
+
+    /// <summary>
+    /// Optional audit correlation id argument name.
+    /// </summary>
+    public string AuditCorrelationIdArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.AuditCorrelationId;
 
     /// <inheritdoc />
     public ToolWriteGovernanceResult Authorize(ToolWriteGovernanceRequest request) {
         if (request is null) {
             throw new ArgumentNullException(nameof(request));
+        }
+
+        string executionId = ResolveArgumentValue(request, request.ExecutionId, ExecutionIdArgumentName);
+        string actorId = ResolveArgumentValue(request, request.ActorId, ActorIdArgumentName);
+        string changeReason = ResolveArgumentValue(request, request.ChangeReason, ChangeReasonArgumentName);
+        string rollbackPlanId = ResolveArgumentValue(request, request.RollbackPlanId, RollbackPlanIdArgumentName);
+        string rollbackProviderId = ResolveArgumentValue(request, request.RollbackProviderId, RollbackProviderIdArgumentName);
+        string auditCorrelationId = ResolveArgumentValue(request, request.AuditCorrelationId, AuditCorrelationIdArgumentName);
+        if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
+            auditCorrelationId = executionId;
         }
 
         List<string> missing = new();
@@ -72,41 +92,64 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
             missing.Add("rollback_provider_id");
         }
 
-        if (RequireExecutionId && IsMissingArgument(request, ExecutionIdArgumentName)) {
+        if (RequireExecutionId && string.IsNullOrWhiteSpace(executionId)) {
             missing.Add(ExecutionIdArgumentName);
         }
-        if (RequireActorId && IsMissingArgument(request, ActorIdArgumentName)) {
+        if (RequireActorId && string.IsNullOrWhiteSpace(actorId)) {
             missing.Add(ActorIdArgumentName);
         }
-        if (RequireChangeReason && IsMissingArgument(request, ChangeReasonArgumentName)) {
+        if (RequireChangeReason && string.IsNullOrWhiteSpace(changeReason)) {
             missing.Add(ChangeReasonArgumentName);
         }
-        if (RequireRollbackPlanId && IsMissingArgument(request, RollbackPlanIdArgumentName)) {
+        if (RequireRollbackPlanId && string.IsNullOrWhiteSpace(rollbackPlanId)) {
             missing.Add(RollbackPlanIdArgumentName);
         }
 
         if (missing.Count > 0) {
             return new ToolWriteGovernanceResult {
                 IsAuthorized = false,
-                ErrorCode = "write_governance_requirements_not_met",
+                ErrorCode = ToolWriteGovernanceErrorCodes.WriteGovernanceRequirementsNotMet,
                 Error = "Write governance requirements are not met.",
+                MissingRequirements = missing.ToArray(),
                 Hints = BuildHints(missing),
-                IsTransient = false
+                IsTransient = false,
+                ExecutionId = executionId,
+                AuditCorrelationId = auditCorrelationId,
+                ImmutableAuditProviderId = ImmutableAuditProviderId,
+                RollbackProviderId = string.IsNullOrWhiteSpace(rollbackProviderId)
+                    ? RollbackProviderId
+                    : rollbackProviderId
             };
         }
 
         return new ToolWriteGovernanceResult {
-            IsAuthorized = true
+            IsAuthorized = true,
+            ExecutionId = executionId,
+            AuditCorrelationId = auditCorrelationId,
+            ImmutableAuditProviderId = ImmutableAuditProviderId,
+            RollbackProviderId = string.IsNullOrWhiteSpace(rollbackProviderId)
+                ? RollbackProviderId
+                : rollbackProviderId
         };
     }
 
-    private static bool IsMissingArgument(ToolWriteGovernanceRequest request, string argumentName) {
+    /// <summary>
+    /// Resolves metadata with precedence for explicit request fields over raw argument values.
+    /// </summary>
+    private static string ResolveArgumentValue(
+        ToolWriteGovernanceRequest request,
+        string preferredValue,
+        string argumentName) {
+        if (!string.IsNullOrWhiteSpace(preferredValue)) {
+            return preferredValue;
+        }
+
         if (string.IsNullOrWhiteSpace(argumentName)) {
-            return false;
+            return string.Empty;
         }
 
         string? value = request.Arguments?.GetString(argumentName);
-        return string.IsNullOrWhiteSpace(value);
+        return value?.Trim() ?? string.Empty;
     }
 
     private static IReadOnlyList<string> BuildHints(IReadOnlyList<string> missing) {

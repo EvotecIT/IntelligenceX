@@ -30,4 +30,34 @@ public sealed class ToolWriteGovernanceRequest {
     /// Name of confirmation argument when applicable.
     /// </summary>
     public string ConfirmationArgumentName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Write execution identifier.
+    /// </summary>
+    public string ExecutionId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Actor identifier.
+    /// </summary>
+    public string ActorId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Change reason/ticket metadata.
+    /// </summary>
+    public string ChangeReason { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Rollback plan identifier.
+    /// </summary>
+    public string RollbackPlanId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional rollback provider identifier.
+    /// </summary>
+    public string RollbackProviderId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional audit correlation identifier.
+    /// </summary>
+    public string AuditCorrelationId { get; set; } = string.Empty;
 }
