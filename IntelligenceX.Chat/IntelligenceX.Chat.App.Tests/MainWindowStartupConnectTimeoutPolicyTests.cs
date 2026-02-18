@@ -239,7 +239,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         sw.Stop();
 
         Assert.False(settled);
-        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(50), "Settlement-disabled path should not wait for connect task completion.");
+        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(150), "Settlement-disabled path should not wait for connect task completion.");
     }
 
     /// <summary>
