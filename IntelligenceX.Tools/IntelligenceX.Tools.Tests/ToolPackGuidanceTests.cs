@@ -105,7 +105,16 @@ public class ToolPackGuidanceTests {
                         ("attributes", ToolSchema.Array(ToolSchema.String())),
                         ("domain_controller", ToolSchema.String()),
                         ("send", ToolSchema.Boolean()))
-                    .NoAdditionalProperties()))
+                    .NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true,
+                    RequiresGovernanceAuthorization = true,
+                    GovernanceContractId = ToolWriteGovernanceContract.DefaultContractId,
+                    IntentMode = ToolWriteIntentMode.BooleanFlagTrue,
+                    IntentArgumentName = "send",
+                    RequireExplicitConfirmation = true,
+                    ConfirmationArgumentName = "send"
+                }))
         });
 
         Assert.Equal(2, catalog.Count);
@@ -127,6 +136,9 @@ public class ToolPackGuidanceTests {
         Assert.False(a.Traits.SupportsDynamicAttributes);
         Assert.False(a.Traits.SupportsTargetScoping);
         Assert.False(a.Traits.SupportsMutatingActions);
+        Assert.False(a.IsWriteCapable);
+        Assert.False(a.RequiresWriteGovernance);
+        Assert.Null(a.WriteGovernanceContractId);
 
         var b = catalog[1];
         Assert.Equal("stub_b", b.Name);
@@ -148,6 +160,9 @@ public class ToolPackGuidanceTests {
         Assert.Equal(new[] { "domain_controller" }, b.Traits.TargetScopeArguments);
         Assert.True(b.Traits.SupportsMutatingActions);
         Assert.Equal(new[] { "send" }, b.Traits.MutatingActionArguments);
+        Assert.True(b.IsWriteCapable);
+        Assert.True(b.RequiresWriteGovernance);
+        Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, b.WriteGovernanceContractId);
     }
 
     private sealed class StubTool : ITool {

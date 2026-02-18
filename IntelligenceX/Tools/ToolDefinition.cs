@@ -18,6 +18,7 @@ public sealed class ToolDefinition {
     /// <param name="displayName">Optional human-friendly tool display name.</param>
     /// <param name="category">Optional tool category label.</param>
     /// <param name="tags">Optional tags used for model/tooling guidance.</param>
+    /// <param name="writeGovernance">Optional write-governance contract for mutating tools.</param>
     /// <param name="aliases">Optional aliases that should invoke the same tool implementation.</param>
     /// <param name="aliasOf">Optional canonical tool name when this definition is an alias.</param>
     public ToolDefinition(
@@ -27,6 +28,7 @@ public sealed class ToolDefinition {
         string? displayName = null,
         string? category = null,
         IReadOnlyList<string>? tags = null,
+        ToolWriteGovernanceContract? writeGovernance = null,
         IReadOnlyList<ToolAliasDefinition>? aliases = null,
         string? aliasOf = null) {
         if (string.IsNullOrWhiteSpace(name)) {
@@ -43,6 +45,8 @@ public sealed class ToolDefinition {
         DisplayName = NormalizeOptionalText(displayName);
         Category = NormalizeOptionalText(category);
         Tags = NormalizeTags(tags);
+        writeGovernance?.Validate();
+        WriteGovernance = writeGovernance;
         Aliases = NormalizeAliases(aliases, Name);
         AliasOf = string.IsNullOrWhiteSpace(aliasOf) ? null : aliasOf!.Trim();
     }
@@ -79,6 +83,11 @@ public sealed class ToolDefinition {
     public IReadOnlyList<ToolAliasDefinition> Aliases { get; }
 
     /// <summary>
+    /// Gets optional write-governance contract for mutating tools.
+    /// </summary>
+    public ToolWriteGovernanceContract? WriteGovernance { get; }
+
+    /// <summary>
     /// Gets the canonical tool name when this definition represents an alias.
     /// </summary>
     public string? AliasOf { get; }
@@ -112,6 +121,7 @@ public sealed class ToolDefinition {
             displayName: null,
             category: Category,
             tags: mergedTags,
+            writeGovernance: WriteGovernance,
             aliases: null,
             aliasOf: CanonicalName);
     }

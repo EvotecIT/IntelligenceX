@@ -129,6 +129,12 @@ public class ToolPackInfoContractTests {
                 Assert.True(isPackInfo.ValueKind == JsonValueKind.True || isPackInfo.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("traits", out var traits));
                 Assert.Equal(JsonValueKind.Object, traits.ValueKind);
+                Assert.True(entry.TryGetProperty("is_write_capable", out var isWriteCapable));
+                Assert.True(isWriteCapable.ValueKind == JsonValueKind.True || isWriteCapable.ValueKind == JsonValueKind.False);
+                Assert.True(entry.TryGetProperty("requires_write_governance", out var requiresWriteGovernance));
+                Assert.True(requiresWriteGovernance.ValueKind == JsonValueKind.True || requiresWriteGovernance.ValueKind == JsonValueKind.False);
+                Assert.True(entry.TryGetProperty("write_governance_contract_id", out var writeGovernanceContractId));
+                Assert.True(writeGovernanceContractId.ValueKind == JsonValueKind.String || writeGovernanceContractId.ValueKind == JsonValueKind.Null);
 
                 Assert.True(expectedCatalogByName.TryGetValue(name, out var expectedCatalogEntry), $"Unexpected catalog entry: {name}");
                 Assert.Equal(expectedCatalogEntry.Description, description);
@@ -142,6 +148,9 @@ public class ToolPackInfoContractTests {
                 Assert.Equal(expectedCatalogEntry.SupportsTableViewProjection, supportsProjection.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.IsPackInfoTool, isPackInfo.GetBoolean());
                 AssertTraitDetails(traits, expectedCatalogEntry.Traits);
+                Assert.Equal(expectedCatalogEntry.IsWriteCapable, isWriteCapable.GetBoolean());
+                Assert.Equal(expectedCatalogEntry.RequiresWriteGovernance, requiresWriteGovernance.GetBoolean());
+                Assert.Equal(expectedCatalogEntry.WriteGovernanceContractId, writeGovernanceContractId.GetString());
             }
 
             var recommendedFlow = root.GetProperty("recommended_flow");

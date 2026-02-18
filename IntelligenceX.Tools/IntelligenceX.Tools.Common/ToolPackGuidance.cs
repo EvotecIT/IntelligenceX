@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 
@@ -184,6 +185,22 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// Structured capability hints inferred from tool arguments.
     /// </summary>
     public ToolPackToolTraitsModel Traits { get; init; } = new();
+
+    /// <summary>
+    /// Indicates whether tool can perform write/mutating operations.
+    /// </summary>
+    public bool IsWriteCapable { get; init; }
+
+    /// <summary>
+    /// Indicates whether write-governance authorization is required.
+    /// </summary>
+    public bool RequiresWriteGovernance { get; init; }
+
+    /// <summary>
+    /// Optional governance contract id for write authorization.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? WriteGovernanceContractId { get; init; }
 }
 
 /// <summary>
@@ -351,7 +368,12 @@ public static class ToolPackGuidance {
                 Arguments = argumentHints,
                 SupportsTableViewProjection = supportsTableView,
                 IsPackInfoTool = def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
-                Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView)
+                Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
+                IsWriteCapable = def.WriteGovernance?.IsWriteCapable ?? false,
+                RequiresWriteGovernance = def.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
+                WriteGovernanceContractId = string.IsNullOrWhiteSpace(def.WriteGovernance?.GovernanceContractId)
+                    ? null
+                    : def.WriteGovernance!.GovernanceContractId
             });
         }
 
@@ -502,7 +524,12 @@ public static class ToolPackGuidance {
                 Arguments = NormalizeArguments(entry.Arguments),
                 SupportsTableViewProjection = entry.SupportsTableViewProjection,
                 IsPackInfoTool = entry.IsPackInfoTool,
-                Traits = NormalizeTraits(entry.Traits)
+                Traits = NormalizeTraits(entry.Traits),
+                IsWriteCapable = entry.IsWriteCapable,
+                RequiresWriteGovernance = entry.RequiresWriteGovernance,
+                WriteGovernanceContractId = string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId)
+                    ? null
+                    : entry.WriteGovernanceContractId.Trim()
             });
         }
 

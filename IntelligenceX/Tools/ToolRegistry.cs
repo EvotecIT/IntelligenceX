@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.Tools;
 
@@ -10,6 +13,16 @@ namespace IntelligenceX.Tools;
 public sealed class ToolRegistry {
     private readonly Dictionary<string, ITool> _tools = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolDefinition> _definitions = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Runtime authorizer used for write-intent tool calls.
+    /// </summary>
+    public IToolWriteGovernanceRuntime? WriteGovernanceRuntime { get; set; }
+
+    /// <summary>
+    /// When true, write-intent calls are rejected if no <see cref="WriteGovernanceRuntime"/> is configured.
+    /// </summary>
+    public bool RequireWriteGovernanceRuntime { get; set; } = true;
 
     /// <summary>
     /// Registers a tool.
@@ -34,10 +47,11 @@ public sealed class ToolRegistry {
             RemoveCanonicalEntries(definition.CanonicalName);
         }
 
-        RegisterEntry(tool, definition, replaceExisting);
+        var registeredTool = CreateRegisteredTool(tool, definition);
+        RegisterEntry(registeredTool, definition, replaceExisting);
         foreach (var alias in definition.Aliases) {
             var aliasDefinition = definition.CreateAliasDefinition(alias.Name, alias.Description, alias.Tags);
-            RegisterEntry(tool, aliasDefinition, replaceExisting);
+            RegisterEntry(registeredTool, aliasDefinition, replaceExisting);
         }
     }
 
@@ -45,6 +59,11 @@ public sealed class ToolRegistry {
     /// Gets a tool by name.
     /// </summary>
     public bool TryGet(string name, out ITool tool) => _tools.TryGetValue(name, out tool!);
+
+    /// <summary>
+    /// Gets a registered tool definition by name.
+    /// </summary>
+    public bool TryGetDefinition(string name, out ToolDefinition definition) => _definitions.TryGetValue(name, out definition!);
 
     /// <summary>
     /// Registers an alias for an already-registered tool.
@@ -88,8 +107,23 @@ public sealed class ToolRegistry {
             throw new InvalidOperationException($"Tool '{definition.Name}' is already registered.");
         }
 
+        ValidateWriteGovernanceContract(definition);
+
         _tools[definition.Name] = tool;
         _definitions[definition.Name] = definition;
+    }
+
+    private ITool CreateRegisteredTool(ITool tool, ToolDefinition definition) {
+        if (tool is RegistryToolWrapper) {
+            return tool;
+        }
+
+        var contract = definition.WriteGovernance;
+        if (contract is null || !contract.IsWriteCapable) {
+            return tool;
+        }
+
+        return new RegistryToolWrapper(tool, definition, this);
     }
 
     private void RemoveCanonicalEntries(string canonicalName) {
@@ -105,6 +139,95 @@ public sealed class ToolRegistry {
         foreach (var key in toRemove) {
             _definitions.Remove(key);
             _tools.Remove(key);
+        }
+    }
+
+    private static void ValidateWriteGovernanceContract(ToolDefinition definition) {
+        ToolWriteGovernanceContract? contract = definition.WriteGovernance;
+        if (contract is null || !contract.IsWriteCapable) {
+            return;
+        }
+
+        contract.Validate();
+        if (!contract.RequiresGovernanceAuthorization) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is write-capable and must require governance authorization.");
+        }
+        if (string.IsNullOrWhiteSpace(contract.GovernanceContractId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is write-capable and must declare GovernanceContractId.");
+        }
+    }
+
+    private sealed class RegistryToolWrapper : ITool {
+        private readonly ITool _inner;
+        private readonly ToolDefinition _definition;
+        private readonly ToolRegistry _owner;
+
+        public RegistryToolWrapper(ITool inner, ToolDefinition definition, ToolRegistry owner) {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            _definition = definition ?? throw new ArgumentNullException(nameof(definition));
+            _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+        }
+
+        public ToolDefinition Definition => _definition;
+
+        public async Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            ToolWriteGovernanceContract? contract = _definition.WriteGovernance;
+            if (contract is not null &&
+                contract.IsWriteCapable &&
+                contract.IsWriteRequested(arguments)) {
+                if (contract.RequireExplicitConfirmation && !contract.HasExplicitConfirmation(arguments)) {
+                    return ToolOutputEnvelope.Error(
+                        errorCode: "write_confirmation_required",
+                        error: $"Tool '{_definition.Name}' requires explicit write confirmation via '{contract.ConfirmationArgumentName}=true'.",
+                        hints: new[] {
+                            $"Set {contract.ConfirmationArgumentName}=true to confirm write intent.",
+                            "Provide governance metadata for immutable audit and rollback tracking."
+                        },
+                        isTransient: false);
+                }
+
+                if (contract.RequiresGovernanceAuthorization) {
+                    if (_owner.WriteGovernanceRuntime is null) {
+                        if (_owner.RequireWriteGovernanceRuntime) {
+                            return ToolOutputEnvelope.Error(
+                                errorCode: "write_governance_runtime_required",
+                                error: $"Tool '{_definition.Name}' requires a configured write governance runtime.",
+                                hints: new[] {
+                                    "Configure ToolRegistry.WriteGovernanceRuntime.",
+                                    $"Required contract: {contract.GovernanceContractId}."
+                                },
+                                isTransient: false);
+                        }
+                    } else {
+                        ToolWriteGovernanceResult authorization = _owner.WriteGovernanceRuntime.Authorize(
+                            new ToolWriteGovernanceRequest {
+                                ToolName = _definition.Name,
+                                CanonicalToolName = _definition.CanonicalName,
+                                GovernanceContractId = contract.GovernanceContractId,
+                                Arguments = arguments,
+                                ConfirmationArgumentName = contract.ConfirmationArgumentName
+                            });
+
+                        if (!authorization.IsAuthorized) {
+                            string errorCode = string.IsNullOrWhiteSpace(authorization.ErrorCode)
+                                ? "write_governance_denied"
+                                : authorization.ErrorCode;
+                            string error = string.IsNullOrWhiteSpace(authorization.Error)
+                                ? $"Write authorization denied for tool '{_definition.Name}'."
+                                : authorization.Error;
+                            return ToolOutputEnvelope.Error(
+                                errorCode: errorCode,
+                                error: error,
+                                hints: authorization.Hints,
+                                isTransient: authorization.IsTransient);
+                        }
+                    }
+                }
+            }
+
+            return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
         }
     }
 }

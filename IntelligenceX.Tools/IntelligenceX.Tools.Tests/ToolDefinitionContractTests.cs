@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
+using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.FileSystem;
 using IntelligenceX.Tools.PowerShell;
@@ -120,6 +121,28 @@ public class ToolDefinitionContractTests {
         Assert.Contains("powershell_environment_discover", names);
         Assert.Contains("powershell_hosts", names);
         Assert.Contains("powershell_run", names);
+    }
+
+    [Fact]
+    public void WriteCapableTools_ShouldDeclareGovernanceContracts() {
+        var registry = new ToolRegistry();
+        registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
+        registry.RegisterEmailPack(new EmailToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(definitionsByName.TryGetValue("powershell_run", out var powershellRun));
+        Assert.NotNull(powershellRun.WriteGovernance);
+        Assert.True(powershellRun.WriteGovernance!.IsWriteCapable);
+        Assert.True(powershellRun.WriteGovernance.RequiresGovernanceAuthorization);
+        Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, powershellRun.WriteGovernance.GovernanceContractId);
+
+        Assert.True(definitionsByName.TryGetValue("email_smtp_send", out var smtpSend));
+        Assert.NotNull(smtpSend.WriteGovernance);
+        Assert.True(smtpSend.WriteGovernance!.IsWriteCapable);
+        Assert.True(smtpSend.WriteGovernance.RequiresGovernanceAuthorization);
+        Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, smtpSend.WriteGovernance.GovernanceContractId);
     }
 
     [Fact]
