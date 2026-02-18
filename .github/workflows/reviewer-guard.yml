@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   reviewer-guard:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu]
     steps:
       - name: Validate IntelligenceX Reviewer Run
         uses: actions/github-script@v7
