@@ -73,7 +73,9 @@ internal static class ProjectSyncRunner {
         string? PullRequestFreshness = null,
         string? PullRequestCheckHealth = null,
         string? PullRequestReviewLatency = null,
-        string? PullRequestMergeConflictRisk = null
+        string? PullRequestMergeConflictRisk = null,
+        string? IssueReviewAction = null,
+        double? IssueReviewActionConfidence = null
     );
 
     private sealed class Options {
@@ -83,6 +85,7 @@ internal static class ProjectSyncRunner {
         public string ConfigPath { get; set; } = Path.Combine("artifacts", "triage", "ix-project-config.json");
         public string TriagePath { get; set; } = Path.Combine("artifacts", "triage", "ix-triage-index.json");
         public string VisionPath { get; set; } = Path.Combine("artifacts", "triage", "ix-vision-check.json");
+        public string IssueReviewPath { get; set; } = Path.Combine("artifacts", "triage", "ix-issue-review.json");
         public int MaxItems { get; set; } = 500;
         public int ProjectItemScanLimit { get; set; } = 5000;
         public bool EnsureFields { get; set; } = true;
@@ -123,7 +126,7 @@ internal static class ProjectSyncRunner {
 
         List<ProjectSyncEntry> entries;
         try {
-            entries = LoadEntries(options.TriagePath, options.VisionPath, options.MaxItems);
+            entries = LoadEntries(options.TriagePath, options.VisionPath, options.IssueReviewPath, options.MaxItems);
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             return 1;
@@ -376,6 +379,11 @@ internal static class ProjectSyncRunner {
                         options.VisionPath = args[++i];
                     }
                     break;
+                case "--issue-review":
+                    if (i + 1 < args.Length) {
+                        options.IssueReviewPath = args[++i];
+                    }
+                    break;
                 case "--max-items":
                     if (i + 1 < args.Length &&
                         int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxItems)) {
@@ -445,6 +453,7 @@ internal static class ProjectSyncRunner {
         Console.WriteLine("  --config <path>          Project config JSON from project-init (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine("  --triage <path>          Triage index JSON (default: artifacts/triage/ix-triage-index.json)");
         Console.WriteLine("  --vision <path>          Vision check JSON (default: artifacts/triage/ix-vision-check.json)");
+        Console.WriteLine("  --issue-review <path>    Issue review JSON (default: artifacts/triage/ix-issue-review.json)");
         Console.WriteLine("  --max-items <n>          Max entries to sync (1-5000, default: 500)");
         Console.WriteLine("  --project-item-scan-limit <n>  Existing project item scan limit (100-10000, default: 5000)");
         Console.WriteLine("  --ensure-fields          Ensure IX fields exist before sync (default)");
@@ -497,19 +506,32 @@ internal static class ProjectSyncRunner {
         return true;
     }
 
-    private static List<ProjectSyncEntry> LoadEntries(string triagePath, string visionPath, int maxItems) {
+    private static List<ProjectSyncEntry> LoadEntries(string triagePath, string visionPath, string issueReviewPath, int maxItems) {
         using var triageDoc = JsonDocument.Parse(File.ReadAllText(triagePath));
         JsonDocument? visionDoc = null;
+        JsonDocument? issueReviewDoc = null;
         if (File.Exists(visionPath)) {
             visionDoc = JsonDocument.Parse(File.ReadAllText(visionPath));
         }
+        if (File.Exists(issueReviewPath)) {
+            issueReviewDoc = JsonDocument.Parse(File.ReadAllText(issueReviewPath));
+        }
 
-        var entries = BuildEntriesFromDocuments(triageDoc.RootElement, visionDoc?.RootElement, maxItems);
+        var entries = BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            visionDoc?.RootElement,
+            maxItems,
+            issueReviewDoc?.RootElement);
         visionDoc?.Dispose();
+        issueReviewDoc?.Dispose();
         return entries;
     }
 
-    internal static List<ProjectSyncEntry> BuildEntriesFromDocuments(JsonElement triageRoot, JsonElement? visionRoot, int maxItems) {
+    internal static List<ProjectSyncEntry> BuildEntriesFromDocuments(
+        JsonElement triageRoot,
+        JsonElement? visionRoot,
+        int maxItems,
+        JsonElement? issueReviewRoot = null) {
         var entriesByUrl = new Dictionary<string, ProjectSyncEntry>(StringComparer.OrdinalIgnoreCase);
         var idToUrl = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var clusterToCanonicalId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -700,6 +722,10 @@ internal static class ProjectSyncRunner {
                     );
                 }
             }
+        }
+
+        if (issueReviewRoot.HasValue) {
+            MergeIssueReviewAssessments(entriesByUrl, issueReviewRoot.Value);
         }
 
         foreach (var pair in entriesByUrl.ToList()) {
@@ -1079,6 +1105,102 @@ internal static class ProjectSyncRunner {
         );
     }
 
+    private static void MergeIssueReviewAssessments(
+        IDictionary<string, ProjectSyncEntry> entriesByUrl,
+        JsonElement issueReviewRoot) {
+        if (!TryGetProperty(issueReviewRoot, "items", out var items) || items.ValueKind != JsonValueKind.Array) {
+            return;
+        }
+
+        var issueEntriesByNumber = entriesByUrl.Values
+            .Where(entry => entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase) && entry.Number > 0)
+            .GroupBy(entry => entry.Number)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        foreach (var item in items.EnumerateArray()) {
+            var proposedAction = NormalizeIssueReviewAction(ReadNullableStringCaseInsensitive(item, "proposedAction"));
+            var actionConfidenceRaw = ReadNullableDoubleCaseInsensitive(item, "actionConfidence");
+            var actionConfidence = actionConfidenceRaw.HasValue
+                ? Math.Round(Math.Clamp(actionConfidenceRaw.Value, 0.0, 100.0), 2, MidpointRounding.AwayFromZero)
+                : (double?)null;
+            if (string.IsNullOrWhiteSpace(proposedAction) && !actionConfidence.HasValue) {
+                continue;
+            }
+
+            var url = ReadNullableStringCaseInsensitive(item, "url") ?? string.Empty;
+            var number = ReadInt(item, "number");
+            if (string.IsNullOrWhiteSpace(url) &&
+                number > 0 &&
+                issueEntriesByNumber.TryGetValue(number, out var byNumberMatch)) {
+                url = byNumberMatch.Url;
+            }
+
+            ProjectSyncEntry existing;
+            if (!string.IsNullOrWhiteSpace(url) && entriesByUrl.TryGetValue(url, out var byUrlExisting)) {
+                existing = byUrlExisting;
+            } else if (number > 0 && issueEntriesByNumber.TryGetValue(number, out var byNumberExisting)) {
+                existing = byNumberExisting;
+                url = existing.Url;
+            } else {
+                if (string.IsNullOrWhiteSpace(url)) {
+                    continue;
+                }
+
+                var (_, parsedNumber) = ParseKindAndNumberFromUrl(url);
+                existing = new ProjectSyncEntry(
+                    Number: number > 0 ? number : parsedNumber,
+                    Url: url,
+                    Kind: "issue",
+                    TriageScore: null,
+                    DuplicateCluster: null,
+                    CanonicalItem: null,
+                    Category: null,
+                    Tags: Array.Empty<string>(),
+                    MatchedIssueUrl: null,
+                    MatchedIssueConfidence: null,
+                    VisionFit: null,
+                    VisionConfidence: null,
+                    RelatedIssues: Array.Empty<RelatedIssueCandidate>(),
+                    SuggestedDecision: null,
+                    RelatedPullRequests: Array.Empty<RelatedPullRequestCandidate>(),
+                    ExistingLabels: Array.Empty<string>(),
+                    SignalQualityReasons: Array.Empty<string>()
+                );
+            }
+
+            if (!existing.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var updated = existing with {
+                IssueReviewAction = proposedAction ?? existing.IssueReviewAction,
+                IssueReviewActionConfidence = actionConfidence ?? existing.IssueReviewActionConfidence
+            };
+            entriesByUrl[updated.Url] = updated;
+            if (!string.IsNullOrWhiteSpace(url) &&
+                !updated.Url.Equals(url, StringComparison.OrdinalIgnoreCase)) {
+                entriesByUrl[url] = updated;
+            }
+            if (updated.Number > 0) {
+                issueEntriesByNumber[updated.Number] = updated;
+            }
+        }
+    }
+
+    private static string? NormalizeIssueReviewAction(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch {
+            "close" => "close",
+            "keep-open" => "keep-open",
+            "needs-human-review" => "needs-human-review",
+            "ignore" => "ignore",
+            _ => null
+        };
+    }
+
     private static async Task<IReadOnlyDictionary<string, ProjectV2Client.ProjectField>> EnsureFieldsAsync(
         ProjectV2Client client,
         string owner,
@@ -1301,6 +1423,26 @@ internal static class ProjectSyncRunner {
                 await client.SetTextFieldAsync(projectId, itemId, relatedIssuesField.Id, relatedIssuesValue).ConfigureAwait(false);
             } else {
                 await client.ClearFieldAsync(projectId, itemId, relatedIssuesField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("Issue Review Action", out var issueReviewActionField)) {
+            if (isIssue &&
+                !string.IsNullOrWhiteSpace(entry.IssueReviewAction) &&
+                TryResolveOptionId(issueReviewActionField, entry.IssueReviewAction, out var issueReviewActionOptionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, issueReviewActionField.Id, issueReviewActionOptionId).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, issueReviewActionField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (fields.TryGetValue("Issue Review Action Confidence", out var issueReviewActionConfidenceField)) {
+            if (isIssue && entry.IssueReviewActionConfidence.HasValue) {
+                await client.SetNumberFieldAsync(projectId, itemId, issueReviewActionConfidenceField.Id, entry.IssueReviewActionConfidence.Value).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, issueReviewActionConfidenceField.Id).ConfigureAwait(false);
             }
             updated++;
         }
@@ -2103,6 +2245,19 @@ internal static class ProjectSyncRunner {
             return null;
         }
         return prop.GetBoolean();
+    }
+
+    private static double? ReadNullableDoubleCaseInsensitive(JsonElement obj, string name) {
+        if (!TryGetPropertyCaseInsensitive(obj, name, out var prop)) {
+            return null;
+        }
+        if (prop.ValueKind == JsonValueKind.Null) {
+            return null;
+        }
+        if (prop.ValueKind != JsonValueKind.Number || !prop.TryGetDouble(out var value)) {
+            return null;
+        }
+        return value;
     }
 
     private static string? ReadNullableString(JsonElement obj, string name) {

@@ -84,6 +84,8 @@ project={{ProjectNumber}}
             0.70);
 
         AssertContainsText(rendered, "todo project-sync", "workflow contains project sync step");
+        AssertContainsText(rendered, "todo issue-review", "workflow contains issue review step");
+        AssertContainsText(rendered, "--issue-review artifacts/triage/ix-issue-review.json", "workflow passes issue review artifact to project sync");
         AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
         AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
         AssertContainsText(rendered, "--enforce-contract", "workflow enforces vision contract");

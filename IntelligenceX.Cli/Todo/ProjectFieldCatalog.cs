@@ -84,6 +84,13 @@ internal static class ProjectFieldCatalog {
         new ProjectFieldDefinition("Matched Pull Request Confidence", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Pull Request Reason", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Related Pull Requests", "TEXT", Array.Empty<string>()),
+        new ProjectFieldDefinition("Issue Review Action", "SINGLE_SELECT", new[] {
+            "close",
+            "keep-open",
+            "needs-human-review",
+            "ignore"
+        }),
+        new ProjectFieldDefinition("Issue Review Action Confidence", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Triage Score", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Duplicate Cluster", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Canonical Item", "TEXT", Array.Empty<string>()),

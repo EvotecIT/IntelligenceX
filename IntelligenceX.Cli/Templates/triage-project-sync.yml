@@ -72,6 +72,18 @@ jobs:
             --out artifacts/triage/ix-vision-check.json \
             --summary artifacts/triage/ix-vision-check.md
 
+      - name: Run issue review signals
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            todo issue-review \
+            --repo "${{ github.repository }}" \
+            --proposal-only \
+            --state-path artifacts/triage/ix-issue-review-state.json \
+            --out artifacts/triage/ix-issue-review.json \
+            --summary artifacts/triage/ix-issue-review.md
+
       - name: Sync into GitHub Project
         env:
           GH_TOKEN: ${{ secrets.IX_PROJECT_TOKEN != '' && secrets.IX_PROJECT_TOKEN || github.token }}
@@ -91,6 +103,7 @@ jobs:
             --project "$PROJECT_NUMBER" \
             --triage artifacts/triage/ix-triage-index.json \
             --vision artifacts/triage/ix-vision-check.json \
+            --issue-review artifacts/triage/ix-issue-review.json \
             --max-items "$MAX_ITEMS" \
             --apply-labels \
             --apply-link-comments
@@ -151,6 +164,13 @@ jobs:
               echo "## Vision Check"
               echo
               cat artifacts/triage/ix-vision-check.md
+              echo
+            fi
+
+            if [ -f artifacts/triage/ix-issue-review.md ]; then
+              echo "## Issue Review"
+              echo
+              cat artifacts/triage/ix-issue-review.md
               echo
             fi
 

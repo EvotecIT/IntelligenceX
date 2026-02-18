@@ -113,7 +113,7 @@ intelligencex todo project-init \
 Notes:
 - Creates a project (or initializes an existing one with `--project <n>`).
 - Can copy from a prepared template project with `--view-template-project <n>` to preserve saved GitHub views.
-- Ensures required custom fields such as `Vision Fit`, `Category`, `Category Confidence`, `Tags`, `Tag Confidence Summary`, `Matched Issue`, `Matched Issue Reason`, `Matched Pull Request`, `Matched Pull Request Reason`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
+- Ensures required custom fields such as `Vision Fit`, `Category`, `Category Confidence`, `Tags`, `Tag Confidence Summary`, `Matched Issue`, `Matched Issue Reason`, `Matched Pull Request`, `Matched Pull Request Reason`, `Issue Review Action`, `Issue Review Action Confidence`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
 - Ensures IX label taxonomy in the repo by default (`--no-ensure-labels` to skip).
 - Validates default IX view coverage by default (`--no-ensure-default-views` to skip).
 - Writes a reusable config file containing owner/project/field metadata.
@@ -122,15 +122,16 @@ Notes:
 Important:
 - GitHub API currently does not provide a `createProjectV2View` mutation, so IX can validate/report default view coverage but cannot create views from scratch without a template copy.
 
-## Sync triage + vision into GitHub Project
+## Sync triage + issue-review + vision into GitHub Project
 
-Push triage and vision outputs into project item fields so maintainers can triage in GitHub only.
+Push triage, issue-review, and vision outputs into project item fields so maintainers can triage in GitHub only.
 
 ```bash
 intelligencex todo project-sync \
   --owner EvotecIT \
   --project 123 \
   --triage artifacts/triage/ix-triage-index.json \
+  --issue-review artifacts/triage/ix-issue-review.json \
   --vision artifacts/triage/ix-vision-check.json \
   --max-items 500
 ```
@@ -147,6 +148,7 @@ Useful options:
 Behavior:
 - `IX Suggested Decision` is populated automatically (`accept`, `defer`, `reject`, `merge-candidate`) from combined triage + vision signals.
 - `Maintainer Decision` remains human-owned for final triage decisions.
+- Issue applicability actions from `issue-review` are synced into `Issue Review Action` and `Issue Review Action Confidence`.
 - Unknown categories/tags are normalized into dynamic labels (for example `ML Ops` -> `ix/category:ml-ops`, `Release Candidate` -> `ix/tag:release-candidate`) and are auto-created when `--apply-labels --ensure-labels` is used.
 - Category/tag labels are confidence-gated for reliability: category labels require `categoryConfidence >= 0.62` and tag labels require `tagConfidences[tag] >= 0.60` when those confidence fields are present in triage output.
 - Category confidence and per-tag confidence summaries are synced into project fields (`Category Confidence`, `Tag Confidence Summary`) when triage confidence data is available.
@@ -235,7 +237,7 @@ A reusable scheduled workflow template is available at:
 It runs `build-triage-index`, uploads artifacts, and can optionally upsert a control-issue summary comment
 when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.
 For `triage-index-scheduled.yml`, IX upserts a single marker comment (latest only) with the triage index summary.
-For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes both triage and vision markdown summaries.
+For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes triage, issue-review, and vision markdown summaries.
 Both workflows also upsert a shared `intelligencex:triage-control-dashboard` comment linking to the latest summary comments.
 The dashboard comment also includes quick links for maintainers (control issue, vision file, project board when config is available, project-view apply issue variable, and bootstrap links comment).
 `todo project-bootstrap --create-control-issue` can set this variable for you automatically.

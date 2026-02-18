@@ -153,6 +153,8 @@ Expected fields:
 - `Tags` (text)
 - `Matched Issue` (text)
 - `Matched Issue Confidence` (number)
+- `Issue Review Action` (single-select)
+- `Issue Review Action Confidence` (number)
 - `Triage Score` (number)
 - `Duplicate Cluster` (text)
 - `Canonical Item` (text)
@@ -161,7 +163,7 @@ Expected fields:
 
 ## Project Sync
 
-Sync triage and vision artifacts into project items:
+Sync triage, issue-review, and vision artifacts into project items:
 
 ```bash
 intelligencex todo project-sync --owner EvotecIT --project 123
@@ -169,7 +171,7 @@ intelligencex todo project-sync --owner EvotecIT --project 123
 
 Options:
 - `--config <path>` resolve owner/project from `project-init` output
-- `--triage <path>` and `--vision <path>`
+- `--triage <path>`, `--issue-review <path>`, and `--vision <path>`
 - `--max-items <n>` (default `500`)
 - `--project-item-scan-limit <n>` (default `5000`)
 - `--ensure-fields` / `--no-ensure-fields`
@@ -177,6 +179,9 @@ Options:
 - `--ensure-labels` / `--no-ensure-labels`
 - `--apply-link-comments`
 - `--dry-run`
+
+Behavior:
+- `Issue Review Action` and `Issue Review Action Confidence` are synced on issue items when `ix-issue-review.json` is available.
 
 ## Project Bootstrap (Project + Workflow in one command)
 
@@ -255,7 +260,7 @@ Behavior:
 - Generates triage index artifacts.
 - Optional control-issue summary comment upsert when repo variable `IX_TRIAGE_CONTROL_ISSUE` is configured.
 - `triage-index-scheduled.yml` upserts a single marker comment with the latest triage index summary on the control issue.
-- `triage-project-sync.yml` upserts a single marker comment with the latest combined triage + vision markdown summary on the control issue.
+- `triage-project-sync.yml` upserts a single marker comment with the latest combined triage + issue-review + vision markdown summary on the control issue.
 - Both workflows also upsert a shared `intelligencex:triage-control-dashboard` comment linking to the latest summary comments.
 - The shared dashboard comment includes quick links: control issue, `VISION.md`, project board (when `artifacts/triage/ix-project-config.json` is available), project-view apply issue (`IX_PROJECT_VIEW_APPLY_ISSUE`), and bootstrap links comment.
 - `todo project-bootstrap --create-control-issue` can configure the control issue variable automatically.

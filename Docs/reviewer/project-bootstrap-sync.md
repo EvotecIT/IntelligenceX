@@ -52,14 +52,15 @@ Useful options:
 - `--ensure-default-views` to validate recommended view coverage.
 - `--no-ensure-labels` to skip taxonomy setup when labels are managed elsewhere.
 
-## Sync triage and vision into project fields
+## Sync triage, issue-review, and vision into project fields
 
-After generating triage artifacts, run `project-sync`:
+After generating triage artifacts (including `ix-issue-review.json`), run `project-sync`:
 
 ```bash
 intelligencex todo project-sync \
   --config artifacts/triage/ix-project-config.json \
   --triage artifacts/triage/ix-triage-index.json \
+  --issue-review artifacts/triage/ix-issue-review.json \
   --vision artifacts/triage/ix-vision-check.json \
   --max-items 500
 ```
@@ -87,6 +88,7 @@ intelligencex todo project-sync \
 ## What sync updates
 
 - Project item fields for triage and vision fit.
+- Issue-review fields for stale infra blockers (`Issue Review Action`, `Issue Review Action Confidence`).
 - Signal-quality fields (`Signal Quality`, `Signal Quality Score`, `Signal Quality Notes`).
 - Operational PR fields (`PR Size`, `PR Churn Risk`, `PR Merge Readiness`, `PR Freshness`, `PR Check Health`, `PR Review Latency`, `PR Merge Conflict Risk`).
 - Suggested maintainership decision signal (`IX Suggested Decision`).
@@ -102,7 +104,11 @@ Template files:
 - `IntelligenceX.Cli/Templates/triage-index-scheduled.yml`
 - `IntelligenceX.Cli/Templates/triage-project-sync.yml`
 
-The project-sync workflow template also emits `artifacts/triage/ix-project-view-apply.md` so maintainers can continuously see missing view coverage and recommended columns.
+The project-sync workflow template runs `issue-review` in proposal mode before sync, and emits:
+
+- `artifacts/triage/ix-issue-review.json`
+- `artifacts/triage/ix-issue-review.md`
+- `artifacts/triage/ix-project-view-apply.md`
 
 Recommended rollout:
 
