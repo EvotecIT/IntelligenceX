@@ -404,5 +404,71 @@ internal static partial class Program {
         AssertEqual("high", blockedSignals.ReviewLatency, "high review latency classification");
         AssertEqual("high", blockedSignals.MergeConflictRisk, "high merge conflict risk classification");
     }
+
+    private static void TestTriageIndexAssessPullRequestOperationalSignalsCalibrationBoundaries() {
+        var now = DateTimeOffset.UtcNow;
+        var pendingChecks = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#803",
+            "pull_request",
+            803,
+            "Feature rollout with checks pending",
+            "https://example/pr/803",
+            now.AddDays(-6),
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Feature rollout with checks pending"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Feature rollout with checks pending"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Feature rollout with checks still running"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(
+                false,
+                "MERGEABLE",
+                "APPROVED",
+                "PENDING",
+                12,
+                260,
+                40,
+                4,
+                7,
+                "dev"),
+            null
+        );
+        var unknownSmallFresh = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#804",
+            "pull_request",
+            804,
+            "Small cleanup PR",
+            "https://example/pr/804",
+            now.AddHours(-10),
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Small cleanup PR"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Small cleanup PR"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Small cleanup PR for docs and comments"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(
+                false,
+                "UNKNOWN",
+                "REVIEW_REQUIRED",
+                string.Empty,
+                2,
+                35,
+                6,
+                1,
+                1,
+                "dev"),
+            null
+        );
+
+        var pendingSignals = IntelligenceX.Cli.Todo.TriageIndexRunner.AssessPullRequestOperationalSignals(pendingChecks, now);
+        var unknownSignals = IntelligenceX.Cli.Todo.TriageIndexRunner.AssessPullRequestOperationalSignals(unknownSmallFresh, now);
+
+        AssertNotNull(pendingSignals, "pending signals not null");
+        AssertNotNull(unknownSignals, "unknown signals not null");
+        AssertEqual("needs-review", pendingSignals!.MergeReadiness, "pending checks should not classify as blocked");
+        AssertEqual("pending", pendingSignals.CheckHealth, "pending checks classification");
+        AssertEqual("high", pendingSignals.ReviewLatency, "pending checks aging should elevate latency");
+        AssertEqual("medium", pendingSignals.MergeConflictRisk, "pending checks risk medium when mergeable");
+        AssertEqual("blocked", unknownSignals!.MergeReadiness, "unknown mergeability remains blocked");
+        AssertEqual("unknown", unknownSignals.CheckHealth, "unknown check health classification");
+        AssertEqual("medium", unknownSignals.ChurnRisk, "unknown mergeability raises low churn to medium");
+        AssertEqual("low", unknownSignals.MergeConflictRisk, "small fresh unknown should not be high conflict risk");
+    }
 #endif
 }
