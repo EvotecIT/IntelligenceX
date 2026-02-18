@@ -28,7 +28,16 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 ("html_body", ToolSchema.String("HTML body.")),
                 ("send", ToolSchema.Boolean("When true, actually sends. Otherwise dry-run.")))
             .Required("from", "to", "subject")
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        writeGovernance: new ToolWriteGovernanceContract {
+            IsWriteCapable = true,
+            RequiresGovernanceAuthorization = true,
+            GovernanceContractId = ToolWriteGovernanceContract.DefaultContractId,
+            IntentMode = ToolWriteIntentMode.BooleanFlagTrue,
+            IntentArgumentName = "send",
+            RequireExplicitConfirmation = true,
+            ConfirmationArgumentName = "send"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EmailSmtpSendTool"/> class.
