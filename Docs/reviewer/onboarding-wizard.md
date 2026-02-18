@@ -112,6 +112,8 @@ intelligencex setup wizard --verbose
 - Load existing config from a repo
 - Custom JSON (editor, path, or paste)
 
+For config ownership and precedence details, see [Workflow vs JSON](/docs/reviewer/workflow-vs-json/).
+
 ## Example: org-wide GitHub App flow
 
 ```text

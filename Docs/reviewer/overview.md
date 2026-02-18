@@ -15,6 +15,7 @@ Related docs:
 - [Web Setup UI](/docs/reviewer/setup-web/)
 - [Understanding Reviewer Output](/docs/reviewer/review-output/)
 - [Configuration](/docs/reviewer/configuration/)
+- [Workflow vs JSON](/docs/reviewer/workflow-vs-json/)
 - [Security and Trust](/docs/reviewer/security-trust/)
 - [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
 - [Project Bootstrap and Sync](/docs/reviewer/project-bootstrap-sync/)
@@ -74,12 +75,17 @@ jobs:
   review:
     uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
     with:
-      reviewer_source: release
+      reviewer_source: source
       openai_transport: native
-      output_style: claude
-      style: colorful
+      review_config_path: .intelligencex/reviewer.json
+      mode: hybrid
+      length: medium
     secrets: inherit
 ```
+
+`reviewer_source: source` is best when you want the latest workflow/reviewer behavior from source.
+Use `reviewer_source: release` when you prefer a packaged release artifact for tighter version control.
+Use `style` (review tone/style profile) and `output_style` (rendering preset) as optional inputs when needed.
 
 ## Inputs → environment mapping (short)
 

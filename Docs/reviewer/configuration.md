@@ -8,6 +8,18 @@ Schema: `../../Schemas/reviewer.schema.json`
 The reviewer validates `.intelligencex/reviewer.json` against the schema at runtime.
 Unknown properties emit warnings; invalid types or enum values fail the run.
 
+## Source precedence (important)
+
+Settings are applied in this order:
+
+1. Reviewer defaults
+2. `.intelligencex/reviewer.json` (or `REVIEW_CONFIG_PATH`)
+3. Environment / workflow inputs (`INPUT_*`, `REVIEW_*`)
+
+Because workflow inputs are mapped to environment variables, they override JSON.
+
+If you want a full YAML-vs-JSON split guide, see [Workflow vs JSON](/docs/reviewer/workflow-vs-json/).
+
 ## Multiple ChatGPT accounts (rotation + failover)
 
 If your auth store contains more than one ChatGPT login, you can pin a primary account and optionally rotate/fail over to additional accounts.

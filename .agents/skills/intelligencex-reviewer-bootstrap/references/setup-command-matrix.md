@@ -13,6 +13,11 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8
   --dry-run
 ```
 
+After dry-run extraction, verify:
+- workflow includes managed block markers
+- workflow uses expected `reviewer_source`
+- workflow/config precedence is documented for maintainers (`Docs/reviewer/workflow-vs-json.md`)
+
 ## Setup (explicit secrets workflow block)
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
@@ -46,4 +51,10 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8
   --cleanup \
   --keep-secret \
   --dry-run
+```
+
+## Interactive onboarding equivalents
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup wizard
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup web
 ```

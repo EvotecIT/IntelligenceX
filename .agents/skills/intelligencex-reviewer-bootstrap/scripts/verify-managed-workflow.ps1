@@ -15,10 +15,10 @@ if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
 
 $content = Get-Content -LiteralPath $WorkflowPath -Raw
 
-if ($content -notmatch "(?m)^# INTELLIGENCEX:BEGIN\s*$") {
+if ($content -notmatch "(?m)^\s*# INTELLIGENCEX:BEGIN\s*$") {
     Fail "ERROR: missing INTELLIGENCEX:BEGIN marker"
 }
-if ($content -notmatch "(?m)^# INTELLIGENCEX:END\s*$") {
+if ($content -notmatch "(?m)^\s*# INTELLIGENCEX:END\s*$") {
     Fail "ERROR: missing INTELLIGENCEX:END marker"
 }
 if ($content -notmatch "(?m)^\s*review:\s*$") {

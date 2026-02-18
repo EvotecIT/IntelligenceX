@@ -62,6 +62,8 @@ Advanced options:
 - OpenAI account routing supports primary-only setup (rotation/failover can be configured without `account ids`)
 - Auth bundle input for secret updates (INTELLIGENCEX_AUTH_B64)
 
+For YAML vs JSON ownership and precedence, see [Workflow vs JSON](/docs/reviewer/workflow-vs-json/).
+
 ## GitHub App flow (optional)
 
 If you want to avoid personal access tokens, you can use the GitHub App manifest flow:

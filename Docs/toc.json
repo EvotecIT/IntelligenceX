@@ -13,6 +13,7 @@
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
       { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
+      { "title": "Workflow vs JSON", "href": "/docs/reviewer/workflow-vs-json/" },
       { "title": "Security & Trust", "href": "/docs/reviewer/security-trust/" },
       { "title": "Static Analysis", "href": "/docs/reviewer/static-analysis/" },
       { "title": "Projects + PR Monitoring", "href": "/docs/reviewer/projects-pr-monitoring/" },

@@ -8,7 +8,7 @@ description: Use when work touches setup wizard, setup web, onboarding UX, onboa
 Use this skill when work touches onboarding/setup behavior in:
 - `IntelligenceX.Cli/Setup/**`
 - `IntelligenceX.Cli/Program.Help.cs`
-- onboarding docs (`Docs/reviewer/onboarding-wizard.md`, `Docs/reviewer/setup-web.md`, `Docs/getting-started.md`)
+- onboarding docs (`Docs/reviewer/onboarding-wizard.md`, `Docs/reviewer/setup-web.md`, `Docs/getting-started.md`, `Docs/reviewer/workflow-vs-json.md`)
 
 ## Trigger Phrases
 - "onboarding"
@@ -49,3 +49,4 @@ Use this skill when work touches onboarding/setup behavior in:
 
 ## References
 - `references/checklist.md`
+- `../intelligencex-reviewer-bootstrap/references/config-precedence.md`

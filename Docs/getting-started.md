@@ -84,6 +84,8 @@ Create `.intelligencex/reviewer.json` in your repo:
 
 See [Reviewer Configuration](/docs/reviewer/configuration/) for all options.
 
+If you want to decide where each setting should live, see [Workflow vs JSON](/docs/reviewer/workflow-vs-json/).
+
 ## Next Steps
 
 - [Reviewer Overview](/docs/reviewer/overview/) - Understand review modes and output
