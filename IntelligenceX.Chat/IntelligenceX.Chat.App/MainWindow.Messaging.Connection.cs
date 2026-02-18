@@ -26,6 +26,13 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    internal static TimeSpan ResolveStartupInitialPipeConnectTimeout(bool fromUserAction, bool hasTrackedRunningServiceProcess) {
+        if (fromUserAction || hasTrackedRunningServiceProcess) {
+            return StartupInitialPipeConnectTimeout;
+        }
+
+        return StartupInitialPipeConnectColdStartTimeout;
+    }
 
     private async Task ConnectAsync(bool fromUserAction = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
@@ -59,10 +66,12 @@ public sealed partial class MainWindow : Window {
             client.MessageReceived += OnServiceMessage;
             client.Disconnected += OnClientDisconnected;
             Exception? initialConnectException = null;
+            var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+            var initialPipeConnectTimeout = ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
 
             try {
                 LogStartupConnectPhase("pipe_connect.initial", "begin");
-                await ConnectClientWithTimeoutAsync(client, pipeName, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await ConnectClientWithTimeoutAsync(client, pipeName, initialPipeConnectTimeout).ConfigureAwait(false);
                 LogStartupConnectPhase("pipe_connect.initial", "done");
             } catch (Exception ex) {
                 LogStartupConnectPhase("pipe_connect.initial", "failed");
