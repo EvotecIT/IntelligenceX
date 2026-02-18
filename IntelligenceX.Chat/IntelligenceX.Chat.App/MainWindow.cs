@@ -69,6 +69,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan[] StartupConnectRetryTimeouts = {
         TimeSpan.FromSeconds(6),
         TimeSpan.FromSeconds(10),
@@ -491,8 +492,15 @@ public sealed partial class MainWindow : Window {
         try {
             StartupLog.Write("MainWindow.StartupFlow begin");
             StartupLog.Write("StartupPhase.WebView begin");
-            await EnsureWebViewInitializedAsync().ConfigureAwait(false);
-            StartupLog.Write("StartupPhase.WebView done");
+            var startupWebViewBudget = ResolveStartupWebViewBudget(Volatile.Read(ref _startupFlowState) == 1);
+            var webViewInitializationTask = EnsureWebViewInitializedAsync();
+            if (await TryAwaitStartupWebViewWithinBudgetAsync(webViewInitializationTask, startupWebViewBudget).ConfigureAwait(false)) {
+                StartupLog.Write("StartupPhase.WebView done");
+            } else {
+                StartupLog.Write("StartupPhase.WebView budget_exhausted");
+                StartupLog.Write("StartupPhase.WebView deferred");
+                ObserveDeferredStartupWebViewInitialization(webViewInitializationTask);
+            }
             StartupLog.Write("StartupPhase.AppState begin");
             await EnsureAppStateLoadedAsync().ConfigureAwait(false);
             StartupLog.Write("StartupPhase.AppState done");
@@ -509,6 +517,47 @@ public sealed partial class MainWindow : Window {
             Interlocked.Exchange(ref _startupFlowState, 0);
             StartupLog.Write("MainWindow.StartupFlow failed: " + ex);
         }
+    }
+
+    internal static TimeSpan? ResolveStartupWebViewBudget(bool captureStartupPhaseTelemetry) {
+        return captureStartupPhaseTelemetry ? StartupWebViewBudget : null;
+    }
+
+    private static async Task<bool> TryAwaitStartupWebViewWithinBudgetAsync(Task webViewInitializationTask, TimeSpan? startupWebViewBudget) {
+        if (webViewInitializationTask.IsCompleted) {
+            await webViewInitializationTask.ConfigureAwait(false);
+            return true;
+        }
+
+        if (!startupWebViewBudget.HasValue || startupWebViewBudget.Value <= TimeSpan.Zero) {
+            await webViewInitializationTask.ConfigureAwait(false);
+            return true;
+        }
+
+        var completed = await Task.WhenAny(webViewInitializationTask, Task.Delay(startupWebViewBudget.Value)).ConfigureAwait(false);
+        if (ReferenceEquals(completed, webViewInitializationTask)) {
+            await webViewInitializationTask.ConfigureAwait(false);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void ObserveDeferredStartupWebViewInitialization(Task webViewInitializationTask) {
+        _ = webViewInitializationTask.ContinueWith(task => {
+            if (task.IsCanceled) {
+                StartupLog.Write("StartupPhase.WebView eventual_canceled");
+                return;
+            }
+
+            if (task.IsFaulted) {
+                var root = task.Exception?.GetBaseException();
+                StartupLog.Write("StartupPhase.WebView eventual_failed: " + (root?.Message ?? "unknown"));
+                return;
+            }
+
+            StartupLog.Write("StartupPhase.WebView eventual_done");
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     private void QueueDeferredStartupOnboarding() {
@@ -715,7 +764,9 @@ public sealed partial class MainWindow : Window {
                 StartupLog.Write("EnsureWebViewInitializedAsync begin");
                 InstallWindowMessageHook();
                 RefreshGlobalWheelHookPolicy();
+                StartupLog.Write("EnsureWebViewInitializedAsync.ensure_core begin");
                 await _webView.EnsureCoreWebView2Async().AsTask().ConfigureAwait(false);
+                StartupLog.Write("EnsureWebViewInitializedAsync.ensure_core done");
                 _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -740,6 +791,7 @@ public sealed partial class MainWindow : Window {
                     navTcs.TrySetResult(null);
                 }
                 _webView.NavigationCompleted += OnNavigationCompleted;
+                StartupLog.Write("EnsureWebViewInitializedAsync.navigate begin");
                 _webView.NavigateToString(BuildShellHtml());
                 navReadyTask = navTcs.Task;
                 _webViewReady = true;
@@ -747,7 +799,10 @@ public sealed partial class MainWindow : Window {
                 RequestTitleBarMetricsRefresh();
             }).ConfigureAwait(false);
 
-            await Task.WhenAny(navReadyTask, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
+            var navReadyCompleted = ReferenceEquals(await Task.WhenAny(navReadyTask, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false), navReadyTask);
+            StartupLog.Write(navReadyCompleted
+                ? "EnsureWebViewInitializedAsync.navigate done"
+                : "EnsureWebViewInitializedAsync.navigate timeout");
             await RunOnUiThreadAsync(() => {
                 InstallWindowMessageHook();
                 EnsureNativeTitleBarEventSubscriptions();

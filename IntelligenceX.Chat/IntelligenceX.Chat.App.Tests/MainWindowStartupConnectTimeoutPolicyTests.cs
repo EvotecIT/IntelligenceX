@@ -45,6 +45,22 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures startup webview wait budget is enabled only during startup flow telemetry capture.
+    /// </summary>
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, 4000)]
+    public void ResolveStartupWebViewBudget_ReturnsExpectedBudget(
+        bool captureStartupPhaseTelemetry,
+        int? expectedTimeoutMs) {
+        var timeout = MainWindow.ResolveStartupWebViewBudget(captureStartupPhaseTelemetry);
+        var expected = expectedTimeoutMs.HasValue
+            ? TimeSpan.FromMilliseconds(expectedTimeoutMs.Value)
+            : (TimeSpan?)null;
+        Assert.Equal(expected, timeout);
+    }
+
+    /// <summary>
     /// Ensures connect attempt timeout is capped by remaining startup budget, including exhaustion behavior.
     /// </summary>
     [Theory]
