@@ -221,6 +221,40 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures startup cold-connect path skips settlement grace without awaiting or observing the connect task.
+    /// </summary>
+    [Fact]
+    public async Task TryPreserveConnectCompletionAfterCancellationAsync_ReturnsFalseWithoutAwaiting_WhenSettlementDisabled() {
+        var pending = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var pendingSettled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+            pending.Task,
+            allowSettlementGrace: false);
+
+        Assert.False(pendingSettled);
+        Assert.False(pending.Task.IsCompleted);
+
+        var faultedSettled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+            Task.FromException(new InvalidOperationException("connect-fault")),
+            allowSettlementGrace: false);
+        Assert.False(faultedSettled);
+    }
+
+    /// <summary>
+    /// Ensures startup reconnect paths still preserve near-boundary connect completion when settlement grace is enabled.
+    /// </summary>
+    [Fact]
+    public async Task TryPreserveConnectCompletionAfterCancellationAsync_ReturnsTrue_WhenSettlementEnabledAndTaskSettles() {
+        var connectTask = Task.Delay(30);
+
+        var settled = await MainWindow.TryPreserveConnectCompletionAfterCancellationAsync(
+            connectTask,
+            allowSettlementGrace: true);
+
+        Assert.True(settled);
+    }
+
+    /// <summary>
     /// Ensures model/profile sync is deferred only during startup flow telemetry capture.
     /// </summary>
     [Theory]

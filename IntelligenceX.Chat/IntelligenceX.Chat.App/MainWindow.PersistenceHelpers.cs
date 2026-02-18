@@ -289,6 +289,14 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    internal static Task<bool> TryPreserveConnectCompletionAfterCancellationAsync(Task connectTask, bool allowSettlementGrace) {
+        if (!allowSettlementGrace) {
+            return Task.FromResult(false);
+        }
+
+        return TryAwaitConnectTaskSettlementAsync(connectTask, StartupConnectAttemptHardTimeoutGrace);
+    }
+
     private static async Task ConnectClientWithTimeoutAsync(
         ChatServiceClient client,
         string pipeName,
@@ -307,17 +315,16 @@ public sealed partial class MainWindow : Window {
         using var hardTimeoutCts = new CancellationTokenSource();
         var connectTask = client.ConnectAsync(pipeName, cts.Token);
         var hardTimeoutTask = Task.Delay(resolvedHardTimeout, hardTimeoutCts.Token);
-        var completed = await Task.WhenAny(connectTask, hardTimeoutTask).ConfigureAwait(true);
+        var completed = await Task.WhenAny(connectTask, hardTimeoutTask).ConfigureAwait(false);
         if (ReferenceEquals(completed, connectTask)) {
             hardTimeoutCts.Cancel();
-            await connectTask.ConfigureAwait(true);
+            await connectTask.ConfigureAwait(false);
             return;
         }
 
         cts.Cancel();
         // Preserve original completion/failure if connect settles shortly after cancellation.
-        if (allowSettlementGrace
-            && await TryAwaitConnectTaskSettlementAsync(connectTask, StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true)) {
+        if (await TryPreserveConnectCompletionAfterCancellationAsync(connectTask, allowSettlementGrace).ConfigureAwait(false)) {
             return;
         }
 
