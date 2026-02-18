@@ -10,9 +10,9 @@ Confirm the next PR is reviewed end-to-end (analysis + reviewer) without manual 
 
 1. Open a small follow-up PR (for example docs-only change).
 2. Verify required checks started:
-   - `Static Analysis Gate`
-   - `AI Review (Fail-Open)`
+   - `review / review` (IntelligenceX Review)
    - `Ubuntu` (test workflow)
+   - plus any repo-specific required checks (for example `website-build`)
 3. Confirm the IntelligenceX review comment includes:
    - `Reviewed commit: <sha>`
    - A diff range line (for example `PR base → head`)
@@ -34,7 +34,7 @@ Confirm the next PR is reviewed end-to-end (analysis + reviewer) without manual 
    - Confirm `INTELLIGENCEX_AUTH_B64` (and optional `INTELLIGENCEX_AUTH_KEY`) exist in repo/org secrets.
    - Re-run setup secret update if needed: `intelligencex setup wizard` (operation: update secret).
 3. Static analysis shows `unavailable`:
-   - Confirm analysis artifacts are produced before reviewer step.
+   - This usually means no analysis result artifacts matched configured inputs.
    - Validate config and catalog locally:
      - `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .`
      - `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0`

@@ -4,6 +4,8 @@ The IntelligenceX reviewer posts a structured Markdown comment on each PR. The s
 
 The reviewer uses H2 headings (`## ...`) for each required section to keep the output easy to scan and tooling-friendly.
 
+If output shape looks different across repos, check [Workflow vs JSON](/docs/reviewer/workflow-vs-json/) for precedence and override behavior.
+
 ## Output Contract Map
 
 ```mermaid

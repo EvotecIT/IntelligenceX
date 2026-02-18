@@ -77,7 +77,7 @@ $reviewerJson = Join-Path $runDir "reviewer.generated.json"
 $workflowYaml = Join-Path $runDir "workflow.generated.yml"
 
 $cmd = [System.Collections.Generic.List[string]]::new()
-$cmd.AddRange(@(
+$cmd.AddRange([string[]]@(
     "run", "--project", "IntelligenceX.Cli/IntelligenceX.Cli.csproj", "--framework", "net8.0", "--",
     "setup",
     "--repo", $Repo,
@@ -86,16 +86,16 @@ $cmd.AddRange(@(
 ))
 
 if (-not [string]::IsNullOrWhiteSpace($Branch)) {
-    $cmd.AddRange(@("--branch", $Branch))
+    $cmd.AddRange([string[]]@("--branch", $Branch))
 }
 
 switch ($Mode) {
     "setup" {
-        $cmd.AddRange(@("--with-config", "--skip-secret"))
+        $cmd.AddRange([string[]]@("--with-config", "--skip-secret"))
         if ($Analysis -eq "enabled") {
-            $cmd.AddRange(@("--analysis-enabled", "true", "--analysis-packs", $Packs))
+            $cmd.AddRange([string[]]@("--analysis-enabled", "true", "--analysis-packs", $Packs))
         } else {
-            $cmd.AddRange(@("--analysis-enabled", "false"))
+            $cmd.AddRange([string[]]@("--analysis-enabled", "false"))
         }
         if ($ExplicitSecrets) {
             $cmd.Add("--explicit-secrets")
@@ -105,7 +105,7 @@ switch ($Mode) {
         $cmd.Add("--update-secret")
     }
     "cleanup" {
-        $cmd.AddRange(@("--cleanup", "--keep-secret"))
+        $cmd.AddRange([string[]]@("--cleanup", "--keep-secret"))
     }
 }
 
@@ -124,15 +124,22 @@ Set-Content -LiteralPath $reviewerJson -Value $reviewerSection -Encoding UTF8
 Set-Content -LiteralPath $workflowYaml -Value $workflowSection -Encoding UTF8
 
 if ($Mode -eq "setup") {
-    if (-not (Test-Path -LiteralPath $reviewerJson) -or [string]::IsNullOrWhiteSpace((Get-Content -LiteralPath $reviewerJson -Raw))) {
+    $reviewerContent = if (Test-Path -LiteralPath $reviewerJson) {
+        Get-Content -LiteralPath $reviewerJson -Raw
+    } else {
+        [string]::Empty
+    }
+    $reviewerSkippedNoChanges = $rawContent -match "File:\s+\.intelligencex/reviewer\.json\s+\(skip \(no changes\)\)"
+    if ([string]::IsNullOrWhiteSpace($reviewerContent) -and -not $reviewerSkippedNoChanges) {
         Fail "ERROR: setup mode expected reviewer config block in dry-run output."
     }
-    $reviewerContent = Get-Content -LiteralPath $reviewerJson -Raw
-    if ($reviewerContent -notmatch '"review"\s*:\s*\{') {
-        Fail "ERROR: generated reviewer config missing review block."
-    }
-    if ($Analysis -eq "enabled" -and $reviewerContent -notmatch '"analysis"\s*:\s*\{') {
-        Fail "ERROR: analysis requested but generated reviewer config has no analysis block."
+    if (-not [string]::IsNullOrWhiteSpace($reviewerContent)) {
+        if ($reviewerContent -notmatch '"review"\s*:\s*\{') {
+            Fail "ERROR: generated reviewer config missing review block."
+        }
+        if ($Analysis -eq "enabled" -and $reviewerContent -notmatch '"analysis"\s*:\s*\{') {
+            Fail "ERROR: analysis requested but generated reviewer config has no analysis block."
+        }
     }
 }
 
@@ -142,10 +149,10 @@ if ($Mode -ne "update-secret") {
     }
 
     $workflowContent = Get-Content -LiteralPath $workflowYaml -Raw
-    if ($workflowContent -notmatch "(?m)^# INTELLIGENCEX:BEGIN\s*$") {
+    if ($workflowContent -notmatch "(?m)^\s*# INTELLIGENCEX:BEGIN\s*$") {
         Fail "ERROR: generated workflow missing INTELLIGENCEX:BEGIN marker."
     }
-    if ($workflowContent -notmatch "(?m)^# INTELLIGENCEX:END\s*$") {
+    if ($workflowContent -notmatch "(?m)^\s*# INTELLIGENCEX:END\s*$") {
         Fail "ERROR: generated workflow missing INTELLIGENCEX:END marker."
     }
     if ($workflowContent -notmatch "(?m)^\s*uses:\s+.+review-intelligencex\.yml@") {

@@ -14,3 +14,5 @@
 ## Docs Alignment
 - CLI help examples match actual supported commands.
 - Setup docs mention both wizard and web flows when relevant.
+- Docs explain YAML vs JSON ownership and precedence (`Docs/reviewer/workflow-vs-json.md`).
+- First-run verification references current reviewer check name (`review / review`).

@@ -9,6 +9,7 @@ Use this skill when setting up or validating IntelligenceX Reviewer onboarding i
 - `.github/workflows/review-intelligencex.yml`
 - `.intelligencex/reviewer.json`
 - setup flows (`setup`, `setup wizard`, `setup web`)
+- docs that explain workflow-vs-json ownership and precedence
 
 ## Trigger Phrases
 - "reviewer setup"
@@ -23,9 +24,12 @@ Use this skill when setting up or validating IntelligenceX Reviewer onboarding i
 2. Run setup dry-run profile
 3. Extract generated `reviewer.json` and workflow YAML from dry-run output
 4. Validate managed workflow block + core review/analysis keys
-5. Share concise apply plan (what will change)
-6. Apply only after explicit approval
-7. Run post-apply validation
+5. Validate source precedence and ownership boundaries (`workflow` vs `reviewer.json`)
+6. Share concise apply plan (what will change)
+7. Apply only after explicit approval
+8. Run post-apply validation
+
+When task scope is docs-only, execute steps 1, 4, and 5 at minimum.
 
 ## Core Commands
 - Dry-run + extraction + checks:
@@ -49,3 +53,4 @@ Use this skill when setting up or validating IntelligenceX Reviewer onboarding i
 ## References
 - `references/setup-command-matrix.md`
 - `references/workflow-managed-block.md`
+- `references/config-precedence.md`
