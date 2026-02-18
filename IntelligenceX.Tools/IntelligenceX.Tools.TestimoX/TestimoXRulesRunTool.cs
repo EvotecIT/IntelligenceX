@@ -199,7 +199,14 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
 
         discoveredRules = discovery.Rules ?? new List<Rule>();
         if (usingExternalDirectory) {
-            builtinRuleNames = await TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync(cancellationToken).ConfigureAwait(false);
+            var builtinDiscovery = await TryDiscoverBuiltinRuleNamesAsync(
+                cancellationToken,
+                defaultErrorMessage: "TestimoX builtin rule discovery failed.").ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(builtinDiscovery.ErrorResponse)) {
+                return builtinDiscovery.ErrorResponse!;
+            }
+
+            builtinRuleNames = builtinDiscovery.RuleNames ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         var availableByName = discoveredRules

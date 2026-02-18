@@ -65,4 +65,22 @@ public abstract class TestimoXToolBase : ToolBase {
             return (null, ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode: "query_failed"));
         }
     }
+
+    /// <summary>
+    /// Discovers builtin TestimoX rule names with consistent cancellation and error-envelope behavior.
+    /// </summary>
+    protected static async Task<(HashSet<string>? RuleNames, string? ErrorResponse)> TryDiscoverBuiltinRuleNamesAsync(
+        CancellationToken cancellationToken,
+        string defaultErrorMessage = "TestimoX builtin rule discovery failed.",
+        Func<CancellationToken, Task<HashSet<string>>>? discoverFunc = null) {
+        var discover = discoverFunc ?? TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync;
+        try {
+            var names = await discover(cancellationToken).ConfigureAwait(false);
+            return (names, null);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            return (null, ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode: "query_failed"));
+        }
+    }
 }
