@@ -58,6 +58,28 @@ Important:
 - PR ranking includes status-check signals (when available) in addition to mergeability/review/churn/recency.
 - Item output includes assistive `category` + `tags` and PR `relatedIssues`/`matchedIssueUrl` fields for downstream automation.
 
+## Issue Review (Infra Applicability + Auto-Manage)
+
+Review open issues and detect infra blockers that are likely no longer applicable (for example linked PRs are already merged/closed):
+
+```bash
+intelligencex todo issue-review --repo EvotecIT/IntelligenceX
+```
+
+Options:
+- `--max-issues <n>` (1-2000, default `300`)
+- `--stale-days <n>` (default `14`)
+- `--apply-close` (opt-in mutating mode; closes no-longer-applicable candidates)
+- `--close-reason <completed|not-planned>` (default `completed`)
+- `--no-comment` (skip managed close note comment)
+- `--out <path>` (default `artifacts/triage/ix-issue-review.json`)
+- `--summary <path>` (default `artifacts/triage/ix-issue-review.md`)
+
+Safety defaults:
+- Dry-run by default (no issue mutation unless `--apply-close` is set).
+- Issues with protected labels (`do-not-close`, `keep-open`, `pinned`, `ix/decision:accept`) are never auto-closed.
+- Auto-close scope is currently conservative: infra blockers with linked PR references where all linked PRs are resolved.
+
 ## Vision Check (Assistive)
 
 Evaluate PR backlog alignment against `VISION.md`:
