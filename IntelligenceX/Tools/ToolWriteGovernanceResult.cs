@@ -22,6 +22,11 @@ public sealed class ToolWriteGovernanceResult {
     public string Error { get; set; } = string.Empty;
 
     /// <summary>
+    /// Missing requirement names when authorization is denied.
+    /// </summary>
+    public IReadOnlyList<string> MissingRequirements { get; set; } = Array.Empty<string>();
+
+    /// <summary>
     /// Optional guidance hints for remediation.
     /// </summary>
     public IReadOnlyList<string> Hints { get; set; } = Array.Empty<string>();
@@ -30,4 +35,24 @@ public sealed class ToolWriteGovernanceResult {
     /// Indicates whether failure may be transient.
     /// </summary>
     public bool IsTransient { get; set; }
+
+    /// <summary>
+    /// Write execution identifier.
+    /// </summary>
+    public string ExecutionId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Immutable audit correlation identifier.
+    /// </summary>
+    public string AuditCorrelationId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Immutable audit provider selected by runtime policy.
+    /// </summary>
+    public string ImmutableAuditProviderId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Rollback provider selected by runtime policy.
+    /// </summary>
+    public string RollbackProviderId { get; set; } = string.Empty;
 }
