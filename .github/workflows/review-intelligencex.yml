@@ -34,7 +34,7 @@ jobs:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       provider: openai
       model: gpt-5.3-codex
-      openai_transport: appserver
+      openai_transport: native
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true
