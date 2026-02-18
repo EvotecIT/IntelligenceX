@@ -115,7 +115,7 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
                     AccountDn: snapshot.AccountDn,
                     Spns: includeSpns ? snapshot.Spns : Array.Empty<string>()));
             } catch (Exception ex) {
-                errors.Add(new AzureAdSsoError(domain, ex.Message));
+                errors.Add(new AzureAdSsoError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

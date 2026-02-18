@@ -98,7 +98,7 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
                     ExceedsThreshold: exceedsThreshold,
                     Threshold: threshold));
             } catch (Exception ex) {
-                errors.Add(new MachineAccountQuotaError(domain, ex.Message));
+                errors.Add(new MachineAccountQuotaError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

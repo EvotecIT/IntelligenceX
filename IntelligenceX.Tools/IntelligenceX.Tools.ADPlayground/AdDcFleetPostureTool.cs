@@ -123,7 +123,7 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
                         NonAdministrativeOwners: view.NonAdministrativeOwners.Take(maxDetailRowsPerDomain).ToArray()));
                 }
             } catch (Exception ex) {
-                errors.Add(new DcFleetPostureError(domain, ex.Message));
+                errors.Add(new DcFleetPostureError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

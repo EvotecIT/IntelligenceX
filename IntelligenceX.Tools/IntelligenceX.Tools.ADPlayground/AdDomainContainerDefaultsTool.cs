@@ -96,7 +96,7 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
                     UserContainerChanged: snapshot.UserContainerChanged,
                     AnyChanged: anyChanged));
             } catch (Exception ex) {
-                errors.Add(new DomainContainerDefaultsError(domain, ex.Message));
+                errors.Add(new DomainContainerDefaultsError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

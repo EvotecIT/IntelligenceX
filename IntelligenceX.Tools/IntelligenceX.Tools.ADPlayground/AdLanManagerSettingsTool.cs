@@ -95,7 +95,7 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
                         AllowsLmHash: !status.NoLmHash,
                         LegacyNtlmAllowed: status.LmCompatibilityLevel.GetValueOrDefault() < 5));
                 } catch (Exception ex) {
-                    errors.Add(new LanManagerSettingsError(dc, ex.Message));
+                    errors.Add(new LanManagerSettingsError(dc, ToCollectorErrorMessage(ex)));
                 }
             }
         } else {
@@ -134,7 +134,7 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
                         break;
                     }
                 } catch (Exception ex) {
-                    errors.Add(new LanManagerSettingsError(domain, ex.Message));
+                    errors.Add(new LanManagerSettingsError(domain, ToCollectorErrorMessage(ex)));
                 }
             }
         }

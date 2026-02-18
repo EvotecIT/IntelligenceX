@@ -101,7 +101,7 @@ public sealed class AdShadowCredentialsRiskTool : ActiveDirectoryToolBase, ITool
                         ? view.Findings.Take(maxFindingsPerDomain).ToArray()
                         : Array.Empty<ShadowCredentialsRiskService.Finding>()));
             } catch (Exception ex) {
-                errors.Add(new ShadowCredentialsRiskError(domain, ex.Message));
+                errors.Add(new ShadowCredentialsRiskError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

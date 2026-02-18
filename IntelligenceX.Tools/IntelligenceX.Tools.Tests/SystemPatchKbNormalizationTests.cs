@@ -42,4 +42,30 @@ public class SystemPatchKbNormalizationTests {
 
         Assert.False(matched);
     }
+
+    [Fact]
+    public void MatchesContainsFilter_WithNormalizedKbCandidates_ShouldIgnoreTitleKeywords() {
+        var kbCandidates = SystemPatchKbNormalization.NormalizeDistinct(new[] {
+            "Security cumulative update for Windows (KB5034441)"
+        });
+
+        var matched = SystemPatchKbNormalization.MatchesContainsFilter(
+            values: kbCandidates,
+            filter: "security");
+
+        Assert.False(matched);
+    }
+
+    [Fact]
+    public void MatchesContainsFilter_WithNormalizedKbCandidates_ShouldMatchKbFragments() {
+        var kbCandidates = SystemPatchKbNormalization.NormalizeDistinct(new[] {
+            "Security cumulative update for Windows (KB5034441)"
+        });
+
+        var matched = SystemPatchKbNormalization.MatchesContainsFilter(
+            values: kbCandidates,
+            filter: "5034441");
+
+        Assert.True(matched);
+    }
 }

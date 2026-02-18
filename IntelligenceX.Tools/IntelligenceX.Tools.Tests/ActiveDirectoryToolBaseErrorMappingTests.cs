@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -63,6 +64,27 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         Assert.Equal("GPO list query failed.", root.GetProperty("error").GetString());
     }
 
+    [Fact]
+    public void IsConfiguredAttributionValue_ShouldTreatOffAsUnconfiguredWhenConfiguredAliasProvided() {
+        var tool = new HarnessTool();
+
+        Assert.False(tool.IsConfigured("Off", new[] { "off" }));
+        Assert.False(tool.IsConfigured("  OFF  ", new[] { "Off" }));
+        Assert.True(tool.IsConfigured("Off", additionalUnconfiguredValues: null));
+        Assert.True(tool.IsConfigured("Enabled", new[] { "Off" }));
+    }
+
+    [Fact]
+    public void ToCollectorErrorMessage_ShouldSanitizeAndFallback() {
+        var tool = new HarnessTool();
+
+        var sanitized = tool.CollectorError(new Exception("server:\r\nline2\tfailure"), "Domain query failed.");
+        Assert.Equal("server: line2 failure", sanitized);
+
+        var fallback = tool.CollectorError(new Exception("   "), "Domain query failed.");
+        Assert.Equal("Domain query failed.", fallback);
+    }
+
     private sealed class HarnessTool : ActiveDirectoryToolBase {
         private static readonly ToolDefinition DefinitionValue = new(
             "ad_test_harness",
@@ -83,6 +105,14 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
                 defaultMessage,
                 fallbackErrorCode,
                 invalidOperationErrorCode);
+        }
+
+        public bool IsConfigured(string? effectiveValue, IReadOnlyList<string>? additionalUnconfiguredValues = null) {
+            return IsConfiguredAttributionValue(effectiveValue, additionalUnconfiguredValues);
+        }
+
+        public string CollectorError(Exception? exception, string fallback) {
+            return ToCollectorErrorMessage(exception, fallback);
         }
 
         protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {

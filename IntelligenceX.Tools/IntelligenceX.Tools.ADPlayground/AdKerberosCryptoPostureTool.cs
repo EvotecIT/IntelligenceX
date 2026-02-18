@@ -94,7 +94,7 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
                     UsersPreAuthDisabled: view.UsersPreAuthDisabled,
                     TotalSignals: view.UsersRc4Only + view.ComputersRc4Only + view.UsersAesDisabled + view.ComputersAesDisabled + view.UsersPreAuthDisabled));
             } catch (Exception ex) {
-                errors.Add(new KerberosCryptoPostureError(domain, ex.Message));
+                errors.Add(new KerberosCryptoPostureError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

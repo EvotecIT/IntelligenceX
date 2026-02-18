@@ -127,7 +127,7 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
                     }
                 }
             } catch (Exception ex) {
-                errors.Add(new OuProtectionError(domain, ex.Message));
+                errors.Add(new OuProtectionError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

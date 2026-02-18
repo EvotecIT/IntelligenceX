@@ -111,7 +111,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
                         Rights: record.Rights.ToString()));
                 }
             } catch (Exception ex) {
-                errors.Add(new DnsDelegationError(domain, ex.Message));
+                errors.Add(new DnsDelegationError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

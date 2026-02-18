@@ -101,7 +101,7 @@ public sealed class AdDcShadowIndicatorsTool : ActiveDirectoryToolBase, ITool {
                         ? view.Findings.Take(maxFindingsPerDomain).ToArray()
                         : Array.Empty<DcShadowIndicatorService.Finding>()));
             } catch (Exception ex) {
-                errors.Add(new DcShadowIndicatorsError(domain, ex.Message));
+                errors.Add(new DcShadowIndicatorsError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

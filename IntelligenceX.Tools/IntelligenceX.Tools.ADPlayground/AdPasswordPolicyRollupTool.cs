@@ -118,7 +118,7 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
                         ? rollup.Psos.Take(maxPsoRowsPerDomain).ToArray()
                         : Array.Empty<PasswordPolicyInfo>()));
             } catch (Exception ex) {
-                errors.Add(new PasswordPolicyRollupError(domain, ex.Message));
+                errors.Add(new PasswordPolicyRollupError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

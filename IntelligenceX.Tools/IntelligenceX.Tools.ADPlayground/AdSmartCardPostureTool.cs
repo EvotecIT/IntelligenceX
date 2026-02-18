@@ -120,7 +120,7 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
                         ? view.SmartCardPwdOld.Take(maxFindingRowsPerDomain).ToArray()
                         : Array.Empty<SmartCardPostureService.Finding>()));
             } catch (Exception ex) {
-                errors.Add(new SmartCardPostureError(domain, ex.Message));
+                errors.Add(new SmartCardPostureError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

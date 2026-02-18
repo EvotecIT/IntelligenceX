@@ -140,7 +140,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
                         ExpiredDsrmLaps: view.ExpiredDsrmLaps.Take(maxSampleRowsPerDomain).ToArray()));
                 }
             } catch (Exception ex) {
-                errors.Add(new LapsCoverageError(domain, ex.Message));
+                errors.Add(new LapsCoverageError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 

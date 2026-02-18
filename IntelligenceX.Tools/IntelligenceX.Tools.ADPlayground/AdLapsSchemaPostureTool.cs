@@ -135,7 +135,7 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
                         ModernSchemaDn: modern.SchemaDn));
                 }
             } catch (Exception ex) {
-                errors.Add(new LapsSchemaPostureError(domain, ex.Message));
+                errors.Add(new LapsSchemaPostureError(domain, ToCollectorErrorMessage(ex)));
             }
         }
 
