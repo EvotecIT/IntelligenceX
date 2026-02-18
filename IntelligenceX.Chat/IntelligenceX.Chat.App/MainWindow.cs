@@ -511,6 +511,9 @@ public sealed partial class MainWindow : Window {
         try {
             Interlocked.Exchange(ref _startupWebViewBudgetExceededThisRun, 0);
             StartupLog.Write("MainWindow.StartupFlow begin");
+            StartupLog.Write("StartupPhase.AppState begin");
+            await EnsureAppStateLoadedAsync().ConfigureAwait(false);
+            StartupLog.Write("StartupPhase.AppState done");
             StartupLog.Write("StartupPhase.WebView begin");
             var startupWebViewBudgetCache = SnapshotStartupWebViewBudgetCache();
             var startupWebViewBudget = ResolveStartupWebViewBudget(
@@ -532,7 +535,11 @@ public sealed partial class MainWindow : Window {
                     + startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining.ToString(CultureInfo.InvariantCulture));
             }
             var webViewInitializationTask = EnsureWebViewInitializedAsync();
-            if (await TryAwaitStartupWebViewWithinBudgetAsync(webViewInitializationTask, startupWebViewBudget).ConfigureAwait(false)) {
+            var startupWebViewBudgetWaitTask = TryAwaitStartupWebViewWithinBudgetAsync(webViewInitializationTask, startupWebViewBudget);
+            StartupLog.Write("StartupPhase.Connect begin");
+            await EnsureStartupConnectedAsync().ConfigureAwait(false);
+            StartupLog.Write("StartupPhase.Connect done");
+            if (await startupWebViewBudgetWaitTask.ConfigureAwait(false)) {
                 StartupLog.Write("StartupPhase.WebView done");
             } else {
                 StartupLog.Write("StartupPhase.WebView budget_exhausted");
@@ -540,12 +547,6 @@ public sealed partial class MainWindow : Window {
                 MarkStartupWebViewBudgetExhausted();
                 ObserveDeferredStartupWebViewInitialization(webViewInitializationTask);
             }
-            StartupLog.Write("StartupPhase.AppState begin");
-            await EnsureAppStateLoadedAsync().ConfigureAwait(false);
-            StartupLog.Write("StartupPhase.AppState done");
-            StartupLog.Write("StartupPhase.Connect begin");
-            await EnsureStartupConnectedAsync().ConfigureAwait(false);
-            StartupLog.Write("StartupPhase.Connect done");
             StartupLog.Write("StartupPhase.Auth deferred");
             QueueDeferredStartupAuthentication();
             StartupLog.Write("StartupPhase.Onboarding deferred");
@@ -1069,7 +1070,7 @@ public sealed partial class MainWindow : Window {
                 RefreshGlobalWheelHookPolicy();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(_statusText, _statusTone, _usageLimitSwitchRecommended).ConfigureAwait(false);
             await RenderTranscriptAsync().ConfigureAwait(false);
             await PublishOptionsStateAsync().ConfigureAwait(false);
             RecordStartupWebViewEnsureCompletion(
