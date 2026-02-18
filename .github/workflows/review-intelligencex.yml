@@ -52,182 +52,45 @@ on:
 
 jobs:
   # INTELLIGENCEX:BEGIN
-  analysis:
-    name: Static Analysis Gate
-    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-    # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
-    # When public, use GitHub-hosted runners by default.
-    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          # Gate uses PR diff for changed-file scoping; ensure merge parents are available.
-          fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Install PSScriptAnalyzer
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          }
-
-      - name: Validate analysis catalog
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
-
-      - name: Export rule inventory
-        run: |
-          mkdir -p artifacts
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-rules --workspace . --format markdown --pack all-50 > artifacts/analysis-rules.md
-
-      - name: Run static analysis
-        env:
-          INPUT_ANALYSIS_RUN_STRICT: ${{ inputs.analysis_run_strict }}
-          INPUT_ANALYSIS_PACKS: ${{ inputs.analysis_packs }}
-        run: |
-          extra_args=()
-          case "${INPUT_ANALYSIS_RUN_STRICT,,}" in
-            true|1|yes|y|on)
-              extra_args+=("--strict")
-              echo "Analyze run strict override: enabled"
-              ;;
-            false|0|no|n|off)
-              extra_args+=("--strict" "false")
-              echo "Analyze run strict override: disabled"
-              ;;
-            '')
-              echo "Analyze run strict override: unchanged (uses config default)"
-              ;;
-            *)
-              echo "Invalid analysis_run_strict input: '${INPUT_ANALYSIS_RUN_STRICT}'. Expected true|false or empty."
-              exit 1
-              ;;
-          esac
-
-          if [[ -n "${INPUT_ANALYSIS_PACKS// }" ]]; then
-            extra_args+=("--packs" "${INPUT_ANALYSIS_PACKS}")
-            echo "Analyze run pack override: ${INPUT_ANALYSIS_PACKS}"
-          else
-            echo "Analyze run pack override: unchanged (uses config packs)"
-          fi
-
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0 "${extra_args[@]}"
-
-      - name: Compute changed files
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci changed-files --workspace . --out artifacts/changed-files.txt
-
-      - name: Static analysis gate
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
-
-      - name: Check security hotspot state
-        if: always()
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze hotspots sync-state --config .intelligencex/reviewer.json --workspace . --check
-
-      - name: Upload analysis artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: ix-analysis
-          path: artifacts
-
   review:
-    name: AI Review (Fail-Open)
-    needs: [analysis]
-    if: always()
-    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-    # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
-    # When public, use GitHub-hosted runners by default.
-    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       pull-requests: write
       issues: write
       id-token: write
-    env:
-      INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
-      INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 1
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Download analysis artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: ix-analysis
-          path: artifacts
-
-      - name: Tune reviewer budgets for large PRs
-        if: ${{ github.event_name == 'pull_request' }}
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci tune-reviewer-budgets --changed-files artifacts/changed-files.txt
-
-      - name: Create GitHub App token
-        id: app_token
-        if: ${{ env.INTELLIGENCEX_APP_ID != '' && env.INTELLIGENCEX_APP_KEY != '' }}
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
-        with:
-          app-id: ${{ env.INTELLIGENCEX_APP_ID }}
-          private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
-
-      - name: Run reviewer
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
-          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
-          INTELLIGENCEX_AUTH_KEY: ${{ secrets.INTELLIGENCEX_AUTH_KEY }}
-
-          INPUT_REPO: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
-          INPUT_PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-
-          INPUT_PROVIDER: openai
-          INPUT_MODEL: gpt-5.3-codex
-          INPUT_OPENAI_TRANSPORT: native
-          INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
-          INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
-          INPUT_OPENAI_ACCOUNT_ROTATION: ${{ inputs.openai_account_rotation }}
-          INPUT_OPENAI_ACCOUNT_FAILOVER: ${{ inputs.openai_account_failover }}
-          INPUT_USAGE_BUDGET_GUARD: ${{ inputs.usage_budget_guard }}
-          INPUT_USAGE_BUDGET_ALLOW_CREDITS: ${{ inputs.usage_budget_allow_credits }}
-          INPUT_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT: ${{ inputs.usage_budget_allow_weekly_limit }}
-          INPUT_LENGTH: medium
-          INPUT_STYLE: direct
-          INPUT_MODE: inline
-          INPUT_INCLUDE_ISSUE_COMMENTS: true
-          INPUT_INCLUDE_REVIEW_COMMENTS: true
-          INPUT_INCLUDE_RELATED_PRS: true
-          INPUT_PROGRESS_UPDATES: true
-          INPUT_DIAGNOSTICS: true
-          INPUT_PREFLIGHT: true
-          INPUT_PREFLIGHT_TIMEOUT_SECONDS: 15
-          # Health-checks happen outside of the OpenAI call retry/fail-open wrapper; keep them off so
-          # auth/provider issues become non-blocking diagnostics instead of a hard-failing check.
-          INPUT_PROVIDER_HEALTH_CHECKS: false
-          # Avoid blocking PR merges on provider auth issues (e.g., OAuth refresh-token reuse on runners).
-          # The reviewer will still report diagnostics, but the workflow won't fail the check.
-          INPUT_FAIL_OPEN: true
-          INPUT_FAIL_OPEN_TRANSIENT_ONLY: false
-          INPUT_CLEANUP_ENABLED: false
-          INPUT_CLEANUP_MODE: comment
-          INPUT_CLEANUP_SCOPE: pr
-          INPUT_CLEANUP_REQUIRE_LABEL: ''
-          INPUT_CLEANUP_MIN_CONFIDENCE: 0.85
-          INPUT_CLEANUP_ALLOWED_EDITS: 'formatting,grammar,title,sections'
-          INPUT_CLEANUP_POST_EDIT_COMMENT: true
-        run: dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      runs_on: '["self-hosted","ubuntu"]'
+      reviewer_source: release
+      reviewer_release_repo: EvotecIT/github-actions
+      reviewer_release_tag: latest
+      
+      
+      repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
+      pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
+      provider: openai
+      model: gpt-5.3-codex
+      openai_transport: native
+      openai_account_id: ${{ inputs.openai_account_id }}
+      openai_account_ids: ${{ inputs.openai_account_ids }}
+      openai_account_rotation: ${{ inputs.openai_account_rotation }}
+      openai_account_failover: ${{ inputs.openai_account_failover }}
+      usage_budget_guard: ${{ inputs.usage_budget_guard }}
+      usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
+      usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
+      include_issue_comments: true
+      include_review_comments: true
+      include_related_prs: true
+      progress_updates: true
+      diagnostics: false
+      preflight: false
+      preflight_timeout_seconds: 15
+      cleanup_enabled: false
+      cleanup_mode: comment
+      cleanup_scope: pr
+      cleanup_require_label: ''
+      cleanup_min_confidence: 0.85
+      cleanup_allowed_edits: 'formatting,grammar,title,sections'
+      cleanup_post_edit_comment: true
+    secrets: inherit
   # INTELLIGENCEX:END

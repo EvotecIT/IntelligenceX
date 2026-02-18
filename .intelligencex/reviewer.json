@@ -52,6 +52,17 @@
     "reviewUsageSummaryTimeoutSeconds": 10,
     "reviewUsageBudgetGuard": true,
     "reviewUsageBudgetAllowCredits": true,
-    "reviewUsageBudgetAllowWeeklyLimit": true
+    "reviewUsageBudgetAllowWeeklyLimit": true,
+    "provider": "openai",
+    "openaiTransport": "native",
+    "model": "gpt-5.3-codex",
+    "profile": "balanced",
+    "mode": "hybrid",
+    "commentMode": "sticky",
+    "includeRelatedPrs": true,
+    "progressUpdates": true,
+    "diagnostics": false,
+    "preflight": false,
+    "preflightTimeoutSeconds": 15
   }
 }
