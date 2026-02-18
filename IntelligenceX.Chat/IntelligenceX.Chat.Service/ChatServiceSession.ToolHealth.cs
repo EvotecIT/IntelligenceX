@@ -307,6 +307,11 @@ internal sealed partial class ChatServiceSession {
         return normalized.Length == 0 ? "Probe failed." : normalized;
     }
 
+    private static string CompactStartupToolHealthException(Exception ex) {
+        var message = ToolHealthDiagnostics.CompactOneLine(ex.Message);
+        return message.Length == 0 ? ex.GetType().Name : message;
+    }
+
     private static string ToSourceLabel(ToolPackSourceKind sourceKind) {
         return sourceKind switch {
             ToolPackSourceKind.Builtin => "builtin",
@@ -463,5 +468,32 @@ internal sealed partial class ChatServiceSession {
         public DateTime LastFailedUtc { get; set; }
         public DateTime NextProbeUtc { get; set; }
         public int ConsecutiveFailures { get; set; } = 1;
+    }
+
+    private async Task RunStartupToolHealthPrimingAsync(CancellationToken cancellationToken) {
+        try {
+            using var startupToolHealthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            startupToolHealthCts.CancelAfter(StartupToolHealthPrimeBudget);
+            await PrimeStartupToolHealthWarningsAsync(startupToolHealthCts.Token).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // Session shutdown canceled startup priming.
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"[tool health] Startup probe priming failed: {CompactStartupToolHealthException(ex)}");
+        }
+    }
+
+    private static async Task AwaitStartupToolHealthPrimingForHelloAsync(Task startupToolHealthPrimeTask, CancellationToken cancellationToken) {
+        if (startupToolHealthPrimeTask.IsCompleted) {
+            await startupToolHealthPrimeTask.ConfigureAwait(false);
+            return;
+        }
+
+        using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var delayTask = Task.Delay(StartupToolHealthHelloWaitBudget, waitCts.Token);
+        var completedTask = await Task.WhenAny(startupToolHealthPrimeTask, delayTask).ConfigureAwait(false);
+        if (completedTask == startupToolHealthPrimeTask) {
+            waitCts.Cancel();
+            await startupToolHealthPrimeTask.ConfigureAwait(false);
+        }
     }
 }
