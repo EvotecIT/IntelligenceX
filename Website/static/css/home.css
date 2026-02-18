@@ -47,6 +47,8 @@
 
 /* ===== Products Grid ===== */
 .products { padding: 4rem 1.5rem; max-width: var(--pf-max-width); margin: 0 auto; }
+.products-safety-note { margin: 0 auto 1.75rem; max-width: 980px; border: 1px solid rgba(245, 158, 11, 0.35); background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.06)); border-radius: var(--pf-radius-sm); color: #FDE68A; padding: 0.85rem 1rem; font-size: 0.88rem; line-height: 1.55; }
+[data-theme="light"] .products-safety-note { background: linear-gradient(135deg, rgba(180, 83, 9, 0.1), rgba(202, 138, 4, 0.08)); border-color: rgba(146, 64, 14, 0.28); color: #7C2D12; }
 .products-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
 .product-card { background: var(--pf-card-bg); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); overflow: hidden; transition: all 0.3s; display: flex; flex-direction: column; }
 .product-card:hover { border-color: var(--pf-accent); box-shadow: 0 0 30px var(--pf-glow-primary); transform: translateY(-4px); }

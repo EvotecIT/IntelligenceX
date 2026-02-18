@@ -7,6 +7,12 @@
       "screenshot": "/assets/screenshots/showcase-pr-inline.svg"
     },
     {
+      "title": "Issue Ops Project View",
+      "summary": "GitHub Project view for issue applicability triage with suggested action, confidence, and linked PR context for stale infra blockers.",
+      "tags": ["Issue Ops", "Project Control"],
+      "screenshot": "/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg"
+    },
+    {
       "title": "CLI Setup Wizard",
       "summary": "Interactive wizard guides you through authentication, repo selection, and workflow generation in under a minute.",
       "tags": ["CLI", "Onboarding"],

@@ -8,6 +8,7 @@ layout: page
 
 ## Latest Posts
 
+- [IX Issue Ops in Action](/blog/ix-issue-ops-in-action/)
 - [Reviewer Config Playbook (YAML vs JSON)](/blog/reviewer-yaml-vs-json-playbook/)
 - [Multilanguage Support in Action](/blog/multilanguage-support-in-action/)
 - [IX Reviewer in Action](/blog/ix-reviewer-in-action/)
