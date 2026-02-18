@@ -280,7 +280,9 @@ public sealed partial class MainWindow : Window {
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;
     private bool _autoSignInAttempted;
+    private int _startupAuthDeferredQueued;
     private int _startupOnboardingDeferredQueued;
+    private int _startupConnectMetadataDeferredQueued;
     private int _startupModelProfileSyncDeferredQueued;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;
@@ -495,9 +497,8 @@ public sealed partial class MainWindow : Window {
             StartupLog.Write("StartupPhase.Connect begin");
             await EnsureStartupConnectedAsync().ConfigureAwait(false);
             StartupLog.Write("StartupPhase.Connect done");
-            StartupLog.Write("StartupPhase.Auth begin");
-            await EnsureFirstRunAuthenticatedAsync().ConfigureAwait(false);
-            StartupLog.Write("StartupPhase.Auth done");
+            StartupLog.Write("StartupPhase.Auth deferred");
+            QueueDeferredStartupAuthentication();
             StartupLog.Write("StartupPhase.Onboarding deferred");
             QueueDeferredStartupOnboarding();
             Interlocked.Exchange(ref _startupFlowState, 2);
@@ -532,6 +533,31 @@ public sealed partial class MainWindow : Window {
         });
     }
 
+    private void QueueDeferredStartupAuthentication() {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _startupAuthDeferredQueued, 1, 0) != 0) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(200).ConfigureAwait(false);
+                if (_shutdownRequested) {
+                    return;
+                }
+
+                StartupLog.Write("StartupPhase.Auth begin");
+                await EnsureFirstRunAuthenticatedAsync().ConfigureAwait(false);
+                StartupLog.Write("StartupPhase.Auth done");
+            } catch (Exception ex) {
+                StartupLog.Write("StartupPhase.Auth failed: " + ex.Message);
+            }
+        });
+    }
+
     private void QueueDeferredStartupModelProfileSync() {
         if (_shutdownRequested) {
             return;
@@ -559,6 +585,72 @@ public sealed partial class MainWindow : Window {
                 if (VerboseServiceLogs || _debugMode) {
                     AppendSystem("Model/profile sync failed: " + ex.Message);
                 }
+            }
+        });
+    }
+
+    private void QueueDeferredStartupConnectMetadataSync() {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _startupConnectMetadataDeferredQueued, 1, 0) != 0) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(100).ConfigureAwait(false);
+                if (_shutdownRequested) {
+                    return;
+                }
+
+                var client = _client;
+                if (client is null) {
+                    return;
+                }
+
+                try {
+                    StartupLog.Write("StartupConnect.hello begin");
+                    var hello = await client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                    _sessionPolicy = hello.Policy;
+                    StartupLog.Write("StartupConnect.hello done");
+                    AppendStartupToolHealthWarningsFromPolicy();
+                    AppendUnavailablePacksFromPolicy();
+                } catch (Exception ex) {
+                    _sessionPolicy = null;
+                    StartupLog.Write("StartupConnect.hello failed");
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(SystemNotice.HelloFailed(ex.Message));
+                    }
+                }
+
+                try {
+                    StartupLog.Write("StartupConnect.list_tools begin");
+                    var toolList = await client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                    UpdateToolCatalog(toolList.Tools);
+                    StartupLog.Write("StartupConnect.list_tools done");
+                } catch (Exception ex) {
+                    StartupLog.Write("StartupConnect.list_tools failed");
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+                    }
+                }
+
+                try {
+                    StartupLog.Write("StartupConnect.auth_refresh begin");
+                    _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+                    StartupLog.Write("StartupConnect.auth_refresh done");
+                } catch (Exception ex) {
+                    StartupLog.Write("StartupConnect.auth_refresh failed");
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(SystemNotice.EnsureLoginFailed(ex.Message));
+                    }
+                }
+
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+            } catch (Exception ex) {
+                StartupLog.Write("StartupConnect.metadata_sync failed: " + ex.Message);
             }
         });
     }
