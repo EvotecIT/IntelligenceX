@@ -278,6 +278,7 @@ public sealed partial class MainWindow : Window {
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;
     private bool _autoSignInAttempted;
+    private int _startupOnboardingDeferredQueued;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;
     private string? _sessionAssistantPersonaOverride;
@@ -482,17 +483,50 @@ public sealed partial class MainWindow : Window {
     private async Task RunStartupFlowAsync() {
         try {
             StartupLog.Write("MainWindow.StartupFlow begin");
+            StartupLog.Write("StartupPhase.WebView begin");
             await EnsureWebViewInitializedAsync().ConfigureAwait(false);
+            StartupLog.Write("StartupPhase.WebView done");
+            StartupLog.Write("StartupPhase.AppState begin");
             await EnsureAppStateLoadedAsync().ConfigureAwait(false);
+            StartupLog.Write("StartupPhase.AppState done");
+            StartupLog.Write("StartupPhase.Connect begin");
             await EnsureStartupConnectedAsync().ConfigureAwait(false);
+            StartupLog.Write("StartupPhase.Connect done");
+            StartupLog.Write("StartupPhase.Auth begin");
             await EnsureFirstRunAuthenticatedAsync().ConfigureAwait(false);
-            await EnsureOnboardingStartedAsync().ConfigureAwait(false);
+            StartupLog.Write("StartupPhase.Auth done");
+            StartupLog.Write("StartupPhase.Onboarding deferred");
+            QueueDeferredStartupOnboarding();
             Interlocked.Exchange(ref _startupFlowState, 2);
             StartupLog.Write("MainWindow.StartupFlow done");
         } catch (Exception ex) {
             Interlocked.Exchange(ref _startupFlowState, 0);
             StartupLog.Write("MainWindow.StartupFlow failed: " + ex);
         }
+    }
+
+    private void QueueDeferredStartupOnboarding() {
+        if (_shutdownRequested) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _startupOnboardingDeferredQueued, 1, 0) != 0) {
+            return;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                await Task.Delay(250).ConfigureAwait(false);
+                if (_shutdownRequested) {
+                    return;
+                }
+                StartupLog.Write("StartupPhase.Onboarding begin");
+                await EnsureOnboardingStartedAsync().ConfigureAwait(false);
+                StartupLog.Write("StartupPhase.Onboarding done");
+            } catch (Exception ex) {
+                StartupLog.Write("StartupPhase.Onboarding failed: " + ex.Message);
+            }
+        });
     }
 
     private void EnsureRestoredIfMinimized() {
