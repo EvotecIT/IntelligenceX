@@ -79,62 +79,35 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
         List<Rule> discovered;
         var usingExternalDirectory = !string.IsNullOrWhiteSpace(powerShellRulesDirectory);
         HashSet<string>? builtinRuleNames = null;
-        try {
-            var runner = new TestimoRunner();
-            discovered = await runner.DiscoverRulesAsync(
-                includeDisabled: true,
-                ct: cancellationToken,
-                powerShellRulesDirectory: powerShellRulesDirectory).ConfigureAwait(false);
-
-            if (usingExternalDirectory) {
-                builtinRuleNames = await TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync(cancellationToken).ConfigureAwait(false);
-            }
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"TestimoX rule discovery failed: {ex.Message}");
+        var runner = new TestimoRunner();
+        var discovery = await TryDiscoverRulesAsync(
+            runner,
+            powerShellRulesDirectory,
+            cancellationToken,
+            defaultErrorMessage: "TestimoX rule discovery failed.").ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(discovery.ErrorResponse)) {
+            return discovery.ErrorResponse!;
         }
 
-        IEnumerable<Rule> filtered = discovered;
-        if (!includeDisabled) {
-            filtered = filtered.Where(static x => x.Enable);
-        }
-        if (!includeHidden) {
-            filtered = filtered.Where(static x => x.Visibility != RuleVisibility.Hidden);
-        }
-        if (!includeDeprecated) {
-            filtered = filtered.Where(static x => !x.IsDeprecated);
+        discovered = discovery.Rules ?? new List<Rule>();
+        if (usingExternalDirectory) {
+            builtinRuleNames = await TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        if (!string.IsNullOrWhiteSpace(searchText)) {
-            var term = searchText.Trim();
-            filtered = filtered.Where(rule =>
-                TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.Name, term) ||
-                TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.DisplayName, term) ||
-                TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.Description, term));
-        }
-
-        if (sourceTypeFilter is { Count: > 0 }) {
-            filtered = filtered.Where(rule => TestimoXRuleSelectionHelper.MatchesSourceType(rule, sourceTypeFilter));
-        }
-
-        if (requestedCategories.Count > 0) {
-            var requested = new HashSet<string>(requestedCategories, StringComparer.OrdinalIgnoreCase);
-            filtered = filtered.Where(rule => rule.Category.Any(cat => requested.Contains(cat.ToString())));
-        }
-
-        if (requestedTags.Count > 0) {
-            var requested = new HashSet<string>(requestedTags, StringComparer.OrdinalIgnoreCase);
-            filtered = filtered.Where(rule => rule.Tags.Any(tag => requested.Contains(tag)));
-        }
-
-        if (!string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginAny, StringComparison.OrdinalIgnoreCase)) {
-            filtered = filtered.Where(rule =>
-                string.Equals(
-                    TestimoXRuleSelectionHelper.ResolveRuleOrigin(rule, usingExternalDirectory, builtinRuleNames),
-                    ruleOrigin,
-                    StringComparison.OrdinalIgnoreCase));
-        }
+        IEnumerable<Rule> filtered = TestimoXRuleSelectionHelper.ApplyVisibilityFilters(
+            discovered,
+            includeDisabled: includeDisabled,
+            includeHidden: includeHidden,
+            includeDeprecated: includeDeprecated);
+        filtered = TestimoXRuleSelectionHelper.ApplySharedFilters(
+            filtered,
+            searchText,
+            requestedCategories,
+            requestedTags,
+            sourceTypeFilter,
+            ruleOrigin,
+            usingExternalDirectory,
+            builtinRuleNames);
 
         var matchedRows = filtered
             .OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)

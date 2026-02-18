@@ -136,6 +136,68 @@ internal static class TestimoXRuleSelectionHelper {
         return !string.IsNullOrWhiteSpace(value) && value.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    internal static IEnumerable<Rule> ApplyVisibilityFilters(
+        IEnumerable<Rule> rules,
+        bool includeDisabled,
+        bool includeHidden,
+        bool includeDeprecated) {
+        var filtered = rules;
+        if (!includeDisabled) {
+            filtered = filtered.Where(static x => x.Enable);
+        }
+        if (!includeHidden) {
+            filtered = filtered.Where(static x => x.Visibility != RuleVisibility.Hidden);
+        }
+        if (!includeDeprecated) {
+            filtered = filtered.Where(static x => !x.IsDeprecated);
+        }
+
+        return filtered;
+    }
+
+    internal static IEnumerable<Rule> ApplySharedFilters(
+        IEnumerable<Rule> rules,
+        string? searchText,
+        IReadOnlyList<string> requestedCategories,
+        IReadOnlyList<string> requestedTags,
+        HashSet<string>? sourceTypeFilter,
+        string ruleOrigin,
+        bool usingExternalDirectory,
+        HashSet<string>? builtinRuleNames) {
+        var filtered = rules;
+        if (!string.IsNullOrWhiteSpace(searchText)) {
+            var term = searchText.Trim();
+            filtered = filtered.Where(rule =>
+                ContainsIgnoreCase(rule.Name, term) ||
+                ContainsIgnoreCase(rule.DisplayName, term) ||
+                ContainsIgnoreCase(rule.Description, term));
+        }
+
+        if (requestedCategories.Count > 0) {
+            var requested = new HashSet<string>(requestedCategories, StringComparer.OrdinalIgnoreCase);
+            filtered = filtered.Where(rule => rule.Category.Any(cat => requested.Contains(cat.ToString())));
+        }
+
+        if (requestedTags.Count > 0) {
+            var requested = new HashSet<string>(requestedTags, StringComparer.OrdinalIgnoreCase);
+            filtered = filtered.Where(rule => rule.Tags.Any(tag => requested.Contains(tag)));
+        }
+
+        if (sourceTypeFilter is { Count: > 0 }) {
+            filtered = filtered.Where(rule => MatchesSourceType(rule, sourceTypeFilter));
+        }
+
+        if (!string.Equals(ruleOrigin, RuleOriginAny, StringComparison.OrdinalIgnoreCase)) {
+            filtered = filtered.Where(rule =>
+                string.Equals(
+                    ResolveRuleOrigin(rule, usingExternalDirectory, builtinRuleNames),
+                    ruleOrigin,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        return filtered;
+    }
+
     private static string NormalizeSourceType(string? value) {
         var canonical = Canonicalize(value);
         return canonical switch {
