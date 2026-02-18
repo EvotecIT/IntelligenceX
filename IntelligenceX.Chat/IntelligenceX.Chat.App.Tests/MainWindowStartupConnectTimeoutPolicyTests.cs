@@ -16,7 +16,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(true, true, 2000)]
     [InlineData(true, false, 2000)]
     [InlineData(false, true, 2000)]
-    [InlineData(false, false, 350)]
+    [InlineData(false, false, 150)]
     public void ResolveStartupInitialPipeConnectTimeout_ReturnsExpectedTimeout(
         bool fromUserAction,
         bool hasTrackedRunningServiceProcess,
