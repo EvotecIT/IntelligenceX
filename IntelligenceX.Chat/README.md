@@ -41,6 +41,7 @@ pwsh .\scripts\profile-chat-startup.ps1 -Runs 5 -OutFile .\artifacts\chat-startu
 ```
 
 Add `-PostStartupGraceSeconds 2` if you want to include deferred post-startup warmup phases in the report.
+Add `-ArchiveLogsDirectory .\artifacts\chat-startup-logs` to retain each run's raw startup log for hotspot/outlier investigation.
 
 Markdown renderer dependency resolution is automatic:
 - Dev: if sibling local source exists (`..\OfficeIMO`), Chat builds against that local project.

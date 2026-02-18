@@ -34,6 +34,49 @@ public sealed partial class MainWindow : Window {
         return StartupInitialPipeConnectColdStartTimeout;
     }
 
+    internal static TimeSpan? ResolveStartupConnectBudget(bool fromUserAction, bool captureStartupPhaseTelemetry) {
+        if (fromUserAction || !captureStartupPhaseTelemetry) {
+            return null;
+        }
+
+        return StartupConnectBudget;
+    }
+
+    internal static bool TryResolveStartupConnectAttemptTimeout(
+        TimeSpan requestedTimeout,
+        TimeSpan? startupConnectBudget,
+        TimeSpan startupConnectElapsed,
+        out TimeSpan timeout) {
+        timeout = TimeSpan.Zero;
+        if (requestedTimeout <= TimeSpan.Zero) {
+            return false;
+        }
+
+        if (!startupConnectBudget.HasValue) {
+            timeout = requestedTimeout;
+            return true;
+        }
+
+        var remaining = startupConnectBudget.Value - startupConnectElapsed;
+        if (remaining <= TimeSpan.Zero) {
+            return false;
+        }
+
+        timeout = remaining < requestedTimeout ? remaining : requestedTimeout;
+        if (timeout < StartupConnectMinAttemptTimeout) {
+            timeout = TimeSpan.Zero;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static TimeoutException CreateStartupConnectBudgetExceededException(TimeSpan budget, TimeSpan elapsed) {
+        var budgetMs = Math.Round(Math.Max(0, budget.TotalMilliseconds));
+        var elapsedMs = Math.Round(Math.Max(0, elapsed.TotalMilliseconds));
+        return new TimeoutException($"Startup connect budget exhausted after {elapsedMs.ToString(CultureInfo.InvariantCulture)}ms (budget: {budgetMs.ToString(CultureInfo.InvariantCulture)}ms).");
+    }
+
     internal static bool ShouldDeferStartupModelProfileSync(bool captureStartupPhaseTelemetry) {
         return captureStartupPhaseTelemetry;
     }
@@ -58,6 +101,41 @@ public sealed partial class MainWindow : Window {
                 if (captureStartupPhaseTelemetry) {
                     StartupLog.Write("StartupConnect." + phase + " " + state);
                 }
+            }
+            var startupConnectBudget = ResolveStartupConnectBudget(fromUserAction, captureStartupPhaseTelemetry);
+            var startupConnectStopwatch = startupConnectBudget.HasValue ? Stopwatch.StartNew() : null;
+            var startupBudgetExhaustedLogged = false;
+
+            void LogStartupConnectBudgetExhausted(TimeSpan elapsed) {
+                if (startupBudgetExhaustedLogged || !startupConnectBudget.HasValue) {
+                    return;
+                }
+
+                startupBudgetExhaustedLogged = true;
+                LogStartupConnectPhase("budget", "exhausted");
+                StartupLog.Write(
+                    "StartupConnect.budget exhausted after "
+                    + Math.Round(elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)
+                    + "ms (budget "
+                    + Math.Round(startupConnectBudget.Value.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)
+                    + "ms).");
+            }
+
+            bool TryResolveConnectTimeout(TimeSpan requestedTimeout, out TimeSpan timeout) {
+                var elapsed = startupConnectStopwatch?.Elapsed ?? TimeSpan.Zero;
+                if (TryResolveStartupConnectAttemptTimeout(requestedTimeout, startupConnectBudget, elapsed, out timeout)) {
+                    return true;
+                }
+
+                LogStartupConnectBudgetExhausted(elapsed);
+                timeout = TimeSpan.Zero;
+                return false;
+            }
+
+            Exception CreateBudgetExceededException() {
+                var budget = startupConnectBudget.GetValueOrDefault(TimeSpan.Zero);
+                var elapsed = startupConnectStopwatch?.Elapsed ?? TimeSpan.Zero;
+                return CreateStartupConnectBudgetExceededException(budget, elapsed);
             }
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
@@ -84,61 +162,92 @@ public sealed partial class MainWindow : Window {
             Exception? initialConnectException = null;
             var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
             var initialPipeConnectTimeout = ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
+            var connected = false;
 
             try {
                 LogStartupConnectPhase("pipe_connect.initial", "begin");
-                await ConnectClientWithTimeoutAsync(client, pipeName, initialPipeConnectTimeout).ConfigureAwait(false);
+                if (!TryResolveConnectTimeout(initialPipeConnectTimeout, out var initialAttemptTimeout)) {
+                    throw CreateBudgetExceededException();
+                }
+
+                await ConnectClientWithTimeoutAsync(client, pipeName, initialAttemptTimeout).ConfigureAwait(false);
                 LogStartupConnectPhase("pipe_connect.initial", "done");
+                connected = true;
             } catch (Exception ex) {
                 LogStartupConnectPhase("pipe_connect.initial", "failed");
                 initialConnectException = ex;
+            }
 
-                LogStartupConnectPhase("ensure_sidecar", "begin");
-                if (await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false)) {
-                    LogStartupConnectPhase("ensure_sidecar", "done");
-                    Exception? sidecarConnectException = null;
-                    LogStartupConnectPhase("pipe_connect.retry", "begin");
-                    for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
-                        try {
-                            await ConnectClientWithTimeoutAsync(client, pipeName, StartupConnectRetryTimeouts[attempt]).ConfigureAwait(false);
-                            sidecarConnectException = null;
-                            break;
-                        } catch (Exception ex2) {
-                            sidecarConnectException = ex2;
-                            if (_serviceProcess is { HasExited: true }) {
+            if (!connected) {
+                Exception? sidecarConnectException = null;
+                if (startupConnectBudget.HasValue
+                    && startupConnectStopwatch is not null
+                    && startupConnectStopwatch.Elapsed >= startupConnectBudget.Value) {
+                    LogStartupConnectBudgetExhausted(startupConnectStopwatch.Elapsed);
+                    LogStartupConnectPhase("ensure_sidecar", "skipped_budget");
+                    sidecarConnectException = CreateBudgetExceededException();
+                } else {
+                    LogStartupConnectPhase("ensure_sidecar", "begin");
+                    if (await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false)) {
+                        LogStartupConnectPhase("ensure_sidecar", "done");
+                        LogStartupConnectPhase("pipe_connect.retry", "begin");
+                        for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
+                            if (!TryResolveConnectTimeout(StartupConnectRetryTimeouts[attempt], out var retryTimeout)) {
+                                sidecarConnectException = CreateBudgetExceededException();
                                 break;
                             }
 
-                            if (attempt + 1 < StartupConnectRetryTimeouts.Length) {
-                                await Task.Delay(StartupConnectRetryDelay).ConfigureAwait(false);
+                            try {
+                                await ConnectClientWithTimeoutAsync(client, pipeName, retryTimeout).ConfigureAwait(false);
+                                sidecarConnectException = null;
+                                connected = true;
+                                break;
+                            } catch (Exception ex2) {
+                                sidecarConnectException = ex2;
+                                if (_serviceProcess is { HasExited: true }) {
+                                    break;
+                                }
+
+                                if (attempt + 1 < StartupConnectRetryTimeouts.Length) {
+                                    if (!TryResolveConnectTimeout(StartupConnectRetryDelay, out var retryDelay)) {
+                                        sidecarConnectException = CreateBudgetExceededException();
+                                        break;
+                                    }
+
+                                    await Task.Delay(retryDelay).ConfigureAwait(false);
+                                }
                             }
                         }
-                    }
 
-                    if (sidecarConnectException is not null) {
-                        LogStartupConnectPhase("pipe_connect.retry", "failed");
+                        if (sidecarConnectException is not null) {
+                            LogStartupConnectPhase("pipe_connect.retry", "failed");
+                        } else {
+                            LogStartupConnectPhase("pipe_connect.retry", "done");
+                        }
+                    } else {
+                        LogStartupConnectPhase("ensure_sidecar", "failed");
                         await client.DisposeAsync().ConfigureAwait(false);
                         _isConnected = false;
                         await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
                         EnsureAutoReconnectLoop();
-                        if (VerboseServiceLogs || _debugMode) {
-                            AppendSystem(SystemNotice.ConnectProbeFailed(FormatConnectError(initialConnectException)));
-                        }
                         if (fromUserAction || _debugMode) {
-                            AppendSystem(SystemNotice.ConnectFailedAfterSidecarStart(FormatConnectError(sidecarConnectException)));
+                            AppendSystem(SystemNotice.ConnectFailed(FormatConnectError(initialConnectException ?? CreateBudgetExceededException())));
+                            AppendSystem(SystemNotice.ServiceSidecarUnavailable());
                         }
                         return;
                     }
-                    LogStartupConnectPhase("pipe_connect.retry", "done");
-                } else {
-                    LogStartupConnectPhase("ensure_sidecar", "failed");
+                }
+
+                if (!connected) {
                     await client.DisposeAsync().ConfigureAwait(false);
                     _isConnected = false;
                     await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
                     EnsureAutoReconnectLoop();
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(SystemNotice.ConnectProbeFailed(FormatConnectError(initialConnectException ?? CreateBudgetExceededException())));
+                    }
                     if (fromUserAction || _debugMode) {
-                        AppendSystem(SystemNotice.ConnectFailed(FormatConnectError(initialConnectException)));
-                        AppendSystem(SystemNotice.ServiceSidecarUnavailable());
+                        AppendSystem(SystemNotice.ConnectFailedAfterSidecarStart(FormatConnectError(sidecarConnectException ?? CreateBudgetExceededException())));
                     }
                     return;
                 }

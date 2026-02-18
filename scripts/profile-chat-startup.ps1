@@ -7,6 +7,7 @@ param(
     [int] $TimeoutSeconds = 75,
     [ValidateRange(0, 120)]
     [int] $PostStartupGraceSeconds = 0,
+    [string] $ArchiveLogsDirectory,
     [string] $OutFile
 )
 
@@ -27,6 +28,10 @@ if (-not (Test-Path $ExePath)) {
 }
 
 $startupLogPath = Join-Path $env:TEMP 'IntelligenceX.Chat\app-startup.log'
+$resolvedArchiveLogsDirectory = $null
+if (-not [string]::IsNullOrWhiteSpace($ArchiveLogsDirectory)) {
+    $resolvedArchiveLogsDirectory = [System.IO.Path]::GetFullPath($ArchiveLogsDirectory)
+}
 
 function Stop-ChatProcesses {
     Get-Process -Name 'IntelligenceX.Chat.App', 'IntelligenceX.Chat.Service' -ErrorAction SilentlyContinue |
@@ -107,10 +112,17 @@ for ($i = 1; $i -le $Runs; $i++) {
 
     Stop-ChatProcesses
     $lines = if (Test-Path $startupLogPath) { Get-Content $startupLogPath -ErrorAction SilentlyContinue } else { @() }
+    $archivedStartupLogPath = $null
+    if (-not [string]::IsNullOrWhiteSpace($resolvedArchiveLogsDirectory) -and (Test-Path $startupLogPath)) {
+        New-Item -ItemType Directory -Path $resolvedArchiveLogsDirectory -Force | Out-Null
+        $archivedStartupLogPath = Join-Path $resolvedArchiveLogsDirectory ("run-{0:D2}-{1}.log" -f $i, $state)
+        Copy-Item -Path $startupLogPath -Destination $archivedStartupLogPath -Force
+    }
 
     $run = [ordered]@{
         run              = $i
         state            = $state
+        startup_log_path = $archivedStartupLogPath
         total_ms         = Get-DurationMs (Get-MarkerTimestamp $lines 'Program.Main enter') (Get-MarkerTimestamp $lines 'MainWindow.StartupFlow done')
         connect_ms       = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupPhase.Connect begin') (Get-MarkerTimestamp $lines 'StartupPhase.Connect done')
         hello_ms         = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupConnect.hello begin') (Get-MarkerTimestamp $lines 'StartupConnect.hello done')
@@ -152,6 +164,7 @@ $report = [pscustomobject]@{
     generated_utc = [datetime]::UtcNow.ToString('O')
     exe_path      = $ExePath
     startup_log   = $startupLogPath
+    archive_logs_directory = $resolvedArchiveLogsDirectory
     summary       = $summary
     runs          = $runResults
 }
