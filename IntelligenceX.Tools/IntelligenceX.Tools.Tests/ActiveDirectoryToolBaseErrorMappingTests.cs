@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ADPlayground.Gpo;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
@@ -85,6 +86,70 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         Assert.Equal("Domain query failed.", fallback);
     }
 
+    [Fact]
+    public void TryReadPolicyAttributionToolRequest_ShouldRequireDomainName() {
+        var tool = new HarnessTool();
+
+        var ok = tool.TryReadPolicyRequest(
+            arguments: new JsonObject(),
+            out _,
+            out _,
+            out _,
+            out _,
+            out var errorResponse);
+
+        Assert.False(ok);
+        Assert.NotNull(errorResponse);
+        using var doc = JsonDocument.Parse(errorResponse!);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+    }
+
+    [Fact]
+    public async Task ExecutePolicyAttributionTool_ShouldFilterRowsAndAddStandardMeta() {
+        var tool = new HarnessTool();
+        var arguments = new JsonObject()
+            .Add("domain_name", "contoso.local")
+            .Add("configured_attribution_only", true)
+            .Add("max_results", 10);
+
+        var json = await tool.ExecutePolicyToolAsync(
+            arguments,
+            _ => new HarnessTool.MockPolicyView(new[] {
+                new PolicyAttribution("s1", "k", "v", "Off", null, Array.Empty<GpoRef>()),
+                new PolicyAttribution("s2", "k", "v", "Enabled", null, Array.Empty<GpoRef>()),
+                new PolicyAttribution("s3", "k", "v", "Not configured", null, Array.Empty<GpoRef>())
+            }, "ok"),
+            additionalUnconfiguredValues: new[] { "Off" });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(1, root.GetProperty("attribution_view").GetArrayLength());
+        Assert.Equal(1, root.GetProperty("scanned").GetInt32());
+        Assert.Equal("contoso.local", root.GetProperty("meta").GetProperty("domain_name").GetString());
+        Assert.True(root.GetProperty("meta").GetProperty("configured_attribution_only").GetBoolean());
+        Assert.Equal(1, root.GetProperty("meta").GetProperty("scanned").GetInt32());
+    }
+
+    [Fact]
+    public async Task ExecutePolicyAttributionTool_ShouldMapInvalidOperationToQueryFailed() {
+        var tool = new HarnessTool();
+        var arguments = new JsonObject().Add("domain_name", "contoso.local");
+
+        var json = await tool.ExecutePolicyToolAsync(
+            arguments,
+            _ => throw new InvalidOperationException("Policy service unavailable"));
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
+        Assert.Equal("Policy service unavailable", root.GetProperty("error").GetString());
+    }
+
     private sealed class HarnessTool : ActiveDirectoryToolBase {
         private static readonly ToolDefinition DefinitionValue = new(
             "ad_test_harness",
@@ -115,8 +180,56 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             return ToCollectorErrorMessage(exception, fallback);
         }
 
+        public bool TryReadPolicyRequest(
+            JsonObject? arguments,
+            out string? domainName,
+            out bool includeAttribution,
+            out bool configuredAttributionOnly,
+            out int maxResults,
+            out string? errorResponse) {
+            var ok = TryReadPolicyAttributionToolRequest(arguments, out var request, out errorResponse);
+            domainName = ok ? request.DomainName : null;
+            includeAttribution = ok && request.IncludeAttribution;
+            configuredAttributionOnly = ok && request.ConfiguredAttributionOnly;
+            maxResults = ok ? request.MaxResults : 0;
+            return ok;
+        }
+
+        public Task<string> ExecutePolicyToolAsync(
+            JsonObject? arguments,
+            Func<string, MockPolicyView> query,
+            IReadOnlyList<string>? additionalUnconfiguredValues = null) {
+            return ExecutePolicyAttributionTool<MockPolicyView, MockPolicyResult>(
+                arguments: arguments,
+                cancellationToken: CancellationToken.None,
+                title: "Active Directory: Test Policy (preview)",
+                defaultErrorMessage: "Policy query failed.",
+                query: query,
+                attributionSelector: static view => view.Attribution,
+                additionalUnconfiguredValues: additionalUnconfiguredValues,
+                resultFactory: static (request, view, scanned, truncated, rows) => new MockPolicyResult(
+                    request.DomainName,
+                    request.IncludeAttribution,
+                    request.ConfiguredAttributionOnly,
+                    scanned,
+                    truncated,
+                    view.Marker,
+                    rows));
+        }
+
         protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return Task.FromResult(ToolResponse.OkModel(new { ok = true }));
         }
+
+        internal sealed record MockPolicyView(IReadOnlyList<PolicyAttribution> Attribution, string Marker);
+
+        private sealed record MockPolicyResult(
+            string DomainName,
+            bool IncludeAttribution,
+            bool ConfiguredAttributionOnly,
+            int Scanned,
+            bool Truncated,
+            string Marker,
+            IReadOnlyList<PolicyAttribution> Attribution);
     }
 }

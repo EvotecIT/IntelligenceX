@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using ADPlayground.Gpo;
 using ADPlayground.Helpers;
 using IntelligenceX.Json;
@@ -14,6 +15,16 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public abstract class ActiveDirectoryToolBase : ToolBase {
     private const int MaxErrorMessageLength = 300;
+    private const int DefaultPolicyAttributionMaxTop = 5000;
+
+    /// <summary>
+    /// Standard argument set used by AD policy-attribution tools.
+    /// </summary>
+    protected readonly record struct PolicyAttributionToolRequest(
+        string DomainName,
+        bool IncludeAttribution,
+        bool ConfiguredAttributionOnly,
+        int MaxResults);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ActiveDirectoryToolBase"/> class.
@@ -338,5 +349,96 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     /// </summary>
     protected static string ToCollectorErrorMessage(Exception? exception, string fallback = "Active Directory query failed.") {
         return SanitizeErrorMessage(exception?.Message, fallback);
+    }
+
+    /// <summary>
+    /// Executes a standard AD policy-attribution query tool pipeline:
+    /// parse args, run query, shape attribution rows, and build the table response.
+    /// </summary>
+    protected Task<string> ExecutePolicyAttributionTool<TView, TResult>(
+        JsonObject? arguments,
+        CancellationToken cancellationToken,
+        string title,
+        string defaultErrorMessage,
+        Func<string, TView> query,
+        Func<TView, IReadOnlyList<PolicyAttribution>> attributionSelector,
+        Func<PolicyAttributionToolRequest, TView, int, bool, IReadOnlyList<PolicyAttribution>, TResult> resultFactory,
+        IReadOnlyList<string>? additionalUnconfiguredValues = null,
+        string invalidOperationErrorCode = "query_failed",
+        int maxTop = DefaultPolicyAttributionMaxTop) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (query is null) {
+            throw new ArgumentNullException(nameof(query));
+        }
+        if (attributionSelector is null) {
+            throw new ArgumentNullException(nameof(attributionSelector));
+        }
+        if (resultFactory is null) {
+            throw new ArgumentNullException(nameof(resultFactory));
+        }
+
+        if (!TryReadPolicyAttributionToolRequest(arguments, out var request, out var requestError)) {
+            return Task.FromResult(requestError!);
+        }
+
+        if (!TryExecute(
+                action: () => query(request.DomainName),
+                result: out TView view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: defaultErrorMessage,
+                invalidOperationErrorCode: invalidOperationErrorCode)) {
+            return Task.FromResult(errorResponse!);
+        }
+
+        var rows = PreparePolicyAttributionRows(
+            attribution: attributionSelector(view),
+            includeAttribution: request.IncludeAttribution,
+            configuredAttributionOnly: request.ConfiguredAttributionOnly,
+            maxResults: request.MaxResults,
+            additionalUnconfiguredValues: additionalUnconfiguredValues,
+            scanned: out var scanned,
+            truncated: out var truncated);
+
+        var result = resultFactory(request, view, scanned, truncated, rows);
+
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: result,
+            sourceRows: rows,
+            viewRowsPath: "attribution_view",
+            title: title,
+            maxTop: maxTop,
+            baseTruncated: truncated,
+            scanned: scanned,
+            metaMutate: meta => AddStandardPolicyAttributionMeta(
+                meta,
+                request.DomainName,
+                request.IncludeAttribution,
+                request.ConfiguredAttributionOnly,
+                request.MaxResults)));
+    }
+
+    /// <summary>
+    /// Parses standard AD policy-attribution arguments.
+    /// </summary>
+    protected bool TryReadPolicyAttributionToolRequest(
+        JsonObject? arguments,
+        out PolicyAttributionToolRequest request,
+        out string? errorResponse) {
+        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
+        if (string.IsNullOrWhiteSpace(domainName)) {
+            request = default;
+            errorResponse = ToolResponse.Error("invalid_argument", "domain_name is required.");
+            return false;
+        }
+
+        request = new PolicyAttributionToolRequest(
+            DomainName: domainName,
+            IncludeAttribution: ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true),
+            ConfiguredAttributionOnly: ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false),
+            MaxResults: ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults));
+        errorResponse = null;
+        return true;
     }
 }
