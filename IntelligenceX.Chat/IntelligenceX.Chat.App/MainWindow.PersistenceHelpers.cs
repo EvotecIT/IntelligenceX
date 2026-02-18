@@ -970,7 +970,7 @@ public sealed partial class MainWindow : Window {
 
             _stagedServiceDir = stagedDir;
             TouchDirectory(stagedDir);
-            CleanupStaleServiceStaging(runtimeRoot, stagedDir);
+            QueueStaleServiceStagingCleanup(runtimeRoot, stagedDir);
             return stagedDir;
         } catch (Exception ex) {
             AppendSystem(SystemNotice.ServiceStagingError(ex.Message));
@@ -1050,6 +1050,20 @@ public sealed partial class MainWindow : Window {
         } catch {
             // Ignore.
         }
+    }
+
+    private void QueueStaleServiceStagingCleanup(string runtimeRoot, string keepDir) {
+        if (Interlocked.CompareExchange(ref _serviceStagingCleanupInFlight, 1, 0) != 0) {
+            return;
+        }
+
+        _ = Task.Run(() => {
+            try {
+                CleanupStaleServiceStaging(runtimeRoot, keepDir);
+            } finally {
+                Interlocked.Exchange(ref _serviceStagingCleanupInFlight, 0);
+            }
+        });
     }
 
     private static void CleanupStaleServiceStaging(string runtimeRoot, string keepDir) {
