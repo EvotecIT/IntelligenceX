@@ -464,6 +464,7 @@ internal static partial class Program {
         failed += Run("Todo triage index signal-quality inference", TestTriageIndexAssessSignalQualityDistinguishesStrongAndWeakContext);
         failed += Run("Todo triage index operational signals", TestTriageIndexAssessPullRequestOperationalSignalsClassifiesSizeRiskAndReadiness);
         failed += Run("Todo triage index operational signal calibration boundaries", TestTriageIndexAssessPullRequestOperationalSignalsCalibrationBoundaries);
+        failed += Run("Todo PR signal backtest bucket stats", TestPullRequestSignalBacktestBuildBucketStatsCalculatesMergeRates);
         failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
         failed += Run("Todo vision check explicit reject policy precedence", TestVisionCheckExplicitRejectPolicyTakesPrecedence);

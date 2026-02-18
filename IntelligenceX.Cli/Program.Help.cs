@@ -65,6 +65,7 @@ internal static partial class Program {
         Console.WriteLine("TODO:");
         Console.WriteLine("  todo sync-bot-feedback   Sync bot checklist items into TODO.md (optional issue creation)");
         Console.WriteLine("  todo build-triage-index  Build PR/Issue triage index with duplicate clusters and best PR ranking");
+        Console.WriteLine("  todo backtest-pr-signals Backtest PR operational signal calibration on closed/merged historical PRs");
         Console.WriteLine("  todo vision-check        Compare PR backlog against VISION.md and flag likely out-of-scope work");
         Console.WriteLine("  todo project-init        Create or initialize a GitHub Project with IX triage/vision fields");
         Console.WriteLine("  todo project-sync        Sync triage/vision artifacts into GitHub Project items and fields");
