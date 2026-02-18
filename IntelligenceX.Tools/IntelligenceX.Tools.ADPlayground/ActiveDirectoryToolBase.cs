@@ -15,7 +15,6 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Base class for Active Directory tools.
 /// </summary>
 public abstract class ActiveDirectoryToolBase : ToolBase {
-    private const int MaxErrorMessageLength = 300;
     private const int DefaultPolicyAttributionMaxTop = 5000;
 
     /// <summary>
@@ -301,56 +300,20 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         string defaultMessage = "Active Directory query failed.",
         string fallbackErrorCode = "query_failed",
         string invalidOperationErrorCode = "invalid_argument") {
-        if (exception is null) {
-            throw new ArgumentNullException(nameof(exception));
-        }
-
-        var safeDefault = string.IsNullOrWhiteSpace(defaultMessage)
-            ? "Active Directory query failed."
-            : defaultMessage.Trim();
-
-        return exception switch {
-            OperationCanceledException => Error("cancelled", "Operation was cancelled.", isTransient: true),
-            ArgumentException => Error("invalid_argument", SanitizeErrorMessage(exception.Message, safeDefault)),
-            InvalidOperationException => Error(
-                string.IsNullOrWhiteSpace(invalidOperationErrorCode) ? "invalid_argument" : invalidOperationErrorCode,
-                SanitizeErrorMessage(exception.Message, safeDefault)),
-            FormatException => Error("invalid_argument", SanitizeErrorMessage(exception.Message, safeDefault)),
-            UnauthorizedAccessException => Error("access_denied", SanitizeErrorMessage(exception.Message, "Access denied while querying Active Directory.")),
-            TimeoutException => Error("timeout", SanitizeErrorMessage(exception.Message, "Active Directory query timed out."), isTransient: true),
-            NotSupportedException => Error("not_supported", SanitizeErrorMessage(exception.Message, safeDefault)),
-            _ => Error(
-                string.IsNullOrWhiteSpace(fallbackErrorCode) ? "query_failed" : fallbackErrorCode,
-                safeDefault)
-        };
+        return ToolExceptionMapper.ErrorFromException(
+            exception,
+            defaultMessage: string.IsNullOrWhiteSpace(defaultMessage) ? "Active Directory query failed." : defaultMessage,
+            unauthorizedMessage: "Access denied while querying Active Directory.",
+            timeoutMessage: "Active Directory query timed out.",
+            fallbackErrorCode: fallbackErrorCode,
+            invalidOperationErrorCode: invalidOperationErrorCode);
     }
 
     /// <summary>
     /// Compacts and bounds an error message to keep tool envelopes stable/safe.
     /// </summary>
     protected static string SanitizeErrorMessage(string? message, string fallback) {
-        var safeFallback = string.IsNullOrWhiteSpace(fallback) ? "Operation failed." : fallback.Trim();
-        if (string.IsNullOrWhiteSpace(message)) {
-            return safeFallback;
-        }
-
-        var compact = message
-            .Replace('\r', ' ')
-            .Replace('\n', ' ')
-            .Replace('\t', ' ')
-            .Trim();
-
-        while (compact.Contains("  ", StringComparison.Ordinal)) {
-            compact = compact.Replace("  ", " ", StringComparison.Ordinal);
-        }
-
-        if (compact.Length == 0) {
-            return safeFallback;
-        }
-
-        return compact.Length <= MaxErrorMessageLength
-            ? compact
-            : compact.Substring(0, MaxErrorMessageLength).TrimEnd() + "...";
+        return ToolExceptionMapper.SanitizeErrorMessage(message, fallback);
     }
 
     /// <summary>
