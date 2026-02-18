@@ -84,6 +84,18 @@ public sealed partial class MainWindow : Window {
     private const int StartupWebViewBudgetAdaptiveMaxStableCompletions = 8;
     private const int StartupWebViewBudgetMaxConsecutiveExhaustions = 8;
     private const string StartupWebViewBudgetCacheFileName = "startup-webview-budget-cache-v1.json";
+    private const string StartupWebViewBudgetReasonCooldownConservative = "cooldown_conservative";
+    private const string StartupWebViewBudgetReasonExhaustionConservative = "exhaustion_conservative";
+    private const string StartupWebViewBudgetReasonInsufficientStability = "insufficient_stability";
+    private const string StartupWebViewBudgetReasonMissingLastEnsure = "missing_last_ensure";
+    private const string StartupWebViewBudgetReasonConservativeTier = "conservative_tier";
+    private const string StartupWebViewBudgetReasonFastTier = "fast_tier";
+    private const string StartupWebViewBudgetReasonMediumTier = "medium_tier";
+    private const string StartupWebViewBudgetReasonSlowTier = "slow_tier";
+    private const string StartupWebViewBudgetReasonSuffixNew = "_new";
+    private const string StartupWebViewBudgetReasonSuffixNondecreasing = "_nondecreasing";
+    private const string StartupWebViewBudgetReasonSuffixDownshiftCapped = "_downshift_capped";
+    private const string StartupWebViewBudgetReasonSuffixDownshiftFull = "_downshift_full";
     private static readonly TimeSpan[] StartupConnectRetryTimeouts = {
         TimeSpan.FromSeconds(6),
         TimeSpan.FromSeconds(10),
@@ -517,21 +529,18 @@ public sealed partial class MainWindow : Window {
             StartupLog.Write("StartupPhase.AppState done");
             StartupLog.Write("StartupPhase.WebView begin");
             var startupWebViewBudgetCache = SnapshotStartupWebViewBudgetCache();
-            var startupWebViewBudget = ResolveStartupWebViewBudget(
+            var startupWebViewBudgetDecision = ResolveStartupWebViewBudgetDecisionIfEnabled(
                 captureStartupPhaseTelemetry: Volatile.Read(ref _startupFlowState) == 1,
                 lastEnsureWebViewMs: startupWebViewBudgetCache.LastEnsureWebViewMs,
                 consecutiveBudgetExhaustions: startupWebViewBudgetCache.ConsecutiveBudgetExhaustions,
                 consecutiveStableCompletions: startupWebViewBudgetCache.ConsecutiveStableCompletions,
                 adaptiveCooldownRunsRemaining: startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining,
                 lastAppliedBudgetMs: startupWebViewBudgetCache.LastAppliedBudgetMs);
-            if (startupWebViewBudget.HasValue) {
-                var startupWebViewBudgetDecision = ResolveStartupWebViewBudgetDecision(
-                    startupWebViewBudgetCache.LastEnsureWebViewMs,
-                    startupWebViewBudgetCache.ConsecutiveBudgetExhaustions,
-                    startupWebViewBudgetCache.ConsecutiveStableCompletions,
-                    startupWebViewBudgetCache.AdaptiveCooldownRunsRemaining,
-                    startupWebViewBudgetCache.LastAppliedBudgetMs);
-                StartupLog.Write("StartupPhase.WebView budget_ms=" + Math.Round(startupWebViewBudget.Value.TotalMilliseconds).ToString(CultureInfo.InvariantCulture));
+            var startupWebViewBudget = startupWebViewBudgetDecision is null
+                ? (TimeSpan?)null
+                : TimeSpan.FromMilliseconds(startupWebViewBudgetDecision.BudgetMs);
+            if (startupWebViewBudgetDecision is not null) {
+                StartupLog.Write("StartupPhase.WebView budget_ms=" + startupWebViewBudgetDecision.BudgetMs.ToString(CultureInfo.InvariantCulture));
                 StartupLog.Write(
                     "StartupPhase.WebView budget_policy last_ensure_ms="
                     + (startupWebViewBudgetCache.LastEnsureWebViewMs?.ToString(CultureInfo.InvariantCulture) ?? "null")
@@ -600,17 +609,35 @@ public sealed partial class MainWindow : Window {
         int consecutiveStableCompletions,
         int adaptiveCooldownRunsRemaining,
         int? lastAppliedBudgetMs) {
-        if (!captureStartupPhaseTelemetry) {
-            return null;
-        }
-
-        var budgetMs = ResolveStartupWebViewBudgetMilliseconds(
+        var decision = ResolveStartupWebViewBudgetDecisionIfEnabled(
+            captureStartupPhaseTelemetry,
             lastEnsureWebViewMs,
             consecutiveBudgetExhaustions,
             consecutiveStableCompletions,
             adaptiveCooldownRunsRemaining,
             lastAppliedBudgetMs);
-        return TimeSpan.FromMilliseconds(budgetMs);
+        if (decision is null) {
+            return null;
+        }
+
+        return TimeSpan.FromMilliseconds(decision.BudgetMs);
+    }
+
+    internal static string? ResolveStartupWebViewBudgetReason(
+        bool captureStartupPhaseTelemetry,
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining,
+        int? lastAppliedBudgetMs) {
+        var decision = ResolveStartupWebViewBudgetDecisionIfEnabled(
+            captureStartupPhaseTelemetry,
+            lastEnsureWebViewMs,
+            consecutiveBudgetExhaustions,
+            consecutiveStableCompletions,
+            adaptiveCooldownRunsRemaining,
+            lastAppliedBudgetMs);
+        return decision?.Reason;
     }
 
     internal static int ResolveStartupWebViewBudgetMilliseconds(
@@ -627,6 +654,45 @@ public sealed partial class MainWindow : Window {
             lastAppliedBudgetMs).BudgetMs;
     }
 
+    private static StartupWebViewBudgetDecision? ResolveStartupWebViewBudgetDecisionIfEnabled(
+        bool captureStartupPhaseTelemetry,
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining,
+        int? lastAppliedBudgetMs) {
+        if (!captureStartupPhaseTelemetry) {
+            return null;
+        }
+
+        return ResolveStartupWebViewBudgetDecision(
+            lastEnsureWebViewMs,
+            consecutiveBudgetExhaustions,
+            consecutiveStableCompletions,
+            adaptiveCooldownRunsRemaining,
+            lastAppliedBudgetMs);
+    }
+
+    private static string ResolveStartupWebViewBudgetTierReason(int adaptiveBudgetMs) {
+        if (adaptiveBudgetMs == StartupWebViewBudgetFastMs) {
+            return StartupWebViewBudgetReasonFastTier;
+        }
+
+        if (adaptiveBudgetMs == StartupWebViewBudgetMediumMs) {
+            return StartupWebViewBudgetReasonMediumTier;
+        }
+
+        if (adaptiveBudgetMs == StartupWebViewBudgetSlowMs) {
+            return StartupWebViewBudgetReasonSlowTier;
+        }
+
+        return StartupWebViewBudgetReasonConservativeTier;
+    }
+
+    private static string ComposeStartupWebViewBudgetReason(string tierReason, string reasonSuffix) {
+        return string.Concat(tierReason, reasonSuffix);
+    }
+
     private static StartupWebViewBudgetDecision ResolveStartupWebViewBudgetDecision(
         int? lastEnsureWebViewMs,
         int consecutiveBudgetExhaustions,
@@ -639,39 +705,32 @@ public sealed partial class MainWindow : Window {
         var normalizedCooldownRuns = Math.Max(0, adaptiveCooldownRunsRemaining);
 
         if (normalizedCooldownRuns > 0) {
-            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "cooldown_conservative");
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, StartupWebViewBudgetReasonCooldownConservative);
         }
 
         if (normalizedExhaustions > 0 && normalizedStableCompletions < StartupWebViewBudgetAdaptiveMinStableCompletions) {
-            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "exhaustion_conservative");
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, StartupWebViewBudgetReasonExhaustionConservative);
         }
 
         if (normalizedStableCompletions < StartupWebViewBudgetAdaptiveMinStableCompletions) {
-            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "insufficient_stability");
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, StartupWebViewBudgetReasonInsufficientStability);
         }
 
         if (!lastEnsureWebViewMs.HasValue || lastEnsureWebViewMs.Value <= 0) {
-            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "missing_last_ensure");
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, StartupWebViewBudgetReasonMissingLastEnsure);
         }
 
         var measuredEnsureMs = lastEnsureWebViewMs.Value;
-        var tierReason = "conservative_tier";
         var adaptiveBudgetMs = measuredEnsureMs switch {
             <= StartupWebViewBudgetFastEnsureThresholdMs => StartupWebViewBudgetFastMs,
             <= StartupWebViewBudgetMediumEnsureThresholdMs => StartupWebViewBudgetMediumMs,
             <= StartupWebViewBudgetSlowEnsureThresholdMs => StartupWebViewBudgetSlowMs,
             _ => conservativeBudgetMs
         };
-        if (adaptiveBudgetMs == StartupWebViewBudgetFastMs) {
-            tierReason = "fast_tier";
-        } else if (adaptiveBudgetMs == StartupWebViewBudgetMediumMs) {
-            tierReason = "medium_tier";
-        } else if (adaptiveBudgetMs == StartupWebViewBudgetSlowMs) {
-            tierReason = "slow_tier";
-        }
+        var tierReason = ResolveStartupWebViewBudgetTierReason(adaptiveBudgetMs);
 
         if (adaptiveBudgetMs >= conservativeBudgetMs) {
-            return new StartupWebViewBudgetDecision(conservativeBudgetMs, "conservative_tier");
+            return new StartupWebViewBudgetDecision(conservativeBudgetMs, StartupWebViewBudgetReasonConservativeTier);
         }
 
         var marginAwareBudgetMs = Math.Max(
@@ -679,22 +738,22 @@ public sealed partial class MainWindow : Window {
             measuredEnsureMs + StartupWebViewBudgetAdaptiveHeadroomMs);
         var clampedBudgetMs = Math.Clamp(marginAwareBudgetMs, StartupWebViewBudgetMinimumMs, conservativeBudgetMs);
         if (!lastAppliedBudgetMs.HasValue || lastAppliedBudgetMs.Value <= 0) {
-            return new StartupWebViewBudgetDecision(clampedBudgetMs, tierReason + "_new");
+            return new StartupWebViewBudgetDecision(clampedBudgetMs, ComposeStartupWebViewBudgetReason(tierReason, StartupWebViewBudgetReasonSuffixNew));
         }
 
         var previousBudgetMs = Math.Clamp(lastAppliedBudgetMs.Value, StartupWebViewBudgetMinimumMs, conservativeBudgetMs);
         if (clampedBudgetMs >= previousBudgetMs) {
-            return new StartupWebViewBudgetDecision(clampedBudgetMs, tierReason + "_nondecreasing");
+            return new StartupWebViewBudgetDecision(clampedBudgetMs, ComposeStartupWebViewBudgetReason(tierReason, StartupWebViewBudgetReasonSuffixNondecreasing));
         }
 
         var downshiftFloorMs = Math.Max(
             StartupWebViewBudgetMinimumMs,
             previousBudgetMs - StartupWebViewBudgetAdaptiveMaxDownshiftPerRunMs);
         if (clampedBudgetMs < downshiftFloorMs) {
-            return new StartupWebViewBudgetDecision(downshiftFloorMs, tierReason + "_downshift_capped");
+            return new StartupWebViewBudgetDecision(downshiftFloorMs, ComposeStartupWebViewBudgetReason(tierReason, StartupWebViewBudgetReasonSuffixDownshiftCapped));
         }
 
-        return new StartupWebViewBudgetDecision(clampedBudgetMs, tierReason + "_downshift_full");
+        return new StartupWebViewBudgetDecision(clampedBudgetMs, ComposeStartupWebViewBudgetReason(tierReason, StartupWebViewBudgetReasonSuffixDownshiftFull));
     }
 
     private StartupWebViewBudgetCacheEntry SnapshotStartupWebViewBudgetCache() {

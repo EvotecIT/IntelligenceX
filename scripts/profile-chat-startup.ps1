@@ -8,6 +8,7 @@ param(
     [ValidateRange(0, 120)]
     [int] $PostStartupGraceSeconds = 0,
     [switch] $SimulateSlowHardware,
+    # High upper bound keeps this usable on modern high-core hosts while still capping down to slower targets.
     [ValidateRange(1, 256)]
     [int] $SimulatedSlowHardwareMaxLogicalCores = 2,
     [ValidateSet('Idle', 'BelowNormal', 'Normal')]
