@@ -21,15 +21,27 @@ If you don't have the engine repo next to this repo, set:
 ## Key Files
 
 - Site config: `site.json`
-  - Features: `docs`, `apiDocs`, `notFound`
+  - Features: `docs`, `apiDocs`, `blog`, `search`, `notFound`
   - Docs collection points to `../Docs` (outside this Website folder)
 - Pipeline: `pipeline.json`
-  - API docs step generates into `./_site/api`
+  - API docs steps generate into `./_site/api` and `./_site/api/powershell`
   - API docs nav token injection uses:
     - `config: ./site.json`
     - `nav: ./site.json`
     - `navContextPath: "/"` (keeps API header nav consistent with non-API pages)
 - Theme: `themes/intelligencex/theme.manifest.json`
+
+## Deploy + Cloudflare Cache
+
+- GitHub Pages deploy workflow: `../.github/workflows/deploy-website.yml`
+- Cloudflare secrets used by deploy:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ZONE_ID_IX`
+- Post-deploy cache commands are standardized and route-driven from site config:
+  - `cloudflare purge --site-config "Website/site.json"`
+  - `cloudflare verify --site-config "Website/site.json" --warmup 1`
+- Canonical cache-rule guidance lives in:
+  - `C:\Support\GitHub\PSPublishModule\Docs\PowerForge.Web.Cloudflare.md`
 
 ## Theme Best Practices (Nav Stability)
 
@@ -37,4 +49,3 @@ If you don't have the engine repo next to this repo, set:
   - `{{ pf.nav_links "main" }}`
   - `{{ pf.nav_actions }}`
 - Avoid `navigation.menus[0]` (menu ordering can change across sites/profiles).
-
