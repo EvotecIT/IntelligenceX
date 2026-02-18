@@ -67,7 +67,7 @@ public sealed class AdProxyPolicyTool : ActiveDirectoryToolBase, ITool {
         try {
             view = ProxyPolicyService.Get(domainName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Proxy policy query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Proxy policy query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var attributionRows = includeAttribution
@@ -115,3 +115,4 @@ public sealed class AdProxyPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

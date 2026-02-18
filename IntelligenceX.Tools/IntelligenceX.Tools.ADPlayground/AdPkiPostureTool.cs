@@ -65,7 +65,7 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         try {
             posture = PkiApi.GetPosture(forestName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"PKI posture query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "PKI posture query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var forest = posture.RocaConfirmed.ForestName;
@@ -152,3 +152,4 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

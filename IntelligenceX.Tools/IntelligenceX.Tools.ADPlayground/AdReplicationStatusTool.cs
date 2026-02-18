@@ -58,7 +58,7 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
         try {
             allRows = StatusExplorer.GetStatusInfos(targetServers, healthOnly);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Replication status query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Replication status query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var scanned = allRows.Count;
@@ -90,3 +90,4 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

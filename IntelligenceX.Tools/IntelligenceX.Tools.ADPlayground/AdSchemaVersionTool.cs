@@ -54,7 +54,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             var reader = new SchemaVersionReader();
             versions = reader.GetSchemaVersions().ToArray();
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Schema version query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Schema version query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var referenceVersion = versions.Length > 0 ? versions[0].Version : (int?)null;
@@ -97,3 +97,4 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

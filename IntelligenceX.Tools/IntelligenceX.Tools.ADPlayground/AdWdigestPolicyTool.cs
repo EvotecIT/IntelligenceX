@@ -63,7 +63,7 @@ public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
         try {
             view = WdigestPolicyService.Get(domainName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"WDigest policy query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "WDigest policy query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var attributionRows = includeAttribution
@@ -107,3 +107,4 @@ public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

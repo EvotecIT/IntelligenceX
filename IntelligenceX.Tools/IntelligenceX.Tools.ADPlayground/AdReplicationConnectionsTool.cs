@@ -93,7 +93,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 Origin = ToOriginFilter(origin)
             });
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Replication connections query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Replication connections query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         if (summary) {
@@ -214,3 +214,4 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         };
     }
 }
+

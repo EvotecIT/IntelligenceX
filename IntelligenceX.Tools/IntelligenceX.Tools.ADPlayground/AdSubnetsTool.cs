@@ -62,7 +62,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
             try {
                 summaryModel = TopologyService.GetSubnetSummary(forestName);
             } catch (Exception ex) {
-                return Task.FromResult(ToolResponse.Error("query_failed", $"Subnet summary query failed: {ex.Message}"));
+                return Task.FromResult(ErrorFromException(ex, defaultMessage: "Subnet summary query failed.", invalidOperationErrorCode: "query_failed"));
             }
 
             var scanned = summaryModel.BySite.Count;
@@ -100,7 +100,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
         try {
             allSubnets = TopologyService.GetSubnets(forestName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Subnet query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Subnet query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var scannedSubnets = allSubnets.Count;
@@ -135,3 +135,4 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

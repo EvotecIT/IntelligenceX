@@ -149,7 +149,8 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                 });
             return Task.FromResult(rawResponse);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Site coverage query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Site coverage query failed.", invalidOperationErrorCode: "query_failed"));
         }
     }
 }
+

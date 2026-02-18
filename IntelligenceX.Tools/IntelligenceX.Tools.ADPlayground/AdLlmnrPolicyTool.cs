@@ -63,7 +63,7 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
         try {
             view = LlmnrPolicyService.Get(domainName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"LLMNR policy query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "LLMNR policy query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var attributionRows = includeAttribution
@@ -107,3 +107,4 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

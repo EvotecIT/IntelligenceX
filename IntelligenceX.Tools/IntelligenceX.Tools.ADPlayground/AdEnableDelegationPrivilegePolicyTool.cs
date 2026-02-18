@@ -63,7 +63,7 @@ public sealed class AdEnableDelegationPrivilegePolicyTool : ActiveDirectoryToolB
         try {
             view = EnableDelegationPrivilegePolicyService.Get(domainName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Enable-delegation-privilege policy query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Enable-delegation-privilege policy query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var attributionRows = includeAttribution
@@ -107,3 +107,4 @@ public sealed class AdEnableDelegationPrivilegePolicyTool : ActiveDirectoryToolB
         return Task.FromResult(response);
     }
 }
+

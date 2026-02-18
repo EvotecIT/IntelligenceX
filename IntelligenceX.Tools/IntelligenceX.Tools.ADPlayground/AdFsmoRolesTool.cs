@@ -69,7 +69,7 @@ public sealed class AdFsmoRolesTool : ActiveDirectoryToolBase, ITool {
                 ? checker.CheckBestPractices(domainName).ToArray()
                 : Array.Empty<FsmoBestPracticeCheck>();
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"FSMO query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "FSMO query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var roleRows = holders
@@ -116,3 +116,4 @@ public sealed class AdFsmoRolesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

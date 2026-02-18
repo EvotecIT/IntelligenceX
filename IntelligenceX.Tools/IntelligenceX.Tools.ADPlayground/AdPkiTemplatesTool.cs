@@ -65,7 +65,7 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         try {
             view = PkiApi.GetTemplates(forestName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"PKI template query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "PKI template query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var filtered = view.Items
@@ -117,3 +117,4 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

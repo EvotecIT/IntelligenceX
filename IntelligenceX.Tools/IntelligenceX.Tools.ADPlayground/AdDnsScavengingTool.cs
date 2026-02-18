@@ -69,7 +69,7 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
                 .GetScavengingSummary(dnsServer, cancellationToken)
                 .ToArray();
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"DNS scavenging query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "DNS scavenging query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var filtered = allZones
@@ -116,3 +116,4 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

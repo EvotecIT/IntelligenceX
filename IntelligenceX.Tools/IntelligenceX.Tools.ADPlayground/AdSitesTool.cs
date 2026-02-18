@@ -63,7 +63,7 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
                 includeOptions: includeOptions,
                 onlySitesWithoutDc: noDcOnly);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Site topology query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Site topology query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var scanned = allSites.Count;
@@ -101,3 +101,4 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

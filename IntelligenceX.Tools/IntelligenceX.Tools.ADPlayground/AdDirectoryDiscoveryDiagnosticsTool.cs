@@ -79,7 +79,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
                 },
                 cancellationToken);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Directory discovery diagnostics failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Directory discovery diagnostics failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var scanned = snapshot.Issues.Count;
@@ -122,3 +122,4 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         return Task.FromResult(response);
     }
 }
+

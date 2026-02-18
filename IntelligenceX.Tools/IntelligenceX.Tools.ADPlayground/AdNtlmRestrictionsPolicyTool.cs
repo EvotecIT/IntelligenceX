@@ -64,7 +64,7 @@ public sealed class AdNtlmRestrictionsPolicyTool : ActiveDirectoryToolBase, IToo
         try {
             view = NtlmRestrictionsPolicyService.Get(domainName);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"NTLM restrictions policy query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "NTLM restrictions policy query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var attributionRows = includeAttribution
@@ -109,3 +109,4 @@ public sealed class AdNtlmRestrictionsPolicyTool : ActiveDirectoryToolBase, IToo
         return Task.FromResult(response);
     }
 }
+

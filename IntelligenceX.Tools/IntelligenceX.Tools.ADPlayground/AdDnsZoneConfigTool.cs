@@ -77,7 +77,7 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         try {
             query = DnsZoneConfigService.GetZonesResult(dnsServer);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"DNS zone configuration query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "DNS zone configuration query failed.", invalidOperationErrorCode: "query_failed"));
         }
 
         var rows = query.Zones
@@ -139,3 +139,4 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
