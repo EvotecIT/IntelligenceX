@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,6 +51,24 @@ public class TestimoXToolBaseErrorMappingTests {
         Assert.Equal("TestimoX execution failed.", root.GetProperty("error").GetString());
     }
 
+    [Fact]
+    public async Task TryDiscoverBuiltinRuleNamesAsync_ShouldReturnMappedError_WhenDiscoveryThrows() {
+        var tool = new HarnessTool();
+
+        var (names, error) = await tool.TryDiscoverBuiltinAsync(
+            CancellationToken.None,
+            _ => throw new InvalidOperationException("loader crash"));
+
+        Assert.Null(names);
+        Assert.NotNull(error);
+        using var doc = JsonDocument.Parse(error!);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+        Assert.Equal("loader crash", root.GetProperty("error").GetString());
+    }
+
     private sealed class HarnessTool : TestimoXToolBase {
         private static readonly ToolDefinition DefinitionValue = new(
             "testimox_test_harness",
@@ -65,6 +84,15 @@ public class TestimoXToolBaseErrorMappingTests {
             string defaultMessage,
             string fallbackErrorCode = "query_failed") {
             return ErrorFromException(ex, defaultMessage, fallbackErrorCode);
+        }
+
+        public Task<(HashSet<string>? RuleNames, string? ErrorResponse)> TryDiscoverBuiltinAsync(
+            CancellationToken cancellationToken,
+            Func<CancellationToken, Task<HashSet<string>>> discoverFunc) {
+            return TryDiscoverBuiltinRuleNamesAsync(
+                cancellationToken,
+                defaultErrorMessage: "TestimoX builtin rule discovery failed.",
+                discoverFunc: discoverFunc);
         }
 
         protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
