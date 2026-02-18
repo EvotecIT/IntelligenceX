@@ -67,6 +67,7 @@ internal static class IssueReviewRunner {
         bool IsInfraBlocker,
         string Classification,
         bool EligibleForAutoClose,
+        int CandidateStreak,
         double AgeDays,
         IReadOnlyList<int> LinkedPullRequests,
         IReadOnlyList<string> LinkedPullRequestStates,
@@ -74,10 +75,26 @@ internal static class IssueReviewRunner {
         IReadOnlyList<string> Labels
     );
 
+    internal sealed record IssueReviewPolicy(
+        IReadOnlySet<string> AutoCloseAllowLabels,
+        IReadOnlySet<string> AutoCloseDenyLabels
+    );
+
+    private sealed class IssueReviewState {
+        public string Schema { get; set; } = "intelligencex.issue-review.state.v1";
+        public string Repo { get; set; } = string.Empty;
+        public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+        public Dictionary<int, int> CandidateStreaks { get; set; } = new();
+    }
+
     private sealed class Options {
         public string Repo { get; set; } = DefaultRepo;
         public int MaxIssues { get; set; } = 300;
         public int StaleDays { get; set; } = 14;
+        public int MinConsecutiveCandidatesForClose { get; set; } = 1;
+        public string? StatePath { get; set; } = Path.Combine("artifacts", "triage", "ix-issue-review-state.json");
+        public List<string> AutoCloseAllowLabels { get; } = new();
+        public List<string> AutoCloseDenyLabels { get; } = new();
         public bool ApplyClose { get; set; }
         public string CloseReason { get; set; } = "completed";
         public bool CommentOnClose { get; set; } = true;
@@ -117,6 +134,54 @@ internal static class IssueReviewRunner {
                     if (i + 1 < args.Length &&
                         int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var staleDays)) {
                         options.StaleDays = Math.Max(1, Math.Min(staleDays, 365));
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--min-consecutive-candidates":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minConsecutiveCandidates)) {
+                        options.MinConsecutiveCandidatesForClose = Math.Max(1, Math.Min(minConsecutiveCandidates, 20));
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--state-path":
+                    if (i + 1 < args.Length) {
+                        options.StatePath = args[++i];
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--no-state":
+                    options.StatePath = null;
+                    break;
+                case "--allow-label":
+                    if (i + 1 < args.Length) {
+                        var value = args[++i].Trim();
+                        if (string.IsNullOrWhiteSpace(value)) {
+                            options.ParseFailed = true;
+                            options.ShowHelp = true;
+                        } else {
+                            options.AutoCloseAllowLabels.Add(value);
+                        }
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--deny-label":
+                    if (i + 1 < args.Length) {
+                        var value = args[++i].Trim();
+                        if (string.IsNullOrWhiteSpace(value)) {
+                            options.ParseFailed = true;
+                            options.ShowHelp = true;
+                        } else {
+                            options.AutoCloseDenyLabels.Add(value);
+                        }
                     } else {
                         options.ParseFailed = true;
                         options.ShowHelp = true;
@@ -195,6 +260,11 @@ internal static class IssueReviewRunner {
         Console.WriteLine("  --repo <owner/name>         Repository to scan (default: EvotecIT/IntelligenceX)");
         Console.WriteLine("  --max-issues <n>            Open issues to scan (1-2000, default: 300)");
         Console.WriteLine("  --stale-days <n>            Age threshold for stale infra issues without PR links (default: 14)");
+        Console.WriteLine("  --min-consecutive-candidates <n>  Consecutive no-longer-applicable runs required for auto-close (default: 1)");
+        Console.WriteLine("  --state-path <path>         Candidate state path for consecutive tracking (default: artifacts/triage/ix-issue-review-state.json)");
+        Console.WriteLine("  --no-state                  Disable candidate streak persistence");
+        Console.WriteLine("  --allow-label <label>       Require at least one of these labels for auto-close (repeatable)");
+        Console.WriteLine("  --deny-label <label>        Never auto-close issues with these labels (repeatable)");
         Console.WriteLine("  --apply-close               Close no-longer-applicable issues (default: dry-run)");
         Console.WriteLine("  --close-reason <completed|not-planned>  Reason used when closing issues (default: completed)");
         Console.WriteLine("  --no-comment                Do not post a managed IX close note");
@@ -246,14 +316,33 @@ internal static class IssueReviewRunner {
             }
         }
 
+        var priorState = LoadState(options.StatePath, options.Repo);
+        var policy = BuildPolicy(options.AutoCloseAllowLabels, options.AutoCloseDenyLabels);
         var nowUtc = DateTimeOffset.UtcNow;
-        var assessments = issues
-            .Select(issue => AssessIssueForApplicability(issue, options.Repo, pullRequestsByNumber, nowUtc, options.StaleDays))
+        var assessments = new List<IssueReviewAssessment>(issues.Count);
+        foreach (var issue in issues) {
+            priorState.CandidateStreaks.TryGetValue(issue.Number, out var previousCandidateStreak);
+            var assessment = AssessIssueForApplicability(
+                issue,
+                options.Repo,
+                pullRequestsByNumber,
+                nowUtc,
+                options.StaleDays,
+                policy,
+                previousCandidateStreak,
+                options.MinConsecutiveCandidatesForClose);
+            assessments.Add(assessment);
+        }
+        assessments = assessments
             .OrderBy(value => ClassificationRank(value.Classification))
+            .ThenByDescending(value => value.CandidateStreak)
             .ThenByDescending(value => value.AgeDays)
             .ThenBy(value => value.Number)
             .ToList();
 
+        var noLongerApplicableCandidates = assessments
+            .Where(value => value.Classification.Equals("no-longer-applicable", StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var autoCloseCandidates = assessments
             .Where(value => value.EligibleForAutoClose)
             .ToList();
@@ -273,6 +362,8 @@ internal static class IssueReviewRunner {
             }
         }
 
+        var updatedState = BuildUpdatedState(options.Repo, nowUtc, assessments);
+        SaveState(options.StatePath, updatedState);
         var report = BuildReport(options, nowUtc, assessments, closedIssueNumbers);
         var summary = BuildMarkdownSummary(options, nowUtc, assessments, closedIssueNumbers);
         WriteText(options.OutputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
@@ -282,7 +373,12 @@ internal static class IssueReviewRunner {
         Console.WriteLine($"Generated issue review summary: {options.SummaryPath}");
         Console.WriteLine($"Open issues scanned: {assessments.Count}");
         Console.WriteLine($"Infra blockers detected: {assessments.Count(value => value.IsInfraBlocker)}");
-        Console.WriteLine($"No-longer-applicable candidates: {autoCloseCandidates.Count}");
+        Console.WriteLine($"No-longer-applicable candidates: {noLongerApplicableCandidates.Count}");
+        Console.WriteLine($"Auto-close eligible this run: {autoCloseCandidates.Count}");
+        Console.WriteLine($"Min consecutive candidates required: {options.MinConsecutiveCandidatesForClose}");
+        Console.WriteLine(options.StatePath is null
+            ? "State persistence: disabled."
+            : $"State persistence: {options.StatePath}");
         Console.WriteLine(options.ApplyClose
             ? $"Closed by automation: {closedIssueNumbers.Count}"
             : "Dry-run mode: no issues were closed (use --apply-close to close candidates).");
@@ -405,6 +501,27 @@ internal static class IssueReviewRunner {
         IReadOnlyDictionary<int, PullRequestReference> pullRequestsByNumber,
         DateTimeOffset nowUtc,
         int staleDays) {
+        var defaultPolicy = BuildPolicy(Array.Empty<string>(), Array.Empty<string>());
+        return AssessIssueForApplicability(
+            issue,
+            repo,
+            pullRequestsByNumber,
+            nowUtc,
+            staleDays,
+            defaultPolicy,
+            previousCandidateStreak: 0,
+            minConsecutiveCandidatesForClose: 1);
+    }
+
+    internal static IssueReviewAssessment AssessIssueForApplicability(
+        IssueReviewCandidateIssue issue,
+        string repo,
+        IReadOnlyDictionary<int, PullRequestReference> pullRequestsByNumber,
+        DateTimeOffset nowUtc,
+        int staleDays,
+        IssueReviewPolicy policy,
+        int previousCandidateStreak,
+        int minConsecutiveCandidatesForClose) {
         var linkedPullRequests = ExtractPullRequestReferences(repo, $"{issue.Title}\n{issue.Body}");
         var linkedStates = new List<string>();
         foreach (var number in linkedPullRequests) {
@@ -427,6 +544,7 @@ internal static class IssueReviewRunner {
                 false,
                 "out-of-scope",
                 false,
+                0,
                 ageDays,
                 linkedPullRequests,
                 linkedStates,
@@ -434,7 +552,7 @@ internal static class IssueReviewRunner {
                 issue.Labels);
         }
 
-        if (issue.Labels.Any(label => ProtectedLabels.Contains(label))) {
+        if (issue.Labels.Any(label => policy.AutoCloseDenyLabels.Contains(label))) {
             return new IssueReviewAssessment(
                 issue.Number,
                 issue.Title,
@@ -442,10 +560,11 @@ internal static class IssueReviewRunner {
                 true,
                 "needs-review",
                 false,
+                0,
                 ageDays,
                 linkedPullRequests,
                 linkedStates,
-                "Protected label present (keep-open/do-not-close); leaving for maintainer review.",
+                "Denied/protected label present; leaving for maintainer review.",
                 issue.Labels);
         }
 
@@ -458,6 +577,7 @@ internal static class IssueReviewRunner {
                     true,
                     "needs-review",
                     false,
+                    0,
                     ageDays,
                     linkedPullRequests,
                     linkedStates,
@@ -472,6 +592,7 @@ internal static class IssueReviewRunner {
                 true,
                 "active",
                 false,
+                0,
                 ageDays,
                 linkedPullRequests,
                 linkedStates,
@@ -490,6 +611,7 @@ internal static class IssueReviewRunner {
                 true,
                 "needs-review",
                 false,
+                0,
                 ageDays,
                 linkedPullRequests,
                 linkedStates,
@@ -510,6 +632,7 @@ internal static class IssueReviewRunner {
                 true,
                 "active",
                 false,
+                0,
                 ageDays,
                 linkedPullRequests,
                 linkedStates,
@@ -522,17 +645,31 @@ internal static class IssueReviewRunner {
             return state is "merged" or "closed";
         });
         if (allResolved) {
+            var candidateStreak = Math.Max(0, previousCandidateStreak) + 1;
+            var reason = "All linked PRs are resolved (merged/closed).";
+            var eligibleForAutoClose = true;
+            if (policy.AutoCloseAllowLabels.Count > 0 &&
+                !issue.Labels.Any(label => policy.AutoCloseAllowLabels.Contains(label))) {
+                eligibleForAutoClose = false;
+                reason += $" Missing allow label for auto-close ({string.Join(", ", policy.AutoCloseAllowLabels.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))}).";
+            }
+            if (candidateStreak < minConsecutiveCandidatesForClose) {
+                eligibleForAutoClose = false;
+                reason += $" Candidate streak {candidateStreak}/{minConsecutiveCandidatesForClose}.";
+            }
+
             return new IssueReviewAssessment(
                 issue.Number,
                 issue.Title,
                 issue.Url,
                 true,
                 "no-longer-applicable",
-                true,
+                eligibleForAutoClose,
+                candidateStreak,
                 ageDays,
                 linkedPullRequests,
                 linkedStates,
-                "All linked PRs are resolved (merged/closed).",
+                reason,
                 issue.Labels);
         }
 
@@ -543,6 +680,7 @@ internal static class IssueReviewRunner {
             true,
             "needs-review",
             false,
+            0,
             ageDays,
             linkedPullRequests,
             linkedStates,
@@ -604,6 +742,10 @@ internal static class IssueReviewRunner {
             settings = new {
                 maxIssues = options.MaxIssues,
                 staleDays = options.StaleDays,
+                minConsecutiveCandidatesForClose = options.MinConsecutiveCandidatesForClose,
+                statePath = options.StatePath,
+                autoCloseAllowLabels = options.AutoCloseAllowLabels,
+                autoCloseDenyLabels = options.AutoCloseDenyLabels,
                 applyClose = options.ApplyClose,
                 closeReason = options.CloseReason
             },
@@ -611,6 +753,7 @@ internal static class IssueReviewRunner {
                 openIssuesScanned = assessments.Count,
                 infraBlockers = infra.Count,
                 noLongerApplicable = infra.Count(value => value.Classification.Equals("no-longer-applicable", StringComparison.OrdinalIgnoreCase)),
+                autoCloseEligible = infra.Count(value => value.EligibleForAutoClose),
                 needsReview = infra.Count(value => value.Classification.Equals("needs-review", StringComparison.OrdinalIgnoreCase)),
                 active = infra.Count(value => value.Classification.Equals("active", StringComparison.OrdinalIgnoreCase)),
                 closedByAutomation = closedIssueNumbers.Count
@@ -623,6 +766,7 @@ internal static class IssueReviewRunner {
                 isInfraBlocker = value.IsInfraBlocker,
                 classification = value.Classification,
                 eligibleForAutoClose = value.EligibleForAutoClose,
+                candidateStreak = value.CandidateStreak,
                 ageDays = value.AgeDays,
                 linkedPullRequests = value.LinkedPullRequests,
                 linkedPullRequestStates = value.LinkedPullRequestStates,
@@ -656,8 +800,19 @@ internal static class IssueReviewRunner {
         builder.AppendLine($"- Open issues scanned: {assessments.Count}");
         builder.AppendLine($"- Infra blockers detected: {infra.Count}");
         builder.AppendLine($"- No-longer-applicable: {noLongerApplicable.Count}");
+        builder.AppendLine($"- Auto-close eligible: {noLongerApplicable.Count(value => value.EligibleForAutoClose)}");
         builder.AppendLine($"- Needs review: {needsReview.Count}");
         builder.AppendLine($"- Active infra blockers: {active.Count}");
+        builder.AppendLine($"- Min consecutive candidates for close: {options.MinConsecutiveCandidatesForClose}");
+        builder.AppendLine(options.StatePath is null
+            ? "- State path: disabled"
+            : $"- State path: `{options.StatePath}`");
+        if (options.AutoCloseAllowLabels.Count > 0) {
+            builder.AppendLine($"- Auto-close allow labels: `{string.Join("`, `", options.AutoCloseAllowLabels)}`");
+        }
+        if (options.AutoCloseDenyLabels.Count > 0) {
+            builder.AppendLine($"- Auto-close deny labels: `{string.Join("`, `", options.AutoCloseDenyLabels)}`");
+        }
         builder.AppendLine(options.ApplyClose
             ? $"- Closed by automation: {closedIssueNumbers.Count}"
             : "- Dry-run mode: no issues were closed.");
@@ -681,8 +836,14 @@ internal static class IssueReviewRunner {
             var linked = item.LinkedPullRequestStates.Count == 0
                 ? "none"
                 : string.Join(", ", item.LinkedPullRequestStates);
+            var streak = item.CandidateStreak > 0
+                ? $" | streak {item.CandidateStreak}"
+                : string.Empty;
+            var eligibility = item.EligibleForAutoClose
+                ? " | eligible auto-close"
+                : string.Empty;
             builder.AppendLine(
-                $"- #{item.Number} [{item.Title}]({item.Url}) | age {item.AgeDays.ToString("0.0", CultureInfo.InvariantCulture)}d | linked PRs: {linked} | {item.Reason}");
+                $"- #{item.Number} [{item.Title}]({item.Url}) | age {item.AgeDays.ToString("0.0", CultureInfo.InvariantCulture)}d{streak}{eligibility} | linked PRs: {linked} | {item.Reason}");
         }
         builder.AppendLine();
     }
@@ -694,6 +855,89 @@ internal static class IssueReviewRunner {
             "active" => 2,
             _ => 3
         };
+    }
+
+    internal static IssueReviewPolicy BuildPolicy(
+        IReadOnlyCollection<string> autoCloseAllowLabels,
+        IReadOnlyCollection<string> autoCloseDenyLabels) {
+        var allow = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in autoCloseAllowLabels) {
+            if (!string.IsNullOrWhiteSpace(value)) {
+                allow.Add(value.Trim());
+            }
+        }
+
+        var deny = new HashSet<string>(ProtectedLabels, StringComparer.OrdinalIgnoreCase);
+        foreach (var value in autoCloseDenyLabels) {
+            if (!string.IsNullOrWhiteSpace(value)) {
+                deny.Add(value.Trim());
+            }
+        }
+
+        return new IssueReviewPolicy(allow, deny);
+    }
+
+    private static IssueReviewState LoadState(string? path, string repo) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return new IssueReviewState { Repo = repo };
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath)) {
+            return new IssueReviewState { Repo = repo };
+        }
+
+        try {
+            var content = File.ReadAllText(fullPath);
+            var state = JsonSerializer.Deserialize<IssueReviewState>(content);
+            if (state is null) {
+                return new IssueReviewState { Repo = repo };
+            }
+
+            if (!string.IsNullOrWhiteSpace(state.Repo) &&
+                !state.Repo.Equals(repo, StringComparison.OrdinalIgnoreCase)) {
+                return new IssueReviewState { Repo = repo };
+            }
+
+            state.Repo = repo;
+            state.CandidateStreaks ??= new Dictionary<int, int>();
+            return state;
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Warning: failed to load issue-review state from '{path}': {ex.Message}");
+            return new IssueReviewState { Repo = repo };
+        }
+    }
+
+    private static IssueReviewState BuildUpdatedState(
+        string repo,
+        DateTimeOffset updatedAtUtc,
+        IReadOnlyList<IssueReviewAssessment> assessments) {
+        var state = new IssueReviewState {
+            Repo = repo,
+            UpdatedAtUtc = updatedAtUtc
+        };
+
+        foreach (var assessment in assessments) {
+            if (!assessment.Classification.Equals("no-longer-applicable", StringComparison.OrdinalIgnoreCase) ||
+                assessment.CandidateStreak <= 0) {
+                continue;
+            }
+            state.CandidateStreaks[assessment.Number] = assessment.CandidateStreak;
+        }
+
+        return state;
+    }
+
+    private static void SaveState(string? path, IssueReviewState state) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return;
+        }
+
+        try {
+            WriteText(path, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Warning: failed to write issue-review state to '{path}': {ex.Message}");
+        }
     }
 
     private static bool IsInfraBlocker(IssueReviewCandidateIssue issue) {
