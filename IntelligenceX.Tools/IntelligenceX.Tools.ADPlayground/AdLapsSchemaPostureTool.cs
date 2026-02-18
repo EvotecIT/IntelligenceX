@@ -139,18 +139,9 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
             .Where(row => !onlyFindings || row.AnyFinding)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<LapsSchemaPostureRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var projectedDetails = details
-            .Where(detail => projectedDomains.Contains(detail.DomainName))
-            .ToArray();
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
+        var projectedDetails = FilterByProjectedSet(details, projectedDomains, static detail => detail.DomainName);
 
         var result = new AdLapsSchemaPostureResult(
             DomainName: domainName,

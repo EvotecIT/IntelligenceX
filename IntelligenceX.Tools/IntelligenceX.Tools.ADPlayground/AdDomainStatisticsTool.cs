@@ -108,14 +108,8 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
             errors: errors,
             cancellationToken: cancellationToken);
 
-        var scanned = summaries.Count;
-        IReadOnlyList<DomainStatisticsSummaryRow> projectedRows = scanned > maxResults
-            ? summaries.Take(maxResults).ToArray()
-            : summaries;
-        var truncated = scanned > projectedRows.Count;
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var projectedRows = CapRows(summaries, maxResults, out var scanned, out var truncated);
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
 
         var projectedSnapshots = snapshots
             .Where(snapshot => projectedDomains.Contains(snapshot.DomainName))

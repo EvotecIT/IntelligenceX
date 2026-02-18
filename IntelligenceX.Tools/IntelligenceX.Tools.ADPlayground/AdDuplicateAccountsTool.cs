@@ -143,21 +143,10 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
             .Where(row => !duplicatesOnly || row.DuplicateSamCount > 0)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<DuplicateAccountsRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var projectedConflictDetails = conflictDetails
-            .Where(detail => projectedDomains.Contains(detail.DomainName))
-            .ToArray();
-        var projectedDuplicateDetails = duplicateDetails
-            .Where(detail => projectedDomains.Contains(detail.DomainName))
-            .ToArray();
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
+        var projectedConflictDetails = FilterByProjectedSet(conflictDetails, projectedDomains, static detail => detail.DomainName);
+        var projectedDuplicateDetails = FilterByProjectedSet(duplicateDetails, projectedDomains, static detail => detail.DomainName);
 
         var result = new AdDuplicateAccountsResult(
             DomainName: domainName,

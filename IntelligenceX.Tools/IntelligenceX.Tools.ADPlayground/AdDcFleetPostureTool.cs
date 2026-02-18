@@ -123,18 +123,9 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
             errors: errors,
             cancellationToken: cancellationToken);
 
-        var scanned = summaryRows.Count;
-        IReadOnlyList<DcFleetPostureRow> projectedRows = scanned > maxResults
-            ? summaryRows.Take(maxResults).ToArray()
-            : summaryRows;
-        var truncated = scanned > projectedRows.Count;
-        var projectedDomains = projectedRows
-            .Select(static row => row.DomainName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var projectedDetails = detailRows
-            .Where(detail => projectedDomains.Contains(detail.DomainName))
-            .ToArray();
+        var projectedRows = CapRows(summaryRows, maxResults, out var scanned, out var truncated);
+        var projectedDomains = BuildProjectedSet(projectedRows, static row => row.DomainName);
+        var projectedDetails = FilterByProjectedSet(detailRows, projectedDomains, static detail => detail.DomainName);
 
         var result = new AdDcFleetPostureResult(
             DomainName: domainName,
