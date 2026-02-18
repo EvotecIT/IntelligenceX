@@ -25,9 +25,11 @@ Use this skill when a PR must be unblocked/merged and checks or bot comments req
 
 ## Commands
 - Snapshot state:
-  - `.agents/skills/intelligencex-pr-unblock-loop/scripts/gather-pr-state.sh <pr-number>`
+  - Bash: `.agents/skills/intelligencex-pr-unblock-loop/scripts/gather-pr-state.sh <pr-number>`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-pr-unblock-loop/scripts/gather-pr-state.ps1 <pr-number>`
 - Watch checks:
-  - `.agents/skills/intelligencex-pr-unblock-loop/scripts/watch-checks.sh <pr-number>`
+  - Bash: `.agents/skills/intelligencex-pr-unblock-loop/scripts/watch-checks.sh <pr-number>`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-pr-unblock-loop/scripts/watch-checks.ps1 <pr-number>`
 
 ## Fail-Fast Rules
 - Do not churn code for infra-blocked failures.

@@ -27,11 +27,14 @@ Use this skill when work touches onboarding/setup behavior in:
 
 ## Commands
 - Preflight:
-  - `.agents/skills/intelligencex-onboarding-setup/scripts/preflight.sh`
+  - Bash: `.agents/skills/intelligencex-onboarding-setup/scripts/preflight.sh`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-onboarding-setup/scripts/preflight.ps1`
 - Fast validation:
-  - `.agents/skills/intelligencex-onboarding-setup/scripts/local-validate.sh fast`
+  - Bash: `.agents/skills/intelligencex-onboarding-setup/scripts/local-validate.sh fast`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-onboarding-setup/scripts/local-validate.ps1 -Mode fast`
 - Full validation:
-  - `.agents/skills/intelligencex-onboarding-setup/scripts/local-validate.sh full`
+  - Bash: `.agents/skills/intelligencex-onboarding-setup/scripts/local-validate.sh full`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-onboarding-setup/scripts/local-validate.ps1 -Mode full`
 
 ## Fail-Fast Rules
 - Stop if preflight fails (dirty tree, wrong branch, missing tools).

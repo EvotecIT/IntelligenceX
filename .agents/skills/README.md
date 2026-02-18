@@ -14,3 +14,5 @@ Repo-local skills that make agents more consistent across onboarding, setup, ana
 - Never edit Website files unless explicitly requested.
 - Run the minimum command set needed to prove the change.
 - Use `gh` for PR/checks/comment workflows.
+- Prefer native shell scripts for your environment (`.sh` for Bash, `.ps1` for PowerShell).
+- Script parity is enforced by unit tests (`dotnet test IntelligenceX.UnitTests/IntelligenceX.UnitTests.csproj -c Release --filter SkillScriptParityTests`).

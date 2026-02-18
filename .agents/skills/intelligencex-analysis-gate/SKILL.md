@@ -27,10 +27,13 @@ Use this skill when changing analysis behavior or static-analysis policy:
 
 ## Commands
 - Run suite:
-  - `.agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.sh fast`
-  - `.agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.sh full`
+  - Bash: `.agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.sh fast`
+  - Bash: `.agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.sh full`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.ps1 -Mode fast`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.ps1 -Mode full`
 - Optional duplication performance benchmark:
-  - `.agents/skills/intelligencex-analysis-gate/scripts/benchmark-duplication.sh`
+  - Bash: `.agents/skills/intelligencex-analysis-gate/scripts/benchmark-duplication.sh`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-analysis-gate/scripts/benchmark-duplication.ps1`
   - Environment knobs: `FILES`, `LINES`, `LANGUAGE`, `FRAMEWORK`, `KEEP_WORKDIR`, `WORKDIR`
 
 ## Fail-Fast Rules
