@@ -100,7 +100,7 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
             Errors: errors,
             Domains: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -108,7 +108,6 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: KRBTGT Health (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("age_threshold_days", ageThresholdDays);
@@ -120,7 +119,6 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

@@ -116,7 +116,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 Connections: Array.Empty<SiteConnectionInfo>(),
                 SummaryRows: rows);
 
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            return Task.FromResult(BuildAutoTableResponse(
                 arguments: arguments,
                 model: summaryResult,
                 sourceRows: rows,
@@ -124,15 +124,13 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 title: "Active Directory: Replication Connections Summary (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: truncated,
-                response: out var summaryResponse,
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
                     meta.Add("summary_by", summaryBy);
                     meta.Add("total_filtered", filtered.Count);
                     meta.Add("max_results", maxResults);
-                });
-            return Task.FromResult(summaryResponse);
+                }));
         }
 
         var scannedConnections = filtered.Count;
@@ -151,7 +149,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             Connections: connectionRows,
             SummaryRows: Array.Empty<ConnectionSummary>());
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: rawResult,
             sourceRows: connectionRows,
@@ -159,13 +157,11 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             title: "Active Directory: Replication Connections (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncatedConnections,
-            response: out var response,
             scanned: scannedConnections,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 
     private static IReadOnlyList<string>? ReadStringArrayOrNull(JsonArray? array) {

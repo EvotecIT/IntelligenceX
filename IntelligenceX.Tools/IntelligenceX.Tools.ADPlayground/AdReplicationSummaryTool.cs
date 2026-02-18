@@ -90,7 +90,7 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
             cancellationToken);
 
         var anyTruncated = result.DetailsTruncated == true || result.ErrorsTruncated == true;
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Summary,
@@ -98,8 +98,6 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Replication Summary (preview)",
             maxTop: MaxViewTop,
             baseTruncated: anyTruncated,
-            response: out var response,
-            scanned: result.EdgesTotal);
-        return Task.FromResult(response);
+            scanned: result.EdgesTotal));
     }
 }

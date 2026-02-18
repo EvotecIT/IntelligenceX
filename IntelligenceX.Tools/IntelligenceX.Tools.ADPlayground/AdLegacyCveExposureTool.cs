@@ -92,7 +92,7 @@ public sealed class AdLegacyCveExposureTool : ActiveDirectoryToolBase, ITool {
             Kerberos: view.Kerberos,
             Attribution: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -100,14 +100,12 @@ public sealed class AdLegacyCveExposureTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Legacy CVE Exposure Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

@@ -135,7 +135,7 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
                 ? endpointDetails
                 : Array.Empty<EnrollmentHttpsRequiredEvaluator.Endpoint>());
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: summaryRows,
@@ -143,15 +143,13 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: PKI Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response,
             scanned: summaryRows.Count,
             metaMutate: meta => {
                 meta.Add("forest_name", forest);
                 meta.Add("include_details", includeDetails);
                 meta.Add("insecure_endpoints_only", insecureEndpointsOnly);
                 meta.Add("max_details_per_category", maxDetailsPerCategory);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
 

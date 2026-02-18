@@ -93,7 +93,7 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
             ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -101,7 +101,6 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO Permission Read Baseline (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -109,7 +108,6 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("deny_only", denyOnly);
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

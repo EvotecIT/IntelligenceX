@@ -91,7 +91,7 @@ public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase,
             ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -99,7 +99,6 @@ public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase,
             title: "Active Directory: GPO Administrative Permissions (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -107,7 +106,6 @@ public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase,
                 meta.Add("errors_only", errorsOnly);
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

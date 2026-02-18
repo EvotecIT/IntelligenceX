@@ -115,7 +115,7 @@ public sealed class AdClientServerAuthPostureTool : ActiveDirectoryToolBase, ITo
             SmbNtlmDetails: posture.SmbNtlmDetails,
             Attribution: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -123,7 +123,6 @@ public sealed class AdClientServerAuthPostureTool : ActiveDirectoryToolBase, ITo
             title: "Active Directory: Client/Server Auth Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -132,7 +131,6 @@ public sealed class AdClientServerAuthPostureTool : ActiveDirectoryToolBase, ITo
                 meta.Add("ldap_signing_required", posture.LdapSigningRequired);
                 meta.Add("ldap_channel_binding_enabled", posture.LdapChannelBindingEnabled);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

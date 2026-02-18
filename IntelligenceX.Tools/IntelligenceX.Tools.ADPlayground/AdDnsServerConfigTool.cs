@@ -151,7 +151,7 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
             Errors: errors,
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -159,7 +159,6 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: DNS Server Configuration (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("max_servers", maxServers);
@@ -176,7 +175,6 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
                 if (explicitServers.Count > 0) {
                     meta.Add("explicit_dns_servers", explicitServers.Count);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

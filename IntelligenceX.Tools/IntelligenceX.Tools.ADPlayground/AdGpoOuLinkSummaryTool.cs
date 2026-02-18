@@ -96,7 +96,7 @@ public sealed class AdGpoOuLinkSummaryTool : ActiveDirectoryToolBase, ITool {
             WithBrokenLinksCount: filtered.Count(static row => row.BrokenCount > 0),
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -104,7 +104,6 @@ public sealed class AdGpoOuLinkSummaryTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO OU Link Summary (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -113,7 +112,6 @@ public sealed class AdGpoOuLinkSummaryTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("max_ous", maxOus);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

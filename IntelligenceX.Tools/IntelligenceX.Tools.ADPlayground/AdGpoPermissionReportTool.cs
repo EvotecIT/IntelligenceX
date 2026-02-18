@@ -133,7 +133,7 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
             InheritedCount: filtered.Count(static row => row.Inherited),
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -141,7 +141,6 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO Permission Report (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -160,7 +159,6 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(permissionTypeRaw)) {
                     meta.Add("permission_type", permissionTypeRaw);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

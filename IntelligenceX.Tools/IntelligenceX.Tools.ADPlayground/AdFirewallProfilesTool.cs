@@ -121,7 +121,7 @@ public sealed class AdFirewallProfilesTool : ActiveDirectoryToolBase, ITool {
             PublicLogSuccessfulConnections: view.PublicLogSuccessfulConnections,
             Attribution: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -129,14 +129,12 @@ public sealed class AdFirewallProfilesTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Firewall Profiles (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

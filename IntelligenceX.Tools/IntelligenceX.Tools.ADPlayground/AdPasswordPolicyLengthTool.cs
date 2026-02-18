@@ -112,7 +112,7 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
             Errors: errors,
             Domains: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -120,7 +120,6 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
             title: "Active Directory: Password Policy Length (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("recommended_minimum_length", recommendedMinimumLength);
@@ -133,7 +132,6 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

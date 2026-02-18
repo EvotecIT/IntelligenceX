@@ -85,7 +85,7 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Items: items);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: items,
@@ -93,7 +93,6 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO changes (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -101,7 +100,6 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
                 if (sinceUtc.HasValue) {
                     meta.Add("since_utc", ToolTime.FormatUtc(sinceUtc));
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

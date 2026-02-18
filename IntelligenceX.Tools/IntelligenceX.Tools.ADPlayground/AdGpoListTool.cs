@@ -139,7 +139,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Items: items);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: items,
@@ -147,7 +147,6 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO list (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("max_results", maxResults);
@@ -169,8 +168,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
                 if (modifiedSinceUtc.HasValue) {
                     meta.Add("modified_since_utc", ToolTime.FormatUtc(modifiedSinceUtc));
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 
     private static bool Matches(

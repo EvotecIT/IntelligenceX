@@ -97,7 +97,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             Snapshot: snapshot,
             Issues: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: model,
             sourceRows: rows,
@@ -105,7 +105,6 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             title: "Active Directory: Directory Discovery Diagnostics (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("mode", asIssue ? "issues" : "snapshot");
@@ -120,8 +119,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
                 if (domains.Count > 0) {
                     meta.Add("domains", ToolJson.ToJsonArray(domains));
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
 

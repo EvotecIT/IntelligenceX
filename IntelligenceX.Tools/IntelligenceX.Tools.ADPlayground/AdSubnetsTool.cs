@@ -78,7 +78,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
                 Summary: summaryModel,
                 BySite: bySiteRows);
 
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            return Task.FromResult(BuildAutoTableResponse(
                 arguments: arguments,
                 model: result,
                 sourceRows: bySiteRows,
@@ -86,7 +86,6 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
                 title: "Active Directory: Subnets Summary (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: truncated,
-                response: out var summaryResponse,
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
@@ -94,8 +93,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
                     if (!string.IsNullOrWhiteSpace(forestName)) {
                         meta.Add("forest_name", forestName);
                     }
-                });
-            return Task.FromResult(summaryResponse);
+                }));
         }
 
         if (!TryExecute(
@@ -119,7 +117,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
             Orphaned: allSubnets.Count(static subnet => subnet.IsOrphaned),
             Subnets: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: resultModel,
             sourceRows: rows,
@@ -127,7 +125,6 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Subnets (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncatedSubnets,
-            response: out var response,
             scanned: scannedSubnets,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
@@ -135,8 +132,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
 

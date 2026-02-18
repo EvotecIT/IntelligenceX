@@ -102,7 +102,7 @@ public sealed class AdFsmoRolesTool : ActiveDirectoryToolBase, ITool {
             RoleHolders: roleRows,
             BestPracticeChecks: checkRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: roleRows,
@@ -110,7 +110,6 @@ public sealed class AdFsmoRolesTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: FSMO Roles (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response,
             scanned: roleRows.Length,
             metaMutate: meta => {
                 meta.Add("include_best_practices", includeBestPractices);
@@ -118,8 +117,7 @@ public sealed class AdFsmoRolesTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(domainName)) {
                     meta.Add("domain_name", domainName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
 
