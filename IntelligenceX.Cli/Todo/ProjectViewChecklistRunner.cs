@@ -155,10 +155,12 @@ internal static class ProjectViewChecklistRunner {
                 if (!string.IsNullOrWhiteSpace(existing.Url)) {
                     builder.AppendLine($"  Link: {existing.Url}");
                 }
+                builder.AppendLine($"  Suggested columns: {string.Join(", ", view.SuggestedColumns)}");
             } else {
                 builder.AppendLine($"- [ ] **{view.Name}** (`{view.Layout}`) - missing");
                 builder.AppendLine($"  Suggested filter: `{view.Filter}`");
                 builder.AppendLine($"  Purpose: {view.Description}");
+                builder.AppendLine($"  Suggested columns: {string.Join(", ", view.SuggestedColumns)}");
             }
         }
 
@@ -167,7 +169,7 @@ internal static class ProjectViewChecklistRunner {
         builder.AppendLine();
         builder.AppendLine($"1. Open project: {projectUrl}");
         builder.AppendLine("2. Select `+ New view` in GitHub Projects.");
-        builder.AppendLine("3. Use the exact view name/layout and suggested filter from checklist items above.");
+        builder.AppendLine("3. Use the exact view name/layout, suggested filter, and suggested columns from checklist items above.");
         builder.AppendLine("4. Re-run `intelligencex todo project-view-checklist` to refresh coverage.");
 
         return builder.ToString().TrimEnd();

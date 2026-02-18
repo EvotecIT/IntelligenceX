@@ -87,6 +87,7 @@ intelligencex todo project-sync \
 ## What sync updates
 
 - Project item fields for triage and vision fit.
+- Signal-quality fields (`Signal Quality`, `Signal Quality Score`, `Signal Quality Notes`).
 - Suggested maintainership decision signal (`IX Suggested Decision`).
 - Optional managed label reconciliation for IX taxonomies.
 - Optional assistive cross-link comments for related PR/issue context.
@@ -99,6 +100,8 @@ Template files:
 
 - `IntelligenceX.Cli/Templates/triage-index-scheduled.yml`
 - `IntelligenceX.Cli/Templates/triage-project-sync.yml`
+
+The project-sync workflow template also emits `artifacts/triage/ix-project-view-apply.md` so maintainers can continuously see missing view coverage and recommended columns.
 
 Recommended rollout:
 

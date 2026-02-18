@@ -87,6 +87,7 @@ internal static class ProjectLabelCatalog {
         new ProjectLabelDefinition("ix/decision:defer", "fbca04", "IX suggested decision is defer."),
         new ProjectLabelDefinition("ix/decision:reject", "d73a4a", "IX suggested decision is reject."),
         new ProjectLabelDefinition("ix/decision:merge-candidate", "1d76db", "IX suggested decision is merge-candidate."),
+        new ProjectLabelDefinition("ix/signal:low", "fbca04", "Signal quality is low and needs maintainer context checks."),
         new ProjectLabelDefinition("ix/duplicate:clustered", "f9d0c4", "Item is part of a duplicate cluster.")
     };
 

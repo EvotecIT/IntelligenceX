@@ -95,6 +95,23 @@ jobs:
             --apply-labels \
             --apply-link-comments
 
+      - name: Build project view apply plan
+        env:
+          GH_TOKEN: ${{ secrets.IX_PROJECT_TOKEN != '' && secrets.IX_PROJECT_TOKEN || github.token }}
+        run: |
+          OWNER="${{ github.event.inputs.owner }}"
+          if [ -z "$OWNER" ]; then OWNER="{{Owner}}"; fi
+
+          PROJECT_NUMBER="${{ github.event.inputs.project_number }}"
+          if [ -z "$PROJECT_NUMBER" ]; then PROJECT_NUMBER="{{ProjectNumber}}"; fi
+
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            todo project-view-apply \
+            --repo "${{ github.repository }}" \
+            --owner "$OWNER" \
+            --project "$PROJECT_NUMBER" \
+            --out artifacts/triage/ix-project-view-apply.md
+
       - name: Upload triage artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -134,6 +151,13 @@ jobs:
               echo "## Vision Check"
               echo
               cat artifacts/triage/ix-vision-check.md
+              echo
+            fi
+
+            if [ -f artifacts/triage/ix-project-view-apply.md ]; then
+              echo "## Project View Apply Plan"
+              echo
+              cat artifacts/triage/ix-project-view-apply.md
               echo
             fi
           } > "$SUMMARY_FILE"

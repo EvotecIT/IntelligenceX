@@ -42,6 +42,8 @@ Useful options:
 - `--issue <n>` upserts plan comment to an existing issue.
 - `--out <path>` writes markdown to custom location.
 
+Both checklist and apply-plan outputs include recommended columns per view. Use those column sets, otherwise triage quality signals stay hidden and the board appears weak.
+
 ## Sync bot feedback into TODO.md
 
 Use this to keep explicit bot checklist tasks visible in one backlog:
@@ -105,7 +107,8 @@ Outputs:
 1. Run `sync-bot-feedback` during PR-review sweeps.
 2. Refresh triage/vision artifacts daily or per release train.
 3. Sync project fields before backlog grooming.
-4. Regenerate view checklist/apply plan when project layout drifts.
+4. Triage `Signal Quality = low` items first and request better PR/issue context before acting on recommendations.
+5. Regenerate view checklist/apply plan when project layout drifts.
 
 ## Related docs
 

@@ -183,6 +183,12 @@ internal static class TriageIndexRunner {
         IReadOnlyList<RelatedPullRequestCandidate> RelatedPullRequests
     );
 
+    internal sealed record SignalQualityAssessment(
+        string Level,
+        double Score,
+        IReadOnlyList<string> Reasons
+    );
+
     private sealed record IssueReferenceHint(
         int Number,
         double Confidence,
@@ -675,6 +681,115 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
     internal static (string Category, IReadOnlyList<string> Tags) InferCategoryAndTags(TriageIndexItem item) {
         var inference = InferCategoryAndTagsWithConfidence(item);
         return (inference.Category, inference.Tags);
+    }
+
+    internal static SignalQualityAssessment AssessSignalQuality(TriageIndexItem item, ItemEnrichment? enrichment) {
+        var score = 40.0;
+        var reasons = new List<string>();
+
+        var titleTokenCount = item.TitleTokens.Count;
+        if (titleTokenCount >= 6) {
+            score += 18;
+            reasons.Add("Title contains strong intent detail.");
+        } else if (titleTokenCount >= 3) {
+            score += 10;
+            reasons.Add("Title contains basic intent detail.");
+        } else {
+            score -= 10;
+            reasons.Add("Title is too short for reliable intent inference.");
+        }
+
+        var contextTokenCount = item.ContextTokens.Count;
+        if (contextTokenCount >= 20) {
+            score += 18;
+            reasons.Add("Description/context is detailed.");
+        } else if (contextTokenCount >= 10) {
+            score += 10;
+            reasons.Add("Description/context has moderate detail.");
+        } else {
+            score -= 12;
+            reasons.Add("Description/context is sparse.");
+        }
+
+        if (item.Labels.Count >= 2) {
+            score += 8;
+            reasons.Add("Labels provide extra classification evidence.");
+        } else if (item.Labels.Count == 1) {
+            score += 4;
+            reasons.Add("Single label provides limited evidence.");
+        } else {
+            score -= 5;
+            reasons.Add("No labels present.");
+        }
+
+        if (item.PullRequest is not null) {
+            if (item.PullRequest.ChangedFiles > 0) {
+                score += 4;
+                reasons.Add("PR change metadata is present.");
+            } else {
+                score -= 6;
+                reasons.Add("PR change metadata is missing.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.PullRequest.ReviewDecision)) {
+                score += 4;
+            } else {
+                score -= 3;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.PullRequest.StatusCheckState)) {
+                score += 4;
+            } else {
+                score -= 3;
+            }
+
+            if (item.PullRequest.Commits > 0) {
+                score += 3;
+            } else {
+                score -= 2;
+            }
+        } else if (item.Issue is not null) {
+            if (item.Issue.Comments >= 2) {
+                score += 6;
+                reasons.Add("Issue discussion provides additional context.");
+            } else if (item.Issue.Comments == 0) {
+                score -= 3;
+                reasons.Add("Issue has no discussion context.");
+            }
+        }
+
+        if (enrichment is not null) {
+            if (enrichment.CategoryConfidence >= 0.75) {
+                score += 8;
+                reasons.Add("Category confidence is high.");
+            } else if (enrichment.CategoryConfidence >= 0.60) {
+                score += 4;
+            } else if (enrichment.CategoryConfidence < 0.50) {
+                score -= 5;
+                reasons.Add("Category confidence is low.");
+            }
+
+            var topMatchConfidence = item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)
+                ? enrichment.MatchedIssueConfidence
+                : enrichment.MatchedPullRequestConfidence;
+            if (topMatchConfidence.HasValue) {
+                if (topMatchConfidence.Value >= 0.80) {
+                    score += 8;
+                    reasons.Add("Top related-link confidence is high.");
+                } else if (topMatchConfidence.Value >= 0.55) {
+                    score += 4;
+                }
+            }
+        }
+
+        score = Math.Round(Math.Clamp(score, 0, 100), 2, MidpointRounding.AwayFromZero);
+        var level = score >= 75
+            ? "high"
+            : score >= 50
+                ? "medium"
+                : "low";
+
+        return new SignalQualityAssessment(level, score, reasons);
     }
 
     internal static CategoryTagInference InferCategoryAndTagsWithConfidence(TriageIndexItem item) {
@@ -1455,6 +1570,16 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             reasons.Add("No outstanding discussion bonus.");
         }
 
+        if (item.TitleTokens.Count < 3) {
+            score -= 6;
+            reasons.Add("Sparse-title confidence penalty.");
+        }
+
+        if (item.ContextTokens.Count < 10) {
+            score -= 8;
+            reasons.Add("Sparse-description confidence penalty.");
+        }
+
         var ageDays = Math.Max(0, (nowUtc - item.UpdatedAtUtc).TotalDays);
         if (ageDays <= 1) {
             score += 8;
@@ -1543,6 +1668,14 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             clusters.SelectMany(cluster => cluster.ItemIds),
             StringComparer.OrdinalIgnoreCase
         );
+        var signalAssessmentsById = scoredItems
+            .ToDictionary(
+                item => item.Item.Id,
+                item => AssessSignalQuality(item.Item, enrichments.TryGetValue(item.Item.Id, out var enrichment) ? enrichment : null),
+                StringComparer.OrdinalIgnoreCase);
+        var highSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "high");
+        var mediumSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "medium");
+        var lowSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "low");
 
         var items = scoredItems
             .OrderByDescending(item => item.Item.UpdatedAtUtc)
@@ -1550,6 +1683,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             .ThenBy(item => item.Item.Number)
             .Select(item => {
                 enrichments.TryGetValue(item.Item.Id, out var enrichment);
+                signalAssessmentsById.TryGetValue(item.Item.Id, out var signalQuality);
                 return new {
                     id = item.Item.Id,
                     kind = item.Item.Kind,
@@ -1586,6 +1720,9 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                         })
                         .Cast<object>()
                         .ToList() ?? new List<object>(),
+                    signalQuality = signalQuality?.Level ?? "low",
+                    signalQualityScore = signalQuality?.Score ?? 0,
+                    signalQualityReasons = signalQuality?.Reasons ?? Array.Empty<string>(),
                     score = item.Score,
                     scoreReasons = item.ScoreReasons,
                     signals = new {
@@ -1632,7 +1769,12 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 duplicateItems = duplicateIds.Count,
                 bestPullRequestCandidates = bestPullRequests.Count,
                 pullRequestsWithMatchedIssue = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl)),
-                issuesWithMatchedPullRequest = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedPullRequestUrl))
+                issuesWithMatchedPullRequest = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedPullRequestUrl)),
+                signalQuality = new {
+                    high = highSignalCount,
+                    medium = mediumSignalCount,
+                    low = lowSignalCount
+                }
             },
             bestPullRequests = best,
             duplicateClusters = duplicates,
@@ -1651,6 +1793,14 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             clusters.SelectMany(cluster => cluster.ItemIds),
             StringComparer.OrdinalIgnoreCase
         );
+        var signalAssessmentsById = scoredItems
+            .ToDictionary(
+                item => item.Item.Id,
+                item => AssessSignalQuality(item.Item, enrichments.TryGetValue(item.Item.Id, out var enrichment) ? enrichment : null),
+                StringComparer.OrdinalIgnoreCase);
+        var highSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "high");
+        var mediumSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "medium");
+        var lowSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "low");
 
         var sb = new StringBuilder();
         sb.AppendLine("# IntelligenceX Triage Index");
@@ -1669,6 +1819,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         sb.AppendLine($"- Duplicate items: {duplicateIds.Count}");
         sb.AppendLine($"- PRs with matched issue: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl))}");
         sb.AppendLine($"- Issues with matched PR: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedPullRequestUrl))}");
+        sb.AppendLine($"- Signal quality (high/medium/low): {highSignalCount}/{mediumSignalCount}/{lowSignalCount}");
         sb.AppendLine();
         sb.AppendLine("## Best PR Candidates");
         sb.AppendLine();

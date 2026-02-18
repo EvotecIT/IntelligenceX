@@ -432,7 +432,8 @@ internal static class ProjectInitRunner {
                         name = view.Name,
                         layout = view.Layout,
                         description = view.Description,
-                        filter = view.Filter
+                        filter = view.Filter,
+                        suggestedColumns = view.SuggestedColumns
                     })
                     .Cast<object>()
                     .ToList(),
