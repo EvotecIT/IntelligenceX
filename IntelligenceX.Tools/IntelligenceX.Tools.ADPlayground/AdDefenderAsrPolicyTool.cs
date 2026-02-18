@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Gpo;
@@ -14,7 +13,6 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns Defender ASR and cloud policy posture for Domain Controllers OU in one domain (read-only).
 /// </summary>
 public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
-    private const int MaxViewTop = 5000;
     private static readonly IReadOnlyList<string> AdditionalUnconfiguredAttributionValues = new[] { "Off" };
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -60,69 +58,33 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        if (!TryExecute(
-                action: () => DefenderAsrPolicyService.Get(domainName),
-                result: out DefenderAsrPolicyService.View view,
-                errorResponse: out var errorResponse,
-                defaultErrorMessage: "Defender ASR policy query failed.",
-                invalidOperationErrorCode: "query_failed")) {
-            return Task.FromResult(errorResponse!);
-        }
-
-        var rows = PreparePolicyAttributionRows(
-            attribution: view.Attribution,
-            includeAttribution: includeAttribution,
-            configuredAttributionOnly: configuredAttributionOnly,
-            maxResults: maxResults,
-            additionalUnconfiguredValues: AdditionalUnconfiguredAttributionValues,
-            scanned: out var scanned,
-            truncated: out var truncated);
-
-        var result = new AdDefenderAsrPolicyResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            Asr: view.Asr,
-            Cloud: view.Cloud,
-            AsrEntriesFriendly: view.AsrEntriesFriendly,
-            CloudFriendly: view.CloudFriendly,
-            AttributionTopWriters: view.AttributionTopWriters,
-            NetworkProtectionMode: view.NetworkProtectionMode,
-            NetworkProtectionNotOff: view.NetworkProtectionNotOff,
-            PuaProtectionMode: view.PuaProtectionMode,
-            PuaNotDisabled: view.PuaNotDisabled,
-            RtpRealtimeEnabled: view.RtpRealtimeEnabled,
-            RtpBehaviorEnabled: view.RtpBehaviorEnabled,
-            RtpIoavEnabled: view.RtpIoavEnabled,
-            RtpScriptEnabled: view.RtpScriptEnabled,
-            Attribution: rows);
-
-        var response = BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool<DefenderAsrPolicyService.View, AdDefenderAsrPolicyResult>(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: Defender ASR Policy (preview)",
-            baseTruncated: truncated,
-            scanned: scanned,
-            maxTop: MaxViewTop,
-            metaMutate: meta => {
-                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
-            });
-        return Task.FromResult(response);
+            defaultErrorMessage: "Defender ASR policy query failed.",
+            query: static domainName => DefenderAsrPolicyService.Get(domainName),
+            attributionSelector: static view => view.Attribution,
+            additionalUnconfiguredValues: AdditionalUnconfiguredAttributionValues,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdDefenderAsrPolicyResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                Asr: view.Asr,
+                Cloud: view.Cloud,
+                AsrEntriesFriendly: view.AsrEntriesFriendly,
+                CloudFriendly: view.CloudFriendly,
+                AttributionTopWriters: view.AttributionTopWriters,
+                NetworkProtectionMode: view.NetworkProtectionMode,
+                NetworkProtectionNotOff: view.NetworkProtectionNotOff,
+                PuaProtectionMode: view.PuaProtectionMode,
+                PuaNotDisabled: view.PuaNotDisabled,
+                RtpRealtimeEnabled: view.RtpRealtimeEnabled,
+                RtpBehaviorEnabled: view.RtpBehaviorEnabled,
+                RtpIoavEnabled: view.RtpIoavEnabled,
+                RtpScriptEnabled: view.RtpScriptEnabled,
+                Attribution: rows));
     }
 }
-

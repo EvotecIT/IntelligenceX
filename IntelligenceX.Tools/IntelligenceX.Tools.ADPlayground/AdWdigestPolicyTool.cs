@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Gpo;
@@ -14,8 +13,6 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns WDigest policy posture for Domain Controllers OU in one domain (read-only).
 /// </summary>
 public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
-    private const int MaxViewTop = 5000;
-
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_wdigest_policy",
         "Assess WDigest UseLogonCredential posture for Domain Controllers OU (read-only).",
@@ -48,57 +45,22 @@ public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        if (!TryExecute(
-                action: () => WdigestPolicyService.Get(domainName),
-                result: out WdigestPolicyService.View view,
-                errorResponse: out var errorResponse,
-                defaultErrorMessage: "WDigest policy query failed.",
-                invalidOperationErrorCode: "query_failed")) {
-            return Task.FromResult(errorResponse!);
-        }
-
-        var rows = PreparePolicyAttributionRows(
-            attribution: view.Attribution,
-            includeAttribution: includeAttribution,
-            configuredAttributionOnly: configuredAttributionOnly,
-            maxResults: maxResults,
-            scanned: out var scanned,
-            truncated: out var truncated);
-
-        var result = new AdWdigestPolicyResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            EffectiveValue: view.EffectiveValue,
-            Disabled: view.Disabled,
-            Attribution: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool<WdigestPolicyService.View, AdWdigestPolicyResult>(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: WDigest Policy (preview)",
-            maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
-            }));
+            defaultErrorMessage: "WDigest policy query failed.",
+            query: static domainName => WdigestPolicyService.Get(domainName),
+            attributionSelector: static view => view.Attribution,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdWdigestPolicyResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                EffectiveValue: view.EffectiveValue,
+                Disabled: view.Disabled,
+                Attribution: rows));
     }
 }
-
 

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Gpo;
@@ -14,8 +13,6 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns LLMNR policy posture for Domain Controllers OU in one domain (read-only).
 /// </summary>
 public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
-    private const int MaxViewTop = 5000;
-
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_llmnr_policy",
         "Assess LLMNR policy posture (EnableMulticast) for Domain Controllers OU (read-only).",
@@ -48,57 +45,22 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        if (!TryExecute(
-                action: () => LlmnrPolicyService.Get(domainName),
-                result: out LlmnrPolicyService.View view,
-                errorResponse: out var errorResponse,
-                defaultErrorMessage: "LLMNR policy query failed.",
-                invalidOperationErrorCode: "query_failed")) {
-            return Task.FromResult(errorResponse!);
-        }
-
-        var rows = PreparePolicyAttributionRows(
-            attribution: view.Attribution,
-            includeAttribution: includeAttribution,
-            configuredAttributionOnly: configuredAttributionOnly,
-            maxResults: maxResults,
-            scanned: out var scanned,
-            truncated: out var truncated);
-
-        var result = new AdLlmnrPolicyResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            EffectiveValue: view.EffectiveValue,
-            LlmnrDisabled: view.LlmnrDisabled,
-            Attribution: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool<LlmnrPolicyService.View, AdLlmnrPolicyResult>(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: LLMNR Policy (preview)",
-            baseTruncated: truncated,
-            scanned: scanned,
-            maxTop: MaxViewTop,
-            metaMutate: meta => {
-                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
-            }));
+            defaultErrorMessage: "LLMNR policy query failed.",
+            query: static domainName => LlmnrPolicyService.Get(domainName),
+            attributionSelector: static view => view.Attribution,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdLlmnrPolicyResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                EffectiveValue: view.EffectiveValue,
+                LlmnrDisabled: view.LlmnrDisabled,
+                Attribution: rows));
     }
 }
-
 
