@@ -71,6 +71,19 @@ public sealed partial class MainWindow : Window {
         return true;
     }
 
+    internal static TimeSpan ResolveConnectAttemptHardTimeout(TimeSpan timeout) {
+        if (timeout <= TimeSpan.Zero) {
+            return TimeSpan.Zero;
+        }
+
+        try {
+            var hardTimeout = timeout + StartupConnectAttemptHardTimeoutGrace;
+            return hardTimeout < timeout ? timeout : hardTimeout;
+        } catch (OverflowException) {
+            return timeout;
+        }
+    }
+
     private static TimeoutException CreateStartupConnectBudgetExceededException(TimeSpan budget, TimeSpan elapsed) {
         var budgetMs = Math.Round(Math.Max(0, budget.TotalMilliseconds));
         var elapsedMs = Math.Round(Math.Max(0, elapsed.TotalMilliseconds));
@@ -106,6 +119,18 @@ public sealed partial class MainWindow : Window {
             var startupConnectStopwatch = startupConnectBudget.HasValue ? Stopwatch.StartNew() : null;
             var startupBudgetExhaustedLogged = false;
 
+            static long RoundMs(TimeSpan value) {
+                return (long)Math.Round(Math.Max(0, value.TotalMilliseconds));
+            }
+
+            void LogStartupConnectDetail(string detail) {
+                if (!captureStartupPhaseTelemetry) {
+                    return;
+                }
+
+                StartupLog.Write("StartupConnect." + detail);
+            }
+
             void LogStartupConnectBudgetExhausted(TimeSpan elapsed) {
                 if (startupBudgetExhaustedLogged || !startupConnectBudget.HasValue) {
                     return;
@@ -115,9 +140,9 @@ public sealed partial class MainWindow : Window {
                 LogStartupConnectPhase("budget", "exhausted");
                 StartupLog.Write(
                     "StartupConnect.budget exhausted after "
-                    + Math.Round(elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)
+                    + RoundMs(elapsed).ToString(CultureInfo.InvariantCulture)
                     + "ms (budget "
-                    + Math.Round(startupConnectBudget.Value.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)
+                    + RoundMs(startupConnectBudget.Value).ToString(CultureInfo.InvariantCulture)
                     + "ms).");
             }
 
@@ -130,6 +155,63 @@ public sealed partial class MainWindow : Window {
                 LogStartupConnectBudgetExhausted(elapsed);
                 timeout = TimeSpan.Zero;
                 return false;
+            }
+
+            string FormatRemainingBudgetForLog() {
+                if (!startupConnectBudget.HasValue || startupConnectStopwatch is null) {
+                    return "n/a";
+                }
+
+                var remaining = startupConnectBudget.Value - startupConnectStopwatch.Elapsed;
+                if (remaining <= TimeSpan.Zero) {
+                    return "0";
+                }
+
+                return RoundMs(remaining).ToString(CultureInfo.InvariantCulture);
+            }
+
+            void LogConnectAttemptStart(string phase, int attemptNumber, TimeSpan requestedTimeout, TimeSpan timeout, TimeSpan hardTimeout) {
+                LogStartupConnectDetail(
+                    phase
+                    + " attempt="
+                    + attemptNumber.ToString(CultureInfo.InvariantCulture)
+                    + " start requested_timeout_ms="
+                    + RoundMs(requestedTimeout).ToString(CultureInfo.InvariantCulture)
+                    + " timeout_ms="
+                    + RoundMs(timeout).ToString(CultureInfo.InvariantCulture)
+                    + " hard_timeout_ms="
+                    + RoundMs(hardTimeout).ToString(CultureInfo.InvariantCulture)
+                    + " budget_remaining_ms="
+                    + FormatRemainingBudgetForLog());
+            }
+
+            void LogConnectAttemptResult(string phase, int attemptNumber, bool success, TimeSpan attemptElapsed, Exception? exception) {
+                var status = success ? "success" : "failed";
+                var message = phase
+                              + " attempt="
+                              + attemptNumber.ToString(CultureInfo.InvariantCulture)
+                              + " "
+                              + status
+                              + " elapsed_ms="
+                              + RoundMs(attemptElapsed).ToString(CultureInfo.InvariantCulture);
+                if (!success && exception is not null) {
+                    message += " error_type=" + exception.GetType().Name;
+                    if (!string.IsNullOrWhiteSpace(exception.Message)) {
+                        message += " error=" + exception.Message;
+                    }
+                }
+
+                LogStartupConnectDetail(message);
+                if (attemptElapsed >= StartupConnectAttemptOutlierThreshold) {
+                    LogStartupConnectDetail(
+                        phase
+                        + " attempt="
+                        + attemptNumber.ToString(CultureInfo.InvariantCulture)
+                        + " outlier elapsed_ms="
+                        + RoundMs(attemptElapsed).ToString(CultureInfo.InvariantCulture)
+                        + " threshold_ms="
+                        + RoundMs(StartupConnectAttemptOutlierThreshold).ToString(CultureInfo.InvariantCulture));
+                }
             }
 
             Exception CreateBudgetExceededException() {
@@ -163,6 +245,8 @@ public sealed partial class MainWindow : Window {
             var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
             var initialPipeConnectTimeout = ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
             var connected = false;
+            var initialAttemptElapsed = TimeSpan.Zero;
+            Stopwatch? initialAttemptStopwatch = null;
 
             try {
                 LogStartupConnectPhase("pipe_connect.initial", "begin");
@@ -170,10 +254,20 @@ public sealed partial class MainWindow : Window {
                     throw CreateBudgetExceededException();
                 }
 
-                await ConnectClientWithTimeoutAsync(client, pipeName, initialAttemptTimeout).ConfigureAwait(false);
+                var initialHardTimeout = ResolveConnectAttemptHardTimeout(initialAttemptTimeout);
+                LogConnectAttemptStart("pipe_connect.initial", 1, initialPipeConnectTimeout, initialAttemptTimeout, initialHardTimeout);
+                initialAttemptStopwatch = Stopwatch.StartNew();
+                await ConnectClientWithTimeoutAsync(client, pipeName, initialAttemptTimeout, initialHardTimeout).ConfigureAwait(false);
+                initialAttemptElapsed = initialAttemptStopwatch.Elapsed;
+                LogConnectAttemptResult("pipe_connect.initial", 1, success: true, attemptElapsed: initialAttemptElapsed, exception: null);
                 LogStartupConnectPhase("pipe_connect.initial", "done");
                 connected = true;
             } catch (Exception ex) {
+                if (initialAttemptStopwatch is not null) {
+                    initialAttemptElapsed = initialAttemptStopwatch.Elapsed;
+                }
+
+                LogConnectAttemptResult("pipe_connect.initial", 1, success: false, attemptElapsed: initialAttemptElapsed, exception: ex);
                 LogStartupConnectPhase("pipe_connect.initial", "failed");
                 initialConnectException = ex;
             }
@@ -188,22 +282,51 @@ public sealed partial class MainWindow : Window {
                     sidecarConnectException = CreateBudgetExceededException();
                 } else {
                     LogStartupConnectPhase("ensure_sidecar", "begin");
-                    if (await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false)) {
+                    var ensureSidecarStopwatch = Stopwatch.StartNew();
+                    var sidecarRunning = await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false);
+                    LogStartupConnectDetail("ensure_sidecar elapsed_ms=" + RoundMs(ensureSidecarStopwatch.Elapsed).ToString(CultureInfo.InvariantCulture));
+                    if (ensureSidecarStopwatch.Elapsed >= StartupConnectAttemptOutlierThreshold) {
+                        LogStartupConnectDetail(
+                            "ensure_sidecar outlier elapsed_ms="
+                            + RoundMs(ensureSidecarStopwatch.Elapsed).ToString(CultureInfo.InvariantCulture)
+                            + " threshold_ms="
+                            + RoundMs(StartupConnectAttemptOutlierThreshold).ToString(CultureInfo.InvariantCulture));
+                    }
+
+                    if (sidecarRunning) {
                         LogStartupConnectPhase("ensure_sidecar", "done");
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
                         for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
-                            if (!TryResolveConnectTimeout(StartupConnectRetryTimeouts[attempt], out var retryTimeout)) {
+                            var requestedRetryTimeout = StartupConnectRetryTimeouts[attempt];
+                            if (!TryResolveConnectTimeout(requestedRetryTimeout, out var retryTimeout)) {
                                 sidecarConnectException = CreateBudgetExceededException();
                                 break;
                             }
 
+                            Stopwatch? retryAttemptStopwatch = null;
+                            var retryAttemptNumber = attempt + 1;
                             try {
-                                await ConnectClientWithTimeoutAsync(client, pipeName, retryTimeout).ConfigureAwait(false);
+                                var retryHardTimeout = ResolveConnectAttemptHardTimeout(retryTimeout);
+                                LogConnectAttemptStart("pipe_connect.retry", retryAttemptNumber, requestedRetryTimeout, retryTimeout, retryHardTimeout);
+                                retryAttemptStopwatch = Stopwatch.StartNew();
+                                await ConnectClientWithTimeoutAsync(client, pipeName, retryTimeout, retryHardTimeout).ConfigureAwait(false);
+                                var retryAttemptElapsed = retryAttemptStopwatch.Elapsed;
+                                LogConnectAttemptResult("pipe_connect.retry", retryAttemptNumber, success: true, attemptElapsed: retryAttemptElapsed, exception: null);
                                 sidecarConnectException = null;
                                 connected = true;
                                 break;
                             } catch (Exception ex2) {
+                                var retryAttemptElapsed = retryAttemptStopwatch?.Elapsed ?? TimeSpan.Zero;
+                                LogConnectAttemptResult("pipe_connect.retry", retryAttemptNumber, success: false, attemptElapsed: retryAttemptElapsed, exception: ex2);
                                 sidecarConnectException = ex2;
+                                if (startupConnectBudget.HasValue && ex2 is TimeoutException) {
+                                    LogStartupConnectDetail(
+                                        "pipe_connect.retry attempt="
+                                        + retryAttemptNumber.ToString(CultureInfo.InvariantCulture)
+                                        + " guardrail=abort_after_timeout");
+                                    break;
+                                }
+
                                 if (_serviceProcess is { HasExited: true }) {
                                     break;
                                 }

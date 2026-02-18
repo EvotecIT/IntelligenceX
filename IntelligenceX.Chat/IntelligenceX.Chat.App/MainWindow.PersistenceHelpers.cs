@@ -272,13 +272,41 @@ public sealed partial class MainWindow : Window {
         return Interlocked.Increment(ref _nextRequestId).ToString();
     }
 
-    private static async Task ConnectClientWithTimeoutAsync(ChatServiceClient client, string pipeName, TimeSpan timeout) {
+    private static async Task ConnectClientWithTimeoutAsync(
+        ChatServiceClient client,
+        string pipeName,
+        TimeSpan timeout,
+        TimeSpan hardTimeout) {
+        if (timeout <= TimeSpan.Zero) {
+            throw new TimeoutException("Timed out waiting for service pipe.");
+        }
+
+        var resolvedHardTimeout = hardTimeout <= TimeSpan.Zero || hardTimeout < timeout
+            ? timeout
+            : hardTimeout;
+
         using var cts = new CancellationTokenSource(timeout);
-        await client.ConnectAsync(pipeName, cts.Token).ConfigureAwait(true);
+        var connectTask = client.ConnectAsync(pipeName, cts.Token);
+        var hardTimeoutTask = Task.Delay(resolvedHardTimeout);
+        var completed = await Task.WhenAny(connectTask, hardTimeoutTask).ConfigureAwait(true);
+        if (!ReferenceEquals(completed, connectTask)) {
+            try {
+                cts.Cancel();
+            } catch {
+                // Ignore.
+            }
+
+            _ = connectTask.ContinueWith(static t => {
+                _ = t.Exception;
+            }, TaskContinuationOptions.OnlyOnFaulted);
+            throw new TimeoutException("Timed out waiting for service pipe.");
+        }
+
+        await connectTask.ConfigureAwait(true);
     }
 
     private static string FormatConnectError(Exception ex) {
-        return ex is OperationCanceledException ? "Timed out waiting for service pipe." : ex.Message;
+        return ex is OperationCanceledException or TimeoutException ? "Timed out waiting for service pipe." : ex.Message;
     }
 
     private static bool IsDisconnectedError(Exception ex) {

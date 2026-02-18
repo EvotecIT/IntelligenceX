@@ -69,6 +69,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan StartupConnectAttemptHardTimeoutGrace = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan StartupConnectAttemptOutlierThreshold = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
     private const int StartupWebViewBudgetFastEnsureThresholdMs = 1200;
     private const int StartupWebViewBudgetMediumEnsureThresholdMs = 2000;

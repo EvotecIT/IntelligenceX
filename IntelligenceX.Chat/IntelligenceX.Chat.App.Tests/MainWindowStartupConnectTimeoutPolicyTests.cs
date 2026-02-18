@@ -157,6 +157,21 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures connect attempt hard timeout keeps a small guardrail grace above requested timeout.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(-10, 0)]
+    [InlineData(150, 500)]
+    [InlineData(2000, 2350)]
+    public void ResolveConnectAttemptHardTimeout_ReturnsExpectedTimeout(
+        int timeoutMs,
+        int expectedHardTimeoutMs) {
+        var hardTimeout = MainWindow.ResolveConnectAttemptHardTimeout(TimeSpan.FromMilliseconds(timeoutMs));
+        Assert.Equal(TimeSpan.FromMilliseconds(expectedHardTimeoutMs), hardTimeout);
+    }
+
+    /// <summary>
     /// Ensures model/profile sync is deferred only during startup flow telemetry capture.
     /// </summary>
     [Theory]
