@@ -189,6 +189,13 @@ internal static class TriageIndexRunner {
         IReadOnlyList<string> Reasons
     );
 
+    internal sealed record PullRequestOperationalSignals(
+        string SizeBand,
+        string ChurnRisk,
+        string MergeReadiness,
+        string Freshness
+    );
+
     private sealed record IssueReferenceHint(
         int Number,
         double Confidence,
@@ -790,6 +797,59 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 : "low";
 
         return new SignalQualityAssessment(level, score, reasons);
+    }
+
+    internal static PullRequestOperationalSignals? AssessPullRequestOperationalSignals(
+        TriageIndexItem item,
+        DateTimeOffset nowUtc) {
+        if (item.PullRequest is null ||
+            !item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var signals = item.PullRequest;
+        var changedFiles = Math.Max(0, signals.ChangedFiles);
+        var changeVolume = Math.Max(0, signals.Additions) + Math.Max(0, signals.Deletions);
+        var ageDays = Math.Max(0, (nowUtc - item.UpdatedAtUtc).TotalDays);
+
+        var sizeBand = (changedFiles, changeVolume) switch {
+            (<= 3, <= 80) => "xsmall",
+            (<= 10, <= 300) => "small",
+            (<= 30, <= 900) => "medium",
+            (<= 80, <= 2500) => "large",
+            _ => "xlarge"
+        };
+
+        var blocked = signals.IsDraft ||
+                      signals.Mergeable.Equals("CONFLICTING", StringComparison.OrdinalIgnoreCase) ||
+                      signals.Mergeable.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase) ||
+                      signals.ReviewDecision.Equals("CHANGES_REQUESTED", StringComparison.OrdinalIgnoreCase) ||
+                      signals.StatusCheckState.Equals("FAILURE", StringComparison.OrdinalIgnoreCase) ||
+                      signals.StatusCheckState.Equals("ERROR", StringComparison.OrdinalIgnoreCase) ||
+                      signals.StatusCheckState.Equals("PENDING", StringComparison.OrdinalIgnoreCase);
+
+        var mergeReadiness = blocked
+            ? "blocked"
+            : signals.Mergeable.Equals("MERGEABLE", StringComparison.OrdinalIgnoreCase) &&
+              signals.ReviewDecision.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) &&
+              signals.StatusCheckState.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase)
+                ? "ready"
+                : "needs-review";
+
+        var churnRisk = blocked || changedFiles > 120 || changeVolume > 3500
+            ? "high"
+            : changedFiles > 40 || changeVolume > 1200 || signals.Comments > 20 || signals.Commits > 20
+                ? "medium"
+                : "low";
+
+        var freshness = ageDays switch {
+            <= 1 => "fresh",
+            <= 7 => "recent",
+            <= 30 => "aging",
+            _ => "stale"
+        };
+
+        return new PullRequestOperationalSignals(sizeBand, churnRisk, mergeReadiness, freshness);
     }
 
     internal static CategoryTagInference InferCategoryAndTagsWithConfidence(TriageIndexItem item) {
@@ -1673,9 +1733,18 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 item => item.Item.Id,
                 item => AssessSignalQuality(item.Item, enrichments.TryGetValue(item.Item.Id, out var enrichment) ? enrichment : null),
                 StringComparer.OrdinalIgnoreCase);
+        var pullRequestOperationalSignalsById = scoredItems
+            .ToDictionary(
+                item => item.Item.Id,
+                item => AssessPullRequestOperationalSignals(item.Item, nowUtc),
+                StringComparer.OrdinalIgnoreCase);
         var highSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "high");
         var mediumSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "medium");
         var lowSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "low");
+        var pullRequestSignalValues = pullRequestOperationalSignalsById.Values
+            .Where(value => value is not null)
+            .Select(value => value!)
+            .ToList();
 
         var items = scoredItems
             .OrderByDescending(item => item.Item.UpdatedAtUtc)
@@ -1684,6 +1753,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             .Select(item => {
                 enrichments.TryGetValue(item.Item.Id, out var enrichment);
                 signalAssessmentsById.TryGetValue(item.Item.Id, out var signalQuality);
+                pullRequestOperationalSignalsById.TryGetValue(item.Item.Id, out var operationalSignals);
                 return new {
                     id = item.Item.Id,
                     kind = item.Item.Kind,
@@ -1723,6 +1793,10 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                     signalQuality = signalQuality?.Level ?? "low",
                     signalQualityScore = signalQuality?.Score ?? 0,
                     signalQualityReasons = signalQuality?.Reasons ?? Array.Empty<string>(),
+                    prSizeBand = operationalSignals?.SizeBand,
+                    prChurnRisk = operationalSignals?.ChurnRisk,
+                    prMergeReadiness = operationalSignals?.MergeReadiness,
+                    prFreshness = operationalSignals?.Freshness,
                     score = item.Score,
                     scoreReasons = item.ScoreReasons,
                     signals = new {
@@ -1774,6 +1848,31 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                     high = highSignalCount,
                     medium = mediumSignalCount,
                     low = lowSignalCount
+                },
+                pullRequestSignals = new {
+                    size = new {
+                        xsmall = pullRequestSignalValues.Count(value => value.SizeBand.Equals("xsmall", StringComparison.OrdinalIgnoreCase)),
+                        small = pullRequestSignalValues.Count(value => value.SizeBand.Equals("small", StringComparison.OrdinalIgnoreCase)),
+                        medium = pullRequestSignalValues.Count(value => value.SizeBand.Equals("medium", StringComparison.OrdinalIgnoreCase)),
+                        large = pullRequestSignalValues.Count(value => value.SizeBand.Equals("large", StringComparison.OrdinalIgnoreCase)),
+                        xlarge = pullRequestSignalValues.Count(value => value.SizeBand.Equals("xlarge", StringComparison.OrdinalIgnoreCase))
+                    },
+                    churnRisk = new {
+                        low = pullRequestSignalValues.Count(value => value.ChurnRisk.Equals("low", StringComparison.OrdinalIgnoreCase)),
+                        medium = pullRequestSignalValues.Count(value => value.ChurnRisk.Equals("medium", StringComparison.OrdinalIgnoreCase)),
+                        high = pullRequestSignalValues.Count(value => value.ChurnRisk.Equals("high", StringComparison.OrdinalIgnoreCase))
+                    },
+                    mergeReadiness = new {
+                        ready = pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase)),
+                        needsReview = pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("needs-review", StringComparison.OrdinalIgnoreCase)),
+                        blocked = pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("blocked", StringComparison.OrdinalIgnoreCase))
+                    },
+                    freshness = new {
+                        fresh = pullRequestSignalValues.Count(value => value.Freshness.Equals("fresh", StringComparison.OrdinalIgnoreCase)),
+                        recent = pullRequestSignalValues.Count(value => value.Freshness.Equals("recent", StringComparison.OrdinalIgnoreCase)),
+                        aging = pullRequestSignalValues.Count(value => value.Freshness.Equals("aging", StringComparison.OrdinalIgnoreCase)),
+                        stale = pullRequestSignalValues.Count(value => value.Freshness.Equals("stale", StringComparison.OrdinalIgnoreCase))
+                    }
                 }
             },
             bestPullRequests = best,
@@ -1798,9 +1897,18 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 item => item.Item.Id,
                 item => AssessSignalQuality(item.Item, enrichments.TryGetValue(item.Item.Id, out var enrichment) ? enrichment : null),
                 StringComparer.OrdinalIgnoreCase);
+        var pullRequestOperationalSignalsById = scoredItems
+            .ToDictionary(
+                item => item.Item.Id,
+                item => AssessPullRequestOperationalSignals(item.Item, nowUtc),
+                StringComparer.OrdinalIgnoreCase);
         var highSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "high");
         var mediumSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "medium");
         var lowSignalCount = signalAssessmentsById.Values.Count(value => value.Level == "low");
+        var pullRequestSignalValues = pullRequestOperationalSignalsById.Values
+            .Where(value => value is not null)
+            .Select(value => value!)
+            .ToList();
 
         var sb = new StringBuilder();
         sb.AppendLine("# IntelligenceX Triage Index");
@@ -1820,6 +1928,18 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         sb.AppendLine($"- PRs with matched issue: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl))}");
         sb.AppendLine($"- Issues with matched PR: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedPullRequestUrl))}");
         sb.AppendLine($"- Signal quality (high/medium/low): {highSignalCount}/{mediumSignalCount}/{lowSignalCount}");
+        sb.AppendLine(
+            $"- PR size (xsmall/small/medium/large/xlarge): " +
+            $"{pullRequestSignalValues.Count(value => value.SizeBand.Equals("xsmall", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.SizeBand.Equals("small", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.SizeBand.Equals("medium", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.SizeBand.Equals("large", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.SizeBand.Equals("xlarge", StringComparison.OrdinalIgnoreCase))}");
+        sb.AppendLine(
+            $"- PR merge readiness (ready/needs-review/blocked): " +
+            $"{pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("ready", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("needs-review", StringComparison.OrdinalIgnoreCase))}/" +
+            $"{pullRequestSignalValues.Count(value => value.MergeReadiness.Equals("blocked", StringComparison.OrdinalIgnoreCase))}");
         sb.AppendLine();
         sb.AppendLine("## Best PR Candidates");
         sb.AppendLine();

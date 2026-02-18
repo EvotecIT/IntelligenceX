@@ -23,6 +23,10 @@ internal static class ProjectViewCatalog {
                 "Title",
                 "Status",
                 "Triage Kind",
+                "PR Size",
+                "PR Churn Risk",
+                "PR Merge Readiness",
+                "PR Freshness",
                 "Signal Quality",
                 "Signal Quality Score",
                 "Vision Fit",
@@ -41,6 +45,9 @@ internal static class ProjectViewCatalog {
             new[] {
                 "Title",
                 "Status",
+                "PR Size",
+                "PR Merge Readiness",
+                "PR Freshness",
                 "Signal Quality",
                 "Vision Fit",
                 "IX Suggested Decision",
@@ -57,6 +64,8 @@ internal static class ProjectViewCatalog {
                 "Title",
                 "Status",
                 "Vision Fit",
+                "PR Size",
+                "PR Merge Readiness",
                 "Signal Quality",
                 "IX Suggested Decision",
                 "Category"
@@ -71,6 +80,8 @@ internal static class ProjectViewCatalog {
                 "Status",
                 "Duplicate Cluster",
                 "Canonical Item",
+                "PR Size",
+                "PR Churn Risk",
                 "Signal Quality",
                 "Triage Score",
                 "Category"

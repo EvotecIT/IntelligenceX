@@ -35,6 +35,29 @@ internal static class ProjectFieldCatalog {
         }),
         new ProjectFieldDefinition("Signal Quality Score", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Signal Quality Notes", "TEXT", Array.Empty<string>()),
+        new ProjectFieldDefinition("PR Size", "SINGLE_SELECT", new[] {
+            "xsmall",
+            "small",
+            "medium",
+            "large",
+            "xlarge"
+        }),
+        new ProjectFieldDefinition("PR Churn Risk", "SINGLE_SELECT", new[] {
+            "low",
+            "medium",
+            "high"
+        }),
+        new ProjectFieldDefinition("PR Merge Readiness", "SINGLE_SELECT", new[] {
+            "ready",
+            "needs-review",
+            "blocked"
+        }),
+        new ProjectFieldDefinition("PR Freshness", "SINGLE_SELECT", new[] {
+            "fresh",
+            "recent",
+            "aging",
+            "stale"
+        }),
         new ProjectFieldDefinition("Tags", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Tag Confidence Summary", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue", "TEXT", Array.Empty<string>()),

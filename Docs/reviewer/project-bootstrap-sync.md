@@ -88,6 +88,7 @@ intelligencex todo project-sync \
 
 - Project item fields for triage and vision fit.
 - Signal-quality fields (`Signal Quality`, `Signal Quality Score`, `Signal Quality Notes`).
+- Operational PR fields (`PR Size`, `PR Churn Risk`, `PR Merge Readiness`, `PR Freshness`).
 - Suggested maintainership decision signal (`IX Suggested Decision`).
 - Optional managed label reconciliation for IX taxonomies.
 - Optional assistive cross-link comments for related PR/issue context.

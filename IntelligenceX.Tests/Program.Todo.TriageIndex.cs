@@ -352,5 +352,51 @@ internal static partial class Program {
         AssertEqual("high", strongQuality.Level, "strong signal quality level");
         AssertEqual("low", weakQuality.Level, "weak signal quality level");
     }
+
+    private static void TestTriageIndexAssessPullRequestOperationalSignalsClassifiesSizeRiskAndReadiness() {
+        var now = DateTimeOffset.UtcNow;
+        var xsmallReady = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#801",
+            "pull_request",
+            801,
+            "Fix typo in docs",
+            "https://example/pr/801",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Fix typo in docs"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Fix typo in docs"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Fix typo in docs and markdown style"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "MERGEABLE", "APPROVED", "SUCCESS", 2, 20, 5, 0, 1, "dev"),
+            null
+        );
+        var blockedHighRisk = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#802",
+            "pull_request",
+            802,
+            "Massive refactor",
+            "https://example/pr/802",
+            now.AddDays(-45),
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Massive refactor"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Massive refactor"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Massive refactor with broad subsystem changes"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(true, "CONFLICTING", "CHANGES_REQUESTED", "FAILURE", 240, 7000, 2000, 35, 55, "dev"),
+            null
+        );
+
+        var readySignals = IntelligenceX.Cli.Todo.TriageIndexRunner.AssessPullRequestOperationalSignals(xsmallReady, now);
+        var blockedSignals = IntelligenceX.Cli.Todo.TriageIndexRunner.AssessPullRequestOperationalSignals(blockedHighRisk, now);
+
+        AssertNotNull(readySignals, "ready signals not null");
+        AssertNotNull(blockedSignals, "blocked signals not null");
+        AssertEqual("xsmall", readySignals!.SizeBand, "xsmall size");
+        AssertEqual("low", readySignals.ChurnRisk, "low churn risk");
+        AssertEqual("ready", readySignals.MergeReadiness, "ready merge readiness");
+        AssertEqual("fresh", readySignals.Freshness, "freshness classification");
+        AssertEqual("xlarge", blockedSignals!.SizeBand, "xlarge size");
+        AssertEqual("high", blockedSignals.ChurnRisk, "high churn risk");
+        AssertEqual("blocked", blockedSignals.MergeReadiness, "blocked merge readiness");
+        AssertEqual("stale", blockedSignals.Freshness, "stale freshness");
+    }
 #endif
 }
