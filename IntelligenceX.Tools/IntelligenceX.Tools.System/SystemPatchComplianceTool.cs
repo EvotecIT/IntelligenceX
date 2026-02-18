@@ -174,27 +174,17 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                 monthly = await PatchDetails.GetMonthlyAsync(year, month, cancellationToken).ConfigureAwait(false);
             }
         } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"Patch details query failed: {ex.Message}");
+            return ErrorFromException(ex, defaultMessage: "Patch details query failed.");
         }
 
-        IEnumerable<UpdateInfo> updates;
-        try {
-            updates = Updates.GetInstalled(computerName);
-        } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"Installed updates query failed: {ex.Message}");
-        }
-
-        var isLocalTarget = string.IsNullOrWhiteSpace(computerName)
-            || string.Equals(computerName, ".", StringComparison.Ordinal)
-            || string.Equals(target, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
-        var pendingIncluded = false;
-        if (includePendingLocal && isLocalTarget) {
-            try {
-                updates = updates.Concat(Updates.GetPending());
-                pendingIncluded = true;
-            } catch {
-                pendingIncluded = false;
-            }
+        if (!TryGetInstalledAndPendingUpdates(
+                computerName: computerName,
+                target: target,
+                includePendingLocal: includePendingLocal,
+                updates: out var updates,
+                pendingIncluded: out var pendingIncluded,
+                errorResponse: out var updateError)) {
+            return updateError!;
         }
 
         var installedKbSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

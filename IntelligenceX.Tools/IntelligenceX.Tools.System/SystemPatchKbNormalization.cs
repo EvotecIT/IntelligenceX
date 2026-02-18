@@ -11,7 +11,7 @@ internal static class SystemPatchKbNormalization {
     /// <summary>
     /// Normalizes KB-like values into distinct canonical tokens (for example: KB5034441).
     /// </summary>
-    internal static IReadOnlyList<string> NormalizeDistinct(IEnumerable<string>? values) {
+    internal static IReadOnlyList<string> NormalizeDistinct(IEnumerable<string?>? values) {
         if (values is null) {
             return Array.Empty<string>();
         }
@@ -31,7 +31,7 @@ internal static class SystemPatchKbNormalization {
     /// <summary>
     /// Returns true when any candidate KB matches a case-insensitive contains filter.
     /// </summary>
-    internal static bool MatchesContainsFilter(IEnumerable<string>? values, string? filter) {
+    internal static bool MatchesContainsFilter(IEnumerable<string?>? values, string? filter) {
         if (string.IsNullOrWhiteSpace(filter)) {
             return true;
         }
