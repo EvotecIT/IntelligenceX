@@ -29,7 +29,7 @@ These commands are assistive. They are not an autonomous production decision sys
 3. Run issue applicability review.
 4. Run vision alignment check.
 5. Bootstrap or initialize GitHub Project.
-6. Sync triage + vision into project fields.
+6. Sync triage + issue-review + vision into project fields.
 7. Generate project view checklist and apply plan for maintainers.
 
 ## End-to-end example
@@ -50,8 +50,8 @@ intelligencex todo vision-check --repo EvotecIT/IntelligenceX --vision VISION.md
 # 5) Bootstrap project + workflow + vision scaffold
 intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT
 
-# 6) Sync triage + vision into project fields
-intelligencex todo project-sync --config artifacts/triage/ix-project-config.json --max-items 500
+# 6) Sync triage + issue-review + vision into project fields
+intelligencex todo project-sync --config artifacts/triage/ix-project-config.json --issue-review artifacts/triage/ix-issue-review.json --max-items 500
 
 # 7) Generate a maintainer view checklist
 intelligencex todo project-view-checklist --config artifacts/triage/ix-project-config.json --create-issue
@@ -66,7 +66,7 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 | `issue-review` | Detect stale/no-longer-applicable infra blocker issues and optionally auto-close | `artifacts/triage/ix-issue-review.json`, `.md` |
 | `vision-check` | Compare backlog against `VISION.md` scope | `artifacts/triage/ix-vision-check.json`, `.md` |
 | `project-init` | Create/initialize GitHub Project fields + metadata | `artifacts/triage/ix-project-config.json` |
-| `project-sync` | Push triage/vision signals to project items and optional labels/comments | Project field updates, optional comment/label updates |
+| `project-sync` | Push triage/issue-review/vision signals to project items and optional labels/comments | Project field updates, optional comment/label updates |
 | `project-bootstrap` | First-run bootstrap for project + workflow + vision scaffold | Project config + workflow + `VISION.md` scaffold |
 | `project-view-checklist` | Build checklist of recommended project views | `artifacts/triage/ix-project-view-checklist.md` |
 | `project-view-apply` | Build deterministic plan to apply missing views | `artifacts/triage/ix-project-view-apply.md` |
@@ -88,6 +88,7 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 - `proposedAction`: `close`, `keep-open`, `needs-human-review`, `ignore`
 - `actionConfidence`: `0-100` with level hints (`high`/`medium`/`low`)
 - `confidenceSignals`: explainable signal list (for example stale bucket, recent activity, linked PR age, reopened count)
+- `project-sync` maps these into project fields: `Issue Review Action`, `Issue Review Action Confidence`
 
 Safety behavior:
 

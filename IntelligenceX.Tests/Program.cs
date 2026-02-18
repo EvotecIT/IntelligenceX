@@ -496,6 +496,7 @@ internal static partial class Program {
         failed += Run("Todo project view apply markdown all views present shows completed checklist", TestProjectViewApplyMarkdownAllViewsPresentShowsCompletedChecklist);
         failed += Run("Todo project sync merges vision and canonical", TestProjectSyncBuildEntriesMergesVisionAndCanonical);
         failed += Run("Todo project sync parses category/tag confidence fields", TestProjectSyncBuildEntriesParsesCategoryAndTagConfidences);
+        failed += Run("Todo project sync merges issue review action signals", TestProjectSyncBuildEntriesMergesIssueReviewSignals);
         failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
         failed += Run("Todo project sync labels normalize dynamic category and tags", TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags);
         failed += Run("Todo project sync labels skip low-confidence category/tags", TestProjectSyncBuildLabelsSkipsLowConfidenceCategoryAndTags);

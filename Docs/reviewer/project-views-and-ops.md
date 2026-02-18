@@ -69,7 +69,7 @@ Behavior notes:
 - Preserves existing checkbox state in `TODO.md` where possible.
 - Uses stable markers for issue deduplication when `--create-issues` is enabled.
 
-## Build triage and vision artifacts
+## Build triage, issue-review, and vision artifacts
 
 ### Build triage index
 
@@ -86,6 +86,22 @@ Outputs:
 
 - `artifacts/triage/ix-triage-index.json`
 - `artifacts/triage/ix-triage-index.md`
+
+### Build issue-review signals
+
+```bash
+intelligencex todo issue-review \
+  --repo EvotecIT/IntelligenceX \
+  --proposal-only \
+  --state-path artifacts/triage/ix-issue-review-state.json \
+  --out artifacts/triage/ix-issue-review.json \
+  --summary artifacts/triage/ix-issue-review.md
+```
+
+Outputs:
+
+- `artifacts/triage/ix-issue-review.json`
+- `artifacts/triage/ix-issue-review.md`
 
 ### Run vision check
 
@@ -106,7 +122,7 @@ Outputs:
 ## Suggested maintainer cadence
 
 1. Run `sync-bot-feedback` during PR-review sweeps.
-2. Refresh triage/vision artifacts daily or per release train.
+2. Refresh triage/issue-review/vision artifacts daily or per release train.
 3. Sync project fields before backlog grooming.
 4. Triage `Signal Quality = low` items first and request better PR/issue context before acting on recommendations.
 5. Regenerate view checklist/apply plan when project layout drifts.

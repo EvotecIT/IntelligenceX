@@ -34,6 +34,8 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Matched Pull Request Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request Confidence");
         AssertEqual(true, names.Contains("Matched Pull Request Reason", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request Reason");
         AssertEqual(true, names.Contains("Related Pull Requests", StringComparer.OrdinalIgnoreCase), "has Related Pull Requests");
+        AssertEqual(true, names.Contains("Issue Review Action", StringComparer.OrdinalIgnoreCase), "has Issue Review Action");
+        AssertEqual(true, names.Contains("Issue Review Action Confidence", StringComparer.OrdinalIgnoreCase), "has Issue Review Action Confidence");
         AssertEqual(true, names.Contains("Triage Score", StringComparer.OrdinalIgnoreCase), "has Triage Score");
         AssertEqual(true, names.Contains("IX Suggested Decision", StringComparer.OrdinalIgnoreCase), "has IX Suggested Decision");
         AssertEqual(true, names.Contains("Maintainer Decision", StringComparer.OrdinalIgnoreCase), "has Maintainer Decision");
@@ -209,6 +211,61 @@ internal static partial class Program {
         AssertEqual("healthy", entry.PullRequestCheckHealth, "pull request check health parsed");
         AssertEqual("low", entry.PullRequestReviewLatency, "pull request review latency parsed");
         AssertEqual("low", entry.PullRequestMergeConflictRisk, "pull request merge conflict risk parsed");
+    }
+
+    private static void TestProjectSyncBuildEntriesMergesIssueReviewSignals() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "issue#362",
+      "kind": "issue",
+      "number": 362,
+      "url": "https://github.com/EvotecIT/IntelligenceX/issues/362",
+      "score": 17.0
+    }
+  ]
+}
+""";
+
+        const string issueReviewJson = """
+{
+  "items": [
+    {
+      "number": 362,
+      "url": "https://github.com/EvotecIT/IntelligenceX/issues/362",
+      "proposedAction": "close",
+      "actionConfidence": 92
+    },
+    {
+      "number": 440,
+      "url": "https://github.com/EvotecIT/IntelligenceX/issues/440",
+      "proposedAction": "needs-human-review",
+      "actionConfidence": 64
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        using var issueReviewDoc = System.Text.Json.JsonDocument.Parse(issueReviewJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            null,
+            100,
+            issueReviewDoc.RootElement);
+
+        var issue362 = entries.Single(item => item.Url.EndsWith("/issues/362", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("issue", issue362.Kind, "issue kind preserved");
+        AssertEqual("close", issue362.IssueReviewAction, "issue action merged");
+        AssertEqual(true, issue362.IssueReviewActionConfidence.HasValue, "issue confidence merged");
+        AssertEqual(92.0, issue362.IssueReviewActionConfidence!.Value, "issue confidence value merged");
+
+        var issue440 = entries.Single(item => item.Url.EndsWith("/issues/440", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("issue", issue440.Kind, "issue-only review entry created");
+        AssertEqual("needs-human-review", issue440.IssueReviewAction, "issue-only action merged");
+        AssertEqual(true, issue440.IssueReviewActionConfidence.HasValue, "issue-only confidence merged");
+        AssertEqual(64.0, issue440.IssueReviewActionConfidence!.Value, "issue-only confidence value merged");
     }
 
     private static void TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr() {

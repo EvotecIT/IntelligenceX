@@ -27,7 +27,7 @@ Project Ops is assistive automation, not autonomous production governance.
 ```bash
 intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT
 intelligencex todo issue-review --repo EvotecIT/IntelligenceX --proposal-only --min-consecutive-candidates 2 --min-auto-close-confidence 80
-intelligencex todo project-sync --config artifacts/triage/ix-project-config.json --dry-run
+intelligencex todo project-sync --config artifacts/triage/ix-project-config.json --issue-review artifacts/triage/ix-issue-review.json --dry-run
 ```
 
 ## Related docs
