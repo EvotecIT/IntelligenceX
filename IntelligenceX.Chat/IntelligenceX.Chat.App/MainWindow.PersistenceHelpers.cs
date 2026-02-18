@@ -293,7 +293,8 @@ public sealed partial class MainWindow : Window {
         ChatServiceClient client,
         string pipeName,
         TimeSpan timeout,
-        TimeSpan hardTimeout) {
+        TimeSpan hardTimeout,
+        bool allowSettlementGrace = true) {
         if (timeout <= TimeSpan.Zero) {
             throw new TimeoutException("Timed out waiting for service pipe.");
         }
@@ -315,7 +316,8 @@ public sealed partial class MainWindow : Window {
 
         cts.Cancel();
         // Preserve original completion/failure if connect settles shortly after cancellation.
-        if (await TryAwaitConnectTaskSettlementAsync(connectTask, StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true)) {
+        if (allowSettlementGrace
+            && await TryAwaitConnectTaskSettlementAsync(connectTask, StartupConnectAttemptHardTimeoutGrace).ConfigureAwait(true)) {
             return;
         }
 
