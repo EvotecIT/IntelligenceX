@@ -54,11 +54,13 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             ? DomainHelper.EnumerateDomainControllers().Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
             : requestedComputerNames;
 
-        IReadOnlyList<ReplicationStatusInfo> allRows;
-        try {
-            allRows = StatusExplorer.GetStatusInfos(targetServers, healthOnly);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Replication status query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => StatusExplorer.GetStatusInfos(targetServers, healthOnly),
+                result: out IReadOnlyList<ReplicationStatusInfo> allRows,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Replication status query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var scanned = allRows.Count;
@@ -72,7 +74,7 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -80,13 +82,13 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Replication Status (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("max_results", maxResults);
                 meta.Add("health_only", healthOnly);
                 meta.Add("target_server_count", targetServers.Count);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

@@ -98,7 +98,7 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -106,7 +106,6 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO Redirect Findings (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -116,7 +115,6 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(actualPathContains)) {
                     meta.Add("actual_path_contains", actualPathContains);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

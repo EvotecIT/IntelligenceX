@@ -70,11 +70,13 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        DefenderAsrPolicyService.View view;
-        try {
-            view = DefenderAsrPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Defender ASR policy query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => DefenderAsrPolicyService.Get(domainName),
+                result: out DefenderAsrPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Defender ASR policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -110,16 +112,15 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
             RtpScriptEnabled: view.RtpScriptEnabled,
             Attribution: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "attribution_view",
             title: "Active Directory: Defender ASR Policy (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
@@ -129,3 +130,5 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+
+

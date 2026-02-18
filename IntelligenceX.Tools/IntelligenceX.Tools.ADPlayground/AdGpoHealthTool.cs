@@ -90,7 +90,7 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -98,15 +98,13 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO health (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: rows.Count,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("requested_count", requestedCount);
                 meta.Add("processed_count", rows.Count);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 
     private static string? ResolveDomainName(JsonObject? arguments) {

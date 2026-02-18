@@ -75,9 +75,9 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
             snapshot = DsHeuristicsService.GetSnapshot(forestName);
             details = DsHeuristicsService.Decode(snapshot.Raw);
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                $"dsHeuristics query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(
+                ex,
+                defaultMessage: "dsHeuristics query failed."));
         }
 
         var summary = new DsHeuristicsSummaryRow(
@@ -113,7 +113,7 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
             Rows: new[] { summary },
             PositionRows: positions);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Rows,
@@ -121,7 +121,6 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: dsHeuristics (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response,
             scanned: result.Rows.Count,
             metaMutate: meta => {
                 meta.Add("include_positions", includePositions);
@@ -130,7 +129,6 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

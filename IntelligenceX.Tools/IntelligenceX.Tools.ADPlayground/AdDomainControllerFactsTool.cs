@@ -153,7 +153,7 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
             Errors: errors,
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -161,7 +161,6 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
             title: "Active Directory: Domain Controller Facts (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("timeout_ms", timeoutMs);
@@ -177,7 +176,6 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

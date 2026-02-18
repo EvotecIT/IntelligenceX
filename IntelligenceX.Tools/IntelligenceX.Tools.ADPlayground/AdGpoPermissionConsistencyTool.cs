@@ -117,7 +117,7 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
             Rows: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -125,7 +125,6 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             title: "Active Directory: GPO Permission Consistency (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -136,7 +135,6 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("sysvol_scan_cap", sysvolScanCap);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

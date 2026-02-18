@@ -128,7 +128,7 @@ public sealed class AdObjectResolveTool : ActiveDirectoryToolBase, ITool {
         }
 
         var result = output!;
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Results,
@@ -136,8 +136,6 @@ public sealed class AdObjectResolveTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Object Resolve (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.InputsTruncated,
-            response: out var response,
-            scanned: identitiesArray.Count);
-        return Task.FromResult(response);
+            scanned: identitiesArray.Count));
     }
 }

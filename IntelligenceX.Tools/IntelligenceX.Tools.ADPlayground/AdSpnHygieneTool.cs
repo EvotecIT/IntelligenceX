@@ -171,7 +171,7 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
             Domains: projectedRows,
             DomainDetails: projectedDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -179,7 +179,6 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: SPN Hygiene (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("top_n", topN);
@@ -193,7 +192,6 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

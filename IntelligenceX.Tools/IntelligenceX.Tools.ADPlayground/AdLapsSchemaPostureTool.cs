@@ -168,7 +168,7 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
             Rows: projectedRows,
             Details: projectedDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -176,7 +176,6 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: LAPS Schema Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("only_findings", onlyFindings);
@@ -189,7 +188,6 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

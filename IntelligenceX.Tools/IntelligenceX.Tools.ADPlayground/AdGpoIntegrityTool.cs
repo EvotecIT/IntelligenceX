@@ -95,7 +95,7 @@ public sealed class AdGpoIntegrityTool : ActiveDirectoryToolBase, ITool {
             ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -103,7 +103,6 @@ public sealed class AdGpoIntegrityTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO Integrity (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -111,7 +110,6 @@ public sealed class AdGpoIntegrityTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("ad_missing_only", adMissingOnly);
                 meta.Add("errors_only", errorsOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

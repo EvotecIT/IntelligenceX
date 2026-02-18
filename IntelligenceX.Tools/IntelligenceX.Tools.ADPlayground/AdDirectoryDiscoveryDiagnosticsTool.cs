@@ -64,9 +64,8 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         var includeHostResolution = ToolArgs.GetBoolean(arguments, "include_host_resolution", defaultValue: true);
         var includeDirectoryTopology = ToolArgs.GetBoolean(arguments, "include_directory_topology", defaultValue: true);
 
-        DirectoryDiscoveryDiagnosticsSnapshot snapshot;
-        try {
-            snapshot = DirectoryDiscoveryDiagnosticsService.GetSnapshot(
+        if (!TryExecute(
+                action: () => DirectoryDiscoveryDiagnosticsService.GetSnapshot(
                 new DirectoryDiscoveryDiagnosticsOptions {
                     ForestName = forestName,
                     Domains = domains.Count == 0 ? null : domains,
@@ -77,9 +76,12 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
                     LdapTimeoutMs = ldapTimeoutMs,
                     MaxIssues = maxIssues
                 },
-                cancellationToken);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Directory discovery diagnostics failed: {ex.Message}"));
+                cancellationToken),
+                result: out DirectoryDiscoveryDiagnosticsSnapshot snapshot,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Directory discovery diagnostics failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var scanned = snapshot.Issues.Count;
@@ -95,7 +97,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             Snapshot: snapshot,
             Issues: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: model,
             sourceRows: rows,
@@ -103,7 +105,6 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             title: "Active Directory: Directory Discovery Diagnostics (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("mode", asIssue ? "issues" : "snapshot");
@@ -118,7 +119,8 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
                 if (domains.Count > 0) {
                     meta.Add("domains", ToolJson.ToJsonArray(domains));
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

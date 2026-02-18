@@ -59,11 +59,13 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        LlmnrPolicyService.View view;
-        try {
-            view = LlmnrPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"LLMNR policy query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => LlmnrPolicyService.Get(domainName),
+                result: out LlmnrPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "LLMNR policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -88,22 +90,22 @@ public sealed class AdLlmnrPolicyTool : ActiveDirectoryToolBase, ITool {
             LlmnrDisabled: view.LlmnrDisabled,
             Attribution: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "attribution_view",
             title: "Active Directory: LLMNR Policy (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

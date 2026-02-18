@@ -61,11 +61,13 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
         var maxTakeoverRows = ToolArgs.GetCappedInt32(arguments, "max_takeover_rows", Options.MaxResults, 1, Options.MaxResults);
 
-        PkiTemplatesEvaluator.View view;
-        try {
-            view = PkiApi.GetTemplates(forestName);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"PKI template query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => PkiApi.GetTemplates(forestName),
+                result: out PkiTemplatesEvaluator.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "PKI template query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
@@ -94,7 +96,7 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             Templates: projectedRows,
             TakeoverRows: projectedTakeoverRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -102,7 +104,6 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: PKI Templates (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("forest_name", view.ForestName);
@@ -113,7 +114,8 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("code_signing_risk_only", codeSigningRiskOnly);
                 meta.Add("client_auth_risk_only", clientAuthRiskOnly);
                 meta.Add("include_takeover_rows", includeTakeoverRows);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

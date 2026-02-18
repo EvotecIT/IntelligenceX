@@ -173,7 +173,7 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
             Rows: projectedRows,
             Details: projectedDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -181,7 +181,6 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Registration Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("dns_failed_only", dnsFailedOnly);
@@ -197,8 +196,7 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 
     private static RegistrationPostureDetailRow MapDetail(string domainName, string category, RegistrationPostureService.DcRegItem item) {

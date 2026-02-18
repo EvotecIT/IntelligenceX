@@ -161,7 +161,7 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
             Rows: projectedRows,
             Details: projectedDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -169,7 +169,6 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: OU Protection Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("unprotected_only", unprotectedOnly);
@@ -183,7 +182,6 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

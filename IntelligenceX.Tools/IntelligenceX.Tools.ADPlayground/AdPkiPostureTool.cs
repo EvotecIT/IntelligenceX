@@ -61,11 +61,13 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         var insecureEndpointsOnly = ToolArgs.GetBoolean(arguments, "insecure_endpoints_only", defaultValue: false);
         var maxDetailsPerCategory = ToolArgs.GetCappedInt32(arguments, "max_details_per_category", 200, 1, Options.MaxResults);
 
-        PkiConfiguration posture;
-        try {
-            posture = PkiApi.GetPosture(forestName);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"PKI posture query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => PkiApi.GetPosture(forestName),
+                result: out PkiConfiguration posture,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "PKI posture query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var forest = posture.RocaConfirmed.ForestName;
@@ -133,7 +135,7 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
                 ? endpointDetails
                 : Array.Empty<EnrollmentHttpsRequiredEvaluator.Endpoint>());
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: summaryRows,
@@ -141,14 +143,14 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: PKI Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response,
             scanned: summaryRows.Count,
             metaMutate: meta => {
                 meta.Add("forest_name", forest);
                 meta.Add("include_details", includeDetails);
                 meta.Add("insecure_endpoints_only", insecureEndpointsOnly);
                 meta.Add("max_details_per_category", maxDetailsPerCategory);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

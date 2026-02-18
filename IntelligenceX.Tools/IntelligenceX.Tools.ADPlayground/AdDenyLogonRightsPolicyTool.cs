@@ -59,11 +59,13 @@ public sealed class AdDenyLogonRightsPolicyTool : ActiveDirectoryToolBase, ITool
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        DenyLogonRightsPolicyService.View view;
-        try {
-            view = DenyLogonRightsPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Deny-logon-rights policy query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => DenyLogonRightsPolicyService.Get(domainName),
+                result: out DenyLogonRightsPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Deny-logon-rights policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -88,7 +90,7 @@ public sealed class AdDenyLogonRightsPolicyTool : ActiveDirectoryToolBase, ITool
             Assignments: view.Assignments,
             Attribution: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -96,14 +98,14 @@ public sealed class AdDenyLogonRightsPolicyTool : ActiveDirectoryToolBase, ITool
             title: "Active Directory: Deny Logon Rights Policy (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

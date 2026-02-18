@@ -79,9 +79,8 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             return Task.FromResult(ToolResponse.Error("invalid_argument", "summary_by must be one of: site, server."));
         }
 
-        IReadOnlyList<SiteConnectionInfo> filtered;
-        try {
-            filtered = ConnectionsExplorer.Get(new ConnectionsQuery {
+        if (!TryExecute(
+                action: () => ConnectionsExplorer.Get(new ConnectionsQuery {
                 Server = ReadStringArrayOrNull(arguments?.GetArray("server")),
                 ServerMatch = ReadStringArrayOrNull(arguments?.GetArray("server_match")),
                 Site = ReadStringArrayOrNull(arguments?.GetArray("site")),
@@ -91,9 +90,12 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 Transport = ToTransportFilter(transport),
                 State = ToStateFilter(state),
                 Origin = ToOriginFilter(origin)
-            });
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Replication connections query failed: {ex.Message}"));
+            }),
+                result: out IReadOnlyList<SiteConnectionInfo> filtered,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "Replication connections query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         if (summary) {
@@ -114,7 +116,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 Connections: Array.Empty<SiteConnectionInfo>(),
                 SummaryRows: rows);
 
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            return Task.FromResult(BuildAutoTableResponse(
                 arguments: arguments,
                 model: summaryResult,
                 sourceRows: rows,
@@ -122,15 +124,13 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 title: "Active Directory: Replication Connections Summary (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: truncated,
-                response: out var summaryResponse,
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
                     meta.Add("summary_by", summaryBy);
                     meta.Add("total_filtered", filtered.Count);
                     meta.Add("max_results", maxResults);
-                });
-            return Task.FromResult(summaryResponse);
+                }));
         }
 
         var scannedConnections = filtered.Count;
@@ -149,7 +149,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             Connections: connectionRows,
             SummaryRows: Array.Empty<ConnectionSummary>());
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: rawResult,
             sourceRows: connectionRows,
@@ -157,13 +157,11 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             title: "Active Directory: Replication Connections (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncatedConnections,
-            response: out var response,
             scanned: scannedConnections,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 
     private static IReadOnlyList<string>? ReadStringArrayOrNull(JsonArray? array) {
@@ -214,3 +212,5 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         };
     }
 }
+
+

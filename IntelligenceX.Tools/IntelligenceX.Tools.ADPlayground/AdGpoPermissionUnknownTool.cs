@@ -96,7 +96,7 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
             WithResolutionErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.ResolutionError)),
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -104,7 +104,6 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
             title: "Active Directory: GPO Unknown Permissions (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -115,7 +114,6 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
                 if (!string.IsNullOrWhiteSpace(resolutionErrorContains)) {
                     meta.Add("resolution_error_contains", resolutionErrorContains);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

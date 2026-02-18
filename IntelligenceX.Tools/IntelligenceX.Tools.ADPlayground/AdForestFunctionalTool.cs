@@ -89,9 +89,9 @@ public sealed class AdForestFunctionalTool : ActiveDirectoryToolBase, ITool {
                     .ToArray();
             }
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error(
-                "query_failed",
-                $"Forest functional posture query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(
+                ex,
+                defaultMessage: "Forest functional posture query failed."));
         }
 
         var summaryRow = new ForestFunctionalSummaryRow(
@@ -114,7 +114,7 @@ public sealed class AdForestFunctionalTool : ActiveDirectoryToolBase, ITool {
             Forests: new[] { summaryRow },
             DomainOverview: domainRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Forests,
@@ -122,7 +122,6 @@ public sealed class AdForestFunctionalTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Forest Functional Posture (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response,
             scanned: result.Forests.Count,
             metaMutate: meta => {
                 meta.Add("include_domain_overview", includeDomainOverview);
@@ -130,7 +129,6 @@ public sealed class AdForestFunctionalTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

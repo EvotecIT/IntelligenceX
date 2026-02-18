@@ -93,7 +93,7 @@ public sealed class AdLogonUxUacPolicyTool : ActiveDirectoryToolBase, ITool {
             SecureDesktop: view.SecureDesktop,
             Attribution: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -101,14 +101,12 @@ public sealed class AdLogonUxUacPolicyTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Logon UX/UAC Policy (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

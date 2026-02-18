@@ -93,7 +93,7 @@ public sealed class AdTimeServiceConfigurationTool : ActiveDirectoryToolBase, IT
             NonPdc: view.NonPdc,
             Attribution: projectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -101,7 +101,6 @@ public sealed class AdTimeServiceConfigurationTool : ActiveDirectoryToolBase, IT
             title: "Active Directory: Time Service Configuration (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -110,7 +109,6 @@ public sealed class AdTimeServiceConfigurationTool : ActiveDirectoryToolBase, IT
                 meta.Add("pdc_acceptable", view.PdcAcceptable);
                 meta.Add("non_pdc_acceptable", view.NonPdcAcceptable);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

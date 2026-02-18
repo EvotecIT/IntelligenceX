@@ -59,11 +59,13 @@ public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
         var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        WdigestPolicyService.View view;
-        try {
-            view = WdigestPolicyService.Get(domainName);
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"WDigest policy query failed: {ex.Message}"));
+        if (!TryExecute(
+                action: () => WdigestPolicyService.Get(domainName),
+                result: out WdigestPolicyService.View view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "WDigest policy query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var attributionRows = includeAttribution
@@ -88,7 +90,7 @@ public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
             Disabled: view.Disabled,
             Attribution: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -96,14 +98,14 @@ public sealed class AdWdigestPolicyTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: WDigest Policy (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("include_attribution", includeAttribution);
                 meta.Add("configured_attribution_only", configuredAttributionOnly);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+

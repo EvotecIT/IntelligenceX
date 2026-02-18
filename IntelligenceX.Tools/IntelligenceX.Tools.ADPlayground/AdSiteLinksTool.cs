@@ -80,7 +80,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 ForestName: forestName,
                 Summary: summaryModel);
 
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            return Task.FromResult(BuildAutoTableResponse(
                 arguments: arguments,
                 model: summaryResult,
                 sourceRows: new[] { summaryModel },
@@ -88,15 +88,13 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 title: "Active Directory: Site Links Summary (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: false,
-                response: out var summaryResponse,
                 scanned: summaryModel.Total,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
                     if (!string.IsNullOrWhiteSpace(forestName)) {
                         meta.Add("forest_name", forestName);
                     }
-                });
-            return Task.FromResult(summaryResponse);
+                }));
         }
 
         var hasSchedule = ToolArgs.GetBoolean(arguments, "has_schedule", defaultValue: false);
@@ -173,7 +171,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
             SiteLinks: rows,
             ScheduleRows: Array.Empty<SiteLinkScheduleRow>());
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -181,7 +179,6 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Site Links (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
@@ -192,8 +189,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 
     private static bool TryParseRequiredOptions(

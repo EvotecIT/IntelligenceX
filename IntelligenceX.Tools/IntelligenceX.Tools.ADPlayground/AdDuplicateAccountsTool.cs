@@ -179,7 +179,7 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
             ConflictDetails: projectedConflictDetails,
             DuplicateDetails: projectedDuplicateDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -187,7 +187,6 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: Duplicate Accounts (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("include_conflict_dns", includeConflictDns);
@@ -203,7 +202,6 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

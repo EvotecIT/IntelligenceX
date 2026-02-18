@@ -98,7 +98,7 @@ public sealed class AdGpoInventoryHealthTool : ActiveDirectoryToolBase, ITool {
             AllSettingsDisabledCount: view.AllSettingsDisabled.Count,
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -106,14 +106,12 @@ public sealed class AdGpoInventoryHealthTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO Inventory Health (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("slice", slice);
                 meta.Add("gpos_enumerated", view.GposEnumerated);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

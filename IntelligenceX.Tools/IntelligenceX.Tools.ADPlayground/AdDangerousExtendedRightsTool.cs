@@ -137,7 +137,7 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
             Domains: projectedRows,
             DomainDetails: projectedDetails);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: projectedRows,
@@ -145,7 +145,6 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
             title: "Active Directory: Dangerous Extended Rights (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("include_findings", includeFindings);
@@ -158,7 +157,6 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

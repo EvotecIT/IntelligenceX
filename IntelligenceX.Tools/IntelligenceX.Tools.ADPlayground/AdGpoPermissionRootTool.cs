@@ -107,7 +107,7 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
             CreatePermissionCount: filtered.Count(static row => string.Equals(row.Permission, "GpoRootCreate", StringComparison.OrdinalIgnoreCase)),
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -115,7 +115,6 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: GPO Root Permissions (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
@@ -126,7 +125,6 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(permission)) {
                     meta.Add("permission", permission);
                 }
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

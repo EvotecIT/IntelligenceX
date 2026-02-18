@@ -81,7 +81,7 @@ public sealed class AdGpoBlockedInheritanceTool : ActiveDirectoryToolBase, ITool
             BlockedCount: view.Items.Count(static row => row.BlockedInheritance),
             Rows: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -89,14 +89,12 @@ public sealed class AdGpoBlockedInheritanceTool : ActiveDirectoryToolBase, ITool
             title: "Active Directory: GPO Blocked Inheritance (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("domain_name", domainName);
                 meta.Add("only_blocked", onlyBlocked);
                 meta.Add("max_rows", maxRows);
                 meta.Add("max_results", maxResults);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }

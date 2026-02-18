@@ -63,13 +63,15 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
         var scavengingEnabledOnly = ToolArgs.GetBoolean(arguments, "scavenging_enabled_only", defaultValue: false);
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
 
-        IReadOnlyList<DnsZoneScavengingInfo> allZones;
-        try {
-            allZones = new DnsScavengingAnalyzer()
+        if (!TryExecute(
+                action: () => new DnsScavengingAnalyzer()
                 .GetScavengingSummary(dnsServer, cancellationToken)
-                .ToArray();
-        } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"DNS scavenging query failed: {ex.Message}"));
+                .ToArray(),
+                result: out IReadOnlyList<DnsZoneScavengingInfo> allZones,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "DNS scavenging query failed.",
+                invalidOperationErrorCode: "query_failed")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = allZones
@@ -96,7 +98,7 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
             TotalMismatchZones: allZones.Count(static zone => !zone.MatchesServer),
             Zones: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
@@ -104,7 +106,6 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
             title: "Active Directory: DNS Scavenging (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("dns_server", dnsServer);
@@ -112,7 +113,8 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("mismatched_only", mismatchedOnly);
                 meta.Add("stale_only", staleOnly);
                 meta.Add("scavenging_enabled_only", scavengingEnabledOnly);
-            });
-        return Task.FromResult(response);
+            }));
     }
 }
+
+
