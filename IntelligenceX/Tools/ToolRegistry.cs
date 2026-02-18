@@ -268,7 +268,8 @@ public sealed class ToolRegistry {
                         }
                     } else {
                         ToolWriteGovernanceResult authorization = _owner.WriteGovernanceRuntime.Authorize(request);
-                        ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, authorization);
+                        ToolWriteGovernanceResult normalizedAuthorization = NormalizeDeniedAuthorizationResult(authorization);
+                        ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, normalizedAuthorization);
                         if (appendFailure is not null) {
                             return CreateGovernanceErrorOutput(
                                 appendFailure,
@@ -276,9 +277,9 @@ public sealed class ToolRegistry {
                                 $"Write governance audit append failed for tool '{_definition.Name}'.");
                         }
 
-                        if (!authorization.IsAuthorized) {
+                        if (!normalizedAuthorization.IsAuthorized) {
                             return CreateGovernanceErrorOutput(
-                                authorization,
+                                normalizedAuthorization,
                                 ToolWriteGovernanceErrorCodes.WriteGovernanceDenied,
                                 $"Write authorization denied for tool '{_definition.Name}'.");
                         }
@@ -292,8 +293,42 @@ public sealed class ToolRegistry {
         private ToolWriteGovernanceRequest CreateGovernanceRequest(
             JsonObject? arguments,
             ToolWriteGovernanceContract contract) {
-            string executionId = ReadArgument(arguments, ToolWriteGovernanceArgumentNames.ExecutionId);
-            string auditCorrelationId = ReadArgument(arguments, ToolWriteGovernanceArgumentNames.AuditCorrelationId);
+            string executionIdArgumentName = ToolWriteGovernanceArgumentNames.ExecutionId;
+            string actorIdArgumentName = ToolWriteGovernanceArgumentNames.ActorId;
+            string changeReasonArgumentName = ToolWriteGovernanceArgumentNames.ChangeReason;
+            string rollbackPlanIdArgumentName = ToolWriteGovernanceArgumentNames.RollbackPlanId;
+            string rollbackProviderIdArgumentName = ToolWriteGovernanceArgumentNames.RollbackProviderId;
+            string auditCorrelationIdArgumentName = ToolWriteGovernanceArgumentNames.AuditCorrelationId;
+
+            if (_owner.WriteGovernanceRuntime is ToolWriteGovernanceStrictRuntime strictRuntime) {
+                executionIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.ExecutionIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.ExecutionId);
+                actorIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.ActorIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.ActorId);
+                changeReasonArgumentName = NormalizeArgumentName(
+                    strictRuntime.ChangeReasonArgumentName,
+                    ToolWriteGovernanceArgumentNames.ChangeReason);
+                rollbackPlanIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.RollbackPlanIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.RollbackPlanId);
+                rollbackProviderIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.RollbackProviderIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.RollbackProviderId);
+                auditCorrelationIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.AuditCorrelationIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.AuditCorrelationId);
+            }
+
+            string executionId = ReadArgumentWithFallback(
+                arguments,
+                ToolWriteGovernanceArgumentNames.ExecutionId,
+                executionIdArgumentName);
+            string auditCorrelationId = ReadArgumentWithFallback(
+                arguments,
+                ToolWriteGovernanceArgumentNames.AuditCorrelationId,
+                auditCorrelationIdArgumentName);
             if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
                 auditCorrelationId = executionId;
             }
@@ -305,10 +340,22 @@ public sealed class ToolRegistry {
                 Arguments = arguments,
                 ConfirmationArgumentName = contract.ConfirmationArgumentName,
                 ExecutionId = executionId,
-                ActorId = ReadArgument(arguments, ToolWriteGovernanceArgumentNames.ActorId),
-                ChangeReason = ReadArgument(arguments, ToolWriteGovernanceArgumentNames.ChangeReason),
-                RollbackPlanId = ReadArgument(arguments, ToolWriteGovernanceArgumentNames.RollbackPlanId),
-                RollbackProviderId = ReadArgument(arguments, ToolWriteGovernanceArgumentNames.RollbackProviderId),
+                ActorId = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.ActorId,
+                    actorIdArgumentName),
+                ChangeReason = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.ChangeReason,
+                    changeReasonArgumentName),
+                RollbackPlanId = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.RollbackPlanId,
+                    rollbackPlanIdArgumentName),
+                RollbackProviderId = ReadArgumentWithFallback(
+                    arguments,
+                    ToolWriteGovernanceArgumentNames.RollbackProviderId,
+                    rollbackProviderIdArgumentName),
                 AuditCorrelationId = auditCorrelationId
             };
         }
@@ -380,6 +427,57 @@ public sealed class ToolRegistry {
 
             string? value = arguments.GetString(argumentName);
             return value?.Trim() ?? string.Empty;
+        }
+
+        private static string ReadArgumentWithFallback(
+            JsonObject? arguments,
+            string primaryArgumentName,
+            string fallbackArgumentName) {
+            string primaryValue = ReadArgument(arguments, primaryArgumentName);
+            if (!string.IsNullOrWhiteSpace(primaryValue)) {
+                return primaryValue;
+            }
+
+            if (string.Equals(primaryArgumentName, fallbackArgumentName, StringComparison.Ordinal)) {
+                return primaryValue;
+            }
+
+            return ReadArgument(arguments, fallbackArgumentName);
+        }
+
+        private static string NormalizeArgumentName(string candidate, string fallback) {
+            if (string.IsNullOrWhiteSpace(candidate)) {
+                return fallback;
+            }
+
+            return candidate.Trim();
+        }
+
+        private ToolWriteGovernanceResult NormalizeDeniedAuthorizationResult(ToolWriteGovernanceResult authorization) {
+            if (authorization.IsAuthorized) {
+                return authorization;
+            }
+
+            if (!string.IsNullOrWhiteSpace(authorization.ErrorCode) && !string.IsNullOrWhiteSpace(authorization.Error)) {
+                return authorization;
+            }
+
+            return new ToolWriteGovernanceResult {
+                IsAuthorized = false,
+                ErrorCode = string.IsNullOrWhiteSpace(authorization.ErrorCode)
+                    ? ToolWriteGovernanceErrorCodes.WriteGovernanceDenied
+                    : authorization.ErrorCode,
+                Error = string.IsNullOrWhiteSpace(authorization.Error)
+                    ? $"Write authorization denied for tool '{_definition.Name}'."
+                    : authorization.Error,
+                MissingRequirements = authorization.MissingRequirements,
+                Hints = authorization.Hints,
+                IsTransient = authorization.IsTransient,
+                ExecutionId = authorization.ExecutionId,
+                AuditCorrelationId = authorization.AuditCorrelationId,
+                ImmutableAuditProviderId = authorization.ImmutableAuditProviderId,
+                RollbackProviderId = authorization.RollbackProviderId
+            };
         }
 
         private static string CreateGovernanceErrorOutput(
