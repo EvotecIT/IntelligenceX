@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -48,8 +49,8 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?m)^(?<indent>\s*)-(?=\*\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex LineStartMissingSpaceAfterBulletRegex = new(
-        @"(?m)^(?<indent>\s*)-(?=[\p{L}\p{N}`])",
+    private static readonly Regex LineStartHostLabelBulletRegex = new(
+        @"(?m)^(?<indent>\s*)-(?=[A-Z]{2,}\d+\b)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex SingleStarMetricRegex = new(
@@ -58,6 +59,14 @@ internal static class TranscriptMarkdownNormalizer {
 
     private static readonly Regex SignalOuterStrongLineRegex = new(
         @"(?m)^(?<prefix>\s*-\s+Signal\s+\*\*)(?<body>[^\r\n]*)(?<suffix>\*\*)(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex InlineCodeSpanRegex = new(
+        @"`[^`\r\n]*`",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NestedStrongSpanRegex = new(
+        @"\*\*(?<inner>[^*\r\n]+)\*\*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex StatusCollapsedLineRegex = new(
@@ -131,7 +140,8 @@ internal static class TranscriptMarkdownNormalizer {
         }
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
-            var value = segment;
+            var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans);
+            var value = protectedInlineCode;
             value = EmojiWordJoinRegex.Replace(value, "$1 ");
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
@@ -144,7 +154,7 @@ internal static class TranscriptMarkdownNormalizer {
             });
             value = MissingSpaceBeforeBoldMetricRegex.Replace(value, "- ");
             value = LineStartMissingSpaceBeforeBoldBulletRegex.Replace(value, "${indent}- ");
-            value = LineStartMissingSpaceAfterBulletRegex.Replace(value, "${indent}- ");
+            value = LineStartHostLabelBulletRegex.Replace(value, "${indent}- ");
             value = SingleStarMetricRegex.Replace(value, "- **");
             value = SignalOuterStrongLineRegex.Replace(value, static match => {
                 var body = match.Groups["body"].Value;
@@ -152,7 +162,11 @@ internal static class TranscriptMarkdownNormalizer {
                     return match.Value;
                 }
 
-                var cleaned = body.Replace("**", string.Empty, StringComparison.Ordinal);
+                var cleaned = FlattenNestedStrongOutsideInlineCode(body);
+                if (cleaned.Equals(body, StringComparison.Ordinal)) {
+                    return match.Value;
+                }
+
                 return match.Groups["prefix"].Value + cleaned + match.Groups["suffix"].Value + match.Groups["tail"].Value;
             });
             value = CollapsedBulletRegex.Replace(value, "\n- **");
@@ -175,7 +189,7 @@ internal static class TranscriptMarkdownNormalizer {
             value = LeadingWhitespaceInsideStrongOpenRegex.Replace(value, "**");
             value = ExpandCollapsedMetricLines(value);
             value = ConvertLegacyMetricMarkdown(value);
-            return value;
+            return RestoreInlineCodeSpans(value, codeSpans);
         });
     }
 
@@ -232,6 +246,64 @@ internal static class TranscriptMarkdownNormalizer {
                 var value = match.Groups["value"].Value.Trim();
                 return value.Length == 0 ? indent + label : indent + label + " **" + value + "**";
             });
+    }
+
+    private static string FlattenNestedStrongOutsideInlineCode(string body) {
+        if (string.IsNullOrEmpty(body) || !body.Contains("**", StringComparison.Ordinal)) {
+            return body;
+        }
+
+        var protectedBody = ProtectInlineCodeSpans(body, out var codeSpans);
+        var flattened = FlattenNestedStrongSpans(protectedBody);
+        return RestoreInlineCodeSpans(flattened, codeSpans);
+    }
+
+    private static string FlattenNestedStrongSpans(string input) {
+        if (string.IsNullOrEmpty(input) || !input.Contains("**", StringComparison.Ordinal)) {
+            return input;
+        }
+
+        string current = input;
+        while (true) {
+            var next = NestedStrongSpanRegex.Replace(
+                current,
+                static match => match.Groups["inner"].Value);
+            if (next.Equals(current, StringComparison.Ordinal)) {
+                return next;
+            }
+
+            current = next;
+        }
+    }
+
+    private static string ProtectInlineCodeSpans(string input, out List<string> codeSpans) {
+        var capturedCodeSpans = new List<string>();
+        if (string.IsNullOrEmpty(input) || input.IndexOf('`', StringComparison.Ordinal) < 0) {
+            codeSpans = capturedCodeSpans;
+            return input;
+        }
+
+        var protectedInput = InlineCodeSpanRegex.Replace(input, match => {
+            var index = capturedCodeSpans.Count;
+            capturedCodeSpans.Add(match.Value);
+            return "\u001FIXCODE" + index.ToString() + "\u001E";
+        });
+
+        codeSpans = capturedCodeSpans;
+        return protectedInput;
+    }
+
+    private static string RestoreInlineCodeSpans(string input, IReadOnlyList<string> codeSpans) {
+        if (codeSpans.Count == 0 || string.IsNullOrEmpty(input)) {
+            return input;
+        }
+
+        var restored = input;
+        for (var i = 0; i < codeSpans.Count; i++) {
+            restored = restored.Replace("\u001FIXCODE" + i.ToString() + "\u001E", codeSpans[i], StringComparison.Ordinal);
+        }
+
+        return restored;
     }
 
     private static string ApplyTransformOutsideFencedCodeBlocks(string input, Func<string, string> transform) {

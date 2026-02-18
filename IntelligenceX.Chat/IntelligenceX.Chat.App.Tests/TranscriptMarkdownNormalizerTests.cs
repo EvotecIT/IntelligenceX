@@ -235,4 +235,30 @@ public sealed class TranscriptMarkdownNormalizerTests {
         Assert.Equal("- Signal **AD1 has very high `7034/7023` volume, mostly from Service Control Manager.**", normalized);
         Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures dash-prefixed command flags and numeric literals are not rewritten as malformed list bullets.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotRewriteDashPrefixedFlagsOrNumbers() {
+        var text = "-X POST\n-1 means one\n-k keepalive";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures signal-line cleanup preserves literal double-asterisk tokens inside inline code spans.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesLiteralDoubleAsterisksInsideSignalCodeSpan() {
+        var text = "- Signal **pattern `a**b` seen, mostly from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("`a**b`", normalized, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+        Assert.Equal("- Signal **pattern `a**b` seen, mostly from Service Control Manager.**", normalized);
+    }
 }
