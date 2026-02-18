@@ -21,6 +21,12 @@
     ]
   },
   {
+    "title": "Project Ops",
+    "items": [
+      { "title": "Overview", "href": "/docs/project-ops/overview/" }
+    ]
+  },
+  {
     "title": "IX Chat",
     "items": [
       { "title": "Overview", "href": "/docs/chat/overview/" },

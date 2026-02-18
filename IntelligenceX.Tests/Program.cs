@@ -469,6 +469,8 @@ internal static partial class Program {
         failed += Run("Todo issue review no-longer-applicable classification", TestIssueReviewAssessIssueForApplicabilityMarksResolvedInfraBlockerAsNoLongerApplicable);
         failed += Run("Todo issue review consecutive candidate gate", TestIssueReviewAssessIssueForApplicabilityRequiresConsecutiveCandidatesForAutoClose);
         failed += Run("Todo issue review allow/deny label policy", TestIssueReviewAssessIssueForApplicabilityRespectsAllowAndDenyLabelPolicy);
+        failed += Run("Todo issue review action signals downgrade close proposal", TestIssueReviewActionSignalsDowngradeCloseProposalWhenReopenedOrTooFresh);
+        failed += Run("Todo issue review action signals keep close proposal", TestIssueReviewActionSignalsKeepCloseProposalWhenSignalsStrong);
         failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
         failed += Run("Todo vision check explicit reject policy precedence", TestVisionCheckExplicitRejectPolicyTakesPrecedence);

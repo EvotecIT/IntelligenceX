@@ -17,6 +17,10 @@ on:
         description: "Consecutive no-longer-applicable runs required before auto-close"
         required: false
         default: "2"
+      min_auto_close_confidence:
+        description: "Minimum confidence (0-100) required before auto-close"
+        required: false
+        default: "80"
       apply_close:
         description: "Apply auto-close to eligible candidates"
         required: false
@@ -81,6 +85,7 @@ jobs:
           MAX_ISSUES="${{ github.event.inputs.max_issues }}"
           STALE_DAYS="${{ github.event.inputs.stale_days }}"
           MIN_CONSECUTIVE="${{ github.event.inputs.min_consecutive_candidates }}"
+          MIN_CONFIDENCE="${{ github.event.inputs.min_auto_close_confidence }}"
           APPLY_CLOSE="${{ github.event.inputs.apply_close }}"
           CONFIRM_APPLY_CLOSE="${{ github.event.inputs.confirm_apply_close }}"
           CLOSE_REASON="${{ github.event.inputs.close_reason }}"
@@ -90,6 +95,7 @@ jobs:
           if [ -z "$MAX_ISSUES" ]; then MAX_ISSUES="500"; fi
           if [ -z "$STALE_DAYS" ]; then STALE_DAYS="14"; fi
           if [ -z "$MIN_CONSECUTIVE" ]; then MIN_CONSECUTIVE="2"; fi
+          if [ -z "$MIN_CONFIDENCE" ]; then MIN_CONFIDENCE="80"; fi
           if [ -z "$CLOSE_REASON" ]; then CLOSE_REASON="completed"; fi
           if [ -z "$APPLY_CLOSE" ]; then APPLY_CLOSE="false"; fi
 
@@ -99,6 +105,7 @@ jobs:
             "--max-issues" "$MAX_ISSUES"
             "--stale-days" "$STALE_DAYS"
             "--min-consecutive-candidates" "$MIN_CONSECUTIVE"
+            "--min-auto-close-confidence" "$MIN_CONFIDENCE"
             "--state-path" "${ISSUE_REVIEW_STATE_PATH}"
             "--out" "artifacts/triage/ix-issue-review.json"
             "--summary" "artifacts/triage/ix-issue-review.md"

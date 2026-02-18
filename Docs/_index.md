@@ -26,6 +26,12 @@ Welcome to the IntelligenceX documentation.
 - [Reviewer Project Bootstrap and Sync](/docs/reviewer/project-bootstrap-sync/)
 - [Reviewer Project Views and Operations](/docs/reviewer/project-views-and-ops/)
 
+## Project Ops
+
+- [Project Ops Overview](/docs/project-ops/overview/)
+- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
+- [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
+
 ## CLI Tools
 
 - [CLI Overview](/docs/cli/overview/)
