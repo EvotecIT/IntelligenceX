@@ -288,4 +288,20 @@ public sealed class TranscriptMarkdownNormalizerTests {
         Assert.Contains("`a**b`", normalized, System.StringComparison.Ordinal);
         Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures repeated normalization runs remain stable once malformed transcript artifacts are repaired.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_IsIdempotentForSignalAndBulletArtifacts() {
+        var text =
+            "-AD1 starkes Muster\n"
+            + "-** AD2** eher Secure-Channel\n"
+            + "- Signal **pattern `a**b` seen, mostly from **Service Control Manager**.**";
+
+        var once = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        var twice = TranscriptMarkdownNormalizer.NormalizeForRendering(once);
+
+        Assert.Equal(once, twice);
+    }
 }

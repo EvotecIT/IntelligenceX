@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace IntelligenceX.Chat.App.Rendering;
 
@@ -75,7 +76,7 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
 
     private static readonly Regex InlineCodePlaceholderRegex = new(
-        "\u001FIXCODE_(?<prefix>[0-9a-f]{32})_(?<index>\\d+)\u001E",
+        "\u001FIXCODE_(?<prefix>[0-9a-f]{8})_(?<index>\\d+)\u001E",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NestedStrongSpanRegex = new(
@@ -145,6 +146,8 @@ internal static class TranscriptMarkdownNormalizer {
     private static readonly Regex OrderedItemStrongMissingCloseBeforeParenRegex = new(
         @"(?m)^(?<lead>\s*\d+\.\s+)\*\*(?<title>[^*\r\n()]+)\((?<detail>[^)\r\n]+)\)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static int InlineCodePlaceholderCounter;
 
     public static string NormalizeForRendering(string? text) {
         var normalized = text ?? string.Empty;
@@ -298,7 +301,9 @@ internal static class TranscriptMarkdownNormalizer {
             tokenPrefix = string.Empty;
             return input;
         }
-        var prefix = "\u001FIXCODE_" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + "_";
+        var prefixId = unchecked((uint)Interlocked.Increment(ref InlineCodePlaceholderCounter))
+            .ToString("x8", CultureInfo.InvariantCulture);
+        var prefix = "\u001FIXCODE_" + prefixId + "_";
 
         var protectedInput = InlineCodeSpanRegex.Replace(input, match => {
             var index = capturedCodeSpans.Count;
@@ -321,6 +326,8 @@ internal static class TranscriptMarkdownNormalizer {
             return input;
         }
 
+        // Keep placeholder replacement strictly opt-in for the current call's token prefix.
+        // This avoids mutating user text that may coincidentally match the placeholder shape.
         return InlineCodePlaceholderRegex.Replace(input, match => {
             if (!match.Value.StartsWith(tokenPrefix, StringComparison.Ordinal)) {
                 return match.Value;
