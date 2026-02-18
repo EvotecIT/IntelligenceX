@@ -25,9 +25,7 @@ jobs:
     uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
     with:
       runs_on: '["self-hosted","ubuntu"]'
-      reviewer_source: release
-      reviewer_release_repo: EvotecIT/github-actions
-      reviewer_release_tag: latest
+      reviewer_source: source
       
       
       repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
@@ -35,6 +33,10 @@ jobs:
       provider: openai
       model: gpt-5.3-codex
       openai_transport: native
+      review_config_path: .intelligencex/reviewer.json
+      mode: hybrid
+      length: medium
+      style: direct
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true

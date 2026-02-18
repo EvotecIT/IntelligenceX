@@ -40,8 +40,8 @@ intelligencex todo sync-bot-feedback --repo EvotecIT/IntelligenceX
 # 2) Build triage index artifacts
 intelligencex todo build-triage-index --repo EvotecIT/IntelligenceX
 
-# 3) Review infra blocker issue applicability (dry-run)
-intelligencex todo issue-review --repo EvotecIT/IntelligenceX
+# 3) Review infra blocker issue applicability (dry-run, with streak state)
+intelligencex todo issue-review --repo EvotecIT/IntelligenceX --min-consecutive-candidates 2 --state-path artifacts/triage/ix-issue-review-state.json
 
 # 4) Check backlog against VISION.md
 intelligencex todo vision-check --repo EvotecIT/IntelligenceX --vision VISION.md
@@ -69,6 +69,15 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 | `project-bootstrap` | First-run bootstrap for project + workflow + vision scaffold | Project config + workflow + `VISION.md` scaffold |
 | `project-view-checklist` | Build checklist of recommended project views | `artifacts/triage/ix-project-view-checklist.md` |
 | `project-view-apply` | Build deterministic plan to apply missing views | `artifacts/triage/ix-project-view-apply.md` |
+
+## Automation workflow
+
+- Workflow: `.github/workflows/issue-review.yml`
+- Schedule: nightly dry-run (no auto-close by default)
+- Manual auto-close: use `workflow_dispatch` with:
+  - `apply_close=true`
+  - `confirm_apply_close=CLOSE_ISSUES`
+  - optional label policy (`allow_labels`, `deny_labels`)
 
 ## Permissions and safety
 
