@@ -15,6 +15,7 @@ These commands are assistive. They are not an autonomous production decision sys
 - Bot-review checklist sync into `TODO.md` (`sync-bot-feedback`).
 - Backlog indexing and duplicate clustering across open PRs/issues (`build-triage-index`).
 - Scope alignment checks against `VISION.md` (`vision-check`).
+- Issue applicability review for stale/no-longer-applicable infra blockers (`issue-review`).
 - GitHub Project field sync for triage at scale (`project-init`, `project-sync`, `project-bootstrap`).
 - Maintainer-assist view checklist and apply plan generation (`project-view-checklist`, `project-view-apply`).
 - Signal quality grading (`high`/`medium`/`low`) to separate strong recommendations from weak-context items.
@@ -24,10 +25,11 @@ These commands are assistive. They are not an autonomous production decision sys
 
 1. Pull explicit bot checklist items into `TODO.md`.
 2. Build triage index artifacts.
-3. Run vision alignment check.
-4. Bootstrap or initialize GitHub Project.
-5. Sync triage + vision into project fields.
-6. Generate project view checklist and apply plan for maintainers.
+3. Run issue applicability review.
+4. Run vision alignment check.
+5. Bootstrap or initialize GitHub Project.
+6. Sync triage + vision into project fields.
+7. Generate project view checklist and apply plan for maintainers.
 
 ## End-to-end example
 
@@ -38,16 +40,19 @@ intelligencex todo sync-bot-feedback --repo EvotecIT/IntelligenceX
 # 2) Build triage index artifacts
 intelligencex todo build-triage-index --repo EvotecIT/IntelligenceX
 
-# 3) Check backlog against VISION.md
+# 3) Review infra blocker issue applicability (dry-run)
+intelligencex todo issue-review --repo EvotecIT/IntelligenceX
+
+# 4) Check backlog against VISION.md
 intelligencex todo vision-check --repo EvotecIT/IntelligenceX --vision VISION.md
 
-# 4) Bootstrap project + workflow + vision scaffold
+# 5) Bootstrap project + workflow + vision scaffold
 intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT
 
-# 5) Sync triage + vision into project fields
+# 6) Sync triage + vision into project fields
 intelligencex todo project-sync --config artifacts/triage/ix-project-config.json --max-items 500
 
-# 6) Generate a maintainer view checklist
+# 7) Generate a maintainer view checklist
 intelligencex todo project-view-checklist --config artifacts/triage/ix-project-config.json --create-issue
 ```
 
@@ -57,6 +62,7 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 | --- | --- | --- |
 | `sync-bot-feedback` | Extract explicit bot checklist tasks and keep them tracked in `TODO.md` | Updated `TODO.md` (optional GitHub issues) |
 | `build-triage-index` | Build PR/issue inventory, duplicate clusters, and best PR ranking | `artifacts/triage/ix-triage-index.json`, `.md` |
+| `issue-review` | Detect stale/no-longer-applicable infra blocker issues and optionally auto-close | `artifacts/triage/ix-issue-review.json`, `.md` |
 | `vision-check` | Compare backlog against `VISION.md` scope | `artifacts/triage/ix-vision-check.json`, `.md` |
 | `project-init` | Create/initialize GitHub Project fields + metadata | `artifacts/triage/ix-project-config.json` |
 | `project-sync` | Push triage/vision signals to project items and optional labels/comments | Project field updates, optional comment/label updates |

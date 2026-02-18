@@ -187,19 +187,26 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         List<Rule> discoveredRules;
         var usingExternalDirectory = !string.IsNullOrWhiteSpace(powerShellRulesDirectory);
         HashSet<string>? builtinRuleNames = null;
-        try {
-            runner = new TestimoRunner();
-            discoveredRules = await runner.DiscoverRulesAsync(
-                includeDisabled: true,
-                ct: cancellationToken,
-                powerShellRulesDirectory: powerShellRulesDirectory).ConfigureAwait(false);
-            if (usingExternalDirectory) {
-                builtinRuleNames = await TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync(cancellationToken).ConfigureAwait(false);
+        runner = new TestimoRunner();
+        var discovery = await TryDiscoverRulesAsync(
+            runner,
+            powerShellRulesDirectory,
+            cancellationToken,
+            defaultErrorMessage: "TestimoX rule discovery failed.").ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(discovery.ErrorResponse)) {
+            return discovery.ErrorResponse!;
+        }
+
+        discoveredRules = discovery.Rules ?? new List<Rule>();
+        if (usingExternalDirectory) {
+            var builtinDiscovery = await TryDiscoverBuiltinRuleNamesAsync(
+                cancellationToken,
+                defaultErrorMessage: "TestimoX builtin rule discovery failed.").ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(builtinDiscovery.ErrorResponse)) {
+                return builtinDiscovery.ErrorResponse!;
             }
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"TestimoX rule discovery failed: {ex.Message}");
+
+            builtinRuleNames = builtinDiscovery.RuleNames ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         var availableByName = discoveredRules
@@ -224,51 +231,25 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         }
 
         if (hasSelectorFilters || runAllEnabledWhenNoSelection) {
-            IEnumerable<Rule> candidates = discoveredRules;
-
-            if (!includeDisabledForSelection) {
-                candidates = candidates.Where(static x => x.Enable);
-            }
-            if (!includeHiddenForSelection) {
-                candidates = candidates.Where(static x => x.Visibility != RuleVisibility.Hidden);
-            }
-            if (!includeDeprecatedForSelection) {
-                candidates = candidates.Where(static x => !x.IsDeprecated);
-            }
+            IEnumerable<Rule> candidates = TestimoXRuleSelectionHelper.ApplyVisibilityFilters(
+                discoveredRules,
+                includeDisabled: includeDisabledForSelection,
+                includeHidden: includeHiddenForSelection,
+                includeDeprecated: includeDeprecatedForSelection);
 
             if (ruleNamePatterns.Count > 0) {
                 candidates = candidates.Where(rule => TestimoXRuleSelectionHelper.MatchesAnyPattern(rule, ruleNamePatterns));
             }
 
-            if (!string.IsNullOrWhiteSpace(searchText)) {
-                var term = searchText.Trim();
-                candidates = candidates.Where(rule =>
-                    TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.Name, term) ||
-                    TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.DisplayName, term) ||
-                    TestimoXRuleSelectionHelper.ContainsIgnoreCase(rule.Description, term));
-            }
-
-            if (requestedCategories.Count > 0) {
-                var requested = new HashSet<string>(requestedCategories, StringComparer.OrdinalIgnoreCase);
-                candidates = candidates.Where(rule => rule.Category.Any(cat => requested.Contains(cat.ToString())));
-            }
-
-            if (requestedTags.Count > 0) {
-                var requested = new HashSet<string>(requestedTags, StringComparer.OrdinalIgnoreCase);
-                candidates = candidates.Where(rule => rule.Tags.Any(tag => requested.Contains(tag)));
-            }
-
-            if (sourceTypeFilter is { Count: > 0 }) {
-                candidates = candidates.Where(rule => TestimoXRuleSelectionHelper.MatchesSourceType(rule, sourceTypeFilter));
-            }
-
-            if (!string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginAny, StringComparison.OrdinalIgnoreCase)) {
-                candidates = candidates.Where(rule =>
-                    string.Equals(
-                        TestimoXRuleSelectionHelper.ResolveRuleOrigin(rule, usingExternalDirectory, builtinRuleNames),
-                        ruleOrigin,
-                        StringComparison.OrdinalIgnoreCase));
-            }
+            candidates = TestimoXRuleSelectionHelper.ApplySharedFilters(
+                candidates,
+                searchText,
+                requestedCategories,
+                requestedTags,
+                sourceTypeFilter,
+                ruleOrigin,
+                usingExternalDirectory,
+                builtinRuleNames);
 
             foreach (var rule in candidates.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)) {
                 if (!string.IsNullOrWhiteSpace(rule.Name)) {
@@ -332,7 +313,7 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
-            return ToolResponse.Error("execution_failed", $"TestimoX execution failed: {ex.Message}");
+            return ErrorFromException(ex, defaultMessage: "TestimoX execution failed.", fallbackErrorCode: "execution_failed");
         }
 
         var completed = (run.Engine.RulesCompleted ?? new List<RuleComplete>())

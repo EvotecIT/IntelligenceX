@@ -13,42 +13,6 @@ on:
         description: 'Pull request number for manual runs'
         required: false
         default: ''
-      openai_account_id:
-        description: 'Override OpenAI account id for this run'
-        required: false
-        default: ''
-      openai_account_ids:
-        description: 'Override ordered OpenAI account ids (CSV) for this run'
-        required: false
-        default: ''
-      openai_account_rotation:
-        description: 'Override OpenAI account rotation (first-available|round-robin|sticky) for this run'
-        required: false
-        default: ''
-      openai_account_failover:
-        description: 'Override OpenAI account failover (true|false) for this run'
-        required: false
-        default: ''
-      usage_budget_guard:
-        description: 'Override usage budget guard (true|false) for this run'
-        required: false
-        default: ''
-      usage_budget_allow_credits:
-        description: 'Override credits budget allowance (true|false) for this run'
-        required: false
-        default: ''
-      usage_budget_allow_weekly_limit:
-        description: 'Override weekly-limit budget allowance (true|false) for this run'
-        required: false
-        default: ''
-      analysis_run_strict:
-        description: 'Force strict analyze run exit behavior for this run (true|false)'
-        required: false
-        default: ''
-      analysis_packs:
-        description: 'Override analysis packs for this run (CSV: e.g. all-50,all-security-default)'
-        required: false
-        default: ''
 
 jobs:
   # INTELLIGENCEX:BEGIN
@@ -71,13 +35,6 @@ jobs:
       provider: openai
       model: gpt-5.3-codex
       openai_transport: native
-      openai_account_id: ${{ inputs.openai_account_id }}
-      openai_account_ids: ${{ inputs.openai_account_ids }}
-      openai_account_rotation: ${{ inputs.openai_account_rotation }}
-      openai_account_failover: ${{ inputs.openai_account_failover }}
-      usage_budget_guard: ${{ inputs.usage_budget_guard }}
-      usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
-      usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true

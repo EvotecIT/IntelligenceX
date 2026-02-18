@@ -1,5 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Tools.Common;
+using TestimoX.Definitions;
+using TestimoX.Execution;
 
 namespace IntelligenceX.Tools.TestimoX;
 
@@ -18,5 +23,64 @@ public abstract class TestimoXToolBase : ToolBase {
     protected TestimoXToolBase(TestimoXToolOptions options) {
         Options = options ?? throw new ArgumentNullException(nameof(options));
         Options.Validate();
+    }
+
+    /// <summary>
+    /// Maps common runtime exceptions for TestimoX tools to stable tool error envelopes.
+    /// </summary>
+    protected static string ErrorFromException(
+        Exception exception,
+        string defaultMessage = "TestimoX operation failed.",
+        string fallbackErrorCode = "query_failed") {
+        return ToolExceptionMapper.ErrorFromException(
+            exception,
+            defaultMessage: defaultMessage,
+            unauthorizedMessage: "Access denied while executing TestimoX operations.",
+            timeoutMessage: "TestimoX operation timed out.",
+            fallbackErrorCode: fallbackErrorCode,
+            invalidOperationErrorCode: "invalid_argument");
+    }
+
+    /// <summary>
+    /// Discovers TestimoX rules with consistent cancellation and error-envelope behavior.
+    /// </summary>
+    protected static async Task<(List<Rule>? Rules, string? ErrorResponse)> TryDiscoverRulesAsync(
+        TestimoRunner runner,
+        string? powerShellRulesDirectory,
+        CancellationToken cancellationToken,
+        string defaultErrorMessage = "TestimoX rule discovery failed.") {
+        if (runner is null) {
+            throw new ArgumentNullException(nameof(runner));
+        }
+
+        try {
+            var discovered = await runner.DiscoverRulesAsync(
+                includeDisabled: true,
+                ct: cancellationToken,
+                powerShellRulesDirectory: powerShellRulesDirectory).ConfigureAwait(false);
+            return (discovered, null);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            return (null, ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode: "query_failed"));
+        }
+    }
+
+    /// <summary>
+    /// Discovers builtin TestimoX rule names with consistent cancellation and error-envelope behavior.
+    /// </summary>
+    protected static async Task<(HashSet<string>? RuleNames, string? ErrorResponse)> TryDiscoverBuiltinRuleNamesAsync(
+        CancellationToken cancellationToken,
+        string defaultErrorMessage = "TestimoX builtin rule discovery failed.",
+        Func<CancellationToken, Task<HashSet<string>>>? discoverFunc = null) {
+        var discover = discoverFunc ?? TestimoXRuleSelectionHelper.DiscoverBuiltinRuleNamesAsync;
+        try {
+            var names = await discover(cancellationToken).ConfigureAwait(false);
+            return (names, null);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            return (null, ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode: "query_failed"));
+        }
     }
 }
