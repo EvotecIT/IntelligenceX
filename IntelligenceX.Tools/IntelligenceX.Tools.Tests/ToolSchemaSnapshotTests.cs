@@ -59,15 +59,15 @@ public partial class ToolSchemaSnapshotTests {
 
     [Fact]
     public void AllRegisteredAdToolSchemas_ShouldBeCoveredBySnapshots() {
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+
         var snapshotNames = new HashSet<string>(
             SchemaSnapshots()
                 .Select(static row => row[0] as string)
                 .Where(static name => !string.IsNullOrWhiteSpace(name) && name.StartsWith("ad_", StringComparison.OrdinalIgnoreCase))
                 .Select(static name => name!),
             StringComparer.OrdinalIgnoreCase);
-
-        var registry = new ToolRegistry();
-        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
 
         var actualNames = registry.GetDefinitions()
             .Select(static d => d.Name)
