@@ -24,7 +24,8 @@ Use this skill to verify the first live reviewer run after onboarding/setup is h
 
 ## Commands
 - Run verification:
-  - `.agents/skills/intelligencex-first-pr-rollout/scripts/verify-first-pr-rollout.sh --repo <owner/name> --pr <number> --require-config --require-analysis-sections`
+  - Bash: `.agents/skills/intelligencex-first-pr-rollout/scripts/verify-first-pr-rollout.sh --repo <owner/name> --pr <number> --require-config --require-analysis-sections`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-first-pr-rollout/scripts/verify-first-pr-rollout.ps1 -Repo <owner/name> -Pr <number> -RequireConfig -RequireAnalysisSections`
 
 ## Fail-Fast Rules
 - Stop if GitHub auth is missing.

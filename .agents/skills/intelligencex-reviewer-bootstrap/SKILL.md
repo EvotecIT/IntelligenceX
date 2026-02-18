@@ -29,9 +29,11 @@ Use this skill when setting up or validating IntelligenceX Reviewer onboarding i
 
 ## Core Commands
 - Dry-run + extraction + checks:
-  - `.agents/skills/intelligencex-reviewer-bootstrap/scripts/bootstrap-dry-run.sh --repo <owner/name> --mode setup`
+  - Bash: `.agents/skills/intelligencex-reviewer-bootstrap/scripts/bootstrap-dry-run.sh --repo <owner/name> --mode setup`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-reviewer-bootstrap/scripts/bootstrap-dry-run.ps1 -Repo <owner/name> -Mode setup`
 - Validate existing committed workflow in current repo:
-  - `.agents/skills/intelligencex-reviewer-bootstrap/scripts/verify-managed-workflow.sh .github/workflows/review-intelligencex.yml`
+  - Bash: `.agents/skills/intelligencex-reviewer-bootstrap/scripts/verify-managed-workflow.sh .github/workflows/review-intelligencex.yml`
+  - PowerShell: `pwsh -NoLogo -NoProfile -File .agents/skills/intelligencex-reviewer-bootstrap/scripts/verify-managed-workflow.ps1 .github/workflows/review-intelligencex.yml`
 
 ## Modes
 - `setup`: write/update workflow + reviewer config
