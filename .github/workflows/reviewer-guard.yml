@@ -3,6 +3,10 @@ name: Reviewer Guard
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/review-intelligencex.yml
+      - .github/workflows/reviewer-guard.yml
+  workflow_dispatch:
 
 permissions:
   actions: read
