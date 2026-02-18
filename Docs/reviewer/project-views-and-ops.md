@@ -43,7 +43,7 @@ Useful options:
 - `--out <path>` writes markdown to custom location.
 
 Both checklist and apply-plan outputs include recommended columns per view. Use those column sets, otherwise triage quality signals stay hidden and the board appears weak.
-Recommended columns now include operational PR signals such as `PR Size`, `PR Churn Risk`, `PR Merge Readiness`, and `PR Freshness`.
+Recommended columns now include operational PR signals such as `PR Size`, `PR Churn Risk`, `PR Merge Readiness`, `PR Freshness`, `PR Check Health`, `PR Review Latency`, and `PR Merge Conflict Risk`.
 
 ## Sync bot feedback into TODO.md
 

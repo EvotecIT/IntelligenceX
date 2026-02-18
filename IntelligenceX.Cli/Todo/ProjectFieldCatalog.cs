@@ -58,6 +58,22 @@ internal static class ProjectFieldCatalog {
             "aging",
             "stale"
         }),
+        new ProjectFieldDefinition("PR Check Health", "SINGLE_SELECT", new[] {
+            "healthy",
+            "pending",
+            "failing",
+            "unknown"
+        }),
+        new ProjectFieldDefinition("PR Review Latency", "SINGLE_SELECT", new[] {
+            "low",
+            "medium",
+            "high"
+        }),
+        new ProjectFieldDefinition("PR Merge Conflict Risk", "SINGLE_SELECT", new[] {
+            "low",
+            "medium",
+            "high"
+        }),
         new ProjectFieldDefinition("Tags", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Tag Confidence Summary", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue", "TEXT", Array.Empty<string>()),

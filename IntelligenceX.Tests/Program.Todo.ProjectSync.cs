@@ -21,6 +21,9 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("PR Churn Risk", StringComparer.OrdinalIgnoreCase), "has PR Churn Risk");
         AssertEqual(true, names.Contains("PR Merge Readiness", StringComparer.OrdinalIgnoreCase), "has PR Merge Readiness");
         AssertEqual(true, names.Contains("PR Freshness", StringComparer.OrdinalIgnoreCase), "has PR Freshness");
+        AssertEqual(true, names.Contains("PR Check Health", StringComparer.OrdinalIgnoreCase), "has PR Check Health");
+        AssertEqual(true, names.Contains("PR Review Latency", StringComparer.OrdinalIgnoreCase), "has PR Review Latency");
+        AssertEqual(true, names.Contains("PR Merge Conflict Risk", StringComparer.OrdinalIgnoreCase), "has PR Merge Conflict Risk");
         AssertEqual(true, names.Contains("Tags", StringComparer.OrdinalIgnoreCase), "has Tags");
         AssertEqual(true, names.Contains("Tag Confidence Summary", StringComparer.OrdinalIgnoreCase), "has Tag Confidence Summary");
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
@@ -168,6 +171,9 @@ internal static partial class Program {
       "prChurnRisk": "low",
       "prMergeReadiness": "ready",
       "prFreshness": "fresh",
+      "prCheckHealth": "healthy",
+      "prReviewLatency": "low",
+      "prMergeConflictRisk": "low",
       "tags": [ "security", "api" ],
       "tagConfidences": {
         "security": 0.91,
@@ -200,6 +206,9 @@ internal static partial class Program {
         AssertEqual("low", entry.PullRequestChurnRisk, "pull request churn risk parsed");
         AssertEqual("ready", entry.PullRequestMergeReadiness, "pull request merge readiness parsed");
         AssertEqual("fresh", entry.PullRequestFreshness, "pull request freshness parsed");
+        AssertEqual("healthy", entry.PullRequestCheckHealth, "pull request check health parsed");
+        AssertEqual("low", entry.PullRequestReviewLatency, "pull request review latency parsed");
+        AssertEqual("low", entry.PullRequestMergeConflictRisk, "pull request merge conflict risk parsed");
     }
 
     private static void TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr() {
