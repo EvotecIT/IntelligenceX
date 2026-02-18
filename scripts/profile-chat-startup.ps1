@@ -8,8 +8,8 @@ param(
     [ValidateRange(0, 120)]
     [int] $PostStartupGraceSeconds = 0,
     [switch] $SimulateSlowHardware,
-    # High upper bound keeps this usable on modern high-core hosts while still capping down to slower targets.
-    [ValidateRange(1, 256)]
+    # Affinity mask uses a single 64-bit value today, so keep simulated target cores within that representable range.
+    [ValidateRange(1, 64)]
     [int] $SimulatedSlowHardwareMaxLogicalCores = 2,
     [ValidateSet('Idle', 'BelowNormal', 'Normal')]
     [string] $SimulatedSlowHardwarePriorityClass = 'BelowNormal',
