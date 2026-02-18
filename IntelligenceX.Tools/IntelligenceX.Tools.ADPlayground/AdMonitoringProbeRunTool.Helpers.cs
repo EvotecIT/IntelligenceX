@@ -208,7 +208,14 @@ public sealed partial class AdMonitoringProbeRunTool {
 
         var latencyThreshold = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("latency_threshold_ms"));
         var p95Threshold = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("p95_latency_threshold_ms"));
-        var lossThresholdPercent = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("loss_threshold_percent"), 100);
+        var lossThresholdPercentRaw = arguments?.GetInt64("loss_threshold_percent");
+        int? lossThresholdPercent = null;
+        if (lossThresholdPercentRaw.HasValue) {
+            if (lossThresholdPercentRaw.Value < 0 || lossThresholdPercentRaw.Value > 100) {
+                throw new InvalidOperationException("loss_threshold_percent must be between 0 and 100.");
+            }
+            lossThresholdPercent = (int)lossThresholdPercentRaw.Value;
+        }
 
         using var ping = new Ping();
         var children = new List<ProbeResult>(pingTargets.Count);
@@ -218,7 +225,20 @@ public sealed partial class AdMonitoringProbeRunTool {
             long? rttMs = null;
             string? error = null;
             for (var attempt = 0; attempt < attempts; attempt++) {
-                var reply = await ping.SendPingAsync(target, timeoutMs).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                PingReply? reply = null;
+                try {
+                    reply = await ping.SendPingAsync(target, timeoutMs).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    failures++;
+                    error = ex.Message;
+                    if (attempt + 1 < attempts && retryDelay > TimeSpan.Zero) {
+                        await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                    }
+                    continue;
+                }
+
                 if (reply.Status == IPStatus.Success) {
                     rttMs = reply.RoundtripTime;
                     error = null;
