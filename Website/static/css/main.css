@@ -43,8 +43,8 @@ p { margin: 0 0 1rem; color: var(--pf-muted); }
 .nav-icon { color: var(--pf-muted); display: flex; align-items: center; }
 .nav-icon:hover { color: var(--pf-accent); }
 .ix-header svg, .ix-actions svg, .nav-icon svg, .nav-cta svg { width: 22px; height: 22px; flex-shrink: 0; }
-.nav-cta { display: inline-flex; align-items: center; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 700; background: var(--pf-btn-primary-bg); color: #062A38; border-radius: var(--pf-radius-sm); transition: all 0.2s; }
-.nav-cta:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: var(--pf-shadow-button); color: #062A38; }
+.nav-cta { display: inline-flex; align-items: center; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 700; background: #0E7490; color: #F8FAFC; border-radius: var(--pf-radius-sm); transition: all 0.2s; }
+.nav-cta:hover { background: #0C677F; opacity: 0.92; transform: translateY(-1px); box-shadow: var(--pf-shadow-button); color: #F8FAFC; }
 [data-theme="light"] .nav-cta { background: #0E7490; color: #F8FAFC; }
 [data-theme="light"] .nav-cta:hover { background: #0C677F; color: #F8FAFC; }
 .ix-nav-toggle { display: none; background: none; border: none; color: var(--pf-muted); cursor: pointer; padding: 0.25rem; }
