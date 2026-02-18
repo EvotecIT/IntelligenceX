@@ -23,9 +23,10 @@ internal static partial class Program {
             new DateTimeOffset(2026, 02, 15, 22, 00, 00, TimeSpan.Zero));
 
         AssertContainsText(markdown, "intelligencex:project-view-checklist", "checklist marker present");
-        AssertContainsText(markdown, "Default view coverage: 1/4", "coverage reflects missing defaults");
+        AssertContainsText(markdown, "Default view coverage: 1/5", "coverage reflects missing defaults");
         AssertContainsText(markdown, "- [x] **IX Queue** (`TABLE`) - present", "existing default view checked");
         AssertContainsText(markdown, "- [ ] **Merge Candidates** (`TABLE`) - missing", "missing default view unchecked");
+        AssertContainsText(markdown, "- [ ] **Issue Ops** (`TABLE`) - missing", "issue ops default view unchecked");
         AssertContainsText(markdown, "Suggested columns:", "suggested columns guidance included");
         AssertContainsText(markdown, "https://github.com/orgs/EvotecIT/projects/123/views/1", "existing view link included");
     }

@@ -44,6 +44,7 @@ Useful options:
 
 Both checklist and apply-plan outputs include recommended columns per view. Use those column sets, otherwise triage quality signals stay hidden and the board appears weak.
 Recommended columns now include operational PR signals such as `PR Size`, `PR Churn Risk`, `PR Merge Readiness`, `PR Freshness`, `PR Check Health`, `PR Review Latency`, and `PR Merge Conflict Risk`.
+Default view guidance now also includes `Issue Ops`, which highlights issue applicability fields (`Issue Review Action`, `Issue Review Action Confidence`) for infra-blocker triage.
 
 ## Sync bot feedback into TODO.md
 
