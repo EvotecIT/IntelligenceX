@@ -38,6 +38,18 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
+    internal static bool ShouldDeferStartupHelloProbe(bool captureStartupPhaseTelemetry) {
+        return captureStartupPhaseTelemetry;
+    }
+
+    internal static bool ShouldDeferStartupToolCatalogSync(bool captureStartupPhaseTelemetry) {
+        return captureStartupPhaseTelemetry;
+    }
+
+    internal static bool ShouldDeferStartupAuthRefresh(bool captureStartupPhaseTelemetry) {
+        return captureStartupPhaseTelemetry;
+    }
+
     private async Task ConnectAsync(bool fromUserAction = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
@@ -137,41 +149,56 @@ public sealed partial class MainWindow : Window {
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
 
-            try {
-                LogStartupConnectPhase("hello", "begin");
-                var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
-                _sessionPolicy = hello.Policy;
-                LogStartupConnectPhase("hello", "done");
-            } catch (Exception ex) {
-                LogStartupConnectPhase("hello", "failed");
+            var deferStartupMetadataSync = ShouldDeferStartupHelloProbe(captureStartupPhaseTelemetry)
+                                           || ShouldDeferStartupToolCatalogSync(captureStartupPhaseTelemetry);
+            if (deferStartupMetadataSync) {
                 _sessionPolicy = null;
-                if (VerboseServiceLogs || _debugMode) {
-                    AppendSystem(SystemNotice.HelloFailed(ex.Message));
+                LogStartupConnectPhase("hello", "deferred");
+                LogStartupConnectPhase("list_tools", "deferred");
+                QueueDeferredStartupConnectMetadataSync();
+            } else {
+                try {
+                    LogStartupConnectPhase("hello", "begin");
+                    var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                    _sessionPolicy = hello.Policy;
+                    LogStartupConnectPhase("hello", "done");
+                } catch (Exception ex) {
+                    LogStartupConnectPhase("hello", "failed");
+                    _sessionPolicy = null;
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(SystemNotice.HelloFailed(ex.Message));
+                    }
                 }
             }
 
-            try {
-                LogStartupConnectPhase("list_tools", "begin");
-                var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
-                UpdateToolCatalog(toolList.Tools);
-                LogStartupConnectPhase("list_tools", "done");
-            } catch (Exception ex) {
-                LogStartupConnectPhase("list_tools", "failed");
-                if (VerboseServiceLogs || _debugMode) {
-                    AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+            if (!deferStartupMetadataSync) {
+                try {
+                    LogStartupConnectPhase("list_tools", "begin");
+                    var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                    UpdateToolCatalog(toolList.Tools);
+                    LogStartupConnectPhase("list_tools", "done");
+                } catch (Exception ex) {
+                    LogStartupConnectPhase("list_tools", "failed");
+                    if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+                    }
                 }
             }
 
             AppendStartupToolHealthWarningsFromPolicy();
             AppendUnavailablePacksFromPolicy();
 
-            LogStartupConnectPhase("auth_refresh", "begin");
-            try {
-                _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
-                LogStartupConnectPhase("auth_refresh", "done");
-            } catch {
-                LogStartupConnectPhase("auth_refresh", "failed");
-                throw;
+            if (ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry)) {
+                LogStartupConnectPhase("auth_refresh", "deferred");
+            } else {
+                LogStartupConnectPhase("auth_refresh", "begin");
+                try {
+                    _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+                    LogStartupConnectPhase("auth_refresh", "done");
+                } catch {
+                    LogStartupConnectPhase("auth_refresh", "failed");
+                    throw;
+                }
             }
             if (ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry)) {
                 LogStartupConnectPhase("model_profile_sync", "deferred");

@@ -37,4 +37,43 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         var shouldDefer = MainWindow.ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry);
         Assert.Equal(expected, shouldDefer);
     }
+
+    /// <summary>
+    /// Ensures startup hello probe is deferred only during startup flow telemetry capture.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ShouldDeferStartupHelloProbe_ReturnsExpectedValue(
+        bool captureStartupPhaseTelemetry,
+        bool expected) {
+        var shouldDefer = MainWindow.ShouldDeferStartupHelloProbe(captureStartupPhaseTelemetry);
+        Assert.Equal(expected, shouldDefer);
+    }
+
+    /// <summary>
+    /// Ensures startup tool-catalog sync is deferred only during startup flow telemetry capture.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ShouldDeferStartupToolCatalogSync_ReturnsExpectedValue(
+        bool captureStartupPhaseTelemetry,
+        bool expected) {
+        var shouldDefer = MainWindow.ShouldDeferStartupToolCatalogSync(captureStartupPhaseTelemetry);
+        Assert.Equal(expected, shouldDefer);
+    }
+
+    /// <summary>
+    /// Ensures startup auth refresh is deferred only during startup flow telemetry capture.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ShouldDeferStartupAuthRefresh_ReturnsExpectedValue(
+        bool captureStartupPhaseTelemetry,
+        bool expected) {
+        var shouldDefer = MainWindow.ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry);
+        Assert.Equal(expected, shouldDefer);
+    }
 }

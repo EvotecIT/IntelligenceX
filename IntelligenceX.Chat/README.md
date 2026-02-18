@@ -30,6 +30,18 @@ WinUI app:
 pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
 ```
 
+Startup profiling (phase timing from `StartupLog`):
+
+```powershell
+pwsh .\scripts\profile-chat-startup.ps1 -Runs 5 -OutFile .\artifacts\chat-startup-profile.json
+```
+
+```bash
+./scripts/profile-chat-startup.sh -Runs 5 -OutFile ./artifacts/chat-startup-profile.json
+```
+
+Add `-PostStartupGraceSeconds 2` if you want to include deferred post-startup warmup phases in the report.
+
 Markdown renderer dependency resolution is automatic:
 - Dev: if sibling local source exists (`..\OfficeIMO`), Chat builds against that local project.
 - Fallback: if local source is not present (CI/clean OSS checkout), Chat uses the NuGet package.
