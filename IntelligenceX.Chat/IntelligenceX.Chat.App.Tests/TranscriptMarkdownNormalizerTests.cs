@@ -261,4 +261,16 @@ public sealed class TranscriptMarkdownNormalizerTests {
         Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
         Assert.Equal("- Signal **pattern `a**b` seen, mostly from Service Control Manager.**", normalized);
     }
+
+    /// <summary>
+    /// Ensures unmatched inline-code tails are preserved and do not get corrupted by strong-span flattening.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesUnmatchedInlineCodeTailInSignalBullets() {
+        var text = "- Signal **pattern `a**b seen, mostly from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("`a**b seen, mostly from **Service Control Manager**.**", normalized, System.StringComparison.Ordinal);
+    }
 }

@@ -65,6 +65,14 @@ internal static class TranscriptMarkdownNormalizer {
         @"`[^`\r\n]*`",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex UnmatchedInlineCodeTailRegex = new(
+        @"`[^\r\n]*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
+
+    private static readonly Regex InlineCodePlaceholderRegex = new(
+        "\u001FIXCODE(?<index>\\d+)\u001E",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex NestedStrongSpanRegex = new(
         @"\*\*(?<inner>[^*\r\n]+)\*\*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -288,6 +296,11 @@ internal static class TranscriptMarkdownNormalizer {
             capturedCodeSpans.Add(match.Value);
             return "\u001FIXCODE" + index.ToString() + "\u001E";
         });
+        protectedInput = UnmatchedInlineCodeTailRegex.Replace(protectedInput, match => {
+            var index = capturedCodeSpans.Count;
+            capturedCodeSpans.Add(match.Value);
+            return "\u001FIXCODE" + index.ToString() + "\u001E";
+        });
 
         codeSpans = capturedCodeSpans;
         return protectedInput;
@@ -297,13 +310,15 @@ internal static class TranscriptMarkdownNormalizer {
         if (codeSpans.Count == 0 || string.IsNullOrEmpty(input)) {
             return input;
         }
+        return InlineCodePlaceholderRegex.Replace(input, match => {
+            if (!int.TryParse(match.Groups["index"].Value, out var index)) {
+                return match.Value;
+            }
 
-        var restored = input;
-        for (var i = 0; i < codeSpans.Count; i++) {
-            restored = restored.Replace("\u001FIXCODE" + i.ToString() + "\u001E", codeSpans[i], StringComparison.Ordinal);
-        }
-
-        return restored;
+            return index >= 0 && index < codeSpans.Count
+                ? codeSpans[index]
+                : match.Value;
+        });
     }
 
     private static string ApplyTransformOutsideFencedCodeBlocks(string input, Func<string, string> transform) {
