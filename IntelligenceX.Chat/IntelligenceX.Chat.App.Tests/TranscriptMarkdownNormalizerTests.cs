@@ -210,4 +210,29 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         Assert.Equal(text, normalized);
     }
+
+    /// <summary>
+    /// Ensures malformed bullet spacing at line start is normalized for transcript readability.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FixesLineStartBulletSpacingArtifacts() {
+        var text = "-AD1 starkes Muster\n-** AD2** eher Secure-Channel";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- AD1 starkes Muster\n- **AD2** eher Secure-Channel", normalized);
+    }
+
+    /// <summary>
+    /// Ensures nested strong markers inside signal bullets are flattened into one strong span.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FlattensNestedStrongMarkersInsideSignalBullets() {
+        var text = "- Signal **AD1 has very high `7034/7023` volume, mostly from **Service Control Manager**.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- Signal **AD1 has very high `7034/7023` volume, mostly from Service Control Manager.**", normalized);
+        Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+    }
 }

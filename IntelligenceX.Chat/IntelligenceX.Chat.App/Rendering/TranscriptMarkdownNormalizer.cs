@@ -44,8 +44,20 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?<=\s)-(?=\*\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex LineStartMissingSpaceBeforeBoldBulletRegex = new(
+        @"(?m)^(?<indent>\s*)-(?=\*\*)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex LineStartMissingSpaceAfterBulletRegex = new(
+        @"(?m)^(?<indent>\s*)-(?=[\p{L}\p{N}`])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex SingleStarMetricRegex = new(
         @"(?<=\s)-\*(?=[A-Za-z])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex SignalOuterStrongLineRegex = new(
+        @"(?m)^(?<prefix>\s*-\s+Signal\s+\*\*)(?<body>[^\r\n]*)(?<suffix>\*\*)(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex StatusCollapsedLineRegex = new(
@@ -131,7 +143,18 @@ internal static class TranscriptMarkdownNormalizer {
                 return trimmed.Length == 0 ? match.Value : "**" + trimmed + "**";
             });
             value = MissingSpaceBeforeBoldMetricRegex.Replace(value, "- ");
+            value = LineStartMissingSpaceBeforeBoldBulletRegex.Replace(value, "${indent}- ");
+            value = LineStartMissingSpaceAfterBulletRegex.Replace(value, "${indent}- ");
             value = SingleStarMetricRegex.Replace(value, "- **");
+            value = SignalOuterStrongLineRegex.Replace(value, static match => {
+                var body = match.Groups["body"].Value;
+                if (!body.Contains("**", StringComparison.Ordinal)) {
+                    return match.Value;
+                }
+
+                var cleaned = body.Replace("**", string.Empty, StringComparison.Ordinal);
+                return match.Groups["prefix"].Value + cleaned + match.Groups["suffix"].Value + match.Groups["tail"].Value;
+            });
             value = CollapsedBulletRegex.Replace(value, "\n- **");
             value = CollapsedOrderedListAfterDetailRegex.Replace(value, "\n");
             value = CollapsedOrderedListAfterStrongRegex.Replace(value, "\n");
