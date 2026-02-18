@@ -122,6 +122,13 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    internal static bool RequestRequiresConnectedClient(ChatServiceRequest request) {
+        return request is EnsureLoginRequest
+               or StartChatGptLoginRequest
+               or ListModelsRequest
+               or ChatRequest;
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken) {
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
@@ -130,7 +137,16 @@ internal sealed partial class ChatServiceSession {
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
         string? activeThreadId = null;
-        var client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
+        IntelligenceXClient? client = null;
+
+        async Task<IntelligenceXClient> GetOrConnectClientAsync() {
+            if (client is not null) {
+                return client;
+            }
+
+            client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
+            return client;
+        }
 
         try {
             while (!cancellationToken.IsCancellationRequested) {
@@ -159,6 +175,10 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var connectedClient = RequestRequiresConnectedClient(request)
+                    ? await GetOrConnectClientAsync().ConfigureAwait(false)
+                    : null;
+
                 switch (request) {
                     case HelloRequest:
                         await AwaitStartupToolHealthPrimingForHelloAsync(startupToolHealthPrimeTask, cancellationToken).ConfigureAwait(false);
@@ -173,11 +193,11 @@ internal sealed partial class ChatServiceSession {
                         break;
 
                     case EnsureLoginRequest login:
-                        await HandleEnsureLoginAsync(client, writer, login, cancellationToken).ConfigureAwait(false);
+                        await HandleEnsureLoginAsync(connectedClient!, writer, login, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case StartChatGptLoginRequest startLogin:
-                        await HandleStartChatGptLoginAsync(client, writer, startLogin, cancellationToken).ConfigureAwait(false);
+                        await HandleStartChatGptLoginAsync(connectedClient!, writer, startLogin, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case ChatGptLoginPromptResponseRequest promptResponse:
@@ -201,11 +221,11 @@ internal sealed partial class ChatServiceSession {
                         break;
 
                     case SetProfileRequest setProfile: {
-                            var setResult = await HandleSetProfileAsync(client, writer, setProfile, cancellationToken).ConfigureAwait(false);
+                            var setResult = await HandleSetProfileAsync(writer, setProfile, cancellationToken).ConfigureAwait(false);
                             if (setResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
-                                client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
-                            } else if (setResult.ModelChanged) {
+                                client = null;
+                            } else if (setResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with the active profile.
                                 client.ConfigureDefaults(model: _options.Model);
                             }
@@ -218,7 +238,7 @@ internal sealed partial class ChatServiceSession {
                         }
 
                     case ListModelsRequest listModels:
-                        await HandleListModelsAsync(client, writer, listModels, cancellationToken).ConfigureAwait(false);
+                        await HandleListModelsAsync(connectedClient!, writer, listModels, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case ListModelFavoritesRequest listFavorites:
@@ -238,7 +258,7 @@ internal sealed partial class ChatServiceSession {
                         break;
 
                     case ChatRequest chat:
-                        activeThreadId = await HandleChatRequestAsync(client, writer, chat, activeThreadId, cancellationToken).ConfigureAwait(false);
+                        activeThreadId = await HandleChatRequestAsync(connectedClient!, writer, chat, activeThreadId, cancellationToken).ConfigureAwait(false);
                         break;
 
                     default:

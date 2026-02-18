@@ -19,7 +19,7 @@ internal sealed partial class ChatServiceSession {
     private sealed record SetProfileResult(bool ReconnectClient, bool ModelChanged);
     private sealed record ModelListCacheEntry(string Key, DateTime ExpiresAtUtc, ModelListResult Result);
 
-    private static async ValueTask DisposeClientAsync(IntelligenceXClient client) {
+    private static async ValueTask DisposeClientAsync(IntelligenceXClient? client) {
         if (client is null) {
             return;
         }
@@ -131,8 +131,7 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private async Task<SetProfileResult> HandleSetProfileAsync(IntelligenceXClient client, StreamWriter writer, SetProfileRequest request,
-        CancellationToken cancellationToken) {
+    private async Task<SetProfileResult> HandleSetProfileAsync(StreamWriter writer, SetProfileRequest request, CancellationToken cancellationToken) {
         var name = (request.ProfileName ?? string.Empty).Trim();
         if (name.Length == 0) {
             await WriteAsync(writer, new ErrorMessage {
