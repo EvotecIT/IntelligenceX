@@ -65,28 +65,32 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     /// tightens only after stable completions, and falls back with cooldown after exhaustion.
     /// </summary>
     [Theory]
-    [InlineData(false, null, 0, 0, 0, null)]
-    [InlineData(true, null, 0, 0, 0, 4000)]
-    [InlineData(true, 900, 0, 1, 0, 4000)]
-    [InlineData(true, 900, 0, 2, 0, 2200)]
-    [InlineData(true, 1600, 0, 2, 0, 2800)]
-    [InlineData(true, 2600, 0, 2, 0, 3700)]
-    [InlineData(true, 3050, 0, 2, 0, 4000)]
-    [InlineData(true, 900, 1, 0, 2, 4000)]
-    [InlineData(true, 900, 0, 3, 1, 4000)]
+    [InlineData(false, null, 0, 0, 0, null, null)]
+    [InlineData(true, null, 0, 0, 0, null, 4000)]
+    [InlineData(true, 900, 0, 1, 0, null, 4000)]
+    [InlineData(true, 900, 0, 2, 0, null, 2200)]
+    [InlineData(true, 900, 0, 2, 0, 4000, 3700)]
+    [InlineData(true, 900, 0, 3, 0, 3700, 3400)]
+    [InlineData(true, 1600, 0, 2, 0, 4000, 3700)]
+    [InlineData(true, 2600, 0, 2, 0, null, 3700)]
+    [InlineData(true, 3050, 0, 2, 0, null, 4000)]
+    [InlineData(true, 900, 1, 0, 2, 4000, 4000)]
+    [InlineData(true, 900, 0, 3, 1, 4000, 4000)]
     public void ResolveStartupWebViewBudget_AdaptivePolicyIsHardwareSafe(
         bool captureStartupPhaseTelemetry,
         int? lastEnsureWebViewMs,
         int consecutiveBudgetExhaustions,
         int consecutiveStableCompletions,
         int adaptiveCooldownRunsRemaining,
+        int? lastAppliedBudgetMs,
         int? expectedTimeoutMs) {
         var timeout = MainWindow.ResolveStartupWebViewBudget(
             captureStartupPhaseTelemetry,
             lastEnsureWebViewMs,
             consecutiveBudgetExhaustions,
             consecutiveStableCompletions,
-            adaptiveCooldownRunsRemaining);
+            adaptiveCooldownRunsRemaining,
+            lastAppliedBudgetMs);
         var expected = expectedTimeoutMs.HasValue
             ? TimeSpan.FromMilliseconds(expectedTimeoutMs.Value)
             : (TimeSpan?)null;
