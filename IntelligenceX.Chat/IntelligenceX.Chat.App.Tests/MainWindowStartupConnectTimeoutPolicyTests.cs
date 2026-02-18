@@ -69,6 +69,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(true, null, 0, 0, 0, null, 4000)]
     [InlineData(true, 900, 0, 1, 0, null, 4000)]
     [InlineData(true, 900, 0, 2, 0, null, 2200)]
+    [InlineData(true, 900, 0, 2, 0, 2500, 2200)]
     [InlineData(true, 900, 0, 2, 0, 4000, 3700)]
     [InlineData(true, 900, 0, 3, 0, 3700, 3400)]
     [InlineData(true, 1600, 0, 2, 0, 4000, 3700)]
@@ -95,6 +96,38 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             ? TimeSpan.FromMilliseconds(expectedTimeoutMs.Value)
             : (TimeSpan?)null;
         Assert.Equal(expected, timeout);
+    }
+
+    /// <summary>
+    /// Ensures startup webview budget policy reasons stay stable for key adaptive/conservative branches.
+    /// </summary>
+    [Theory]
+    [InlineData(false, null, 0, 0, 0, null, null)]
+    [InlineData(true, 900, 0, 2, 2, 4000, "cooldown_conservative")]
+    [InlineData(true, 900, 1, 0, 0, 4000, "exhaustion_conservative")]
+    [InlineData(true, 900, 0, 0, 0, null, "insufficient_stability")]
+    [InlineData(true, null, 0, 2, 0, null, "missing_last_ensure")]
+    [InlineData(true, 3050, 0, 2, 0, 4000, "conservative_tier")]
+    [InlineData(true, 900, 0, 2, 0, null, "fast_tier_new")]
+    [InlineData(true, 900, 0, 2, 0, 2000, "fast_tier_nondecreasing")]
+    [InlineData(true, 900, 0, 2, 0, 4000, "fast_tier_downshift_capped")]
+    [InlineData(true, 900, 0, 2, 0, 2300, "fast_tier_downshift_full")]
+    public void ResolveStartupWebViewBudgetReason_ReturnsExpectedReason(
+        bool captureStartupPhaseTelemetry,
+        int? lastEnsureWebViewMs,
+        int consecutiveBudgetExhaustions,
+        int consecutiveStableCompletions,
+        int adaptiveCooldownRunsRemaining,
+        int? lastAppliedBudgetMs,
+        string? expectedReason) {
+        var reason = MainWindow.ResolveStartupWebViewBudgetReason(
+            captureStartupPhaseTelemetry,
+            lastEnsureWebViewMs,
+            consecutiveBudgetExhaustions,
+            consecutiveStableCompletions,
+            adaptiveCooldownRunsRemaining,
+            lastAppliedBudgetMs);
+        Assert.Equal(expectedReason, reason);
     }
 
     /// <summary>

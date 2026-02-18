@@ -44,6 +44,7 @@ Add `-PostStartupGraceSeconds 2` if you want to include deferred post-startup wa
 Add `-ArchiveLogsDirectory .\artifacts\chat-startup-logs` to retain each run's raw startup log for hotspot/outlier investigation.
 Add `-SimulateSlowHardware -SimulatedSlowHardwareMaxLogicalCores 2 -SimulatedSlowHardwarePriorityClass BelowNormal` to emulate lower-end startup conditions on faster machines.
 The report includes startup WebView metrics (`startup_webview_budget_ms`, `startup_webview_ms`, `ensure_webview_ms`, `webview_env_prewarm_ms`) plus budget/defer markers to track fail-open behavior.
+The JSON report now includes `schema_version` (`chat-startup-profile-v2`) and a `simulation` block. Consumers should use `schema_version` for branching and ignore unknown additive fields for forward compatibility.
 Adaptive startup WebView budget cache is persisted at `%LOCALAPPDATA%\IntelligenceX.Chat\startup-webview-budget-cache-v1.json` (best-effort, stability/cooldown aware so slower hardware stays conservative).
 
 Markdown renderer dependency resolution is automatic:

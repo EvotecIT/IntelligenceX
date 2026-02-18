@@ -8,7 +8,8 @@ param(
     [ValidateRange(0, 120)]
     [int] $PostStartupGraceSeconds = 0,
     [switch] $SimulateSlowHardware,
-    [ValidateRange(1, 32)]
+    # Affinity mask uses a single 64-bit value today, so keep simulated target cores within that representable range.
+    [ValidateRange(1, 64)]
     [int] $SimulatedSlowHardwareMaxLogicalCores = 2,
     [ValidateSet('Idle', 'BelowNormal', 'Normal')]
     [string] $SimulatedSlowHardwarePriorityClass = 'BelowNormal',
@@ -264,6 +265,7 @@ $slowHardwareSimulationReport = if ($null -eq $slowHardwareSimulationProfile) {
 }
 
 $report = [pscustomobject]@{
+    schema_version = "chat-startup-profile-v2"
     generated_utc = [datetime]::UtcNow.ToString('O')
     exe_path      = $ExePath
     startup_log   = $startupLogPath
