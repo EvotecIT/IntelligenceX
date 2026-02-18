@@ -63,14 +63,14 @@
     "screenshot": "/assets/screenshots/product-powershell.svg"
   },
   {
-    "title": "Project Ops",
-    "description": "GitHub Project triage control plane with issue-review, backlog signal scoring, and maintainer-first operations for stale or invalid work.",
+    "title": "Issue Ops + Project Control",
+    "description": "First-party GitHub Project control plane for PR and issue triage. Built-in issue-review flags stale or invalid infra blockers, proposes actions, and syncs confidence to project fields.",
     "icon": "project-ops",
     "link": "/docs/project-ops/overview/",
-    "tag": "Operations",
-    "badge": "First Party",
+    "tag": "First-Party Ops",
+    "badge": "Issue Ops",
     "featured": false,
-    "install": "intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT",
-    "screenshot": "/assets/screenshots/product-project-ops.svg"
+    "install": "intelligencex todo project-bootstrap --repo owner/repo --owner owner",
+    "screenshot": "/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg"
   }
 ]

@@ -6,6 +6,10 @@
         <p>Everything you need for AI-powered development workflows.</p>
     </div>
 
+    <div class="products-safety-note" role="note" aria-label="Operational safety note">
+        <strong>Operational safety:</strong> IX Reviewer, IX Chat, and Issue Ops are assistive systems. Do not use them as unattended production decision engines without explicit human approval gates.
+    </div>
+
     <div class="products-grid">
         {{ for item in data.products }}
         <div class="product-card{{ if item.featured }} featured{{ end }}">

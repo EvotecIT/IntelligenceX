@@ -36,6 +36,13 @@
       "changefreq": "weekly"
     },
     {
+      "path": "/docs/project-ops/overview/",
+      "title": "Project Ops Overview",
+      "section": "Docs",
+      "priority": "0.9",
+      "changefreq": "weekly"
+    },
+    {
       "path": "/docs/cli/overview/",
       "title": "CLI Overview",
       "section": "Docs",
@@ -94,6 +101,13 @@
     {
       "path": "/blog/chat-flow-and-options/",
       "title": "Chat Flow and Options",
+      "section": "Resources",
+      "priority": "0.7",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/blog/ix-issue-ops-in-action/",
+      "title": "IX Issue Ops in Action",
       "section": "Resources",
       "priority": "0.7",
       "changefreq": "monthly"
