@@ -39,6 +39,22 @@ function Extract-Section([string] $Content, [string] $SectionName) {
     return ($result -join [Environment]::NewLine).TrimEnd()
 }
 
+function Test-ReviewerConfigSkippedNoChanges([string] $Content) {
+    $lines = $Content -split "`r?`n"
+    $summaryLine = $lines |
+        Where-Object { $_ -match "(?i)^\s*-\s*File:\s+\.intelligencex[\\/]+reviewer\.json\b" } |
+        Select-Object -First 1
+    if (-not [string]::IsNullOrWhiteSpace($summaryLine)) {
+        return ($summaryLine -match "(?i)\bskip\b" -and $summaryLine -match "(?i)\bno\s*changes?\b")
+    }
+
+    $fallbackLine = [regex]::Match($Content, "(?is)File:\s+\.intelligencex[\\/]+reviewer\.json\b[^\r\n]*")
+    if (-not $fallbackLine.Success) {
+        return $false
+    }
+    return ($fallbackLine.Value -match "(?i)\bskip\b" -and $fallbackLine.Value -match "(?i)\bno\s*changes?\b")
+}
+
 if ([string]::IsNullOrWhiteSpace($Repo)) {
     Fail "ERROR: --repo is required"
 }
@@ -129,7 +145,7 @@ if ($Mode -eq "setup") {
     } else {
         [string]::Empty
     }
-    $reviewerSkippedNoChanges = $rawContent -match "(?is)File:\s+\.intelligencex/reviewer\.json\b[\s\S]*?\bskip\b[\s\S]*?\bno changes\b"
+    $reviewerSkippedNoChanges = Test-ReviewerConfigSkippedNoChanges -Content $rawContent
     if ([string]::IsNullOrWhiteSpace($reviewerContent) -and -not $reviewerSkippedNoChanges) {
         Fail "ERROR: setup mode expected reviewer config block in dry-run output."
     }
