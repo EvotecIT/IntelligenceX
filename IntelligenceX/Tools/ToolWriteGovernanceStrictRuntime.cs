@@ -108,7 +108,7 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
         if (missing.Count > 0) {
             return new ToolWriteGovernanceResult {
                 IsAuthorized = false,
-                ErrorCode = "write_governance_requirements_not_met",
+                ErrorCode = ToolWriteGovernanceErrorCodes.WriteGovernanceRequirementsNotMet,
                 Error = "Write governance requirements are not met.",
                 MissingRequirements = missing.ToArray(),
                 Hints = BuildHints(missing),
@@ -133,6 +133,9 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
         };
     }
 
+    /// <summary>
+    /// Resolves metadata with precedence for explicit request fields over raw argument values.
+    /// </summary>
     private static string ResolveArgumentValue(
         ToolWriteGovernanceRequest request,
         string preferredValue,

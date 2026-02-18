@@ -52,6 +52,35 @@ public sealed class ToolWriteGovernanceRegistryTests {
     }
 
     [Fact]
+    public async Task InvokeAsync_WriteIntentWithRequiredAuditSinkAndAppendFailure_ReturnsAuditAppendFailed() {
+        var tool = new StubTool(CreateWriteToolDefinition());
+        var registry = new ToolRegistry {
+            RequireWriteAuditSinkForWriteOperations = true,
+            WriteAuditSink = new ThrowingAuditSink(),
+            WriteGovernanceRuntime = new ToolWriteGovernanceStrictRuntime {
+                ImmutableAuditProviderId = "audit",
+                RollbackProviderId = "rollback"
+            }
+        };
+        registry.Register(tool);
+
+        Assert.True(registry.TryGet("stub_write", out var registeredTool));
+        string output = await registeredTool.InvokeAsync(
+            new JsonObject()
+                .Add("send", true)
+                .Add("allow_write", true)
+                .Add("write_execution_id", "exec-throw")
+                .Add("write_actor_id", "actor-throw")
+                .Add("write_change_reason", "ticket-throw")
+                .Add("write_rollback_plan_id", "rollback-throw"),
+            CancellationToken.None);
+
+        using JsonDocument doc = JsonDocument.Parse(output);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("write_audit_append_failed", doc.RootElement.GetProperty("error_code").GetString());
+    }
+
+    [Fact]
     public async Task InvokeAsync_WriteIntentWithStrictRuntimeAndMissingMetadata_ReturnsDenied() {
         var tool = new StubTool(CreateWriteToolDefinition());
         var registry = new ToolRegistry {
@@ -220,6 +249,12 @@ public sealed class ToolWriteGovernanceRegistryTests {
 
         public void Append(ToolWriteAuditRecord record) {
             Records.Add(record);
+        }
+    }
+
+    private sealed class ThrowingAuditSink : IToolWriteAuditSink {
+        public void Append(ToolWriteAuditRecord record) {
+            throw new InvalidOperationException("Sink unavailable.");
         }
     }
 }
