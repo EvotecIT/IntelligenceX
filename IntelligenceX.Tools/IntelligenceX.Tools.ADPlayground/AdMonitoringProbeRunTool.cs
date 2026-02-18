@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground;
 using ADPlayground.Monitoring.Probes;
+using ADPlayground.Monitoring.Probes.Adws;
 using ADPlayground.Monitoring.Probes.Dns;
+using ADPlayground.Monitoring.Probes.DnsService;
+using ADPlayground.Monitoring.Probes.Https;
 using ADPlayground.Monitoring.Probes.Kerberos;
 using ADPlayground.Monitoring.Probes.Ldap;
 using ADPlayground.Monitoring.Probes.Ntp;
+using ADPlayground.Monitoring.Probes.Port;
 using ADPlayground.Monitoring.Probes.Replication;
 using ADPlayground.Network;
 using ADPlayground.Replication;
@@ -21,107 +24,9 @@ using MonitoringDnsProtocol = ADPlayground.Monitoring.Probes.Dns.DnsProtocol;
 namespace IntelligenceX.Tools.ADPlayground;
 
 /// <summary>
-/// Executes ADPlayground monitoring probes for LDAP/DNS/Kerberos/NTP/Replication.
+/// Executes ADPlayground monitoring probes for all ADPlayground.Monitoring probe kinds.
 /// </summary>
-public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
-    private const int DefaultTimeoutMs = 5000;
-    private const int MaxTimeoutMs = 300_000;
-    private const int DefaultMaxConcurrency = 4;
-    private const int MaxConcurrency = 128;
-    private const int DefaultRetries = 0;
-    private const int MaxRetries = 10;
-    private const int DefaultRetryDelayMs = 250;
-    private const int MaxRetryDelayMs = 10_000;
-    private const int MaxViewTop = 5000;
-
-    private static readonly string[] ProbeKinds = { "ldap", "dns", "kerberos", "ntp", "replication" };
-    private static readonly IReadOnlyDictionary<string, MonitoringDnsProtocol> DnsProtocols =
-        new Dictionary<string, MonitoringDnsProtocol>(StringComparer.OrdinalIgnoreCase) {
-            ["udp"] = MonitoringDnsProtocol.Udp,
-            ["tcp"] = MonitoringDnsProtocol.Tcp,
-            ["both"] = MonitoringDnsProtocol.Both
-        };
-    private static readonly IReadOnlyDictionary<string, KerberosTransport> KerberosProtocols =
-        new Dictionary<string, KerberosTransport>(StringComparer.OrdinalIgnoreCase) {
-            ["udp"] = KerberosTransport.Udp,
-            ["tcp"] = KerberosTransport.Tcp,
-            ["both"] = KerberosTransport.Both
-        };
-    private static readonly IReadOnlyDictionary<string, ReplicationQueryMode> ReplicationModes =
-        new Dictionary<string, ReplicationQueryMode>(StringComparer.OrdinalIgnoreCase) {
-            ["auto"] = ReplicationQueryMode.Auto,
-            ["drsr"] = ReplicationQueryMode.Drsr,
-            ["sda"] = ReplicationQueryMode.Sda
-        };
-    private static readonly IReadOnlyDictionary<string, DirectoryDiscoveryFallback> DiscoveryFallbackModes =
-        new Dictionary<string, DirectoryDiscoveryFallback>(StringComparer.OrdinalIgnoreCase) {
-            ["none"] = DirectoryDiscoveryFallback.None,
-            ["current_domain"] = DirectoryDiscoveryFallback.CurrentDomain,
-            ["current-domain"] = DirectoryDiscoveryFallback.CurrentDomain,
-            ["currentdomain"] = DirectoryDiscoveryFallback.CurrentDomain,
-            ["current_forest"] = DirectoryDiscoveryFallback.CurrentForest,
-            ["current-forest"] = DirectoryDiscoveryFallback.CurrentForest,
-            ["currentforest"] = DirectoryDiscoveryFallback.CurrentForest
-        };
-
-    private static readonly ToolDefinition DefinitionValue = new(
-        "ad_monitoring_probe_run",
-        "Run an AD monitoring probe through ADPlayground.Monitoring (ldap/dns/kerberos/ntp/replication) with optional domain/forest/DC scoping.",
-        ToolSchema.Object(
-                ("probe_kind", ToolSchema.String("Probe kind to execute.").Enum("ldap", "dns", "kerberos", "ntp", "replication")),
-                ("name", ToolSchema.String("Optional probe execution name. If omitted, a generated name is used.")),
-                ("targets", ToolSchema.Array(ToolSchema.String(), "Optional explicit target hosts. When omitted, AD discovery can be used via domain/forest/include filters.")),
-                ("domain_controller", ToolSchema.String("Optional single DC host shortcut. If set and targets are omitted, this DC is used as target.")),
-                ("domain_name", ToolSchema.String("Optional DNS domain scope used for discovery and probe defaults.")),
-                ("forest_name", ToolSchema.String("Optional forest scope used for discovery.")),
-                ("include_domains", ToolSchema.Array(ToolSchema.String(), "Optional include-domain filter for discovery.")),
-                ("exclude_domains", ToolSchema.Array(ToolSchema.String(), "Optional exclude-domain filter for discovery.")),
-                ("include_domain_controllers", ToolSchema.Array(ToolSchema.String(), "Optional include-DC filter for discovery.")),
-                ("exclude_domain_controllers", ToolSchema.Array(ToolSchema.String(), "Optional exclude-DC filter for discovery.")),
-                ("skip_rodc", ToolSchema.Boolean("When true, excludes RODCs from discovered targets.")),
-                ("include_trusts", ToolSchema.Boolean("When true, includes trusted domains in discovery.")),
-                ("discovery_fallback",
-                    ToolSchema.String("Fallback discovery policy when no explicit targets/domain/forest are provided.")
-                        .Enum("none", "current_domain", "current_forest")),
-                ("timeout_ms", ToolSchema.Integer("Probe timeout in milliseconds. Default 5000.")),
-                ("retries", ToolSchema.Integer("Retry count. Default 0.")),
-                ("retry_delay_ms", ToolSchema.Integer("Retry delay in milliseconds. Default 250.")),
-                ("max_concurrency", ToolSchema.Integer("Maximum target concurrency. Default 4.")),
-                ("protocol", ToolSchema.String("Transport/profile for applicable probes. dns: udp/tcp/both. kerberos: udp/tcp/both.")),
-                ("split_protocol_results", ToolSchema.Boolean("When true (where supported), returns separate protocol child rows.")),
-                ("dns_queries", ToolSchema.Array(
-                    ToolSchema.Object(
-                            ("name", ToolSchema.String("DNS query name/FQDN.")),
-                            ("type", ToolSchema.String("DNS type (A, AAAA, SRV, CNAME, PTR, TXT, MX, NS, SOA, etc.).")))
-                        .Required("name", "type")
-                        .NoAdditionalProperties(),
-                    "Optional DNS queries; if omitted and domain_name is available, defaults are derived.")),
-                ("verify_certificate", ToolSchema.Boolean("LDAP only: verify LDAPS certificates. Default true.")),
-                ("include_global_catalog", ToolSchema.Boolean("LDAP only: include GC ports 3268/3269. Default true.")),
-                ("include_facts", ToolSchema.Boolean("LDAP only: include quickly retrievable DC facts. Default true.")),
-                ("identity", ToolSchema.String("LDAP only: optional identity to validate (samAccountName/UPN/DN/GUID/SID).")),
-                ("stale_threshold_hours", ToolSchema.Integer("Replication only: stale threshold in hours. Default 12.")),
-                ("include_sysvol", ToolSchema.Boolean("Replication only: include SYSVOL/DFSR snapshot.")),
-                ("test_sysvol_shares", ToolSchema.Boolean("Replication only: validate SYSVOL/NETLOGON share access.")),
-                ("test_ports", ToolSchema.Boolean("Replication only: include TCP connectivity precheck details.")),
-                ("test_ping", ToolSchema.Boolean("Replication only: include ICMP ping check details.")),
-                ("query_mode", ToolSchema.String("Replication only: data source mode.").Enum("auto", "drsr", "sda")),
-                ("include_children", ToolSchema.Boolean("When false, omits nested child results in raw probe_result while keeping parent status.")))
-            .WithTableViewOptions(
-                columnsDescription: "Optional columns projected from flattened probe rows (parent + children + metadata).",
-                sortByDescription: "Optional sort column for flattened probe rows.",
-                topDescription: "Optional top-N limit for flattened probe rows.")
-            .Required("probe_kind")
-            .NoAdditionalProperties());
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AdMonitoringProbeRunTool"/> class.
-    /// </summary>
-    public AdMonitoringProbeRunTool(ActiveDirectoryToolOptions options) : base(options) { }
-
-    /// <inheritdoc />
-    public override ToolDefinition Definition => DefinitionValue;
-
+public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
@@ -131,9 +36,9 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
             return Error("invalid_argument", "probe_kind is required.");
         }
 
-        var normalizedKind = probeKind.Trim().ToLowerInvariant();
+        var normalizedKind = NormalizeProbeKind(probeKind);
         if (!ProbeKinds.Contains(normalizedKind, StringComparer.OrdinalIgnoreCase)) {
-            return Error("invalid_argument", "probe_kind must be one of: ldap, dns, kerberos, ntp, replication.");
+            return Error("invalid_argument", "probe_kind must be one of: " + string.Join(", ", ProbeKinds) + ".");
         }
 
         var name = ToolArgs.GetOptionalTrimmed(arguments, "name");
@@ -165,7 +70,9 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
         var skipRodc = ToolArgs.GetBoolean(arguments, "skip_rodc", defaultValue: false);
         var includeTrusts = ToolArgs.GetBoolean(arguments, "include_trusts", defaultValue: false);
         var splitProtocolResults = ToolArgs.GetBoolean(arguments, "split_protocol_results", defaultValue: false);
-        var defaultDiscoveryFallback = string.Equals(normalizedKind, "replication", StringComparison.OrdinalIgnoreCase)
+        var defaultDiscoveryFallback =
+            string.Equals(normalizedKind, "replication", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)
             ? DirectoryDiscoveryFallback.CurrentForest
             : DirectoryDiscoveryFallback.CurrentDomain;
         var discoveryFallback = ToolEnumBinders.ParseOrDefault(
@@ -205,6 +112,24 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
                     break;
                 case "replication":
                     result = await RunReplicationAsync().ConfigureAwait(false);
+                    break;
+                case "port":
+                    result = await RunPortAsync().ConfigureAwait(false);
+                    break;
+                case "https":
+                    result = await RunHttpsAsync().ConfigureAwait(false);
+                    break;
+                case "dns_service":
+                    result = await RunDnsServiceAsync().ConfigureAwait(false);
+                    break;
+                case "adws":
+                    result = await RunAdwsAsync().ConfigureAwait(false);
+                    break;
+                case "directory":
+                    result = await RunDirectoryAsync().ConfigureAwait(false);
+                    break;
+                case "ping":
+                    result = await RunPingAsync().ConfigureAwait(false);
                     break;
                 default:
                     return Error("invalid_argument", "Unsupported probe_kind.");
@@ -428,123 +353,190 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
             var runner = new ReplicationProbeRunner();
             return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
         }
-    }
 
-    private static IReadOnlyList<string> ResolveDirectoryTargets(
-        IReadOnlyList<string> explicitTargets,
-        string? forestName,
-        string? domainName,
-        IReadOnlyList<string> includeDomains,
-        IReadOnlyList<string> excludeDomains,
-        IReadOnlyList<string> includeDomainControllers,
-        IReadOnlyList<string> excludeDomainControllers,
-        bool skipRodc,
-        bool includeTrusts,
-        DirectoryDiscoveryFallback fallback,
-        CancellationToken cancellationToken) {
-        return DirectoryTargetResolver.ResolveTargets(
-            explicitTargets: explicitTargets,
-            forestName: forestName,
-            domainName: domainName,
-            includeDomains: includeDomains,
-            excludeDomains: excludeDomains,
-            includeDomainControllers: includeDomainControllers,
-            excludeDomainControllers: excludeDomainControllers,
-            skipRodc: skipRodc,
-            includeTrusts: includeTrusts,
-            fallback: fallback,
-            cancellationToken: cancellationToken);
-    }
-
-    private static string ToDiscoveryFallbackName(DirectoryDiscoveryFallback fallback) {
-        return fallback switch {
-            DirectoryDiscoveryFallback.None => "none",
-            DirectoryDiscoveryFallback.CurrentForest => "current_forest",
-            _ => "current_domain"
-        };
-    }
-
-    private static List<DnsQueryItem> ReadDnsQueries(JsonArray? array) {
-        var queries = new List<DnsQueryItem>();
-        if (array is null || array.Count == 0) {
-            return queries;
-        }
-
-        for (var i = 0; i < array.Count; i++) {
-            var queryObject = array[i].AsObject();
-            if (queryObject is null) {
-                continue;
-            }
-
-            var name = queryObject.GetString("name")?.Trim();
-            var type = queryObject.GetString("type")?.Trim();
-            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type)) {
-                continue;
-            }
-
-            queries.Add(new DnsQueryItem {
+        async Task<ProbeResult> RunAdwsAsync() {
+            var def = new AdwsProbeDefinition {
                 Name = name!,
-                Type = type!
-            });
-        }
-
-        return queries;
-    }
-
-    private static List<IReadOnlyDictionary<string, object?>> FlattenProbeRows(ProbeResult result, bool includeChildren) {
-        var rows = new List<IReadOnlyDictionary<string, object?>>();
-        AddRow(result, depth: 0, parentName: null);
-        return rows;
-
-        void AddRow(ProbeResult current, int depth, string? parentName) {
-            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["name"] = current.Name,
-                ["type"] = current.Type.ToString(),
-                ["status"] = current.Status.ToString(),
-                ["is_maintenance"] = current.IsMaintenance,
-                ["completed_utc"] = current.CompletedUtc.UtcDateTime,
-                ["latency_ms"] = current.Latency?.TotalMilliseconds,
-                ["duration_ms"] = current.Duration?.TotalMilliseconds,
-                ["error"] = current.Error,
-                ["details"] = current.Details,
-                ["agent"] = current.Agent,
-                ["zone"] = current.Zone,
-                ["target"] = current.Target,
-                ["protocol"] = current.Protocol,
-                ["answer_count"] = current.AnswerCount,
-                ["answer_sample"] = current.AnswerSample,
-                ["resolved_target"] = current.ResolvedTarget,
-                ["root_probe"] = current.RootProbe,
-                ["depth"] = depth,
-                ["parent_name"] = parentName ?? string.Empty,
-                ["children_count"] = current.Children?.Count ?? 0
+                Targets = resolvedTargets.ToArray(),
+                DomainName = domainName,
+                ForestName = forestName,
+                IncludeDomains = includeDomains.ToArray(),
+                ExcludeDomains = excludeDomains.ToArray(),
+                IncludeDomainControllers = includeDomainControllers.ToArray(),
+                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                SkipRodc = skipRodc,
+                IncludeTrusts = includeTrusts,
+                Timeout = timeout,
+                Retries = retries,
+                RetryDelay = retryDelay,
+                Port = ToolArgs.GetCappedInt32(arguments, "port", 9389, 1, 65535),
+                Path = ToolArgs.GetTrimmedOrDefault(arguments, "path", "ActiveDirectoryWebServices/Windows/Enumeration"),
+                RequestTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "request_timeout_ms") ?? timeout,
+                FailureHandling = ToolEnumBinders.ParseOrDefault(
+                    ToolArgs.GetOptionalTrimmed(arguments, "adws_failure_handling"),
+                    IssueHandlingModes,
+                    PortIssueHandling.Down),
+                BindIdentity = ToolArgs.GetOptionalTrimmed(arguments, "bind_identity"),
+                BindSecret = ToolArgs.GetOptionalTrimmed(arguments, "bind_secret"),
+                MaxConcurrency = maxConcurrency
             };
 
-            if (current.Metadata is not null) {
-                foreach (var pair in current.Metadata) {
-                    if (string.IsNullOrWhiteSpace(pair.Key)) {
-                        continue;
-                    }
+            var runner = new AdwsProbeRunner();
+            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+        }
 
-                    var normalizedKey = JsonNamingPolicy.SnakeCaseLower.ConvertName(pair.Key.Trim());
-                    row[$"meta_{normalizedKey}"] = pair.Value;
-                }
+        async Task<ProbeResult> RunPortAsync() {
+            var tcpPorts = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("tcp_ports"), 65535)
+                .Distinct()
+                .OrderBy(static x => x)
+                .ToArray();
+            var udpPorts = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("udp_ports"), 65535)
+                .Distinct()
+                .OrderBy(static x => x)
+                .ToArray();
+
+            var def = new PortProbeDefinition {
+                Name = name!,
+                Targets = resolvedTargets.ToArray(),
+                DomainName = domainName,
+                ForestName = forestName,
+                IncludeDomains = includeDomains.ToArray(),
+                ExcludeDomains = excludeDomains.ToArray(),
+                IncludeDomainControllers = includeDomainControllers.ToArray(),
+                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                SkipRodc = skipRodc,
+                IncludeTrusts = includeTrusts,
+                Timeout = timeout,
+                Retries = retries,
+                RetryDelay = retryDelay,
+                MaxConcurrency = maxConcurrency,
+                Ports = tcpPorts,
+                UdpPorts = udpPorts,
+                IncludeUdp = ToolArgs.GetBoolean(arguments, "include_udp", defaultValue: false),
+                UseAdCoreProfile = ToolArgs.GetBoolean(arguments, "use_ad_core_profile", defaultValue: true),
+                RetryCount = retries
+            };
+
+            var runner = new PortProbeRunner();
+            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+        }
+
+        async Task<ProbeResult> RunDnsServiceAsync() {
+            var protocol = ToolEnumBinders.ParseOrDefault(
+                value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
+                map: DnsProtocols,
+                defaultValue: MonitoringDnsProtocol.Udp);
+
+            var def = new DnsServiceProbeDefinition {
+                Name = name!,
+                Targets = resolvedTargets.ToArray(),
+                DomainName = domainName,
+                ForestName = forestName,
+                IncludeDomains = includeDomains.ToArray(),
+                ExcludeDomains = excludeDomains.ToArray(),
+                IncludeDomainControllers = includeDomainControllers.ToArray(),
+                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                SkipRodc = skipRodc,
+                IncludeTrusts = includeTrusts,
+                Timeout = timeout,
+                Retries = retries,
+                RetryDelay = retryDelay,
+                Protocol = protocol,
+                QueryName = ToolArgs.GetTrimmedOrDefault(arguments, "dns_service_query_name", "_ldap._tcp.dc._msdcs.{domain}"),
+                RecordType = ToolArgs.GetTrimmedOrDefault(arguments, "dns_service_record_type", "SRV"),
+                RequireAnswers = ToolArgs.GetBoolean(arguments, "dns_service_require_answers", defaultValue: true),
+                QueryTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "dns_service_query_timeout_ms") ?? timeout,
+                MaxConcurrency = maxConcurrency
+            };
+
+            var runner = new DnsServiceProbeRunner();
+            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+        }
+
+        async Task<ProbeResult> RunHttpsAsync() {
+            var endpoints = new List<string>();
+            var url = ToolArgs.GetOptionalTrimmed(arguments, "url");
+            if (!string.IsNullOrWhiteSpace(url)) {
+                endpoints.Add(url!);
+            }
+            if (targets.Count > 0) {
+                endpoints.AddRange(targets);
+            }
+            if (endpoints.Count == 0) {
+                endpoints.AddRange(resolvedTargets);
             }
 
-            rows.Add(row);
+            endpoints = endpoints
+                .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .Select(static x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            if (!includeChildren || current.Children is null || current.Children.Count == 0) {
-                return;
+            if (endpoints.Count == 0) {
+                throw new InvalidOperationException("HTTPS probe requires url, targets, or resolvable scope.");
             }
 
-            for (var i = 0; i < current.Children.Count; i++) {
-                var child = current.Children[i];
-                if (child is null) {
-                    continue;
-                }
+            var template = new HttpsProbeDefinition {
+                Name = name!,
+                Timeout = timeout,
+                Retries = retries,
+                RetryDelay = retryDelay,
+                Port = ToolArgs.GetCappedInt32(arguments, "port", 443, 1, 65535),
+                VerifyCertificate = ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true),
+                CertificateDegradedDays = ToolArgs.GetCappedInt32(arguments, "certificate_degraded_days", 30, 0, 3650),
+                DegradedAbove = ReadOptionalTimeSpanFromMilliseconds(arguments, "degraded_above_ms") ?? TimeSpan.FromSeconds(2)
+            };
 
-                AddRow(child, depth + 1, current.Name);
+            var runner = new HttpsProbeRunner();
+            if (endpoints.Count == 1) {
+                var single = CloneHttpsDefinition(template, endpoints[0], name!);
+                return await runner.ExecuteAsync(single, cancellationToken).ConfigureAwait(false);
             }
+
+            var children = new List<ProbeResult>(endpoints.Count);
+            for (var i = 0; i < endpoints.Count; i++) {
+                var endpoint = endpoints[i];
+                var child = CloneHttpsDefinition(template, endpoint, $"{name}-{i + 1}");
+                children.Add(await runner.ExecuteAsync(child, cancellationToken).ConfigureAwait(false));
+            }
+
+            return BuildAggregateParentResult(
+                name: name!,
+                type: ProbeType.Https,
+                protocol: "HTTPS",
+                targetLabel: $"{children.Count} targets",
+                children: children);
+        }
+
+        Task<ProbeResult> RunDirectoryAsync() {
+            return RunDirectoryAsyncCore(
+                arguments: arguments,
+                name: name!,
+                resolvedTargets: resolvedTargets,
+                domainName: domainName,
+                forestName: forestName,
+                includeDomains: includeDomains,
+                excludeDomains: excludeDomains,
+                includeDomainControllers: includeDomainControllers,
+                excludeDomainControllers: excludeDomainControllers,
+                skipRodc: skipRodc,
+                includeTrusts: includeTrusts,
+                timeout: timeout,
+                retries: retries,
+                retryDelay: retryDelay,
+                maxConcurrency: maxConcurrency,
+                cancellationToken: cancellationToken);
+        }
+
+        Task<ProbeResult> RunPingAsync() {
+            return RunPingAsyncCore(
+                arguments: arguments,
+                name: name!,
+                resolvedTargets: resolvedTargets,
+                retries: retries,
+                timeoutMs: timeoutMs,
+                retryDelay: retryDelay,
+                cancellationToken: cancellationToken);
         }
     }
 }
