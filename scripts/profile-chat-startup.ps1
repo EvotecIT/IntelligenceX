@@ -72,6 +72,20 @@ function Get-Average([object[]] $values) {
     return [math]::Round((($usable | Measure-Object -Average).Average), 2)
 }
 
+function Get-MarkerIntValue([string[]] $lines, [string] $marker) {
+    $line = $lines | Where-Object { $_ -match [regex]::Escape($marker) } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        return $null
+    }
+
+    $pattern = [regex]::Escape($marker) + '(?<value>\d+)'
+    if ($line -match $pattern) {
+        return [int]$Matches['value']
+    }
+
+    return $null
+}
+
 $runResults = New-Object System.Collections.Generic.List[object]
 
 for ($i = 1; $i -le $Runs; $i++) {
@@ -124,6 +138,7 @@ for ($i = 1; $i -le $Runs; $i++) {
         state            = $state
         startup_log_path = $archivedStartupLogPath
         total_ms         = Get-DurationMs (Get-MarkerTimestamp $lines 'Program.Main enter') (Get-MarkerTimestamp $lines 'MainWindow.StartupFlow done')
+        startup_webview_budget_ms = Get-MarkerIntValue $lines 'StartupPhase.WebView budget_ms='
         startup_webview_ms = Get-DurationMs (Get-MarkerTimestamp $lines 'StartupPhase.WebView begin') (Get-MarkerTimestamp $lines 'StartupPhase.WebView done')
         ensure_webview_ms  = Get-DurationMs (Get-MarkerTimestamp $lines 'EnsureWebViewInitializedAsync begin') (Get-MarkerTimestamp $lines 'EnsureWebViewInitializedAsync ok')
         webview_env_prewarm_ms = Get-DurationMs (Get-MarkerTimestamp $lines 'EnsureWebViewInitializedAsync.env_prewarm begin') (Get-MarkerTimestamp $lines 'EnsureWebViewInitializedAsync.env_prewarm done')
@@ -154,6 +169,7 @@ $summary = [pscustomobject]@{
     runs_requested       = $Runs
     runs_completed       = $completedRuns.Count
     avg_total_ms         = Get-Average ($completedRuns | ForEach-Object { $_.total_ms })
+    avg_startup_webview_budget_ms = Get-Average ($completedRuns | ForEach-Object { $_.startup_webview_budget_ms })
     avg_startup_webview_ms = Get-Average ($completedRuns | ForEach-Object { $_.startup_webview_ms })
     avg_ensure_webview_ms  = Get-Average ($completedRuns | ForEach-Object { $_.ensure_webview_ms })
     avg_webview_env_prewarm_ms = Get-Average ($completedRuns | ForEach-Object { $_.webview_env_prewarm_ms })
@@ -163,6 +179,7 @@ $summary = [pscustomobject]@{
     avg_auth_refresh_ms  = Get-Average ($completedRuns | ForEach-Object { $_.auth_refresh_ms })
     avg_model_sync_ms    = Get-Average ($completedRuns | ForEach-Object { $_.model_sync_ms })
     avg_warm_total_ms    = Get-Average ($warmRuns | ForEach-Object { $_.total_ms })
+    avg_warm_startup_webview_budget_ms = Get-Average ($warmRuns | ForEach-Object { $_.startup_webview_budget_ms })
     avg_warm_startup_webview_ms = Get-Average ($warmRuns | ForEach-Object { $_.startup_webview_ms })
     avg_warm_ensure_webview_ms  = Get-Average ($warmRuns | ForEach-Object { $_.ensure_webview_ms })
     avg_warm_webview_env_prewarm_ms = Get-Average ($warmRuns | ForEach-Object { $_.webview_env_prewarm_ms })

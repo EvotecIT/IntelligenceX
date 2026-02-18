@@ -42,7 +42,8 @@ pwsh .\scripts\profile-chat-startup.ps1 -Runs 5 -OutFile .\artifacts\chat-startu
 
 Add `-PostStartupGraceSeconds 2` if you want to include deferred post-startup warmup phases in the report.
 Add `-ArchiveLogsDirectory .\artifacts\chat-startup-logs` to retain each run's raw startup log for hotspot/outlier investigation.
-The report includes startup WebView metrics (`startup_webview_ms`, `ensure_webview_ms`, `webview_env_prewarm_ms`) plus budget/defer markers to track fail-open behavior.
+The report includes startup WebView metrics (`startup_webview_budget_ms`, `startup_webview_ms`, `ensure_webview_ms`, `webview_env_prewarm_ms`) plus budget/defer markers to track fail-open behavior.
+Adaptive startup WebView budget cache is persisted at `%LOCALAPPDATA%\IntelligenceX.Chat\startup-webview-budget-cache-v1.json` (best-effort, stability/cooldown aware so slower hardware stays conservative).
 
 Markdown renderer dependency resolution is automatic:
 - Dev: if sibling local source exists (`..\OfficeIMO`), Chat builds against that local project.
