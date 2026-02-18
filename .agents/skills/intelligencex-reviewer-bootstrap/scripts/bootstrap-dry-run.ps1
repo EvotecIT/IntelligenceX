@@ -129,7 +129,7 @@ if ($Mode -eq "setup") {
     } else {
         [string]::Empty
     }
-    $reviewerSkippedNoChanges = $rawContent -match "File:\s+\.intelligencex/reviewer\.json\s+\(skip \(no changes\)\)"
+    $reviewerSkippedNoChanges = $rawContent -match "(?is)File:\s+\.intelligencex/reviewer\.json\b[\s\S]*?\bskip\b[\s\S]*?\bno changes\b"
     if ([string]::IsNullOrWhiteSpace($reviewerContent) -and -not $reviewerSkippedNoChanges) {
         Fail "ERROR: setup mode expected reviewer config block in dry-run output."
     }

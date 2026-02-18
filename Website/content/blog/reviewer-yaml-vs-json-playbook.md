@@ -6,94 +6,110 @@ collection: blog
 layout: page
 ---
 
-When teams say "the reviewer changed behavior," the root cause is usually simple:
-settings were applied from a different source than expected.
+If your team has ever said, "nothing changed, but reviewer output looks different," this post is for you.
 
-IntelligenceX Reviewer can read configuration from both workflow YAML and `.intelligencex/reviewer.json`.
-That is powerful, but only if everyone knows which file owns which decision.
+That sentence almost always means one thing: the setting changed source, not just value.
+IntelligenceX Reviewer can read config from both workflow YAML and `.intelligencex/reviewer.json`.
+Once you understand who owns what, reviewer behavior becomes boring and predictable again.
 
-This post is the quick playbook.
+## The Mental Model
 
-## One Minute Version
+There are two surfaces:
 
-- Use workflow YAML for CI plumbing (runner, source, transport, secrets mode, temporary overrides).
-- Use `.intelligencex/reviewer.json` for review policy (mode, length, strictness, diff strategy, filters, triage).
-- Remember precedence: defaults -> JSON -> workflow/env inputs.
+- Workflow YAML controls pipeline wiring and per-run overrides.
+- `reviewer.json` controls team review policy.
 
-If you want the full contract details, read:
-- [Workflow vs JSON](/docs/reviewer/workflow-vs-json/)
-- [Reviewer Configuration](/docs/reviewer/configuration/)
+And there is one precedence rule:
 
-## Why This Matters
+`defaults -> reviewer.json -> environment/workflow inputs`
 
-YAML and JSON changes have different blast radius:
+In Actions, `with:` inputs become `INPUT_*` variables, so they can override JSON.
 
-- YAML changes can alter CI behavior and check execution.
-- JSON changes usually keep CI wiring stable but change review output and triage behavior.
+## Real Failure Pattern
 
-That is why two PRs can both "touch reviewer config" but have very different operational risk.
+The most common drift bug looks like this:
 
-## Recommended Team Pattern
+1. Team sets `mode: hybrid` in `.intelligencex/reviewer.json`.
+2. Later, a workflow update passes a different `mode` (or omits expected fields and defaults kick in).
+3. Reviewer starts rendering differently.
+4. Everyone blames the model.
 
-Use a hybrid split with explicit boundaries:
+The model is usually fine. Config precedence is what changed.
 
-- YAML owns:
+## What Goes Where (Practical, Not Theoretical)
+
+Use this split to avoid 90% of configuration churn:
+
+- Keep in YAML:
   - `runs_on`
   - `reviewer_source`
   - `provider`, `model`, `openai_transport`
-  - secrets wiring
-- JSON owns:
+  - secret wiring (`secrets: inherit` or explicit)
+  - temporary `workflow_dispatch` overrides
+- Keep in JSON:
   - `mode`, `length`, `profile`, `style`
   - `reviewDiffRange`, include/exclude/skip paths
-  - thread triage/auto-resolve options
+  - thread triage and auto-resolve behavior
   - analysis policy under `analysis.*`
 
-This keeps behavior predictable and lowers config drift.
+This gives CI engineers control of infrastructure and reviewers/maintainers control of policy.
 
-## CLI Wizard vs Web Setup
+## Build Impact: YAML vs JSON
 
-Both paths use the same onboarding contract and path IDs:
+Treat these differently in review:
+
+- YAML change:
+  - can alter CI execution path
+  - can affect whether review runs at all
+  - can impact auth/transport/runtime behavior
+- JSON change:
+  - usually leaves pipeline wiring intact
+  - changes review behavior, strictness, coverage, and output shape
+
+Same repository, same reviewer, very different risk profile.
+
+## Onboarding: CLI and Web Are the Same Contract
+
+Use whichever UX fits your team:
+
+- CLI: `intelligencex setup wizard`
+- Web: `intelligencex setup web`
+
+Both follow the same path model:
 
 - `new-setup`
 - `refresh-auth`
 - `cleanup`
 - `maintenance`
 
-Use whichever UX you prefer:
+So this is not two systems. It is one setup contract with two entry points.
 
-- CLI: `intelligencex setup wizard`
-- Web: `intelligencex setup web`
+## A Simple Team Playbook
 
-Docs:
-- [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
-- [Web Setup UI](/docs/reviewer/setup-web/)
-- [Web Onboarding Flow](/docs/reviewer/web-onboarding/)
+When changing reviewer behavior:
 
-## What Happens After You Change Config
-
-### If you edit workflow YAML
-
-- You are editing CI behavior directly.
-- Workflow-only PRs may be intentionally review-skipped depending on guard settings.
-- Validate checks on a small PR before rolling out broadly.
-
-### If you edit reviewer.json
-
-- Reviewer check wiring typically stays the same.
-- Comment format, strictness, and findings can change immediately.
-- Validate on one representative PR and compare summary structure + triage decisions.
-
-## Practical Validation Loop
-
-1. Make one focused config change.
+1. Change one source at a time.
 2. Open a small PR.
 3. Confirm `review / review` ran.
-4. Check reviewer footer for expected `Mode` and `Length`.
-5. If analysis is enabled, confirm policy/findings sections match intent.
+4. Check footer metadata for expected `Mode` and `Length`.
+5. If analysis is on, confirm policy/findings sections match expectations.
+
+When changing workflow wiring:
+
+1. Treat it as CI/infrastructure change.
+2. Validate on a low-risk PR.
+3. Document why YAML owns that specific knob.
 
 ## Final Take
 
-You do not need to choose YAML or JSON exclusively.
-You need a clear ownership model.
+You do not need to pick YAML or JSON forever.
+You need explicit ownership.
 
-Once your team documents that split, reviewer behavior becomes predictable, upgrades are safer, and onboarding gets much easier.
+Once ownership is clear, reviewer output stops feeling random, onboarding is easier, and upgrades become routine instead of stressful.
+
+For the full reference:
+
+- [Workflow vs JSON](/docs/reviewer/workflow-vs-json/)
+- [Reviewer Configuration](/docs/reviewer/configuration/)
+- [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
+- [Web Setup UI](/docs/reviewer/setup-web/)
