@@ -39,22 +39,6 @@ function Extract-Section([string] $Content, [string] $SectionName) {
     return ($result -join [Environment]::NewLine).TrimEnd()
 }
 
-function Test-ReviewerConfigSkippedNoChanges([string] $Content) {
-    $summaryLine = [regex]::Match(
-        $Content,
-        "(?is)File:\s+\.intelligencex[\\/]+reviewer\.json\b(?<suffix>[^\r\n]*)"
-    )
-    if (-not $summaryLine.Success) {
-        return $false
-    }
-
-    $suffix = $summaryLine.Groups["suffix"].Value
-    return (
-        ($suffix -match "(?i)\b(skip|unchanged)\b") -or
-        ($suffix -match "(?i)\bno\s*changes?\b")
-    )
-}
-
 if ([string]::IsNullOrWhiteSpace($Repo)) {
     Fail "ERROR: --repo is required"
 }
@@ -145,7 +129,7 @@ if ($Mode -eq "setup") {
     } else {
         [string]::Empty
     }
-    $reviewerSkippedNoChanges = Test-ReviewerConfigSkippedNoChanges -Content $rawContent
+    $reviewerSkippedNoChanges = $rawContent -match "(?is)File:\s+\.intelligencex[\\/]+reviewer\.json\b[^\r\n]*(?:\bskip\b|\bunchanged\b|\bno\s*changes?\b)"
     if ([string]::IsNullOrWhiteSpace($reviewerContent) -and -not $reviewerSkippedNoChanges) {
         Fail "ERROR: setup mode expected reviewer config block in dry-run output."
     }
