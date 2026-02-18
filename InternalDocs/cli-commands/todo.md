@@ -69,6 +69,11 @@ intelligencex todo issue-review --repo EvotecIT/IntelligenceX
 Options:
 - `--max-issues <n>` (1-2000, default `300`)
 - `--stale-days <n>` (default `14`)
+- `--min-consecutive-candidates <n>` (default `1`; use `2+` for safer auto-close)
+- `--state-path <path>` (default `artifacts/triage/ix-issue-review-state.json`)
+- `--no-state` (disable streak persistence)
+- `--allow-label <label>` (repeatable; require at least one for auto-close eligibility)
+- `--deny-label <label>` (repeatable; never auto-close when present)
 - `--apply-close` (opt-in mutating mode; closes no-longer-applicable candidates)
 - `--close-reason <completed|not-planned>` (default `completed`)
 - `--no-comment` (skip managed close note comment)
@@ -79,6 +84,13 @@ Safety defaults:
 - Dry-run by default (no issue mutation unless `--apply-close` is set).
 - Issues with protected labels (`do-not-close`, `keep-open`, `pinned`, `ix/decision:accept`) are never auto-closed.
 - Auto-close scope is currently conservative: infra blockers with linked PR references where all linked PRs are resolved.
+- For production-like automation, prefer `--min-consecutive-candidates 2` (or higher) with a persisted `--state-path`.
+
+Workflow automation:
+- `.github/workflows/issue-review.yml` runs nightly in dry-run mode.
+- Manual close runs require explicit confirmation in workflow dispatch:
+  - `apply_close=true`
+  - `confirm_apply_close=CLOSE_ISSUES`
 
 ## Vision Check (Assistive)
 
