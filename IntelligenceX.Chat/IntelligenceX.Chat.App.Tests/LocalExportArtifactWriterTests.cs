@@ -307,6 +307,24 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures large adversarial transcript inputs do not trigger regex timeout failures.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_NormalizationHandlesLargeAdversarialInput() {
+        var repeatedStrongChunk = string.Concat(Enumerable.Repeat("**A**", 2200));
+        var longStarRun = new string('*', 8000);
+        var longTail = new string('x', 9000);
+        var markdown =
+            "# Transcript\n\n"
+            + "- Signal **" + repeatedStrongChunk + " -> **Why it matters:**tight spacing persists -> **Action:**normalize quickly.**\n"
+            + "- Signal **Probe " + longStarRun + " -> **Next action:**" + longTail + "**\n";
+
+        var exception = Record.Exception(() => OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown));
+
+        Assert.Null(exception);
+    }
+
+    /// <summary>
     /// Ensures DOCX transcript export materializes supported visual fences into embedded images.
     /// </summary>
     [Fact]
