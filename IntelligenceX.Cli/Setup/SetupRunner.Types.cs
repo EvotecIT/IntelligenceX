@@ -7,7 +7,7 @@ namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
     private const string DefaultActionsRepo = "evotecit/github-actions";
-    private const string DefaultActionsRef = "68fe2c83e1a7d97d5aad6c4c8223c1d7eb8031e7";
+    private const string DefaultActionsRef = "5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf";
     private const string DefaultRunsOn =
         "${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '[\"self-hosted\",\"ubuntu\"]' || '[\"ubuntu-latest\"]' }}";
 
