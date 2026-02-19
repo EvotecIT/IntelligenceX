@@ -39,6 +39,7 @@ Use this skill when changing files in `IntelligenceX.Tools/**`, especially when 
 - Keep mass normalization (for example line endings) in a dedicated cleanup PR, not mixed with behavior changes.
 - Prefer typed request models over direct `arguments?.Get...` reads in new/refactored tools.
 - Prefer middleware composition over inline precondition blocks when preconditions are reusable.
+- For AD tools with required `domain_name`, use canonical helpers (`TryReadRequiredDomainQueryRequest`, `TryReadPolicyAttributionToolRequest`, `ExecuteDomainRowsViewTool`, `ExecutePolicyAttributionTool`).
 
 ## References
 - `InternalDocs/agent-playbooks/tool-authoring-playbook.md`

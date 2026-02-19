@@ -17,6 +17,7 @@ internal static partial class AnalyzeRunCommand {
     private const string InternalMaxLinesRuleId = "IXLOC001";
     private const string InternalDuplicationRuleId = "IXDUP001";
     private const string InternalWriteToolSchemaRuleId = "IXTOOL001";
+    private const string InternalAdRequiredDomainHelperRuleId = "IXTOOL002";
     private const string DuplicationWindowLinesTagPrefix = "dup-window-lines:";
     private const string MaxDuplicationPercentTagPrefix = "max-duplication-percent:";
     private const string MaxDuplicationPercentByLanguageTagPrefix = "max-duplication-percent-";
@@ -200,13 +201,17 @@ internal static partial class AnalyzeRunCommand {
         var writeToolSchemaRules = rules
             .Where(rule => rule?.Rule is not null && IsWriteToolSchemaRule(rule.Rule))
             .ToList();
-        if (maxLinesRules.Count == 0 && duplicationRules.Count == 0 && writeToolSchemaRules.Count == 0) {
+        var adRequiredDomainHelperRules = rules
+            .Where(rule => rule?.Rule is not null && IsAdRequiredDomainHelperRule(rule.Rule))
+            .ToList();
+        if (maxLinesRules.Count == 0 && duplicationRules.Count == 0 && writeToolSchemaRules.Count == 0 &&
+            adRequiredDomainHelperRules.Count == 0) {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
         // Build a candidate source set once; each rule applies its own filtering tags on top.
         var includedSourceExtensions = ResolveIncludedSourceExtensionsForRules(
-            maxLinesRules.Concat(duplicationRules).Concat(writeToolSchemaRules)
+            maxLinesRules.Concat(duplicationRules).Concat(writeToolSchemaRules).Concat(adRequiredDomainHelperRules)
                 .Where(static item => item?.Rule is not null)
                 .Select(static item => item.Rule),
             warnings);
@@ -231,6 +236,8 @@ internal static partial class AnalyzeRunCommand {
         findings.AddRange(duplicationResult.Findings);
         duplicationRuleMetrics.AddRange(duplicationResult.RuleMetrics);
         findings.AddRange(RunWriteToolSchemaChecks(writeToolSchemaRules, sourceFiles, excludedOutputPath, warnings));
+        findings.AddRange(
+            RunAdRequiredDomainHelperChecks(adRequiredDomainHelperRules, sourceFiles, excludedOutputPath, warnings));
 
         Console.WriteLine($"Internal maintainability findings: {findings.Count} item(s).");
         return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
@@ -645,6 +652,13 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
         return rule.Id.Equals(InternalWriteToolSchemaRuleId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAdRequiredDomainHelperRule(AnalysisRule rule) {
+        if (rule is null) {
+            return false;
+        }
+        return rule.Id.Equals(InternalAdRequiredDomainHelperRuleId, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class SourceFileEntry {
