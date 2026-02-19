@@ -167,6 +167,7 @@ public sealed partial class MainWindow : Window {
 
     private readonly DispatcherQueue _dispatcher;
     private readonly WebView2 _webView;
+    private readonly MarkdownRendererOptions _markdownOptions;
     private readonly Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment?> _webViewEnvironmentTask;
     private delegate IntPtr WindowProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -210,7 +211,6 @@ public sealed partial class MainWindow : Window {
     private long _wheelForwardedAbsDelta;
     private long _dragMoveWatchdogArmCount;
     private long _dragMoveWatchdogForcedReleaseCount;
-    private static readonly MarkdownRendererOptions MarkdownOptions = ChatMarkdownOptions.Create();
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
     private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
     private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));
@@ -486,6 +486,7 @@ public sealed partial class MainWindow : Window {
     /// </summary>
     public MainWindow() {
         StartupLog.Write("MainWindow.ctor enter");
+        _markdownOptions = ChatMarkdownOptions.Create();
         Title = "IntelligenceX Chat";
         _debugMode = VerboseServiceLogs;
 

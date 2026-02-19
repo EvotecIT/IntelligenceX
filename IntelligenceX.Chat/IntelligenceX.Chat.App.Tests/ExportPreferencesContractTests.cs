@@ -45,6 +45,27 @@ public sealed class ExportPreferencesContractTests {
     }
 
     /// <summary>
+    /// Ensures host visual-theme aliases stay aligned with shell normalization branches.
+    /// </summary>
+    [Fact]
+    public void VisualThemeMode_ParityWithShellAliasesAndDefaults() {
+        Assert.Equal(ExportPreferencesContract.VisualThemeModePrintFriendly, ExportPreferencesContract.NormalizeVisualThemeMode("PRINT"));
+        Assert.Equal(ExportPreferencesContract.VisualThemeModePrintFriendly, ExportPreferencesContract.NormalizeVisualThemeMode("LIGHT"));
+        Assert.Equal(ExportPreferencesContract.VisualThemeModePreserveUi, ExportPreferencesContract.NormalizeVisualThemeMode("THEME"));
+        Assert.Equal(ExportPreferencesContract.VisualThemeModePreserveUi, ExportPreferencesContract.NormalizeVisualThemeMode("  "));
+
+        var shell = UiShellAssets.Load();
+        Assert.Contains("case \"print_friendly\":", shell, StringComparison.Ordinal);
+        Assert.Contains("case \"print\":", shell, StringComparison.Ordinal);
+        Assert.Contains("case \"light\":", shell, StringComparison.Ordinal);
+        Assert.Contains("case \"preserve_ui_theme\":", shell, StringComparison.Ordinal);
+        Assert.Contains("case \"preserve\":", shell, StringComparison.Ordinal);
+        Assert.Contains("case \"theme\":", shell, StringComparison.Ordinal);
+        Assert.Contains("return \"print_friendly\";", shell, StringComparison.Ordinal);
+        Assert.Contains("return \"preserve_ui_theme\";", shell, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures format parsing accepts canonical and alias values.
     /// </summary>
     [Theory]
