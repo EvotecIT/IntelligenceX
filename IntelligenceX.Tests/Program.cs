@@ -373,6 +373,8 @@ internal static partial class Program {
             TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering);
         failed += Run("Analyze gate filters normalize whitespace and case",
             TestAnalyzeGateFiltersNormalizeWhitespaceAndCase);
+        failed += Run("Analyze gate filters allow missing type when only type filter is configured",
+            TestAnalyzeGateFiltersAllowMissingTypeWhenOnlyTypeFilterIsConfigured);
         failed += Run("Analyze gate new-only suppresses baseline findings", TestAnalyzeGateNewIssuesOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate new-only fails for new findings", TestAnalyzeGateNewIssuesOnlyFailsForNewFindings);
         failed += Run("Analyze gate new-only missing baseline schema logs inference", TestAnalyzeGateNewIssuesOnlyMissingSchemaLogsInference);
