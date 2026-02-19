@@ -53,13 +53,8 @@ Default onboarding can upload secrets for you, but regulated teams often prefer 
 intelligencex setup wizard --manual-secret
 ```
 
-If you explicitly want copy/paste to terminal, use:
-
-```bash
-intelligencex setup wizard --manual-secret --manual-secret-stdout
-```
-
-Use stdout mode only when you accept terminal/log exposure risk.
+Break-glass only (not default guidance): if you need a one-off copy/paste flow, `--manual-secret-stdout` prints sensitive material directly to terminal output.
+Use it only in a trusted local session with shell history and terminal logging controls understood.
 
 ## 4. Use a Clear Branch Protection Mode
 
