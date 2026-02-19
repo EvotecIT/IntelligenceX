@@ -25,9 +25,9 @@
 .gitattributes text eol=lf
 .editorconfig text eol=lf
 
-# Keep active AD/tooling development paths explicitly normalized to LF.
-IntelligenceX.Tools/IntelligenceX.Tools.ADPlayground/*.cs text eol=lf
-IntelligenceX.Tools/IntelligenceX.Tools.Tests/*.cs text eol=lf
+# Keep active AD/tooling development paths explicitly normalized to LF (recursive).
+IntelligenceX.Tools/IntelligenceX.Tools.ADPlayground/**/*.cs text eol=lf
+IntelligenceX.Tools/IntelligenceX.Tools.Tests/**/*.cs text eol=lf
 
 ###############################################################################
 # Set default behavior for command prompt diff.

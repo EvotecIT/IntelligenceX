@@ -90,7 +90,7 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
         var broadWriteMin = ToolArgs.GetCappedInt32(arguments, "broad_write_min", 0, 0, 100000);
         var includeOffendingPrincipals = ToolArgs.GetBoolean(arguments, "include_offending_principals", defaultValue: false);
         var maxOffendingRows = ToolArgs.GetCappedInt32(arguments, "max_offending_rows", 500, 1, 50000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -200,4 +200,3 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

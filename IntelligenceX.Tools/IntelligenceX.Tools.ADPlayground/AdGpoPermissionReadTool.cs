@@ -60,7 +60,7 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
         var includeCompliant = ToolArgs.GetBoolean(arguments, "include_compliant", defaultValue: false);
         var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionReadService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos),

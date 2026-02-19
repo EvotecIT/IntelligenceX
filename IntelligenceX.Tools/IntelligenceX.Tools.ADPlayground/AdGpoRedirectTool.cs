@@ -65,7 +65,7 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
 
         var gpoNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("gpo_names"));
         var actualPathContains = ToolArgs.GetOptionalTrimmed(arguments, "actual_path_contains");
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoRedirectAnalyzer.Get(domainName, ids: gpoIds.Count == 0 ? null : gpoIds.ToArray(), names: gpoNames.Count == 0 ? null : gpoNames.ToArray()),

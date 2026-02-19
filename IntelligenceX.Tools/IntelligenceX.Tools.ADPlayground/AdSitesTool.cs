@@ -53,7 +53,7 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         var includeSubnets = ToolArgs.GetBoolean(arguments, "include_subnets", defaultValue: false);
         var includeOptions = ToolArgs.GetBoolean(arguments, "include_options", defaultValue: false);
         var noDcOnly = ToolArgs.GetBoolean(arguments, "no_dc_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryExecute(
                 action: () => TopologyService.GetSites(
@@ -100,4 +100,3 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-

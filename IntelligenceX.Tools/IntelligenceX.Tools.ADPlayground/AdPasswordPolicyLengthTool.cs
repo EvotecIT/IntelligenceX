@@ -60,7 +60,7 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var recommendedMinimumLength = ToolArgs.GetCappedInt32(arguments, "recommended_minimum_length", 12, 1, 512);
         var belowRecommendedOnly = ToolArgs.GetBoolean(arguments, "below_recommended_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -126,4 +126,3 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
             }));
     }
 }
-

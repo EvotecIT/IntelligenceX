@@ -80,7 +80,7 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var onlyFindings = ToolArgs.GetBoolean(arguments, "only_findings", defaultValue: false);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -173,4 +173,3 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

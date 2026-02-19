@@ -77,7 +77,7 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
         var onlyPresent = ToolArgs.GetBoolean(arguments, "only_present", defaultValue: false);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
         var includeSpns = ToolArgs.GetBoolean(arguments, "include_spns", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -155,4 +155,3 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

@@ -79,7 +79,7 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
         var psoHistoryMin = ToolArgs.GetCappedInt32(arguments, "pso_history_min", 24, 0, 1024);
         var includePsoDetails = ToolArgs.GetBoolean(arguments, "include_pso_details", defaultValue: true);
         var maxPsoRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_pso_rows_per_domain", 100, 1, Options.MaxResults);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -155,4 +155,3 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
             }));
     }
 }
-

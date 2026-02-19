@@ -55,7 +55,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var domains = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("domains"));
         var asIssue = ToolArgs.GetBoolean(arguments, "as_issue", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         var maxIssues = ToolArgs.GetCappedInt32(arguments, "max_issues", 5000, 1, 100_000);
         var dnsResolveTimeoutMs = ToolArgs.GetCappedInt32(arguments, "dns_resolve_timeout_ms", 1500, 200, 120_000);
@@ -122,4 +122,3 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             }));
     }
 }
-

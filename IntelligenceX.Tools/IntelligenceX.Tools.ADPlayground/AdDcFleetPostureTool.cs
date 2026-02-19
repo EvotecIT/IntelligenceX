@@ -79,7 +79,7 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 2000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -157,4 +157,3 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

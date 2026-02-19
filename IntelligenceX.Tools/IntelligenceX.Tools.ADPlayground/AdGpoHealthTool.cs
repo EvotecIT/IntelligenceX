@@ -62,7 +62,7 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "gpo_ids must contain at least one GUID."));
         }
 
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
         var requestedCount = rawIds.Count;
         var truncated = requestedCount > maxResults;
         if (rawIds.Count > maxResults) {
@@ -117,4 +117,3 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             : null;
     }
 }
-

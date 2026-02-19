@@ -48,7 +48,7 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
 
         var requestedComputerNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("computer_names"));
         var healthOnly = ToolArgs.GetBoolean(arguments, "health_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         IReadOnlyList<string> targetServers = requestedComputerNames.Count == 0
             ? DomainHelper.EnumerateDomainControllers().Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
@@ -88,4 +88,3 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-
