@@ -492,6 +492,35 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures malformed signal-flow bullets with tight label spacing normalize into readable markdown.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FixesTightLabelSpacingInWrappedSignalFlowBullets() {
+        var text =
+            "- Signal **Only total count checked, not origin split ->**Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "- Signal **Only total count checked, not origin split** -> **Why it matters:** external/custom rules can drift or disappear between hosts -> **Next action:** break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.",
+            normalized);
+    }
+
+    /// <summary>
+    /// Ensures compact plain-label signal-flow text gets spacing after labels for readability.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FixesTightSpacingAfterPlainSignalFlowLabels() {
+        var text = "- Signal **Point-in-time snapshot only** -> Why it matters:trend coverage is missing -> Action:collect data every 15 minutes for 24h.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "- Signal **Point-in-time snapshot only** -> Why it matters: trend coverage is missing -> Action: collect data every 15 minutes for 24h.",
+            normalized);
+    }
+
+    /// <summary>
     /// Ensures sentence-collapsed bullets after a closing parenthesis are split and normalized.
     /// </summary>
     [Fact]
