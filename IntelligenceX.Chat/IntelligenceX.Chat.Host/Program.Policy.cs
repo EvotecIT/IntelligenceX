@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
@@ -123,44 +122,15 @@ internal static partial class Program {
     }
 
     private static string? ApplyRuntimeShaping(string? instructions, ReplOptions options) {
-        var shaping = BuildShapingInstructions(options);
-        if (string.IsNullOrWhiteSpace(shaping)) {
-            return instructions;
-        }
-        if (string.IsNullOrWhiteSpace(instructions)) {
-            return shaping;
-        }
-        return instructions + Environment.NewLine + Environment.NewLine + shaping;
+        return ToolResponseShaping.AppendSessionResponseShapingInstructions(
+            instructions,
+            options.MaxTableRows,
+            options.MaxSample,
+            options.Redact);
     }
-
-    private static string? BuildShapingInstructions(ReplOptions options) {
-        if (options.MaxTableRows <= 0 && options.MaxSample <= 0 && !options.Redact) {
-            return null;
-        }
-
-        var lines = new List<string> {
-            "## Session Response Shaping",
-            "Follow these display constraints for all assistant responses:"
-        };
-        if (options.MaxTableRows > 0) {
-            lines.Add($"- Max table rows: {options.MaxTableRows} (show a preview, then offer to paginate/refine).");
-        }
-        if (options.MaxSample > 0) {
-            lines.Add($"- Max sample items: {options.MaxSample} (for long lists, show a sample and counts).");
-        }
-        if (options.Redact) {
-            lines.Add("- Redaction: redact emails/UPNs in assistant output. Prefer summaries over raw identifiers.");
-        }
-        return string.Join(Environment.NewLine, lines);
-    }
-
-    private static readonly Regex EmailRegex = new(@"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static string RedactText(string text) {
-        if (string.IsNullOrEmpty(text)) {
-            return string.Empty;
-        }
-        return EmailRegex.Replace(text, "[redacted_email]");
+        return ToolResponseShaping.RedactEmailLikeTokens(text);
     }
 
     private static CancellationTokenSource? CreateTimeoutCts(CancellationToken ct, int seconds) {

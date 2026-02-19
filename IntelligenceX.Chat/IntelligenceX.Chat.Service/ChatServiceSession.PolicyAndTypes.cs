@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using JsonValueKind = System.Text.Json.JsonValueKind;
@@ -188,51 +187,15 @@ internal sealed partial class ChatServiceSession {
             instructions = null;
         }
 
-        var shaping = BuildShapingInstructions(options);
-        if (string.IsNullOrWhiteSpace(shaping)) {
-            return instructions;
-        }
-        if (string.IsNullOrWhiteSpace(instructions)) {
-            return shaping;
-        }
-        return instructions + Environment.NewLine + Environment.NewLine + shaping;
+        return ToolResponseShaping.AppendSessionResponseShapingInstructions(
+            instructions,
+            options.MaxTableRows,
+            options.MaxSample,
+            options.Redact);
     }
-
-    private static string? BuildShapingInstructions(ServiceOptions options) {
-        var maxTableRows = options.MaxTableRows;
-        var maxSample = options.MaxSample;
-        var redact = options.Redact;
-
-        if (maxTableRows <= 0 && maxSample <= 0 && !redact) {
-            return null;
-        }
-
-        var lines = new List<string> {
-            "## Session Response Shaping",
-            "Follow these display constraints for all assistant responses:"
-        };
-
-        if (maxTableRows > 0) {
-            lines.Add($"- Max table rows: {maxTableRows} (show a preview, then offer to paginate/refine).");
-        }
-        if (maxSample > 0) {
-            lines.Add($"- Max sample items: {maxSample} (for long lists, show a sample and counts).");
-        }
-        if (redact) {
-            lines.Add("- Redaction: redact emails/UPNs in assistant output. Prefer summaries over raw identifiers.");
-        }
-
-        return string.Join(Environment.NewLine, lines);
-    }
-
-    private static readonly Regex EmailRegex = new(@"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static string RedactText(string text) {
-        if (string.IsNullOrEmpty(text)) {
-            return string.Empty;
-        }
-        // Best-effort: redact email/UPN-like tokens.
-        return EmailRegex.Replace(text, "[redacted_email]");
+        return ToolResponseShaping.RedactEmailLikeTokens(text);
     }
 
     private sealed class ChatRun {
