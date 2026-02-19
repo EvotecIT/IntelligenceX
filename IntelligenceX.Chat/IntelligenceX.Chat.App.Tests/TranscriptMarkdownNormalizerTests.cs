@@ -470,6 +470,26 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures inline-code safety on one line does not suppress wrapped-signal repair on other lines.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RepairsWrappedSignalFlowOnOtherLinesWhenInlineCodeExists() {
+        var text = string.Join('\n', [
+            "- Signal **Use `literal -> **marker**` for parser tests.**",
+            "- Signal **Catalog count includes hidden rules -> **Why it matters:** runnable scope may be overstated -> **Next action:** compare with enabled + visible listing.**"
+        ]);
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        var expected = string.Join('\n', [
+            "- Signal **Use `literal -> **marker**` for parser tests.**",
+            "- Signal **Catalog count includes hidden rules** -> **Why it matters:** runnable scope may be overstated -> **Next action:** compare with enabled + visible listing."
+        ]);
+
+        Assert.Equal(expected, normalized);
+    }
+
+    /// <summary>
     /// Ensures sentence-collapsed bullets after a closing parenthesis are split and normalized.
     /// </summary>
     [Fact]
