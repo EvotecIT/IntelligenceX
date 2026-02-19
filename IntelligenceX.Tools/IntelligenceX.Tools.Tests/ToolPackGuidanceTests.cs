@@ -151,6 +151,8 @@ public class ToolPackGuidanceTests {
         Assert.Null(a.AuthenticationContractId);
         Assert.Null(a.AuthenticationMode);
         Assert.Empty(a.AuthenticationArguments);
+        Assert.False(a.SupportsConnectivityProbe);
+        Assert.Null(a.ProbeToolName);
 
         var b = catalog[1];
         Assert.Equal("stub_b", b.Name);
@@ -184,6 +186,28 @@ public class ToolPackGuidanceTests {
         Assert.Equal(ToolAuthenticationContract.DefaultContractId, b.AuthenticationContractId);
         Assert.Equal("profile_reference", b.AuthenticationMode);
         Assert.Equal(new[] { ToolAuthenticationArgumentNames.ProfileId }, b.AuthenticationArguments);
+        Assert.False(b.SupportsConnectivityProbe);
+        Assert.Null(b.ProbeToolName);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldExposeConnectivityProbeMetadata() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "smtp_send",
+                "SMTP send",
+                ToolSchema.Object(("send", ToolSchema.Boolean())).NoAdditionalProperties(),
+                authentication: ToolAuthenticationConventions.HostManaged(
+                    requiresAuthentication: true,
+                    supportsConnectivityProbe: true,
+                    probeToolName: "email_smtp_probe")))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.True(item.IsAuthenticationAware);
+        Assert.True(item.RequiresAuthentication);
+        Assert.True(item.SupportsConnectivityProbe);
+        Assert.Equal("email_smtp_probe", item.ProbeToolName);
     }
 
     private sealed class StubTool : ITool {

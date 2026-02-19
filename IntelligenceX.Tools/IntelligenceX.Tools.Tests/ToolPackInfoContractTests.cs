@@ -145,6 +145,10 @@ public class ToolPackInfoContractTests {
                 Assert.True(authenticationMode.ValueKind == JsonValueKind.String || authenticationMode.ValueKind == JsonValueKind.Null);
                 Assert.True(entry.TryGetProperty("authentication_arguments", out var authenticationArguments));
                 Assert.Equal(JsonValueKind.Array, authenticationArguments.ValueKind);
+                Assert.True(entry.TryGetProperty("supports_connectivity_probe", out var supportsConnectivityProbe));
+                Assert.True(supportsConnectivityProbe.ValueKind == JsonValueKind.True || supportsConnectivityProbe.ValueKind == JsonValueKind.False);
+                Assert.True(entry.TryGetProperty("probe_tool_name", out var probeToolName));
+                Assert.True(probeToolName.ValueKind == JsonValueKind.String || probeToolName.ValueKind == JsonValueKind.Null);
 
                 Assert.True(expectedCatalogByName.TryGetValue(name, out var expectedCatalogEntry), $"Unexpected catalog entry: {name}");
                 Assert.Equal(expectedCatalogEntry.Description, description);
@@ -168,6 +172,8 @@ public class ToolPackInfoContractTests {
                 Assert.Equal(
                     expectedCatalogEntry.AuthenticationArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
                     ReadStringArray(authenticationArguments));
+                Assert.Equal(expectedCatalogEntry.SupportsConnectivityProbe, supportsConnectivityProbe.GetBoolean());
+                Assert.Equal(expectedCatalogEntry.ProbeToolName, probeToolName.GetString());
             }
 
             var recommendedFlow = root.GetProperty("recommended_flow");

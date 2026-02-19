@@ -228,6 +228,17 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// Authentication-related argument names declared by contract.
     /// </summary>
     public IReadOnlyList<string> AuthenticationArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates whether tool supports connectivity/authentication probe workflows.
+    /// </summary>
+    public bool SupportsConnectivityProbe { get; init; }
+
+    /// <summary>
+    /// Optional probe tool name declared by authentication contract.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? ProbeToolName { get; init; }
 }
 
 /// <summary>
@@ -434,7 +445,11 @@ public static class ToolPackGuidance {
                     ? null
                     : authentication!.AuthenticationContractId,
                 AuthenticationMode = ToAuthenticationModeId(authentication),
-                AuthenticationArguments = authenticationArguments
+                AuthenticationArguments = authenticationArguments,
+                SupportsConnectivityProbe = authentication?.SupportsConnectivityProbe ?? false,
+                ProbeToolName = string.IsNullOrWhiteSpace(authentication?.ProbeToolName)
+                    ? null
+                    : authentication!.ProbeToolName
             });
         }
 
@@ -599,7 +614,11 @@ public static class ToolPackGuidance {
                 AuthenticationMode = string.IsNullOrWhiteSpace(entry.AuthenticationMode)
                     ? null
                     : entry.AuthenticationMode.Trim(),
-                AuthenticationArguments = NormalizeValues(entry.AuthenticationArguments)
+                AuthenticationArguments = NormalizeValues(entry.AuthenticationArguments),
+                SupportsConnectivityProbe = entry.SupportsConnectivityProbe,
+                ProbeToolName = string.IsNullOrWhiteSpace(entry.ProbeToolName)
+                    ? null
+                    : entry.ProbeToolName.Trim()
             });
         }
 
