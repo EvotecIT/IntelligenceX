@@ -152,6 +152,8 @@ internal static partial class Program {
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup workflow template explicit-secrets includes diagnostics and preflight pass-through",
             TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough);
+        failed += Run("Setup workflow template non-explicit secrets uses inherit mode",
+            TestSetupWorkflowTemplateNonExplicitSecretsUsesInheritMode);
         failed += Run("Setup post-apply verify passes for managed setup", TestSetupPostApplyVerifySetupPassesWithManagedWorkflowAndSecret);
         failed += Run("Setup post-apply verify detects residual cleanup config", TestSetupPostApplyVerifyCleanupDetectsResidualConfig);
         failed += Run("Setup post-apply verify allows unknown branch state when PR exists",
