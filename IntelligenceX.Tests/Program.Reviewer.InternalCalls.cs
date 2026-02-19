@@ -14,7 +14,7 @@ internal static partial class Program {
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousPath);
             try {
-                Directory.Delete(tempDir, true);
+                DeleteDirectoryIfExistsWithRetries(tempDir);
             } catch {
                 // best-effort cleanup
             }

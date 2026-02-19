@@ -85,9 +85,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (absolute changed file normalized)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -175,12 +173,8 @@ internal static partial class Program {
             AssertEqual(1, exit, "analyze gate exit (absolute changed file outside workspace)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(outsideRoot)) {
-                Directory.Delete(outsideRoot, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(outsideRoot);
         }
     }
 
@@ -262,9 +256,7 @@ internal static partial class Program {
             AssertEqual(1, exit, "analyze gate exit (relative traversal outside workspace)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -357,9 +349,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (hotspots to-review blocks)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -456,12 +446,8 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (hotspots state path outside workspace)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(outsideRoot)) {
-                Directory.Delete(outsideRoot, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(outsideRoot);
         }
     }
 }

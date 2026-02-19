@@ -76,9 +76,7 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("Duplicated significant lines", StringComparison.Ordinal),
                 "analyze run internal multi-rule includes duplication message");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -138,9 +136,7 @@ internal static partial class Program {
             AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
                 "analyze run duplication threshold suppresses below-limit findings");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -198,9 +194,7 @@ internal static partial class Program {
                 result.Output.Contains("malformed tag 'dup-window-lines:1'", StringComparison.OrdinalIgnoreCase),
                 "analyze run duplication malformed window warning");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

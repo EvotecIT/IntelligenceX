@@ -55,9 +55,7 @@ internal static partial class Program {
                 "analysis policy enabled rule preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -89,9 +87,7 @@ internal static partial class Program {
                 "analysis policy gate rule outcomes");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -121,9 +117,7 @@ internal static partial class Program {
                 "analysis policy gate rule outcomes case-insensitive lookup");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -160,9 +154,7 @@ internal static partial class Program {
                 "analysis policy includes enabled preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -187,9 +179,7 @@ internal static partial class Program {
                 "analysis unavailable policy outcomes");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -293,9 +283,7 @@ internal static partial class Program {
                 "analysis failure skips summary when disabled");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -329,9 +317,7 @@ internal static partial class Program {
             AssertEqual(summary, updated, "analysis failure no-output unchanged summary");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -357,9 +343,7 @@ internal static partial class Program {
                 "analysis policy no files outcomes");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -391,9 +375,7 @@ internal static partial class Program {
             AssertPolicyLineEquals(policy, "Outside-pack rules", "PS9999=1", "analysis policy outside-only outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -422,9 +404,7 @@ internal static partial class Program {
                 "analysis policy no-enabled-rules truncation absence");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -456,9 +436,7 @@ internal static partial class Program {
                 "analysis policy configurable clean preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -496,9 +474,7 @@ internal static partial class Program {
                 "analysis policy hidden outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -528,9 +504,7 @@ internal static partial class Program {
                 "analysis policy negative hidden clean rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -560,9 +534,7 @@ internal static partial class Program {
                 "analysis policy max clamp enabled preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -626,9 +598,7 @@ internal static partial class Program {
                 "analysis policy preview single truncation marker");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

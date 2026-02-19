@@ -26,12 +26,8 @@ internal static partial class Program {
             }).GetAwaiter().GetResult();
             AssertEqual(1, exit, "analyze gate exit (config outside workspace rejected)");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(outsideRoot)) {
-                Directory.Delete(outsideRoot, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(outsideRoot);
         }
     }
 
@@ -77,12 +73,8 @@ internal static partial class Program {
             AssertEqual(0, load.Report.ResolvedInputFiles, "analysis loader resolves 0 inputs (outside ignored)");
             AssertEqual(0, load.Findings.Count, "analysis loader findings empty (outside ignored)");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(outsideRoot)) {
-                Directory.Delete(outsideRoot, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(outsideRoot);
         }
     }
 
@@ -100,12 +92,8 @@ internal static partial class Program {
             var result = (string?)method!.Invoke(null, new object[] { temp, candidate });
             AssertEqual(null, result, "analysis loader rejects sibling prefix path");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(sibling)) {
-                Directory.Delete(sibling, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(sibling);
         }
     }
 
@@ -152,12 +140,8 @@ internal static partial class Program {
             var expected = Path.GetFullPath(siblingFile).Replace('\\', '/');
             AssertEqual(expected, load.Findings[0].Path, "analysis loader keeps outside path absolute");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(sibling)) {
-                Directory.Delete(sibling, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(sibling);
         }
     }
 
@@ -189,9 +173,7 @@ internal static partial class Program {
                 normalized,
                 "analysis loader normalize path follows platform case semantics");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -227,9 +209,7 @@ internal static partial class Program {
                 normalizedMixedPath,
                 "analysis loader normalize path accepts mixed-separator candidate");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -244,9 +224,7 @@ internal static partial class Program {
             var result = (string?)method!.Invoke(null, new object[] { temp, temp });
             AssertEqual(Path.GetFullPath(temp), result, "resolve workspace bound path accepts workspace root");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -309,9 +287,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate exit (disabled)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -395,9 +371,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (violations)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -461,9 +435,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate exit (clean)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -519,9 +491,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (no enabled rules)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -589,9 +559,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (loader exception -> unavailable)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -666,9 +634,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate exit (minSeverity filters info)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -762,9 +728,7 @@ internal static partial class Program {
             AssertContainsText(output, "- Violations: 0", "analyze gate ruleIds-only filter violations");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -860,9 +824,7 @@ internal static partial class Program {
             AssertContainsText(output, "IX002", "analyze gate additive ruleIds violation output");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -945,9 +907,7 @@ internal static partial class Program {
             AssertContainsText(output, "IX002", "analyze gate normalized filters violation output");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

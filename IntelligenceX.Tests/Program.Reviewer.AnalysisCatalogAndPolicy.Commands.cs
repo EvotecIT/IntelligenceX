@@ -92,9 +92,7 @@ internal static partial class Program {
             AssertContainsText(text, "\"status\": \"to-review\"", "hotspots state default status");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -106,9 +104,7 @@ internal static partial class Program {
             var configPath = Path.Combine(temp, "missing-config.json");
             var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
             var stateDir = Path.GetDirectoryName(statePath);
-            if (!string.IsNullOrWhiteSpace(stateDir) && Directory.Exists(stateDir)) {
-                Directory.Delete(stateDir, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(stateDir);
 
             var (syncExit, syncOutput) = RunAnalyzeAndCaptureOutput(new[] {
                 "hotspots",
@@ -142,9 +138,7 @@ internal static partial class Program {
             AssertEqual(false, Directory.Exists(Path.Combine(temp, ".intelligencex")), "hotspots set --help should not create state dir");
             AssertEqual(false, File.Exists(statePath), "hotspots set --help should not write state");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -287,14 +281,10 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(outsideStatePath), "hotspots set allow outside should write state");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
             // Clean up any files written outside the workspace when allow-outside-workspace is set.
             try {
-                if (Directory.Exists(outsideRoot)) {
-                    Directory.Delete(outsideRoot, true);
-                }
+                DeleteDirectoryIfExistsWithRetries(outsideRoot);
             } catch {
                 // best-effort cleanup
             }
@@ -349,9 +339,7 @@ internal static partial class Program {
             }).GetAwaiter().GetResult();
             AssertEqual(1, invalidExit, "analyze validate-catalog invalid exit");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -429,9 +417,7 @@ internal static partial class Program {
             AssertSequenceEqual(new[] { "alpha", "beta" }, ids, "analyze list-packs --ids sorted ids");
             AssertEqual(string.Empty, stderr.Trim(), "analyze list-packs --ids stderr");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -533,9 +519,7 @@ internal static partial class Program {
             ids.Sort(StringComparer.OrdinalIgnoreCase);
             AssertSequenceEqual(new[] { "IX001", "IX002", "IX003" }, ids, "analyze list-rules json pack includes");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -646,9 +630,7 @@ internal static partial class Program {
             AssertNotNull(parsed, "analyze list-rules json warnings payload");
             AssertContainsText(stderr, "Warning: Included pack not found: missing-pack", "analyze list-rules json warnings stderr");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -672,9 +654,7 @@ internal static partial class Program {
             AssertEqual("[]", stdout.Trim(), "analyze list-rules empty json payload");
             AssertEqual(string.Empty, stderr.Trim(), "analyze list-rules empty json stderr");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -722,9 +702,7 @@ internal static partial class Program {
             var resolvedDocsPath = Path.Combine(temp, rule.Docs!.Replace('/', Path.DirectorySeparatorChar));
             AssertEqual(true, File.Exists(resolvedDocsPath), "analysis docs path resolves from workspace");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

@@ -52,9 +52,7 @@ internal static partial class Program {
             AssertEqual(true, psConfig.Contains("PSUseSupportsShouldProcess", StringComparison.Ordinal),
                 "psconfig PSUseSupportsShouldProcess");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -186,12 +184,8 @@ internal static partial class Program {
             AssertEqual(true, nestedResult, "analysis catalog loader accepts nested path");
             AssertEqual(false, siblingResult, "analysis catalog loader rejects sibling prefix path");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(sibling)) {
-                Directory.Delete(sibling, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(sibling);
         }
     }
 
@@ -216,9 +210,7 @@ internal static partial class Program {
             AssertEqual(expectCaseInsensitive, caseVariantResult,
                 "analysis catalog loader root comparison follows platform case semantics");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -246,9 +238,7 @@ internal static partial class Program {
             AssertEqual(true, mixedCandidateResult, "analysis catalog loader accepts mixed-separator candidate path");
             AssertEqual(true, mixedRootResult, "analysis catalog loader accepts mixed-separator root path");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -350,9 +340,7 @@ internal static partial class Program {
             AssertEqual(true, validation.Errors.Any(error => error.Contains("Pack include cycle detected", StringComparison.OrdinalIgnoreCase)),
                 "catalog validator include cycle");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -381,9 +369,7 @@ internal static partial class Program {
                     StringComparison.OrdinalIgnoreCase)),
                 "catalog validator missing required metadata");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -425,9 +411,7 @@ internal static partial class Program {
             AssertEqual(true, rule.Tags.Contains("base"), "override tags include base");
             AssertEqual(true, rule.Tags.Contains("override"), "override tags include override");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -719,9 +703,7 @@ internal static partial class Program {
             AssertEqual(true, catalog.Rules.TryGetValue("IXSEC001", out var rule), "override invalid-type rule exists");
             AssertEqual("vulnerability", rule!.Type, "override invalid type falls back to inferred category type");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -758,9 +740,7 @@ internal static partial class Program {
             AssertEqual(true, validation.Errors.Any(error => error.Contains("does not match any base rule", StringComparison.OrdinalIgnoreCase)),
                 "dangling override error");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

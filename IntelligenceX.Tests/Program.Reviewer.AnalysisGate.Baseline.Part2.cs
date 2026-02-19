@@ -62,9 +62,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate suppresses dot-relative legacy baseline key with normalized path");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -132,9 +130,7 @@ internal static partial class Program {
             AssertEqual(true, !string.IsNullOrWhiteSpace(first!.GetString("key")), "baseline item key");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

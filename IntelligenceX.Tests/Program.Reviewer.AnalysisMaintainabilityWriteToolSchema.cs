@@ -43,9 +43,7 @@ public sealed class SampleBadTool {
                         StringComparison.OrdinalIgnoreCase)),
                 "analyze run write-tool schema missing helper finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -108,9 +106,7 @@ public sealed class SampleGoodProbeTool {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
                 "analyze run write-tool schema canonical helpers no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -148,9 +144,7 @@ public sealed class SampleReadOnlyTool {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
                 "analyze run write-tool schema read-only no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -190,9 +184,7 @@ public sealed class SampleAuthOnlyTool {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
                 "analyze run write-tool schema auth-only no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }

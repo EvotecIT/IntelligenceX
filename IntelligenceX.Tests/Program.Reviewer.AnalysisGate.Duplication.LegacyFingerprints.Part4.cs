@@ -31,9 +31,7 @@ internal static partial class Program {
             AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication file baseline loads legacy file fingerprint error empty");
             AssertEqual(true, baselines.ContainsKey("IXDUP001|all|src/test.cs"), "duplication file baseline loads legacy file fingerprint key");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -66,9 +64,7 @@ internal static partial class Program {
             AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication file baseline loads legacy file-uri fingerprint error empty");
             AssertEqual(true, baselines.ContainsKey("IXDUP001|all|src/test.cs"), "duplication file baseline loads legacy file-uri fingerprint key");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }

@@ -91,9 +91,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate exit (hotspots minSeverity filters info)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -206,9 +204,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate exit (hotspots honor ruleIds even when type filter excludes)");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }

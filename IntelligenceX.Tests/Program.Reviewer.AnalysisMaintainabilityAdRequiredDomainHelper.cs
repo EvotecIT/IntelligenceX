@@ -59,9 +59,7 @@ public sealed class SampleBadAdDomainTool : ActiveDirectoryToolBase, ITool {
                         StringComparison.OrdinalIgnoreCase)),
                 "analyze run AD required-domain helper missing canonical path finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -121,9 +119,7 @@ public sealed class SampleGoodAdDomainTool : ActiveDirectoryToolBase, ITool {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL002", StringComparison.OrdinalIgnoreCase)),
                 "analyze run AD required-domain helper canonical path no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }
