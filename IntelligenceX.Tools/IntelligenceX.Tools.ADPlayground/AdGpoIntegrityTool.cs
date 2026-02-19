@@ -53,14 +53,16 @@ public sealed class AdGpoIntegrityTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var sysvolMissingOnly = ToolArgs.GetBoolean(arguments, "sysvol_missing_only", defaultValue: false);
         var adMissingOnly = ToolArgs.GetBoolean(arguments, "ad_missing_only", defaultValue: false);
         var errorsOnly = ToolArgs.GetBoolean(arguments, "errors_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoIntegrityService.Get(domainName),

@@ -45,15 +45,17 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         if (!ToolTime.TryParseUtcOptional(ToolArgs.GetOptionalTrimmed(arguments, "since_utc"), out var sinceUtc, out var sinceError)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", $"since_utc: {sinceError}"));
         }
 
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;

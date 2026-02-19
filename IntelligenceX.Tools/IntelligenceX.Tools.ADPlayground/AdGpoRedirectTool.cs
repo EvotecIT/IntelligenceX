@@ -50,9 +50,11 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var gpoIdsRaw = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("gpo_ids"));
         var gpoIds = new List<Guid>(gpoIdsRaw.Count);
@@ -65,7 +67,7 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
 
         var gpoNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("gpo_names"));
         var actualPathContains = ToolArgs.GetOptionalTrimmed(arguments, "actual_path_contains");
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoRedirectAnalyzer.Get(domainName, ids: gpoIds.Count == 0 ? null : gpoIds.ToArray(), names: gpoNames.Count == 0 ? null : gpoNames.ToArray()),

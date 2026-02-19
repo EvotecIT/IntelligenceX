@@ -59,9 +59,11 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var gpoIdRaw = ToolArgs.GetOptionalTrimmed(arguments, "gpo_id");
         Guid? gpoId = null;
@@ -88,7 +90,7 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
 
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 200000, 1, 2000000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionReportService.Get(domainName, gpoId: gpoId, gpoName: gpoName, maxGpos: maxGpos, maxRows: maxRows),
