@@ -130,8 +130,9 @@
 
     var columns = [];
     for (var i = 0; i < headers.length; i++) {
+      var columnHeader = headers[i];
       columns.push({
-        title: headers[i] || ("Column " + String(i + 1)),
+        title: columnHeader == null || columnHeader === "" ? ("Column " + String(i + 1)) : String(columnHeader),
         data: i,
         defaultContent: ""
       });
@@ -190,7 +191,8 @@
     var trHead = document.createElement("tr");
     for (var h = 0; h < headers.length; h++) {
       var th = document.createElement("th");
-      th.textContent = headers[h] || ("Column " + String(h + 1));
+      var headerCell = headers[h];
+      th.textContent = headerCell == null || headerCell === "" ? ("Column " + String(h + 1)) : String(headerCell);
       trHead.appendChild(th);
     }
     thead.appendChild(trHead);
@@ -198,10 +200,12 @@
 
     var tbody = document.createElement("tbody");
     for (var r = 0; r < bodyRows.length; r++) {
+      var row = Array.isArray(bodyRows[r]) ? bodyRows[r] : [];
       var tr = document.createElement("tr");
       for (var c = 0; c < headers.length; c++) {
         var td = document.createElement("td");
-        td.textContent = bodyRows[r][c] || "";
+        var cell = c < row.length ? row[c] : "";
+        td.textContent = cell == null ? "" : String(cell);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);

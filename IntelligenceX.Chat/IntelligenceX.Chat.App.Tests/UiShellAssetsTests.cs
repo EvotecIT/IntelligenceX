@@ -127,4 +127,16 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("state.options.localModel.isApplying = true;", script, StringComparison.Ordinal);
         Assert.Contains("renderLocalModelOptions();", script, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures Data View plain-table fallback preserves falsy scalar values like 0/false.
+    /// </summary>
+    [Fact]
+    public void DataViewScript_UsesNullishSafeCellRenderingInPlainTableFallback() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.17.core.dataview.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("td.textContent = cell == null ? \"\" : String(cell);", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("td.textContent = bodyRows[r][c] || \"\";", script, StringComparison.Ordinal);
+    }
 }
