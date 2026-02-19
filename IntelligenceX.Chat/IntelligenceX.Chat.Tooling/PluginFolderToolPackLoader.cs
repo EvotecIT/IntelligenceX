@@ -465,6 +465,11 @@ internal static class PluginFolderToolPackLoader {
         SetPropertyIfPresent(options, "DefaultMaxOutputChars", bootstrapOptions.PowerShellDefaultMaxOutputChars);
         SetPropertyIfPresent(options, "MaxOutputChars", bootstrapOptions.PowerShellMaxOutputChars);
         SetPropertyIfPresent(options, "AllowWrite", bootstrapOptions.PowerShellAllowWrite);
+        SetPropertyIfPresent(options, "AuthenticationProbeStore", bootstrapOptions.AuthenticationProbeStore);
+        SetPropertyIfPresent(options, "RequireSuccessfulSmtpProbeForSend", bootstrapOptions.RequireSuccessfulSmtpProbeForSend);
+        SetPropertyIfPresent(options, "SmtpProbeMaxAgeSeconds", bootstrapOptions.SmtpProbeMaxAgeSeconds);
+        SetPropertyIfPresent(options, "RunAsProfilePath", bootstrapOptions.RunAsProfilePath);
+        SetPropertyIfPresent(options, "AuthenticationProfilePath", bootstrapOptions.RunAsProfilePath);
     }
 
     private static void SetPropertyIfPresent(object instance, string propertyName, object? value) {

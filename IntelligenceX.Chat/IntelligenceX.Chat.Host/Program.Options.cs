@@ -60,10 +60,19 @@ internal static partial class Program {
         public string? AdDefaultSearchBaseDn { get; set; }
         public int AdMaxResults { get; set; } = 1000;
         public bool EnablePowerShellPack { get; set; }
+        public bool PowerShellAllowWrite { get; set; }
         public bool EnableTestimoXPack { get; set; } = true;
         public bool EnableOfficeImoPack { get; set; } = true;
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
+        public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
+        public bool RequireWriteGovernanceRuntime { get; set; } = true;
+        public bool RequireWriteAuditSinkForWriteOperations { get; set; }
+        public ToolWriteAuditSinkMode WriteAuditSinkMode { get; set; } = ToolWriteAuditSinkMode.None;
+        public string? WriteAuditSinkPath { get; set; }
+        public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
+        public bool RequireAuthenticationRuntime { get; set; }
+        public string? RunAsProfilePath { get; set; }
 
         public static ReplOptions Parse(string[] args, out string? error) {
             error = null;
@@ -228,6 +237,9 @@ internal static partial class Program {
                     case "--enable-powershell-pack":
                         options.EnablePowerShellPack = true;
                         break;
+                    case "--powershell-allow-write":
+                        options.PowerShellAllowWrite = true;
+                        break;
                     case "--enable-testimox-pack":
                         options.EnableTestimoXPack = true;
                         break;
@@ -248,6 +260,66 @@ internal static partial class Program {
                         break;
                     case "--no-default-plugin-paths":
                         options.EnableDefaultPluginPaths = false;
+                        break;
+                    case "--write-governance-mode":
+                        if (!TryGetValue(args, ref i, out var writeGovernanceModeValue, out error)) {
+                            return options;
+                        }
+                        if (!ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(writeGovernanceModeValue, out var writeGovernanceMode)) {
+                            error = "--write-governance-mode must be one of: enforced, yolo.";
+                            return options;
+                        }
+                        options.WriteGovernanceMode = writeGovernanceMode;
+                        break;
+                    case "--require-write-governance-runtime":
+                        options.RequireWriteGovernanceRuntime = true;
+                        break;
+                    case "--no-require-write-governance-runtime":
+                        options.RequireWriteGovernanceRuntime = false;
+                        break;
+                    case "--require-write-audit-sink":
+                        options.RequireWriteAuditSinkForWriteOperations = true;
+                        break;
+                    case "--no-require-write-audit-sink":
+                        options.RequireWriteAuditSinkForWriteOperations = false;
+                        break;
+                    case "--write-audit-sink-mode":
+                        if (!TryGetValue(args, ref i, out var writeAuditSinkModeValue, out error)) {
+                            return options;
+                        }
+                        if (!ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(writeAuditSinkModeValue, out var writeAuditSinkMode)) {
+                            error = "--write-audit-sink-mode must be one of: none, file, sqlite.";
+                            return options;
+                        }
+                        options.WriteAuditSinkMode = writeAuditSinkMode;
+                        break;
+                    case "--write-audit-sink-path":
+                        if (!TryGetValue(args, ref i, out var writeAuditSinkPath, out error)) {
+                            return options;
+                        }
+                        options.WriteAuditSinkPath = writeAuditSinkPath;
+                        break;
+                    case "--auth-runtime-preset":
+                        if (!TryGetValue(args, ref i, out var authRuntimePresetValue, out error)) {
+                            return options;
+                        }
+                        if (!ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(authRuntimePresetValue, out var authRuntimePreset)) {
+                            error = "--auth-runtime-preset must be one of: default, strict, lab.";
+                            return options;
+                        }
+                        options.AuthenticationRuntimePreset = authRuntimePreset;
+                        break;
+                    case "--require-auth-runtime":
+                        options.RequireAuthenticationRuntime = true;
+                        break;
+                    case "--no-require-auth-runtime":
+                        options.RequireAuthenticationRuntime = false;
+                        break;
+                    case "--run-as-profile-path":
+                        if (!TryGetValue(args, ref i, out var runAsProfilePath, out error)) {
+                            return options;
+                        }
+                        options.RunAsProfilePath = runAsProfilePath;
                         break;
                     case "--max-table-rows":
                         if (!TryGetValue(args, ref i, out var maxRows, out error)) {
@@ -436,6 +508,7 @@ internal static partial class Program {
             AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn;
             AdMaxResults = profile.AdMaxResults;
             EnablePowerShellPack = profile.EnablePowerShellPack;
+            PowerShellAllowWrite = profile.PowerShellAllowWrite;
             EnableTestimoXPack = profile.EnableTestimoXPack;
             EnableOfficeImoPack = profile.EnableOfficeImoPack;
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
@@ -443,6 +516,20 @@ internal static partial class Program {
             if (profile.PluginPaths is { Count: > 0 }) {
                 PluginPaths.AddRange(profile.PluginPaths);
             }
+            if (ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(profile.WriteGovernanceMode, out var writeMode)) {
+                WriteGovernanceMode = writeMode;
+            }
+            RequireWriteGovernanceRuntime = profile.RequireWriteGovernanceRuntime;
+            RequireWriteAuditSinkForWriteOperations = profile.RequireWriteAuditSinkForWriteOperations;
+            if (ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(profile.WriteAuditSinkMode, out var writeAuditMode)) {
+                WriteAuditSinkMode = writeAuditMode;
+            }
+            WriteAuditSinkPath = profile.WriteAuditSinkPath;
+            if (ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset, out var authPreset)) {
+                AuthenticationRuntimePreset = authPreset;
+            }
+            RequireAuthenticationRuntime = profile.RequireAuthenticationRuntime;
+            RunAsProfilePath = profile.RunAsProfilePath;
 
             InstructionsFile = profile.InstructionsFile;
             MaxTableRows = profile.MaxTableRows;
@@ -484,9 +571,18 @@ internal static partial class Program {
                 AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
                 AdMaxResults = AdMaxResults,
                 EnablePowerShellPack = EnablePowerShellPack,
+                PowerShellAllowWrite = PowerShellAllowWrite,
                 EnableTestimoXPack = EnableTestimoXPack,
                 EnableOfficeImoPack = EnableOfficeImoPack,
-                EnableDefaultPluginPaths = EnableDefaultPluginPaths
+                EnableDefaultPluginPaths = EnableDefaultPluginPaths,
+                WriteGovernanceMode = WriteGovernanceMode,
+                RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
+                RequireWriteAuditSinkForWriteOperations = RequireWriteAuditSinkForWriteOperations,
+                WriteAuditSinkMode = WriteAuditSinkMode,
+                WriteAuditSinkPath = WriteAuditSinkPath,
+                AuthenticationRuntimePreset = AuthenticationRuntimePreset,
+                RequireAuthenticationRuntime = RequireAuthenticationRuntime,
+                RunAsProfilePath = RunAsProfilePath
             };
 
             if (AllowedRoots.Count > 0) {

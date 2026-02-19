@@ -69,7 +69,8 @@ internal static partial class Program {
         IntelligenceXClient? client = null;
         var startedAtUtc = DateTime.UtcNow;
         try {
-            var packs = BuildPacks(compareOptions);
+            var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(BuildRuntimePolicyOptions(compareOptions));
+            var packs = BuildPacks(compareOptions, runtimePolicyContext);
             var clientOptions = new IntelligenceXClientOptions {
                 TransportKind = compareOptions.OpenAITransport,
                 DefaultModel = compareOptions.Model
@@ -112,6 +113,7 @@ internal static partial class Program {
 
             var registry = new ToolRegistry();
             ToolPackBootstrap.RegisterAll(registry, packs);
+            _ = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
             var session = new ReplSession(client, registry, compareOptions, shaped, status: null);
             var turn = await session.AskWithMetricsAsync(prompt, cancellationToken).ConfigureAwait(false);
 

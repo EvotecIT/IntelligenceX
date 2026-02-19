@@ -39,6 +39,14 @@ internal sealed class ServiceProfile {
     public bool EnableOfficeImoPack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; set; } = new();
+    public string WriteGovernanceMode { get; set; } = "enforced";
+    public bool RequireWriteGovernanceRuntime { get; set; } = true;
+    public bool RequireWriteAuditSinkForWriteOperations { get; set; }
+    public string WriteAuditSinkMode { get; set; } = "none";
+    public string? WriteAuditSinkPath { get; set; }
+    public string AuthenticationRuntimePreset { get; set; } = "default";
+    public bool RequireAuthenticationRuntime { get; set; }
+    public string? RunAsProfilePath { get; set; }
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; }

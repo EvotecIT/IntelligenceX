@@ -463,6 +463,9 @@ internal sealed partial class ChatServiceSession {
 
     private void RebuildToolingFromOptions() {
         var startupWarnings = new List<string>();
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+            BuildRuntimePolicyOptions(_options),
+            warning => RecordBootstrapWarning(startupWarnings, warning));
         var bootstrapOptions = new ToolPackBootstrapOptions {
             AllowedRoots = _options.AllowedRoots.ToArray(),
             AdDomainController = _options.AdDomainController,
@@ -474,6 +477,10 @@ internal sealed partial class ChatServiceSession {
             EnableOfficeImoPack = _options.EnableOfficeImoPack,
             EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
             PluginPaths = _options.PluginPaths.ToArray(),
+            AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,
+            RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
+            SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
+            RunAsProfilePath = runtimePolicyContext.Options.RunAsProfilePath,
             OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
         };
 
@@ -484,6 +491,7 @@ internal sealed partial class ChatServiceSession {
         var registry = new ToolRegistry();
         _toolPackIdsByToolName.Clear();
         ToolPackBootstrap.RegisterAll(registry, packs, _toolPackIdsByToolName);
+        _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
 
         _packs = packs;
         _pluginSearchPaths = pluginSearchPaths;

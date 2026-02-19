@@ -104,6 +104,26 @@ public sealed record ToolPackBootstrapOptions {
     public bool PowerShellAllowWrite { get; init; }
 
     /// <summary>
+    /// Shared authentication probe store used by probe-aware packs.
+    /// </summary>
+    public IToolAuthenticationProbeStore? AuthenticationProbeStore { get; init; }
+
+    /// <summary>
+    /// Enforces successful SMTP probe validation before email send actions.
+    /// </summary>
+    public bool RequireSuccessfulSmtpProbeForSend { get; init; }
+
+    /// <summary>
+    /// Maximum accepted SMTP probe age in seconds when strict probe validation is enabled.
+    /// </summary>
+    public int SmtpProbeMaxAgeSeconds { get; init; } = 900;
+
+    /// <summary>
+    /// Optional run-as profile catalog path for packs supporting run-as profile references.
+    /// </summary>
+    public string? RunAsProfilePath { get; init; }
+
+    /// <summary>
     /// Optional warning sink used when an optional/private pack cannot be loaded.
     /// </summary>
     public Action<string>? OnBootstrapWarning { get; init; }
@@ -409,7 +429,13 @@ public static class ToolPackBootstrap {
             packLabel: "IX.Email",
             packTypeName: EmailPackTypeName,
             optionsTypeName: EmailOptionsTypeName,
-            configureOptions: null,
+            configureOptions: emailOptions => {
+                SetPropertyIfPresent(emailOptions, "AuthenticationProbeStore", options.AuthenticationProbeStore);
+                SetPropertyIfPresent(emailOptions, "RequireSuccessfulSmtpProbeForSend", options.RequireSuccessfulSmtpProbeForSend);
+                SetPropertyIfPresent(emailOptions, "SmtpProbeMaxAgeSeconds", options.SmtpProbeMaxAgeSeconds);
+                SetPropertyIfPresent(emailOptions, "RunAsProfilePath", options.RunAsProfilePath);
+                SetPropertyIfPresent(emailOptions, "AuthenticationProfilePath", options.RunAsProfilePath);
+            },
             onWarning: options.OnBootstrapWarning);
 
         if (options.EnablePluginFolderLoading) {

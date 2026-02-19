@@ -63,4 +63,9 @@ public sealed record SessionPolicyDto {
     /// Effective plugin search roots used by the runtime.
     /// </summary>
     public string[] PluginSearchPaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Runtime governance/auth policy snapshot active for the session.
+    /// </summary>
+    public SessionRuntimePolicyDto? RuntimePolicy { get; init; }
 }

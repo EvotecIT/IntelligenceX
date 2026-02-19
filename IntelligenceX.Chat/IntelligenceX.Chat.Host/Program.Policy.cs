@@ -20,36 +20,81 @@ namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
 
-    private static IReadOnlyList<IToolPack> BuildPacks(ReplOptions options, Action<string>? onBootstrapWarning = null) {
-        return ToolPackBootstrap.CreateDefaultReadOnlyPacks(BuildBootstrapOptions(options, onBootstrapWarning));
+    private static IReadOnlyList<IToolPack> BuildPacks(
+        ReplOptions options,
+        ToolRuntimePolicyContext runtimePolicy,
+        Action<string>? onBootstrapWarning = null) {
+        return ToolPackBootstrap.CreateDefaultReadOnlyPacks(BuildBootstrapOptions(options, runtimePolicy, onBootstrapWarning));
     }
 
-    private static IReadOnlyList<string> GetPluginSearchPaths(ReplOptions options) {
-        return ToolPackBootstrap.GetPluginSearchPaths(BuildBootstrapOptions(options));
+    private static IReadOnlyList<string> GetPluginSearchPaths(ReplOptions options, ToolRuntimePolicyContext runtimePolicy) {
+        return ToolPackBootstrap.GetPluginSearchPaths(BuildBootstrapOptions(options, runtimePolicy));
     }
 
-    private static ToolPackBootstrapOptions BuildBootstrapOptions(ReplOptions options, Action<string>? onBootstrapWarning = null) {
+    private static ToolPackBootstrapOptions BuildBootstrapOptions(
+        ReplOptions options,
+        ToolRuntimePolicyContext runtimePolicy,
+        Action<string>? onBootstrapWarning = null) {
         return new ToolPackBootstrapOptions {
             AllowedRoots = options.AllowedRoots.ToArray(),
             AdDomainController = options.AdDomainController,
             AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
             AdMaxResults = options.AdMaxResults,
             EnablePowerShellPack = options.EnablePowerShellPack,
+            PowerShellAllowWrite = options.PowerShellAllowWrite,
             EnableTestimoXPack = options.EnableTestimoXPack,
             EnableOfficeImoPack = options.EnableOfficeImoPack,
             EnableDefaultPluginPaths = options.EnableDefaultPluginPaths,
             PluginPaths = options.PluginPaths.ToArray(),
+            AuthenticationProbeStore = runtimePolicy.AuthenticationProbeStore,
+            RequireSuccessfulSmtpProbeForSend = runtimePolicy.RequireSuccessfulSmtpProbeForSend,
+            SmtpProbeMaxAgeSeconds = runtimePolicy.SmtpProbeMaxAgeSeconds,
+            RunAsProfilePath = runtimePolicy.Options.RunAsProfilePath,
             OnBootstrapWarning = onBootstrapWarning
         };
     }
 
-    private static void WritePolicyBanner(ReplOptions options, IReadOnlyList<IToolPack> packs, IReadOnlyList<string>? bootstrapWarnings = null) {
+    private static ToolRuntimePolicyOptions BuildRuntimePolicyOptions(ReplOptions options) {
+        return new ToolRuntimePolicyOptions {
+            WriteGovernanceMode = options.WriteGovernanceMode,
+            RequireWriteGovernanceRuntime = options.RequireWriteGovernanceRuntime,
+            RequireWriteAuditSinkForWriteOperations = options.RequireWriteAuditSinkForWriteOperations,
+            WriteAuditSinkMode = options.WriteAuditSinkMode,
+            WriteAuditSinkPath = options.WriteAuditSinkPath,
+            AuthenticationPreset = options.AuthenticationRuntimePreset,
+            RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
+            RunAsProfilePath = options.RunAsProfilePath
+        };
+    }
+
+    private static void WritePolicyBanner(
+        ReplOptions options,
+        IReadOnlyList<IToolPack> packs,
+        ToolRuntimePolicyContext runtimePolicyContext,
+        ToolRuntimePolicyDiagnostics runtimePolicyDiagnostics,
+        IReadOnlyList<string>? bootstrapWarnings = null) {
         var descriptors = ToolPackBootstrap.GetDescriptors(packs);
         var dangerousEnabled = descriptors.Any(static p => p.IsDangerous || p.Tier == ToolCapabilityTier.DangerousWrite);
-        var pluginPaths = GetPluginSearchPaths(options);
+        var pluginPaths = GetPluginSearchPaths(options, runtimePolicyContext);
 
         Console.WriteLine("Policy:");
         Console.WriteLine($"  Mode: {(dangerousEnabled ? "mixed (dangerous pack enabled)" : "read-only (no writes implied)")}");
+        Console.WriteLine(
+            $"  Write governance: mode={ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(runtimePolicyDiagnostics.WriteGovernanceMode)}, " +
+            $"runtime_required={(runtimePolicyDiagnostics.RequireWriteGovernanceRuntime ? "on" : "off")}, " +
+            $"runtime_configured={(runtimePolicyDiagnostics.WriteGovernanceRuntimeConfigured ? "yes" : "no")}");
+        Console.WriteLine(
+            $"  Write audit sink: mode={ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(runtimePolicyDiagnostics.WriteAuditSinkMode)}, " +
+            $"required={(runtimePolicyDiagnostics.RequireWriteAuditSinkForWriteOperations ? "on" : "off")}, " +
+            $"configured={(runtimePolicyDiagnostics.WriteAuditSinkConfigured ? "yes" : "no")}, " +
+            $"path={(string.IsNullOrWhiteSpace(runtimePolicyDiagnostics.WriteAuditSinkPath) ? "(none)" : runtimePolicyDiagnostics.WriteAuditSinkPath)}");
+        Console.WriteLine(
+            $"  Auth runtime: preset={ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(runtimePolicyDiagnostics.AuthenticationPreset)}, " +
+            $"required={(runtimePolicyDiagnostics.RequireAuthenticationRuntime ? "on" : "off")}, " +
+            $"configured={(runtimePolicyDiagnostics.AuthenticationRuntimeConfigured ? "yes" : "no")}, " +
+            $"smtp_probe_required={(runtimePolicyDiagnostics.RequireSuccessfulSmtpProbeForSend ? "on" : "off")}, " +
+            $"smtp_probe_max_age_seconds={runtimePolicyDiagnostics.SmtpProbeMaxAgeSeconds}, " +
+            $"run_as_profile_path={(string.IsNullOrWhiteSpace(runtimePolicyDiagnostics.RunAsProfilePath) ? "(none)" : runtimePolicyDiagnostics.RunAsProfilePath)}");
         var maxTable = options.MaxTableRows <= 0 ? "(none)" : options.MaxTableRows.ToString();
         var maxSample = options.MaxSample <= 0 ? "(none)" : options.MaxSample.ToString();
         Console.WriteLine($"  Response shaping: max_table_rows={maxTable}, max_sample={maxSample}, redact={(options.Redact ? "on" : "off")}");

@@ -56,8 +56,12 @@ internal static partial class Program {
         Console.WriteLine($"Max sample items: {(options.MaxSample <= 0 ? "(none)" : options.MaxSample)}");
         Console.WriteLine($"Redaction: {(options.Redact ? "on" : "off")}");
         Console.WriteLine($"IX.PowerShell pack: {(options.EnablePowerShellPack ? "enabled (dangerous)" : "disabled")}");
+        Console.WriteLine($"IX.PowerShell allow write: {(options.PowerShellAllowWrite ? "on" : "off")}");
         Console.WriteLine($"IX.TestimoX pack: {(options.EnableTestimoXPack ? "enabled" : "disabled")}");
         Console.WriteLine($"IX.OfficeIMO pack: {(options.EnableOfficeImoPack ? "enabled" : "disabled")}");
+        Console.WriteLine($"Write governance mode: {ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(options.WriteGovernanceMode)}");
+        Console.WriteLine($"Write audit sink mode: {ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(options.WriteAuditSinkMode)}");
+        Console.WriteLine($"Auth runtime preset: {ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(options.AuthenticationRuntimePreset)}");
         Console.WriteLine($"Allowed roots: {(options.AllowedRoots.Count == 0 ? "(none)" : string.Join("; ", options.AllowedRoots))}");
         var authPath = ResolveAuthPath(options);
         if (!string.IsNullOrWhiteSpace(authPath)) {
@@ -65,8 +69,12 @@ internal static partial class Program {
         }
 
         var startupPackWarnings = new List<string>();
-        var packs = BuildPacks(options, warning => CollectPackWarning(startupPackWarnings, warning));
-        WritePolicyBanner(options, packs, startupPackWarnings);
+        var startupRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+            BuildRuntimePolicyOptions(options),
+            warning => CollectPackWarning(startupPackWarnings, warning));
+        var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
+        var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
+        WritePolicyBanner(options, packs, startupRuntimePolicyContext, startupRuntimePolicyDiagnostics, startupPackWarnings);
         Console.WriteLine();
 
         using var cts = new CancellationTokenSource();
@@ -104,7 +112,10 @@ internal static partial class Program {
 
         async Task BuildRuntimeAsync() {
             var runtimePackWarnings = new List<string>();
-            var nextPacks = BuildPacks(options, warning => CollectPackWarning(runtimePackWarnings, warning));
+            var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+                BuildRuntimePolicyOptions(options),
+                warning => CollectPackWarning(runtimePackWarnings, warning));
+            var nextPacks = BuildPacks(options, runtimePolicyContext, warning => CollectPackWarning(runtimePackWarnings, warning));
             var clientOptions = new IntelligenceXClientOptions {
                 TransportKind = options.OpenAITransport,
                 DefaultModel = options.Model
@@ -162,6 +173,7 @@ internal static partial class Program {
 
             var nextRegistry = new ToolRegistry();
             ToolPackBootstrap.RegisterAll(nextRegistry, nextPacks);
+            var runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(nextRegistry, runtimePolicyContext);
             var nextSession = new ReplSession(nextClient, nextRegistry, options, runtimeInstructions, statusWriter);
 
             if (client is not null) {
@@ -183,6 +195,10 @@ internal static partial class Program {
                     Console.WriteLine($"[pack warning] {warning}");
                 }
             }
+            Console.WriteLine(
+                $"Runtime policy: write_mode={ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(runtimePolicyDiagnostics.WriteGovernanceMode)}, " +
+                $"audit_sink={ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(runtimePolicyDiagnostics.WriteAuditSinkMode)}, " +
+                $"auth_preset={ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(runtimePolicyDiagnostics.AuthenticationPreset)}");
 
             Console.WriteLine("Commands: /help, /tools, /toolhealth [filters], /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
             Console.WriteLine();
@@ -269,7 +285,12 @@ internal static partial class Program {
 
                                 Console.WriteLine($"Switched profile: {arg}");
                                 var profilePackWarnings = new List<string>();
-                                WritePolicyBanner(options, BuildPacks(options, warning => CollectPackWarning(profilePackWarnings, warning)), profilePackWarnings);
+                                var profileRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+                                    BuildRuntimePolicyOptions(options),
+                                    warning => CollectPackWarning(profilePackWarnings, warning));
+                                var profileRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(profileRuntimePolicyContext);
+                                var profilePacks = BuildPacks(options, profileRuntimePolicyContext, warning => CollectPackWarning(profilePackWarnings, warning));
+                                WritePolicyBanner(options, profilePacks, profileRuntimePolicyContext, profileRuntimePolicyDiagnostics, profilePackWarnings);
                                 Console.WriteLine();
 
                                 await BuildRuntimeAsync().ConfigureAwait(false);
@@ -903,12 +924,24 @@ internal static partial class Program {
         Console.WriteLine("  --ad-search-base        Active Directory base DN (optional; defaultNamingContext used otherwise).");
         Console.WriteLine("  --ad-max-results <N>    Max results returned by AD tools (default: 1000).");
         Console.WriteLine("  --enable-powershell-pack  Enable dangerous IX.PowerShell runtime tools (default: off).");
+        Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
         Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
         Console.WriteLine("  --enable-officeimo-pack  Enable IX.OfficeIMO document ingestion tools (default: on).");
         Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
+        Console.WriteLine("  --write-governance-mode <MODE>  Write governance mode: enforced|yolo (default: enforced).");
+        Console.WriteLine("  --require-write-governance-runtime  Require configured write runtime for write-intent calls (default: on).");
+        Console.WriteLine("  --no-require-write-governance-runtime Disable runtime requirement for write-intent calls.");
+        Console.WriteLine("  --require-write-audit-sink  Require write audit sink for write-intent calls.");
+        Console.WriteLine("  --no-require-write-audit-sink Disable write audit sink requirement.");
+        Console.WriteLine("  --write-audit-sink-mode <MODE>  Write audit sink mode: none|file|sqlite (default: none).");
+        Console.WriteLine("  --write-audit-sink-path <PATH>  Write audit sink path (JSONL file or SQLite db).");
+        Console.WriteLine("  --auth-runtime-preset <MODE>  Auth runtime preset: default|strict|lab (default: default).");
+        Console.WriteLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
+        Console.WriteLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
+        Console.WriteLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
