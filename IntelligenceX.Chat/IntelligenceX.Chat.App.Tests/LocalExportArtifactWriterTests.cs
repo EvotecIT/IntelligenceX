@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using DocumentFormat.OpenXml.Packaging;
+using IntelligenceX.Chat.ExportArtifacts;
 using System.Text.Json;
 using OfficeIMO.Excel;
 using OfficeIMO.Word;
@@ -228,6 +229,43 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("key", bodyText, StringComparison.Ordinal);
             Assert.Contains("value", bodyText, StringComparison.Ordinal);
             Assert.DoesNotContain("key\\: value", bodyText, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures DOCX transcript export normalizes compact signal-flow typography artifacts for readability.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_NormalizesSignalFlowTypographyArtifacts() {
+        const string markdown = """
+            # Transcript
+
+            - Signal **Only total count checked, not origin split -> **Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**
+            - Signal **Point-in-time snapshot only** -> Why it matters:trend evidence is missing -> Action:collect data every 15 minutes for 24h.
+            - TestimoX rules available ****359****
+            """;
+
+        var normalizedMarkdown = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown);
+        Assert.Contains("**Only total count checked, not origin split** -> **Why it matters:** external/custom rules", normalizedMarkdown, StringComparison.Ordinal);
+        Assert.Contains("**Next action:** break down", normalizedMarkdown, StringComparison.Ordinal);
+        Assert.Contains("Why it matters: trend evidence is missing", normalizedMarkdown, StringComparison.Ordinal);
+        Assert.Contains("Action: collect data every 15 minutes for 24h.", normalizedMarkdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("****359****", normalizedMarkdown, StringComparison.Ordinal);
+        Assert.Contains("**359**", normalizedMarkdown, StringComparison.Ordinal);
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-typography-normalized.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Only total count checked, not origin split", bodyText, StringComparison.Ordinal);
+            Assert.Contains("external/custom rules can drift or disappear between hosts", bodyText, StringComparison.Ordinal);
+            Assert.Contains("359", bodyText, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
