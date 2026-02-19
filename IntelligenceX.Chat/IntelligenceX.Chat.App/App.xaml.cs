@@ -29,6 +29,10 @@ public sealed class App : Application {
     private static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -104,8 +108,14 @@ public sealed class App : Application {
         var timer = dispatcher.CreateTimer();
         timer.Interval = TimeSpan.FromMilliseconds(ForegroundRetryIntervalMs);
         timer.IsRepeating = true;
+        var timerCleanedUp = false;
 
         void CleanupTimer() {
+            if (timerCleanedUp) {
+                return;
+            }
+
+            timerCleanedUp = true;
             timer.Stop();
             timer.Tick -= OnTick;
             window.Closed -= OnWindowClosed;
@@ -192,11 +202,17 @@ public sealed class App : Application {
 
     private static bool TryGetWindowHandle(Window window, int attempt, out IntPtr handle) {
         handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
-        if (handle != IntPtr.Zero) {
-            return true;
+        if (handle == IntPtr.Zero) {
+            StartupLog.Write("Window foreground request skipped (no hwnd), attempt=" + attempt);
+            return false;
         }
 
-        StartupLog.Write("Window foreground request skipped (no hwnd), attempt=" + attempt);
-        return false;
+        if (!IsWindow(handle)) {
+            StartupLog.Write("Window foreground request skipped (invalid hwnd), attempt=" + attempt);
+            handle = IntPtr.Zero;
+            return false;
+        }
+
+        return true;
     }
 }
