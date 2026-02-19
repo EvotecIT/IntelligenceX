@@ -368,11 +368,8 @@ public static class ToolPackGuidance {
         "domain_controller", "search_base_dn", "path", "folder", "channel", "provider_name", "computer_name", "server"
     };
     private static readonly string[] MutatingActionArgumentNames = { "send", "dry_run", "confirm", "execute", "apply", "force", "enable", "disable", "allow_write" };
-    private static readonly string[] AuthenticationArgumentNames = {
-        ToolAuthenticationArgumentNames.ProfileId,
-        ToolAuthenticationArgumentNames.RunAsProfileId,
-        ToolAuthenticationArgumentNames.ProbeId
-    };
+    private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
+        ToolAuthenticationArgumentNames.CanonicalArguments;
 
     /// <summary>
     /// Creates a structured flow step descriptor.
