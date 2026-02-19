@@ -110,9 +110,7 @@ jobs:
 
             - name: Enforce write-tool schema helper contract
               shell: bash
-              run: |
-                  dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --workspace . --config .intelligencex/reviewer.json --out artifacts --pack intelligencex-maintainability-default --strict true
-                  dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --workspace . --config .intelligencex/reviewer.json
+              run: bash .github/scripts/run-write-tool-gate.sh
 
             - name: Run executable test harness (net8.0)
               run: dotnet ./IntelligenceX.Tests/bin/${{ env.BUILD_CONFIGURATION }}/net8.0/IntelligenceX.Tests.dll
