@@ -57,6 +57,7 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
   - For metadata, prefer `AddDomainAndMaxResultsMeta(...)` when applicable.
 - System/EventLog/FileSystem tools:
   - Keep argument limits option-bounded (`ResolveBoundedOptionLimit`/`ResolveMaxResults`).
+  - For non-positive semantics, use canonical `ToolArgs.GetOptionBoundedInt32(..., nonPositiveBehavior, defaultValue)` instead of mixing ad-hoc helper variants.
   - Keep error mapping centralized in package base helpers.
 
 ## Response Rules

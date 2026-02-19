@@ -55,4 +55,34 @@ public sealed class ToolArgsTests {
         Assert.Equal(50, ToolArgs.GetPositiveOptionBoundedInt32OrDefault(new JsonObject().Add("top", 999), "top", 30, 50));
         Assert.Equal(12, ToolArgs.GetPositiveOptionBoundedInt32OrDefault(new JsonObject().Add("top", 12), "top", 30, 50));
     }
+
+    [Fact]
+    public void GetOptionBoundedInt32_WithClampBehavior_ShouldClampNonPositiveToMinimum() {
+        var args = new JsonObject().Add("max_results", 0);
+
+        var value = ToolArgs.GetOptionBoundedInt32(
+            arguments: args,
+            key: "max_results",
+            optionMaxInclusive: 50,
+            minInclusive: 1,
+            nonPositiveBehavior: ToolArgs.NonPositiveInt32Behavior.ClampToMinimum,
+            defaultValue: 30);
+
+        Assert.Equal(1, value);
+    }
+
+    [Fact]
+    public void GetOptionBoundedInt32_WithUseDefaultBehavior_ShouldKeepDefaultForNonPositive() {
+        var args = new JsonObject().Add("max_results", -10);
+
+        var value = ToolArgs.GetOptionBoundedInt32(
+            arguments: args,
+            key: "max_results",
+            optionMaxInclusive: 50,
+            minInclusive: 1,
+            nonPositiveBehavior: ToolArgs.NonPositiveInt32Behavior.UseDefault,
+            defaultValue: 30);
+
+        Assert.Equal(30, value);
+    }
 }
