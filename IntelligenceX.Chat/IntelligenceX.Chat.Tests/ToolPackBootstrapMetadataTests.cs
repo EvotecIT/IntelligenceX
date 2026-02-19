@@ -8,6 +8,46 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
+    public void CreateRuntimeBootstrapOptions_MapsSettingsAndRuntimePolicyContext() {
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
+            AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict,
+            RunAsProfilePath = "C:/temp/runas.json",
+            AuthenticationProfilePath = "C:/temp/auth.json"
+        });
+
+        var options = ToolPackBootstrap.CreateRuntimeBootstrapOptions(
+            new TestPackRuntimeSettings {
+                AllowedRoots = new[] { "C:/allowed-a", "C:/allowed-b" },
+                AdDomainController = "dc.contoso.local",
+                AdDefaultSearchBaseDn = "DC=contoso,DC=local",
+                AdMaxResults = 2222,
+                EnablePowerShellPack = true,
+                PowerShellAllowWrite = true,
+                EnableTestimoXPack = false,
+                EnableOfficeImoPack = false,
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" }
+            },
+            runtimePolicyContext);
+
+        Assert.Equal(new[] { "C:/allowed-a", "C:/allowed-b" }, options.AllowedRoots);
+        Assert.Equal("dc.contoso.local", options.AdDomainController);
+        Assert.Equal("DC=contoso,DC=local", options.AdDefaultSearchBaseDn);
+        Assert.Equal(2222, options.AdMaxResults);
+        Assert.True(options.EnablePowerShellPack);
+        Assert.True(options.PowerShellAllowWrite);
+        Assert.False(options.EnableTestimoXPack);
+        Assert.False(options.EnableOfficeImoPack);
+        Assert.False(options.EnableDefaultPluginPaths);
+        Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
+        Assert.Same(runtimePolicyContext.AuthenticationProbeStore, options.AuthenticationProbeStore);
+        Assert.True(options.RequireSuccessfulSmtpProbeForSend);
+        Assert.Equal(600, options.SmtpProbeMaxAgeSeconds);
+        Assert.Equal(runtimePolicyContext.Options.RunAsProfilePath, options.RunAsProfilePath);
+        Assert.Equal(runtimePolicyContext.Options.AuthenticationProfilePath, options.AuthenticationProfilePath);
+    }
+
+    [Fact]
     public void NormalizeSourceKind_Throws_WhenSourceKindMissing() {
         Assert.Throws<ArgumentException>(() => ToolPackBootstrap.NormalizeSourceKind(sourceKind: null, descriptorId: "system"));
     }
@@ -130,5 +170,18 @@ public sealed class ToolPackBootstrapMetadataTests {
 
         Assert.True(toolPackIdsByToolName.TryGetValue("reviewer_setup_pack_info", out var reviewerPackId));
         Assert.Equal("reviewersetup", reviewerPackId);
+    }
+
+    private sealed class TestPackRuntimeSettings : IToolPackRuntimeSettings {
+        public IReadOnlyList<string> AllowedRoots { get; init; } = Array.Empty<string>();
+        public string? AdDomainController { get; init; }
+        public string? AdDefaultSearchBaseDn { get; init; }
+        public int AdMaxResults { get; init; } = 1000;
+        public bool EnablePowerShellPack { get; init; }
+        public bool PowerShellAllowWrite { get; init; }
+        public bool EnableTestimoXPack { get; init; } = true;
+        public bool EnableOfficeImoPack { get; init; } = true;
+        public bool EnableDefaultPluginPaths { get; init; } = true;
+        public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
     }
 }

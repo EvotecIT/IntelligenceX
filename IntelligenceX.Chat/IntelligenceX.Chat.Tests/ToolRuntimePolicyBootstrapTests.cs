@@ -8,6 +8,31 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed class ToolRuntimePolicyBootstrapTests {
     [Fact]
+    public void CreateOptions_MapsRuntimePolicySettingsContract() {
+        var options = ToolRuntimePolicyBootstrap.CreateOptions(new TestRuntimePolicySettings {
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
+            RequireWriteGovernanceRuntime = false,
+            RequireWriteAuditSinkForWriteOperations = true,
+            WriteAuditSinkMode = ToolWriteAuditSinkMode.SqliteAppendOnly,
+            WriteAuditSinkPath = " C:/temp/write-audit.db ",
+            AuthenticationRuntimePreset = ToolAuthenticationRuntimePreset.Strict,
+            RequireAuthenticationRuntime = true,
+            RunAsProfilePath = " C:/temp/runas.json ",
+            AuthenticationProfilePath = " C:/temp/auth.json "
+        });
+
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, options.WriteGovernanceMode);
+        Assert.False(options.RequireWriteGovernanceRuntime);
+        Assert.True(options.RequireWriteAuditSinkForWriteOperations);
+        Assert.Equal(ToolWriteAuditSinkMode.SqliteAppendOnly, options.WriteAuditSinkMode);
+        Assert.Equal(" C:/temp/write-audit.db ", options.WriteAuditSinkPath);
+        Assert.Equal(ToolAuthenticationRuntimePreset.Strict, options.AuthenticationPreset);
+        Assert.True(options.RequireAuthenticationRuntime);
+        Assert.Equal(" C:/temp/runas.json ", options.RunAsProfilePath);
+        Assert.Equal(" C:/temp/auth.json ", options.AuthenticationProfilePath);
+    }
+
+    [Fact]
     public void CreateContext_StrictPreset_RequiresSmtpProbeValidation() {
         var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
             AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict
@@ -85,5 +110,17 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         } catch {
             // Best-effort cleanup.
         }
+    }
+
+    private sealed class TestRuntimePolicySettings : IToolRuntimePolicySettings {
+        public ToolWriteGovernanceMode WriteGovernanceMode { get; init; } = ToolWriteGovernanceMode.Enforced;
+        public bool RequireWriteGovernanceRuntime { get; init; } = true;
+        public bool RequireWriteAuditSinkForWriteOperations { get; init; }
+        public ToolWriteAuditSinkMode WriteAuditSinkMode { get; init; }
+        public string? WriteAuditSinkPath { get; init; }
+        public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; init; } = ToolAuthenticationRuntimePreset.Default;
+        public bool RequireAuthenticationRuntime { get; init; }
+        public string? RunAsProfilePath { get; init; }
+        public string? AuthenticationProfilePath { get; init; }
     }
 }

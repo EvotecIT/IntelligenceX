@@ -22,7 +22,7 @@ namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
 
-    private sealed class ReplOptions {
+    private sealed class ReplOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
         public string Model { get; set; } = "gpt-5.3-codex";
 
         public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
@@ -74,6 +74,10 @@ internal static partial class Program {
         public bool RequireAuthenticationRuntime { get; set; }
         public string? RunAsProfilePath { get; set; }
         public string? AuthenticationProfilePath { get; set; }
+
+        ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
+        IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
+        IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
 
         public static ReplOptions Parse(string[] args, out string? error) {
             error = null;

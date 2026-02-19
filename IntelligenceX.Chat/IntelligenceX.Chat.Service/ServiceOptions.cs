@@ -11,7 +11,7 @@ using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
 
-internal sealed class ServiceOptions {
+internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
     public string Model { get; set; } = "gpt-5.3-codex";
@@ -58,6 +58,10 @@ internal sealed class ServiceOptions {
     public bool RequireAuthenticationRuntime { get; set; }
     public string? RunAsProfilePath { get; set; }
     public string? AuthenticationProfilePath { get; set; }
+
+    ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
+    IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
+    IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; }
