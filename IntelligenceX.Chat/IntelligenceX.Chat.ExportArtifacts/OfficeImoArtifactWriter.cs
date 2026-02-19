@@ -11,6 +11,8 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 /// OfficeIMO-backed document writers used by chat export flows.
 /// </summary>
 public static class OfficeImoArtifactWriter {
+    private const string SignalFlowLabelAlternation = "Why it matters|Action|Next action|Fix action";
+    private static readonly string[] SignalFlowLabels = ["Why it matters", "Action", "Next action", "Fix action"];
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(250);
 
     // Detect ordered-list starters so definition-list escaping can skip true list items.
@@ -30,22 +32,22 @@ public static class OfficeImoArtifactWriter {
         RegexMatchTimeout);
     // Normalize tight arrow-label joins like "->**Why it matters:**" to "-> **Why it matters:**".
     private static readonly Regex SignalFlowArrowLabelTightRegex = new(
-        @"->\s*\*\*(?=(?:Why it matters|Action|Next action|Fix action):)",
+        @"->\s*\*\*(?=(?:" + SignalFlowLabelAlternation + @"):)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexMatchTimeout);
     // Ensure a space after bold labels such as "**Action:**next".
     private static readonly Regex SignalFlowBoldLabelMissingSpaceRegex = new(
-        @"(?<label>\*\*(?:Why it matters|Action|Next action|Fix action):\*\*)(?=\S)",
+        @"(?<label>\*\*(?:" + SignalFlowLabelAlternation + @"):\*\*)(?=\S)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexMatchTimeout);
     // Ensure a space after plain labels such as "Action:next", excluding markdown emphasis starts.
     private static readonly Regex SignalFlowPlainLabelMissingSpaceRegex = new(
-        @"(?<label>(?<![\p{L}\p{N}_])(?:Why it matters|Action|Next action|Fix action):)(?=\S)(?!\*)",
+        @"(?<label>(?<![\p{L}\p{N}_])(?:" + SignalFlowLabelAlternation + @"):)(?=\S)(?!\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexMatchTimeout);
     // Fast gate for deciding whether signal-label spacing repairs are needed at all.
     private static readonly Regex TightSignalLabelRegex = new(
-        @"(?:Why it matters|Action|Next action|Fix action):\S",
+        @"(?:" + SignalFlowLabelAlternation + @"):\S",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexMatchTimeout);
 
@@ -275,10 +277,7 @@ public static class OfficeImoArtifactWriter {
 
         return markdown.Contains("****", StringComparison.Ordinal)
                || markdown.Contains("->**", StringComparison.Ordinal)
-               || markdown.Contains("-> **Why it matters:**", StringComparison.OrdinalIgnoreCase)
-               || markdown.Contains("-> **Action:**", StringComparison.OrdinalIgnoreCase)
-               || markdown.Contains("-> **Next action:**", StringComparison.OrdinalIgnoreCase)
-               || markdown.Contains("-> **Fix action:**", StringComparison.OrdinalIgnoreCase)
+               || ContainsAnySignalFlowBoldLabel(markdown)
                || TightSignalLabelRegex.IsMatch(markdown);
     }
 
@@ -334,10 +333,7 @@ public static class OfficeImoArtifactWriter {
             return string.Empty;
         }
 
-        if (line.IndexOf("why it matters:", StringComparison.OrdinalIgnoreCase) < 0
-            && line.IndexOf("action:", StringComparison.OrdinalIgnoreCase) < 0
-            && line.IndexOf("next action:", StringComparison.OrdinalIgnoreCase) < 0
-            && line.IndexOf("fix action:", StringComparison.OrdinalIgnoreCase) < 0) {
+        if (!ContainsAnySignalFlowLabelPrefix(line)) {
             return line;
         }
 
@@ -345,6 +341,36 @@ public static class OfficeImoArtifactWriter {
         value = SignalFlowBoldLabelMissingSpaceRegex.Replace(value, "${label} ");
         value = SignalFlowPlainLabelMissingSpaceRegex.Replace(value, "${label} ");
         return value;
+    }
+
+    private static bool ContainsAnySignalFlowBoldLabel(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return false;
+        }
+
+        for (var i = 0; i < SignalFlowLabels.Length; i++) {
+            var marker = "-> **" + SignalFlowLabels[i] + ":**";
+            if (text.Contains(marker, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsAnySignalFlowLabelPrefix(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return false;
+        }
+
+        for (var i = 0; i < SignalFlowLabels.Length; i++) {
+            var marker = SignalFlowLabels[i] + ":";
+            if (text.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NeutralizeSingleLineDefinitionLists(string markdown) {
