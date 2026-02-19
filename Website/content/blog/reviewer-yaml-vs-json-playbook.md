@@ -26,6 +26,52 @@ And there is one precedence rule:
 In Actions, `with:` inputs become `INPUT_*` variables, so they can override JSON.
 These overrides are per key, not full-object replacement.
 
+## Concrete YAML vs JSON Comparison
+
+Below is a real side-by-side where both files set overlapping keys.
+
+### Workflow YAML (`.github/workflows/review-intelligencex.yml`)
+
+```yaml
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    with:
+      review_config_path: .intelligencex/reviewer.json
+      provider: openai
+      model: gpt-5.3-codex
+      mode: hybrid
+      length: medium
+      progress_updates: true
+    secrets:
+      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+      INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
+      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+```
+
+### Reviewer JSON (`.intelligencex/reviewer.json`)
+
+```json
+{
+  "review": {
+    "mode": "summary",
+    "length": "short",
+    "style": "direct",
+    "reviewDiffRange": "pr-base",
+    "reviewThreadsAutoResolveOnEvidence": true,
+    "reviewThreadsNeedsAttentionSummary": true
+  }
+}
+```
+
+### Effective Result
+
+- `mode` resolves to `hybrid` (YAML override wins for that key).
+- `length` resolves to `medium` (YAML override wins for that key).
+- `style`, `reviewDiffRange`, and thread settings still come from JSON.
+
+This is the most important behavior to remember: overrides are key-by-key, not full-object replacement.
+
 ## Real Failure Pattern
 
 The most common drift bug looks like this:
@@ -54,6 +100,39 @@ Use this split to avoid 90% of configuration churn:
   - analysis policy under `analysis.*`
 
 This gives CI engineers control of infrastructure and reviewers/maintainers control of policy.
+
+## Quick Ownership Templates You Can Reuse
+
+### Template A: YAML for wiring, JSON for policy (recommended)
+
+```yaml
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    with:
+      reviewer_source: source
+      provider: openai
+      model: gpt-5.3-codex
+      review_config_path: .intelligencex/reviewer.json
+    secrets:
+      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+      INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
+      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+```
+
+```json
+{
+  "review": {
+    "mode": "hybrid",
+    "length": "medium",
+    "style": "direct",
+    "reviewDiffRange": "pr-base",
+    "includePaths": [],
+    "excludePaths": [],
+    "skipPaths": []
+  }
+}
+```
 
 ## Build Impact: YAML vs JSON
 

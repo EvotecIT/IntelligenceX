@@ -75,6 +75,34 @@ Finally, it closes with practical remediation actions in sequence.
 
 ![Final recommended remediation actions including Windows Update service path fix, crash-loop containment, and NETLOGON hardening](/assets/screenshots/event-viewer-in-action/event_viewer15.png)
 
+## Prompt Pack You Can Reuse
+
+If you want the same signal progression in your own environment, this prompt sequence is a reliable starter:
+
+```
+Pass 1 (broad):
+Check AD0, AD1, AD2 event logs for current errors and summarize cross-DC patterns.
+
+Pass 2 (time scope):
+Now scope that to last 24h and separate active risk from historic noise.
+
+Pass 3 (evidence escalation):
+Pull raw event messages for top recurring errors before naming root causes.
+
+Pass 4 (fix order):
+Build a fix-first sequence with validation steps after each fix.
+```
+
+## Export and Handoff Pattern
+
+Use the Data View export buttons from the triage response at each pass:
+
+1. Export broad-pass summary (CSV/Excel) for immediate team visibility.
+2. Export scoped 24h summary (CSV/Excel) for on-call execution.
+3. Export final fix-first checklist (Word/Excel) for change tracking.
+
+This keeps the incident thread consistent from first triage to post-fix verification.
+
 ## How Correlation Happens During the Run
 
 What makes this useful is that correlation is not a one-shot result. It evolves as evidence improves:
