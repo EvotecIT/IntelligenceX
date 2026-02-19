@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -97,12 +96,7 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             return ToolResponse.Error(probeErrorCode, probeError);
         }
 
-        var secure = ParseSecureSocketOptions(smtpOptions.SecureSocketOptions);
-        var smtp = new Smtp {
-            DryRun = !send,
-            Timeout = smtpOptions.TimeoutMs,
-            RetryCount = smtpOptions.RetryCount
-        };
+        var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: !send);
 
         try {
             smtp.From = from;
@@ -117,14 +111,12 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             // Ensure the MIME message exists before attempting send.
             await smtp.CreateMessageAsync(cancellationToken).ConfigureAwait(false);
 
-            var connectResult = await smtp.ConnectAsync(smtpOptions.Server, smtpOptions.Port, secure, smtpOptions.UseSsl).ConfigureAwait(false);
-            if (!connectResult.Status) {
-                return ToolResponse.Error("connect_failed", connectResult.Error ?? "Connect failed.", isTransient: true);
-            }
-
-            var authResult = smtp.Authenticate(new NetworkCredential(smtpOptions.UserName, smtpOptions.Password));
-            if (!authResult.Status) {
-                return ToolResponse.Error("auth_failed", authResult.Error ?? "Authentication failed.", isTransient: false);
+            var connectAuthResult = await SmtpClientFactory.ConnectAndAuthenticateAsync(smtp, smtpOptions).ConfigureAwait(false);
+            if (!connectAuthResult.IsSuccess) {
+                return ToolResponse.Error(
+                    connectAuthResult.ErrorCode,
+                    connectAuthResult.Error,
+                    isTransient: connectAuthResult.IsTransient);
             }
 
             var sendResult = await smtp.SendAsync(cancellationToken).ConfigureAwait(false);
@@ -173,16 +165,7 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 meta: meta,
                 summaryTitle: "SMTP send");
         } finally {
-            try {
-                smtp.Disconnect();
-            } catch {
-                // best-effort
-            }
-            try {
-                smtp.Dispose();
-            } catch {
-                // best-effort
-            }
+            SmtpClientFactory.DisposeQuietly(smtp);
         }
     }
 }

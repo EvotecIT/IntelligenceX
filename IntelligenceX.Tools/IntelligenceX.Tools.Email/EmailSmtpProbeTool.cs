@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -40,33 +39,15 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
         smtpOptions.Validate();
         cancellationToken.ThrowIfCancellationRequested();
 
-        var secure = ParseSecureSocketOptions(smtpOptions.SecureSocketOptions);
-        var smtp = new Smtp {
-            DryRun = true,
-            Timeout = smtpOptions.TimeoutMs,
-            RetryCount = smtpOptions.RetryCount
-        };
+        var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: true);
 
         try {
-            var connectResult = await smtp.ConnectAsync(
-                    smtpOptions.Server,
-                    smtpOptions.Port,
-                    secure,
-                    smtpOptions.UseSsl)
-                .ConfigureAwait(false);
-            if (!connectResult.Status) {
+            var connectAuthResult = await SmtpClientFactory.ConnectAndAuthenticateAsync(smtp, smtpOptions).ConfigureAwait(false);
+            if (!connectAuthResult.IsSuccess) {
                 return ToolResponse.Error(
-                    "connect_failed",
-                    connectResult.Error ?? "Connect failed.",
-                    isTransient: true);
-            }
-
-            var authResult = smtp.Authenticate(new NetworkCredential(smtpOptions.UserName, smtpOptions.Password));
-            if (!authResult.Status) {
-                return ToolResponse.Error(
-                    "auth_failed",
-                    authResult.Error ?? "Authentication failed.",
-                    isTransient: false);
+                    connectAuthResult.ErrorCode,
+                    connectAuthResult.Error,
+                    isTransient: connectAuthResult.IsTransient);
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -79,7 +60,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
                 Provider = "smtp",
                 Server = smtpOptions.Server,
                 Port = smtpOptions.Port,
-                SecureSocketOptions = secure.ToString(),
+                SecureSocketOptions = connectAuthResult.SecureSocketOptions.ToString(),
                 UseSsl = smtpOptions.UseSsl,
                 ProbeCreatedUtc = probeRecord.ProbedAtUtc.ToString("O"),
                 ProbeMaxAgeSeconds = Options.SmtpProbeMaxAgeSeconds
@@ -88,7 +69,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
             var summaryFacts = new List<(string Key, string Value)> {
                 ("Probe ID", probeRecord.ProbeId),
                 ("Server", $"{smtpOptions.Server}:{smtpOptions.Port}"),
-                ("Secure socket options", secure.ToString()),
+                ("Secure socket options", connectAuthResult.SecureSocketOptions.ToString()),
                 ("Use SSL", smtpOptions.UseSsl ? "true" : "false"),
                 ("Probe max age (seconds)", Options.SmtpProbeMaxAgeSeconds.ToString())
             };
@@ -110,16 +91,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
                 $"SMTP probe failed. {ex.Message}",
                 isTransient: true);
         } finally {
-            try {
-                smtp.Disconnect();
-            } catch {
-                // best-effort
-            }
-            try {
-                smtp.Dispose();
-            } catch {
-                // best-effort
-            }
+            SmtpClientFactory.DisposeQuietly(smtp);
         }
     }
 }
