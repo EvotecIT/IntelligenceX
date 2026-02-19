@@ -11,6 +11,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Optional repo/org variable: POWERFORGE_REF (branch/tag/SHA) for controlled engine rollouts.
+  POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
+  POWERFORGE_REF: ${{ vars.POWERFORGE_REF != '' && vars.POWERFORGE_REF || 'ab58992450def6b736a2ea87e6a492400250959f' }}
+
 jobs:
   website-build:
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
@@ -29,8 +34,8 @@ jobs:
       - name: Checkout PSPublishModule
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          repository: EvotecIT/PSPublishModule
-          ref: ab58992450def6b736a2ea87e6a492400250959f
+          repository: ${{ env.POWERFORGE_REPOSITORY }}
+          ref: ${{ env.POWERFORGE_REF }}
           path: PSPublishModule
 
       - name: Build PowerForge.Web.Cli
@@ -61,3 +66,4 @@ jobs:
           if [ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d "${PLAYWRIGHT_BROWSERS_PATH}" ]; then
             rm -rf "${PLAYWRIGHT_BROWSERS_PATH}"
           fi
+

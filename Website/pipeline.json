@@ -194,7 +194,8 @@
       "summaryMaxIssues": 50,
       "checkUtf8": true,
       "checkMetaCharset": true,
-      "checkUnicodeReplacementChars": true
+      "checkUnicodeReplacementChars": true,
+      "checkSeoMeta": false
     }
   ]
 }
