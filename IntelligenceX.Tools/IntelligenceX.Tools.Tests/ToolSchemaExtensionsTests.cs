@@ -38,6 +38,23 @@ public class ToolSchemaExtensionsTests {
     }
 
     [Fact]
+    public void WithWriteGovernanceDefaults_ShouldAddGovernanceMetadataAndDisableAdditionalProperties() {
+        var schema = ToolSchema.Object(
+                ("send", ToolSchema.Boolean("apply write action")))
+            .WithWriteGovernanceDefaults();
+
+        var properties = schema.GetObject("properties");
+        Assert.NotNull(properties);
+        Assert.NotNull(properties!.GetObject(ToolWriteGovernanceArgumentNames.ExecutionId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ActorId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ChangeReason));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackPlanId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackProviderId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.AuditCorrelationId));
+        Assert.False(schema.GetBoolean("additionalProperties", true));
+    }
+
+    [Fact]
     public void WithAuthenticationProfileReference_ShouldAddAuthProfileProperty() {
         var schema = ToolSchema.Object(
                 ("query", ToolSchema.String("query text")))
@@ -71,5 +88,23 @@ public class ToolSchemaExtensionsTests {
         var properties = schema.GetObject("properties");
         Assert.NotNull(properties);
         Assert.NotNull(properties!.GetObject(ToolAuthenticationArgumentNames.ProbeId));
+    }
+
+    [Fact]
+    public void WithWriteGovernanceAndAuthenticationProbe_ShouldAddProbeAndGovernanceAndDisableAdditionalProperties() {
+        var schema = ToolSchema.Object(
+                ("send", ToolSchema.Boolean("apply write action")))
+            .WithWriteGovernanceAndAuthenticationProbe();
+
+        var properties = schema.GetObject("properties");
+        Assert.NotNull(properties);
+        Assert.NotNull(properties!.GetObject(ToolAuthenticationArgumentNames.ProbeId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ExecutionId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ActorId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ChangeReason));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackPlanId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackProviderId));
+        Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.AuditCorrelationId));
+        Assert.False(schema.GetBoolean("additionalProperties", true));
     }
 }
