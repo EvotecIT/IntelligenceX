@@ -201,6 +201,41 @@ public static class ToolSchemaExtensions {
     }
 
     /// <summary>
+    /// Applies the standard write-tool schema shape:
+    /// canonical write-governance metadata + <c>additionalProperties=false</c>.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    public static JsonObject WithWriteGovernanceDefaults(this JsonObject schema) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+
+        return schema
+            .WithWriteGovernanceMetadata()
+            .NoAdditionalProperties();
+    }
+
+    /// <summary>
+    /// Applies probe-aware write-tool schema defaults:
+    /// auth probe reference + canonical write-governance metadata + <c>additionalProperties=false</c>.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Probe-id argument name.</param>
+    /// <param name="description">Optional custom probe description.</param>
+    public static JsonObject WithWriteGovernanceAndAuthenticationProbe(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.ProbeId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+
+        return schema
+            .WithAuthenticationProbeReference(argumentName, description)
+            .WithWriteGovernanceDefaults();
+    }
+
+    /// <summary>
     /// Adds an authentication profile reference argument to an object schema.
     /// </summary>
     /// <param name="schema">Schema to mutate.</param>

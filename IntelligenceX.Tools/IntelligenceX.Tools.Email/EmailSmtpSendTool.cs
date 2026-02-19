@@ -38,11 +38,9 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 ("text_body", ToolSchema.String("Plain text body.")),
                 ("html_body", ToolSchema.String("HTML body.")),
                 ("send", ToolSchema.Boolean("When true, actually sends. Otherwise dry-run.")))
-            .WithAuthenticationProbeReference(
-                description: "Optional auth probe id from email_smtp_probe. Required only when strict probe gating is enabled.")
             .Required("from", "to", "subject")
-            .WithWriteGovernanceMetadata()
-            .NoAdditionalProperties(),
+            .WithWriteGovernanceAndAuthenticationProbe(
+                description: "Optional auth probe id from email_smtp_probe. Required only when strict probe gating is enabled."),
         writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
             intentArgumentName: "send",
             confirmationArgumentName: "send"),

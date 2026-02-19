@@ -17,9 +17,7 @@ public sealed class __TOOL_CLASS_NAME__ : ToolBase, ITool {
                 ("apply", ToolSchema.Boolean("When true, executes the write action. When false, returns a dry-run plan."))
                 // Add tool-specific args here.
             )
-            .WithWriteGovernanceMetadata()
-            .WithAuthenticationProbeReference()
-            .NoAdditionalProperties());
+            .WithWriteGovernanceAndAuthenticationProbe());
 
     private static readonly ToolWriteGovernanceContract WriteContract = ToolWriteGovernanceConventions.BooleanFlagTrue(
         intentArgumentName: "apply",

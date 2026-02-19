@@ -14,9 +14,9 @@ Use this skill when adding or refactoring write-capable (mutating) tools.
 ## Required Build Pattern
 1. Define schema with shared extensions:
    - Start with `ToolSchema.Object(...)`.
-   - Add `.WithWriteGovernanceMetadata()`.
-   - For probe-aware auth flows add `.WithAuthenticationProbeReference()`.
-   - End with `.NoAdditionalProperties()`.
+   - Prefer `.WithWriteGovernanceDefaults()` for write tools.
+   - For probe-aware auth flows prefer `.WithWriteGovernanceAndAuthenticationProbe()`.
+   - Use low-level `.WithWriteGovernanceMetadata()` / `.WithAuthenticationProbeReference()` only for advanced custom ordering.
 2. Define write contract with shared factories:
    - Boolean intent: `ToolWriteGovernanceConventions.BooleanFlagTrue(...)`.
    - String intent: `ToolWriteGovernanceConventions.StringEquals(...)`.
@@ -44,7 +44,7 @@ Use this skill when adding or refactoring write-capable (mutating) tools.
 ## Authentication + Probe Rules
 - When tool supports auth preflight probes:
   - set `supportsConnectivityProbe: true` and provide `probeToolName`.
-  - expose `auth_probe_id` in schema using `.WithAuthenticationProbeReference()`.
+  - expose `auth_probe_id` in schema using `.WithWriteGovernanceAndAuthenticationProbe()` (or `.WithAuthenticationProbeReference()` for custom pipelines).
   - do not hand-roll schema argument names; use `ToolAuthenticationArgumentNames`.
 - For strict probe gating before writes:
   - validate probe references through `ToolAuthenticationProbeValidator`.
