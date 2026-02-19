@@ -159,5 +159,121 @@ public static class SampleBadMaxResultsMetaHelper {
             }
         }
     }
+
+    private static void TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNearMissMetadataKeys() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-max-results-meta-nearmiss-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample",
+                "SampleNearMissMaxResultsMetaTool.cs"), """
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleNearMissMaxResultsMetaTool : ToolBase {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_near_miss_max_results_meta_tool",
+        "Sample tool with near-miss metadata key.",
+        ToolSchema.Object(("query", ToolSchema.String("Query value."))).NoAdditionalProperties());
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        var maxResults = 100;
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: new { rows = Array.Empty<object>() },
+            sourceRows: Array.Empty<object>(),
+            viewRowsPath: "rows",
+            title: "Sample",
+            baseTruncated: false,
+            scanned: 0,
+            maxTop: 1000,
+            metaMutate: meta => {
+                meta.Add("max_results_extra", maxResults);
+            }));
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run max-results metadata helper near-miss key exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
+                "analyze run max-results metadata helper near-miss key no finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsQualifiedCanonicalHelperCall() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-max-results-meta-qualified-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample",
+                "SampleQualifiedMaxResultsMetaTool.cs"), """
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleQualifiedMaxResultsMetaTool : ToolBase {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_qualified_max_results_meta_tool",
+        "Sample tool with qualified canonical helper usage.",
+        ToolSchema.Object(("query", ToolSchema.String("Query value."))).NoAdditionalProperties());
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        var maxResults = 100;
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: new { rows = Array.Empty<object>() },
+            sourceRows: Array.Empty<object>(),
+            viewRowsPath: "rows",
+            title: "Sample",
+            baseTruncated: false,
+            scanned: 0,
+            maxTop: 1000,
+            metaMutate: meta => {
+                SampleQualifiedMaxResultsMetaTool.AddMaxResultsMeta(meta, maxResults);
+            }));
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run max-results metadata helper qualified canonical helper exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
+                "analyze run max-results metadata helper qualified canonical helper no finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
 }
 #endif

@@ -627,6 +627,10 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsCanonicalHelper);
         failed += Run("Analyze run internal max-results metadata helper rule ignores non-tool files",
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNonToolFiles);
+        failed += Run("Analyze run internal max-results metadata helper rule ignores near-miss keys",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNearMissMetadataKeys);
+        failed += Run("Analyze run internal max-results metadata helper rule accepts qualified canonical helper call",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsQualifiedCanonicalHelperCall);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",
