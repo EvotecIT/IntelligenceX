@@ -72,39 +72,7 @@ internal sealed partial class ChatServiceSession {
     public ChatServiceSession(ServiceOptions options, Stream stream) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        var startupWarnings = new List<string>();
-        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
-            BuildRuntimePolicyOptions(_options),
-            warning => RecordBootstrapWarning(startupWarnings, warning));
-        var bootstrapOptions = new ToolPackBootstrapOptions {
-            AllowedRoots = _options.AllowedRoots.ToArray(),
-            AdDomainController = _options.AdDomainController,
-            AdDefaultSearchBaseDn = _options.AdDefaultSearchBaseDn,
-            AdMaxResults = _options.AdMaxResults,
-            EnablePowerShellPack = _options.EnablePowerShellPack,
-            PowerShellAllowWrite = _options.PowerShellAllowWrite,
-            EnableTestimoXPack = _options.EnableTestimoXPack,
-            EnableOfficeImoPack = _options.EnableOfficeImoPack,
-            EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
-            PluginPaths = _options.PluginPaths.ToArray(),
-            AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,
-            RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
-            SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
-            RunAsProfilePath = runtimePolicyContext.Options.RunAsProfilePath,
-            AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
-            OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
-        };
-
-        var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
-        _packs = bootstrapResult.Packs;
-        _packAvailability = bootstrapResult.PackAvailability.ToArray();
-        _pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
-        _startupWarnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
-        _registry = new ToolRegistry();
-        _toolPackIdsByToolName.Clear();
-        ToolPackBootstrap.RegisterAll(_registry, _packs, _toolPackIdsByToolName);
-        _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(_registry, runtimePolicyContext);
-        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
+        RebuildToolingCore(clearRoutingCaches: false);
 
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default
