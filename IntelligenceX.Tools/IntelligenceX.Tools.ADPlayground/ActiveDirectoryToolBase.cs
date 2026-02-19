@@ -41,6 +41,13 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         int MaxResults);
 
     /// <summary>
+    /// Standard argument set used by tools that require a domain and max-results cap.
+    /// </summary>
+    protected readonly record struct RequiredDomainQueryRequest(
+        string DomainName,
+        int MaxResults);
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ActiveDirectoryToolBase"/> class.
     /// </summary>
     /// <param name="options">Tool options.</param>
@@ -104,6 +111,28 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             return false;
         }
 
+        errorResponse = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads required domain + max-results arguments using a single validation path.
+    /// </summary>
+    protected bool TryReadRequiredDomainQueryRequest(
+        JsonObject? arguments,
+        out RequiredDomainQueryRequest request,
+        out string? errorResponse,
+        string domainArgumentName = "domain_name",
+        string maxResultsArgumentName = "max_results",
+        MaxResultsNonPositiveBehavior nonPositiveBehavior = MaxResultsNonPositiveBehavior.ClampToOne) {
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out errorResponse, argumentName: domainArgumentName)) {
+            request = default;
+            return false;
+        }
+
+        request = new RequiredDomainQueryRequest(
+            DomainName: domainName,
+            MaxResults: ResolveBoundedMaxResults(arguments, maxResultsArgumentName, nonPositiveBehavior));
         errorResponse = null;
         return true;
     }
@@ -379,11 +408,12 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             throw new ArgumentNullException(nameof(resultFactory));
         }
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var request, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
 
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var domainName = request.DomainName;
+        var maxResults = request.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => query(domainName),
@@ -676,16 +706,16 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         JsonObject? arguments,
         out PolicyAttributionToolRequest request,
         out string? errorResponse) {
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out errorResponse)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out errorResponse)) {
             request = default;
             return false;
         }
 
         request = new PolicyAttributionToolRequest(
-            DomainName: domainName,
+            DomainName: domainQuery.DomainName,
             IncludeAttribution: ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true),
             ConfiguredAttributionOnly: ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false),
-            MaxResults: ResolveBoundedMaxResults(arguments));
+            MaxResults: domainQuery.MaxResults);
         errorResponse = null;
         return true;
     }
@@ -784,4 +814,3 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         }
     }
 }
-

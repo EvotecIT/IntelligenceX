@@ -55,9 +55,11 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var permission = ToolArgs.GetOptionalTrimmed(arguments, "permission");
         if (!string.IsNullOrWhiteSpace(permission) &&
@@ -71,7 +73,7 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
         var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
         var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
         var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 100000, 1, 1000000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionRootService.Get(domainName, maxRows: maxRows),

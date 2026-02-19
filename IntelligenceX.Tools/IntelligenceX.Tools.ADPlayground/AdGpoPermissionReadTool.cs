@@ -53,14 +53,16 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var includeCompliant = ToolArgs.GetBoolean(arguments, "include_compliant", defaultValue: false);
         var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionReadService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos),

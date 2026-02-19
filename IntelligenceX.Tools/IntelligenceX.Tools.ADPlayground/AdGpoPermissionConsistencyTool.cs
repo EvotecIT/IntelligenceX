@@ -59,9 +59,11 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var verifyInheritance = ToolArgs.GetBoolean(arguments, "verify_inheritance", defaultValue: false);
         var includeConsistent = ToolArgs.GetBoolean(arguments, "include_consistent", defaultValue: false);
@@ -75,7 +77,7 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
 
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var sysvolScanCap = ToolArgs.GetCappedInt32(arguments, "sysvol_scan_cap", 2000, 1, 500000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionConsistencyService.Get(domainName, verifyInheritance: verifyInheritance, includeConsistent: includeConsistent, maxGpos: maxGpos, sysvolScanCap: sysvolScanCap),

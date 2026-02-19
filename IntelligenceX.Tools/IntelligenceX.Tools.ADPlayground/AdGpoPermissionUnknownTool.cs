@@ -54,15 +54,17 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
             return Task.FromResult(argumentError!);
         }
+
+        var domainName = domainQuery.DomainName;
 
         var resolutionErrorContains = ToolArgs.GetOptionalTrimmed(arguments, "resolution_error_contains");
         var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var maxFindings = ToolArgs.GetCappedInt32(arguments, "max_findings", 200000, 1, 2000000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = domainQuery.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionUnknownService.Get(domainName, maxGpos: maxGpos, maxFindings: maxFindings),

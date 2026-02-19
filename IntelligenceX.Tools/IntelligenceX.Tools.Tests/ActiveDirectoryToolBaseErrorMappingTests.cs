@@ -141,6 +141,44 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
     }
 
     [Fact]
+    public void TryReadRequiredDomainQueryRequest_ShouldReturnDomainAndCappedMaxResults() {
+        var tool = new HarnessTool();
+
+        var ok = tool.TryReadRequiredDomainQuery(
+            arguments: new JsonObject()
+                .Add("domain_name", "contoso.local")
+                .Add("max_results", 0),
+            useOptionCapDefaultForNonPositive: false,
+            out var domainName,
+            out var maxResults,
+            out var errorResponse);
+
+        Assert.True(ok);
+        Assert.Equal("contoso.local", domainName);
+        Assert.Equal(1, maxResults);
+        Assert.Null(errorResponse);
+    }
+
+    [Fact]
+    public void TryReadRequiredDomainQueryRequest_ShouldDefaultToOptionCap_WhenConfigured() {
+        var tool = new HarnessTool();
+
+        var ok = tool.TryReadRequiredDomainQuery(
+            arguments: new JsonObject()
+                .Add("domain_name", "contoso.local")
+                .Add("max_results", 0),
+            useOptionCapDefaultForNonPositive: true,
+            out var domainName,
+            out var maxResults,
+            out var errorResponse);
+
+        Assert.True(ok);
+        Assert.Equal("contoso.local", domainName);
+        Assert.Equal(1000, maxResults);
+        Assert.Null(errorResponse);
+    }
+
+    [Fact]
     public async Task ExecutePolicyAttributionTool_ShouldFilterRowsAndAddStandardMeta() {
         var tool = new HarnessTool();
         var arguments = new JsonObject()
@@ -401,6 +439,24 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             return TryReadRequiredDomainName(arguments, out domainName, out errorResponse);
         }
 
+        public bool TryReadRequiredDomainQuery(
+            JsonObject? arguments,
+            bool useOptionCapDefaultForNonPositive,
+            out string? domainName,
+            out int maxResults,
+            out string? errorResponse) {
+            var ok = TryReadRequiredDomainQueryRequest(
+                arguments: arguments,
+                request: out var request,
+                errorResponse: out errorResponse,
+                nonPositiveBehavior: useOptionCapDefaultForNonPositive
+                    ? MaxResultsNonPositiveBehavior.DefaultToOptionCap
+                    : MaxResultsNonPositiveBehavior.ClampToOne);
+            domainName = ok ? request.DomainName : null;
+            maxResults = ok ? request.MaxResults : 0;
+            return ok;
+        }
+
         public Task<string> ExecutePolicyToolAsync(
             JsonObject? arguments,
             Func<string, MockPolicyView> query,
@@ -542,5 +598,4 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             IReadOnlyList<PolicyAttribution> Attribution);
     }
 }
-
 
