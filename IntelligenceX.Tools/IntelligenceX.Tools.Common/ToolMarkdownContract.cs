@@ -8,7 +8,7 @@ namespace IntelligenceX.Tools.Common;
 /// </summary>
 /// <remarks>
 /// Generates CommonMark/GFM-friendly blocks designed for OfficeIMO.Markdown and OfficeIMO.MarkdownRenderer.
-/// Keep output predictable: headings, tables, fenced code blocks, Mermaid, and chart fences.
+/// Keep output predictable: headings, tables, fenced code blocks, Mermaid, chart, and network fences.
 /// </remarks>
 public sealed class ToolMarkdownDocument {
     private readonly List<string> _blocks = new();
@@ -89,11 +89,37 @@ public sealed class ToolMarkdownDocument {
     }
 
     /// <summary>
-    /// Adds a chart fence block (<c>chart</c>) intended for hosts that enable chart rendering.
+    /// Adds an IntelligenceX chart fence block (<c>ix-chart</c>).
     /// </summary>
     /// <param name="chartJson">Chart JSON payload.</param>
     /// <param name="title">Optional heading rendered above the chart.</param>
     /// <param name="headingLevel">Heading level for <paramref name="title"/>.</param>
+    public ToolMarkdownDocument AddIxChart(string? chartJson, string? title = null, int headingLevel = 4) {
+        if (!string.IsNullOrWhiteSpace(title)) {
+            _blocks.Add(ToolMarkdown.Heading(headingLevel, title));
+        }
+        _blocks.Add(ToolMarkdown.IxChart(chartJson));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an IntelligenceX network fence block (<c>ix-network</c>).
+    /// </summary>
+    /// <param name="networkJson">Network JSON payload.</param>
+    /// <param name="title">Optional heading rendered above the network.</param>
+    /// <param name="headingLevel">Heading level for <paramref name="title"/>.</param>
+    public ToolMarkdownDocument AddIxNetwork(string? networkJson, string? title = null, int headingLevel = 4) {
+        if (!string.IsNullOrWhiteSpace(title)) {
+            _blocks.Add(ToolMarkdown.Heading(headingLevel, title));
+        }
+        _blocks.Add(ToolMarkdown.IxNetwork(networkJson));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a legacy chart fence block (<c>chart</c>) for compatibility with older hosts.
+    /// Prefer <see cref="AddIxChart"/> for new tool output.
+    /// </summary>
     public ToolMarkdownDocument AddChart(string? chartJson, string? title = null, int headingLevel = 4) {
         if (!string.IsNullOrWhiteSpace(title)) {
             _blocks.Add(ToolMarkdown.Heading(headingLevel, title));

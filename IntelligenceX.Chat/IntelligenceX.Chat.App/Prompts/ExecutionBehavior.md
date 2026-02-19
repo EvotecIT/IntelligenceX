@@ -21,3 +21,16 @@
 - For numbered lists, always use `1. ` style with a following space.
 - Do not nest strong delimiters inside strong spans; prefer a single strong segment (`- Label **value**`).
 - Keep markdown syntax out of inline code unless it is intended as literal code content.
+- Visual blocks contract (phase 3 / Mermaid + ix-chart + ix-network enabled):
+  - Allowed visual fence: ` ```mermaid ... ``` `.
+  - Allowed visual fence: ` ```ix-chart ...json... ``` `.
+  - Allowed visual fence: ` ```ix-network ...json... ``` `.
+  - Always include a one-line summary immediately before each visual block and one short interpretation line immediately after it.
+  - Visual fences must be closed.
+  - Mermaid blocks must be syntactically valid.
+  - `ix-chart` blocks must contain valid JSON object payloads.
+  - `ix-network` blocks must contain valid JSON object payloads with compact nodes/edges.
+  - Keep visuals compact: max 8 Mermaid blocks per message (max 12000 source characters each).
+  - Keep visuals compact: max 6 chart blocks per message (max 20000 source characters each).
+  - Keep visuals compact: max 4 network blocks per message (max 24000 source characters each, max ~220 nodes and ~520 edges).
+  - If you are unsure a visual will validate/render, fall back to plain markdown (no broken visual fences).

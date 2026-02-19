@@ -1,0 +1,6 @@
+vis-network local assets
+Source JS: https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js
+Source CSS: https://cdn.jsdelivr.net/npm/vis-network@9.1.9/styles/vis-network.min.css
+License: Apache-2.0 (https://github.com/visjs/vis-network/blob/master/LICENSE-APACHE-2.0)
+
+This file is vendored for local/offline WebView rendering.

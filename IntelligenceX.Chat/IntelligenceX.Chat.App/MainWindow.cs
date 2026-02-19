@@ -210,7 +210,7 @@ public sealed partial class MainWindow : Window {
     private long _wheelForwardedAbsDelta;
     private long _dragMoveWatchdogArmCount;
     private long _dragMoveWatchdogForcedReleaseCount;
-    private static readonly MarkdownRendererOptions MarkdownOptions = MarkdownRendererPresets.CreateChatStrictMinimal();
+    private static readonly MarkdownRendererOptions MarkdownOptions = ChatMarkdownOptions.Create();
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
     private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
     private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));

@@ -151,4 +151,33 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("if (!exportId || !Object.prototype.hasOwnProperty.call(pendingExports, exportId)) {", script, StringComparison.Ordinal);
         Assert.Contains("if (pending && pending.sessionId && pending.sessionId !== activeDataViewSessionId) {", script, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures visual runtime script is part of the shell composition and transcript hook.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesVisualRuntimeAndTranscriptHooks() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("/* IXCHAT_PART:Shell.21.core.visuals.js */", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixDisposeTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixRenderTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
+        Assert.Contains("function renderIxChartBlock(", html, StringComparison.Ordinal);
+        Assert.Contains("function renderIxNetworkBlock(", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixRenderTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixDisposeTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures code-copy adorners skip Mermaid and chart blocks so rendered visuals do not expose large payload copies.
+    /// </summary>
+    [Fact]
+    public void TranscriptRendering_SkipsCodeCopyButtonsForVisualBlocks() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
+        Assert.Contains("pre.querySelector(\"code.language-ix-chart, code.language-chart\")", script, StringComparison.Ordinal);
+        Assert.Contains("pre.querySelector(\"code.language-ix-network\")", script, StringComparison.Ordinal);
+    }
 }

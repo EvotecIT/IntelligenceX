@@ -5,19 +5,32 @@ namespace IntelligenceX.Tools.Tests;
 
 public class ToolMarkdownContractTests {
     [Fact]
-    public void DocumentBuilder_ShouldRenderMermaidAndChartFences() {
+    public void DocumentBuilder_ShouldRenderMermaidChartAndNetworkFences() {
         var markdown = ToolMarkdownContract.Create()
             .AddHeading(3, "Visualization")
             .AddMermaid("graph TD\nA-->B", "Topology")
-            .AddChart("{\"type\":\"bar\",\"data\":{}}", "Counts")
+            .AddIxChart("{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"label\":\"X\",\"data\":[1]}]}}", "Counts")
+            .AddIxNetwork("{\"nodes\":[{\"id\":\"A\",\"label\":\"User\"},{\"id\":\"B\",\"label\":\"Group\"}],\"edges\":[{\"from\":\"A\",\"to\":\"B\"}]}", "Relationships")
             .Build();
 
         Assert.Contains("### Visualization", markdown);
         Assert.Contains("#### Topology", markdown);
         Assert.Contains("```mermaid", markdown);
         Assert.Contains("graph TD", markdown);
-        Assert.Contains("```chart", markdown);
+        Assert.Contains("```ix-chart", markdown);
         Assert.Contains("#### Counts", markdown);
+        Assert.Contains("```ix-network", markdown);
+        Assert.Contains("#### Relationships", markdown);
+    }
+
+    [Fact]
+    public void DocumentBuilder_ShouldKeepLegacyChartFenceForCompatibility() {
+        var markdown = ToolMarkdownContract.Create()
+            .AddChart("{\"type\":\"bar\",\"data\":{}}", "Legacy")
+            .Build();
+
+        Assert.Contains("#### Legacy", markdown);
+        Assert.Contains("```chart", markdown);
     }
 
     [Fact]

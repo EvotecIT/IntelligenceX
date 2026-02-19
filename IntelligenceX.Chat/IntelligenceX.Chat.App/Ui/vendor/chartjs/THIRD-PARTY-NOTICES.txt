@@ -1,0 +1,6 @@
+Chart.js local assets
+Source: https://github.com/chartjs/Chart.js
+Version: 4.4.7 (chart.umd.min.js from jsDelivr)
+License: MIT
+
+This file is vendored for local/offline WebView rendering.
