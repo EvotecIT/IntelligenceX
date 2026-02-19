@@ -70,9 +70,11 @@ Use this skill when adding or refactoring write-capable (mutating) tools.
 
 ## Automated Enforcement
 - Internal maintainability rule `IXTOOL001` validates write-capable tool schemas under `IntelligenceX.Tools/**`.
+- Internal maintainability rule `IXTOOL003` validates `max_results` metadata helper usage under `IntelligenceX.Tools/**`.
 - The rule flags `ToolDefinition` entries with non-null `writeGovernance` that do not use:
   - `WithWriteGovernanceDefaults()`
   - `WithWriteGovernanceAndAuthenticationProbe()`
+- `IXTOOL003` flags direct `meta.Add("max_results", ...)` and requires `AddMaxResultsMeta(...)`.
 - Local verification command:
   - `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --workspace . --config .intelligencex/reviewer.json --out artifacts --pack intelligencex-maintainability-default --strict true`
   - `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --workspace . --config .intelligencex/reviewer.json`
