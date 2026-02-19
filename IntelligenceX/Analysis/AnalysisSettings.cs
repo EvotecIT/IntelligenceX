@@ -127,6 +127,11 @@ public sealed class AnalysisGateSettings {
     /// </summary>
     public IReadOnlyList<string> Types { get; set; } = Array.Empty<string>();
     /// <summary>
+    /// Optional list of explicit rule IDs to gate on.
+    /// When set together with <see cref="Types"/>, a finding is in-scope when it matches either filter.
+    /// </summary>
+    public IReadOnlyList<string> RuleIds { get; set; } = Array.Empty<string>();
+    /// <summary>
     /// When true, findings for rules outside the enabled packs can fail the gate (useful to detect untracked tool rules).
     /// </summary>
     public bool IncludeOutsidePackRules { get; set; }

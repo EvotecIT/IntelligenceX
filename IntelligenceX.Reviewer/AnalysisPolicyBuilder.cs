@@ -24,7 +24,8 @@ internal static class AnalysisPolicyBuilder {
         AnalysisCatalog? Catalog,
         IReadOnlyList<string> DisabledRules,
         IReadOnlyDictionary<string, string> Overrides,
-        int RulePreviewItems
+        int RulePreviewItems,
+        IReadOnlyList<string> GateRuleIds
     );
 
     public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null,
@@ -43,7 +44,7 @@ internal static class AnalysisPolicyBuilder {
             lines.Add(
                 $"- Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
             AddOutcomeLines(lines, context.EnabledRules, loadResult.Findings, loadReport, context.Catalog,
-                context.RulePreviewItems);
+                context.RulePreviewItems, context.GateRuleIds);
         }
 
         return RenderPolicy(lines, context.DisabledRules, context.Overrides, context.RulePreviewItems);
@@ -76,7 +77,8 @@ internal static class AnalysisPolicyBuilder {
             null,
             Array.Empty<string>(),
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(OrdinalIgnoreCaseComparer)),
-            AnalysisPolicyFormatting.MaxRulePreviewItems);
+            AnalysisPolicyFormatting.MaxRulePreviewItems,
+            Array.Empty<string>());
         unavailableReason = "analysis catalog unavailable";
         if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
             return PolicyContextBuildResult.Disabled;
@@ -123,6 +125,11 @@ internal static class AnalysisPolicyBuilder {
         // Effective enabled order follows pack rule order after disabled-rule filtering.
         var enabledRules = selectedRules.Where(rule => !disabledSet.Contains(rule)).ToList();
         var rulePreviewItems = ResolveRulePreviewItems(settings);
+        var gateRuleIds = (settings.Analysis.Gate.RuleIds ?? Array.Empty<string>())
+            .Select(NormalizeRuleId)
+            .OfType<string>()
+            .Distinct(OrdinalIgnoreCaseComparer)
+            .ToList();
 
         var lines = new List<string> {
             "### Static Analysis Policy 🧭",
@@ -141,13 +148,15 @@ internal static class AnalysisPolicyBuilder {
                   (overrideMap.Count > 0 ? $", {overrideMap.Count} overrides" : string.Empty));
         lines.Add(BuildRulePreviewLimitLine(rulePreviewItems));
         AddEnabledRulePreviewLine(lines, enabledRules, loadedCatalog, rulePreviewItems);
+        AddGateRuleIdsLine(lines, gateRuleIds, loadedCatalog, rulePreviewItems);
         context = new PolicyContext(
             lines.ToArray(),
             enabledRules,
             loadedCatalog,
             disabledSet.ToArray(),
             new ReadOnlyDictionary<string, string>(overrideMap),
-            rulePreviewItems);
+            rulePreviewItems,
+            gateRuleIds.ToArray());
         return PolicyContextBuildResult.Ready;
     }
 
@@ -268,7 +277,14 @@ internal static class AnalysisPolicyBuilder {
             ? $"- Packs: {string.Join(", ", packs)}"
             : "- Packs: none");
         lines.Add("- Rules: unavailable (analysis catalog could not be loaded)");
-        lines.Add(BuildRulePreviewLimitLine(ResolveRulePreviewItems(settings)));
+        var rulePreviewItems = ResolveRulePreviewItems(settings);
+        lines.Add(BuildRulePreviewLimitLine(rulePreviewItems));
+        var gateRuleIds = (settings.Analysis.Gate.RuleIds ?? Array.Empty<string>())
+            .Select(NormalizeRuleId)
+            .OfType<string>()
+            .Distinct(OrdinalIgnoreCaseComparer)
+            .ToList();
+        AddGateRuleIdsLine(lines, gateRuleIds, catalog: null, rulePreviewItems);
         lines.Add("- Status: unavailable");
         lines.Add($"- Rule outcomes: unavailable ({SanitizeUnavailableReason(reason)})");
         return string.Join("\n", lines).TrimEnd();
@@ -360,7 +376,7 @@ internal static class AnalysisPolicyBuilder {
 
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
         IReadOnlyList<AnalysisFinding>? findings, AnalysisLoadReport loadReport, AnalysisCatalog? catalog,
-        int rulePreviewItems) {
+        int rulePreviewItems, IReadOnlyList<string> gateRuleIds) {
         if (loadReport.ResolvedInputFiles == 0) {
             lines.Add("- Status: unavailable");
             lines.Add("- Rule outcomes: unavailable (no analysis result files matched configured inputs)");
@@ -407,12 +423,82 @@ internal static class AnalysisPolicyBuilder {
             .OrderByDescending(item => item.Value)
             .ThenBy(item => item.Key, OrdinalComparer)
             .ToList(), catalog, rulePreviewItems);
+        AddGateRuleOutcomeLine(lines, gateRuleIds, findingRuleCounts, catalog, rulePreviewItems);
         AddRulePreviewLine(lines, "Clean rules", cleanEnabledRules, catalog, rulePreviewItems);
         AddRuleCountPreviewLine(lines, "Outside-pack rules", findingRuleCounts
             .Where(item => !enabledSet.Contains(item.Key))
             .OrderByDescending(item => item.Value)
             .ThenBy(item => item.Key, OrdinalComparer)
             .ToList(), catalog, rulePreviewItems);
+    }
+
+    private static void AddGateRuleIdsLine(ICollection<string> lines, IReadOnlyList<string> gateRuleIds,
+        AnalysisCatalog? catalog, int rulePreviewItems) {
+        if (gateRuleIds is null || gateRuleIds.Count == 0) {
+            return;
+        }
+        if (rulePreviewItems == 0) {
+            lines.Add($"- Gate rule IDs: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            return;
+        }
+        var preview = gateRuleIds
+            .Take(rulePreviewItems)
+            .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
+            .ToList();
+        var suffix = gateRuleIds.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
+        lines.Add($"- Gate rule IDs: {string.Join(", ", preview)}{suffix}");
+    }
+
+    private static void AddGateRuleOutcomeLine(ICollection<string> lines, IReadOnlyList<string> gateRuleIds,
+        IReadOnlyDictionary<string, int> findingRuleCounts, AnalysisCatalog? catalog, int rulePreviewItems) {
+        if (gateRuleIds is null || gateRuleIds.Count == 0) {
+            return;
+        }
+        if (rulePreviewItems == 0) {
+            lines.Add($"- Gate rule outcomes: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            return;
+        }
+
+        var caseInsensitiveCounts = EnsureCaseInsensitiveRuleCounts(findingRuleCounts);
+        var outcomes = gateRuleIds
+            .Select(ruleId => new KeyValuePair<string, int>(
+                ruleId,
+                caseInsensitiveCounts.TryGetValue(ruleId, out var count) ? count : 0))
+            .ToList();
+        var preview = outcomes
+            .Take(rulePreviewItems)
+            .Select(item => $"{DescribeRuleForPreview(item.Key, catalog)}={item.Value}")
+            .ToList();
+        var suffix = outcomes.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
+        lines.Add($"- Gate rule outcomes: {string.Join(", ", preview)}{suffix}");
+    }
+
+    private static IReadOnlyDictionary<string, int> EnsureCaseInsensitiveRuleCounts(
+        IReadOnlyDictionary<string, int> findingRuleCounts) {
+        if (findingRuleCounts is Dictionary<string, int> dictionary &&
+            dictionary.Comparer.Equals(OrdinalIgnoreCaseComparer)) {
+            return dictionary;
+        }
+
+        var normalized = new Dictionary<string, int>(OrdinalIgnoreCaseComparer);
+        if (findingRuleCounts is null || findingRuleCounts.Count == 0) {
+            return normalized;
+        }
+
+        foreach (var item in findingRuleCounts) {
+            var key = NormalizeRuleId(item.Key);
+            if (string.IsNullOrWhiteSpace(key)) {
+                continue;
+            }
+
+            if (normalized.TryGetValue(key, out var existingCount)) {
+                normalized[key] = checked(existingCount + item.Value);
+            } else {
+                normalized[key] = item.Value;
+            }
+        }
+
+        return normalized;
     }
 
     private static void AddRulePreviewLine(ICollection<string> lines, string label, IReadOnlyList<string> ruleIds,

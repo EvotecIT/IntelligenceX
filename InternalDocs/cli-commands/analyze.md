@@ -18,11 +18,14 @@ This command:
 - Runs Python analysis through Ruff (`ruff check`) when Python rules are selected and emits SARIF
   (`artifacts/intelligencex.ruff.sarif`).
 - Runs built-in IntelligenceX maintainability checks for selected internal rules (for example `IXLOC001`
-  for max file length and `IXDUP001` for duplicated significant-line percentage).
+  for max file length, `IXDUP001` for duplicated significant-line percentage, and `IXTOOL001` for
+  write-tool schema helper contract enforcement).
   - Internal maintainability checks can be scoped via `include-ext:<extension>` tags (default extensions:
     `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`) and are applied per rule.
   - `IXDUP001` additionally supports `max-duplication-percent-<language>:<0-100>` tags
     (`csharp|powershell|javascript|typescript|python`, aliases `cs|ps|js|ts|py`) for language-specific duplication thresholds.
+  - `IXTOOL001` flags write-capable `ToolDefinition` schemas under `IntelligenceX.Tools/**` that do not use
+    `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
 - Emits duplication metrics sidecar JSON (`artifacts/intelligencex.duplication.json`, schema `intelligencex.duplication.v2`) for duplication gate checks.
 - Applies `configMode` during the run without committing analyzer config files.
 
@@ -73,6 +76,7 @@ This command:
 Gate behavior is configured by `analysis.gate` in `.intelligencex/reviewer.json`, including:
 - `minSeverity`: minimum severity to consider for gating.
 - `types`: optional type filter (for example `vulnerability`, `bug`).
+- `ruleIds`: optional explicit rule-ID filter (for example `IXTOOL001`). When both `types` and `ruleIds` are set, a finding is in-scope if it matches either filter.
 - `includeOutsidePackRules`: when true, findings outside enabled packs can fail the gate.
 - `failOnHotspotsToReview`: when true, security hotspots in `to-review` state can fail the gate.
 - `newIssuesOnly` + `baselinePath`: baseline-aware finding gate mode.
