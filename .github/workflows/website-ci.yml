@@ -14,7 +14,7 @@ permissions:
 env:
   # Optional repo/org variable: POWERFORGE_REF (branch/tag/SHA) for controlled engine rollouts.
   POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: ${{ vars.POWERFORGE_REF != '' && vars.POWERFORGE_REF || '77253ad381bcc5f70db62f10ef513913f7c37b49' }}
+  POWERFORGE_REF: ${{ vars.POWERFORGE_REF != '' && vars.POWERFORGE_REF || 'ab58992450def6b736a2ea87e6a492400250959f' }}
 
 jobs:
   website-build:
@@ -66,3 +66,4 @@ jobs:
           if [ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d "${PLAYWRIGHT_BROWSERS_PATH}" ]; then
             rm -rf "${PLAYWRIGHT_BROWSERS_PATH}"
           fi
+
