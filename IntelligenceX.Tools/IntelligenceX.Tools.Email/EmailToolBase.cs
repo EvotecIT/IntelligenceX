@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using MailKit.Security;
 using IntelligenceX.Tools.Common;
 
@@ -8,6 +10,11 @@ namespace IntelligenceX.Tools.Email;
 /// Base class for email tool implementations.
 /// </summary>
 public abstract class EmailToolBase : ToolBase {
+    /// <summary>
+    /// Pipeline context key used to cache validated SMTP options.
+    /// </summary>
+    protected const string SmtpOptionsContextKey = "email.smtp_options";
+
     /// <summary>
     /// Shared options for email tools.
     /// </summary>
@@ -22,6 +29,27 @@ public abstract class EmailToolBase : ToolBase {
     protected EmailToolBase(EmailToolOptions options) {
         Options = options ?? throw new ArgumentNullException(nameof(options));
         Options.Validate();
+    }
+
+    /// <summary>
+    /// Shared middleware that requires SMTP configuration and caches validated options in pipeline context.
+    /// </summary>
+    protected Task<string> EnsureSmtpConfiguredAsync<TRequest>(
+        ToolPipelineContext<TRequest> context,
+        CancellationToken cancellationToken,
+        ToolPipelineNext<TRequest> next)
+        where TRequest : notnull {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(next);
+
+        var smtpOptions = Options.Smtp;
+        if (smtpOptions is null) {
+            return Task.FromResult(ToolResultV2.Error("not_configured", "SMTP is not configured."));
+        }
+
+        smtpOptions.Validate();
+        context.SetItem(SmtpOptionsContextKey, smtpOptions);
+        return next(context, cancellationToken);
     }
 
     internal static SecureSocketOptions ParseSecureSocketOptions(string? value) {

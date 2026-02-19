@@ -25,6 +25,25 @@ public abstract class ToolBase : ITool {
     }
 
     /// <summary>
+    /// Runs a typed bind -> middleware -> execute pipeline.
+    /// </summary>
+    protected Task<string> RunPipelineAsync<TRequest>(
+        JsonObject? arguments,
+        CancellationToken cancellationToken,
+        Func<JsonObject?, ToolRequestBindingResult<TRequest>> binder,
+        ToolPipelineNext<TRequest> execute,
+        IReadOnlyList<ToolPipelineMiddleware<TRequest>>? middleware = null)
+        where TRequest : notnull {
+        return ToolPipeline.RunAsync(
+            definition: Definition,
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: binder,
+            terminal: execute,
+            middleware: middleware);
+    }
+
+    /// <summary>
     /// Adds max_results metadata consistently across tool responses.
     /// </summary>
     protected static void AddMaxResultsMeta(JsonObject meta, int maxResults) {

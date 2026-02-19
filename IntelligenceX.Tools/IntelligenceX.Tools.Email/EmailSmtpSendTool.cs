@@ -13,6 +13,18 @@ namespace IntelligenceX.Tools.Email;
 /// Sends an email via SMTP. Defaults to dry-run unless explicitly confirmed.
 /// </summary>
 public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
+    private sealed record SendRequest(
+        string From,
+        IReadOnlyList<string> To,
+        IReadOnlyList<string> Cc,
+        IReadOnlyList<string> Bcc,
+        string? ReplyTo,
+        string Subject,
+        string TextBody,
+        string HtmlBody,
+        bool Send,
+        string? ProbeId);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "email_smtp_send",
         "Send an email via SMTP. By default performs a dry-run unless send=true is provided.",
@@ -57,63 +69,107 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var smtpOptions = Options.Smtp;
-        if (smtpOptions is null) {
-            return ToolResponse.Error("not_configured", "SMTP is not configured.");
-        }
-        smtpOptions.Validate();
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteRequestAsync,
+            middleware: new ToolPipelineMiddleware<SendRequest>[] {
+                EnsureSmtpConfiguredAsync,
+                ValidateStrictProbeAsync
+            }).ConfigureAwait(false);
+    }
 
-        var from = arguments?.GetString("from") ?? string.Empty;
-        var to = ToolArgs.ReadStringArray(arguments?.GetArray("to"));
-        var cc = ToolArgs.ReadStringArray(arguments?.GetArray("cc"));
-        var bcc = ToolArgs.ReadStringArray(arguments?.GetArray("bcc"));
-        var replyTo = arguments?.GetString("reply_to");
-        var subject = arguments?.GetString("subject") ?? string.Empty;
-        var textBody = arguments?.GetString("text_body") ?? string.Empty;
-        var htmlBody = arguments?.GetString("html_body") ?? string.Empty;
-        var send = arguments?.GetBoolean("send") ?? false;
-        var probeId = ToolArgs.GetOptionalTrimmed(arguments, ToolAuthenticationArgumentNames.ProbeId);
+    private static ToolRequestBindingResult<SendRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("from", out var from, out var fromError)) {
+                return ToolRequestBindingResult<SendRequest>.Failure(fromError);
+            }
 
-        if (string.IsNullOrWhiteSpace(from)) {
-            return ToolResponse.Error("invalid_argument", "from is required.");
+            var to = reader.StringArray("to");
+            if (to.Count == 0) {
+                return ToolRequestBindingResult<SendRequest>.Failure("to must contain at least one recipient.");
+            }
+
+            if (!reader.TryReadRequiredString("subject", out var subject, out var subjectError)) {
+                return ToolRequestBindingResult<SendRequest>.Failure(subjectError);
+            }
+
+            var textBody = reader.OptionalString("text_body") ?? string.Empty;
+            var htmlBody = reader.OptionalString("html_body") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(textBody) && string.IsNullOrWhiteSpace(htmlBody)) {
+                return ToolRequestBindingResult<SendRequest>.Failure("Either text_body or html_body must be provided.");
+            }
+
+            return ToolRequestBindingResult<SendRequest>.Success(new SendRequest(
+                From: from,
+                To: to,
+                Cc: reader.StringArray("cc"),
+                Bcc: reader.StringArray("bcc"),
+                ReplyTo: reader.OptionalString("reply_to"),
+                Subject: subject,
+                TextBody: textBody,
+                HtmlBody: htmlBody,
+                Send: reader.Boolean("send"),
+                ProbeId: reader.OptionalString(ToolAuthenticationArgumentNames.ProbeId)));
+        });
+    }
+
+    private Task<string> ValidateStrictProbeAsync(
+        ToolPipelineContext<SendRequest> context,
+        CancellationToken cancellationToken,
+        ToolPipelineNext<SendRequest> next) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!context.Request.Send) {
+            return next(context, cancellationToken);
         }
-        if (to.Count == 0) {
-            return ToolResponse.Error("invalid_argument", "to must contain at least one recipient.");
+
+        if (!context.TryGetItem<SmtpAccountOptions>(SmtpOptionsContextKey, out var smtpOptions) ||
+            smtpOptions is null) {
+            return Task.FromResult(ToolResultV2.Error("not_configured", "SMTP is not configured."));
         }
-        if (string.IsNullOrWhiteSpace(subject)) {
-            return ToolResponse.Error("invalid_argument", "subject is required.");
-        }
-        if (string.IsNullOrWhiteSpace(textBody) && string.IsNullOrWhiteSpace(htmlBody)) {
-            return ToolResponse.Error("invalid_argument", "Either text_body or html_body must be provided.");
-        }
-        if (send && !SmtpProbePolicy.TryValidateForStrictSend(
+
+        if (!SmtpProbePolicy.TryValidateForStrictSend(
                 options: Options,
                 smtpOptions: smtpOptions,
-                probeId: probeId,
+                probeId: context.Request.ProbeId,
                 nowUtc: DateTimeOffset.UtcNow,
                 out var probeErrorCode,
                 out var probeError)) {
-            return ToolResponse.Error(probeErrorCode, probeError);
+            return Task.FromResult(ToolResultV2.Error(probeErrorCode, probeError));
         }
 
-        var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: !send);
+        return next(context, cancellationToken);
+    }
+
+    private async Task<string> ExecuteRequestAsync(
+        ToolPipelineContext<SendRequest> context,
+        CancellationToken cancellationToken) {
+        if (!context.TryGetItem<SmtpAccountOptions>(SmtpOptionsContextKey, out var smtpOptions) ||
+            smtpOptions is null) {
+            return ToolResultV2.Error("not_configured", "SMTP is not configured.");
+        }
+
+        var request = context.Request;
+        var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: !request.Send);
 
         try {
-            smtp.From = from;
-            smtp.To = to;
-            if (cc.Count > 0) smtp.Cc = cc;
-            if (bcc.Count > 0) smtp.Bcc = bcc;
-            if (!string.IsNullOrWhiteSpace(replyTo)) smtp.ReplyTo = replyTo;
-            smtp.Subject = subject;
-            smtp.TextBody = textBody;
-            smtp.HtmlBody = htmlBody;
+            smtp.From = request.From;
+            smtp.To = new List<string>(request.To);
+            if (request.Cc.Count > 0) smtp.Cc = new List<string>(request.Cc);
+            if (request.Bcc.Count > 0) smtp.Bcc = new List<string>(request.Bcc);
+            if (!string.IsNullOrWhiteSpace(request.ReplyTo)) smtp.ReplyTo = request.ReplyTo;
+            smtp.Subject = request.Subject;
+            smtp.TextBody = request.TextBody;
+            smtp.HtmlBody = request.HtmlBody;
 
             // Ensure the MIME message exists before attempting send.
             await smtp.CreateMessageAsync(cancellationToken).ConfigureAwait(false);
 
             var connectAuthResult = await SmtpClientFactory.ConnectAndAuthenticateAsync(smtp, smtpOptions).ConfigureAwait(false);
             if (!connectAuthResult.IsSuccess) {
-                return ToolResponse.Error(
+                return ToolResultV2.Error(
                     connectAuthResult.ErrorCode,
                     connectAuthResult.Error,
                     isTransient: connectAuthResult.IsTransient);
@@ -121,46 +177,46 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
 
             var sendResult = await smtp.SendAsync(cancellationToken).ConfigureAwait(false);
             if (!sendResult.Status) {
-                return ToolResponse.Error("send_failed", sendResult.Error ?? "Send failed", isTransient: true);
+                return ToolResultV2.Error("send_failed", sendResult.Error ?? "Send failed", isTransient: true);
             }
 
             var root = new {
-                Sent = send,
+                Sent = request.Send,
                 Provider = "smtp",
                 Server = smtpOptions.Server,
                 Port = smtpOptions.Port,
                 MessageId = sendResult.MessageId ?? string.Empty,
-                ProbeId = probeId ?? string.Empty
+                ProbeId = request.ProbeId ?? string.Empty
             };
 
             var summaryItems = new List<(string Key, string Value)> {
-                ("From", from),
-                ("To", string.Join("; ", to)),
-                ("Subject", subject),
+                ("From", request.From),
+                ("To", string.Join("; ", request.To)),
+                ("Subject", request.Subject),
                 ("Server", $"{smtpOptions.Server}:{smtpOptions.Port}"),
                 ("Message ID", sendResult.MessageId ?? string.Empty)
             };
-            if (cc.Count > 0) {
-                summaryItems.Add(("Cc", string.Join("; ", cc)));
+            if (request.Cc.Count > 0) {
+                summaryItems.Add(("Cc", string.Join("; ", request.Cc)));
             }
-            if (bcc.Count > 0) {
-                summaryItems.Add(("Bcc", string.Join("; ", bcc)));
+            if (request.Bcc.Count > 0) {
+                summaryItems.Add(("Bcc", string.Join("; ", request.Bcc)));
             }
-            if (!string.IsNullOrWhiteSpace(probeId)) {
-                summaryItems.Add(("Probe ID", probeId));
+            if (!string.IsNullOrWhiteSpace(request.ProbeId)) {
+                summaryItems.Add(("Probe ID", request.ProbeId));
             }
 
             var meta = ToolOutputHints.Meta(count: 1, truncated: false)
-                .Add("sent", send)
+                .Add("sent", request.Send)
                 .Add("provider", "smtp");
-            if (!string.IsNullOrWhiteSpace(probeId)) {
-                meta.Add("auth_probe_id", probeId);
+            if (!string.IsNullOrWhiteSpace(request.ProbeId)) {
+                meta.Add("auth_probe_id", request.ProbeId);
             }
 
-            return ToolResponse.OkWriteActionModel(
+            return ToolResultV2.OkWriteActionModel(
                 model: root,
                 action: "smtp_send",
-                writeApplied: send,
+                writeApplied: request.Send,
                 facts: summaryItems,
                 meta: meta,
                 summaryTitle: "SMTP send");
