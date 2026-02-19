@@ -95,6 +95,26 @@ public sealed record ToolRuntimePolicyOptions {
 }
 
 /// <summary>
+/// Resolved runtime policy options and derived preset effects.
+/// </summary>
+public sealed record ToolRuntimePolicyResolvedOptions {
+    /// <summary>
+    /// Effective options after mode/preset normalization.
+    /// </summary>
+    public required ToolRuntimePolicyOptions Options { get; init; }
+
+    /// <summary>
+    /// Effective strict SMTP probe requirement.
+    /// </summary>
+    public required bool RequireSuccessfulSmtpProbeForSend { get; init; }
+
+    /// <summary>
+    /// Effective SMTP probe max-age in seconds.
+    /// </summary>
+    public required int SmtpProbeMaxAgeSeconds { get; init; }
+}
+
+/// <summary>
 /// Resolved runtime policy context used during bootstrap.
 /// </summary>
 public sealed record ToolRuntimePolicyContext {
@@ -210,37 +230,63 @@ public static class ToolRuntimePolicyBootstrap {
             throw new ArgumentNullException(nameof(options));
         }
 
+        var resolved = ResolveOptions(options);
+        var effectiveOptions = resolved.Options;
         var probeStore = new InMemoryToolAuthenticationProbeStore();
-        var requireStrictProbe = options.RequireAuthenticationRuntime || options.AuthenticationPreset == ToolAuthenticationRuntimePreset.Strict;
-        var probeMaxAgeSeconds = ResolveSmtpProbeMaxAgeSeconds(options.AuthenticationPreset);
-        var normalizedRunAsPath = NormalizeOptionalPath(options.RunAsProfilePath);
-        var normalizedAuthProfilePath = NormalizeOptionalPath(options.AuthenticationProfilePath);
 
         IToolWriteGovernanceRuntime? writeRuntime = null;
-        if (options.WriteGovernanceMode == ToolWriteGovernanceMode.Enforced && options.RequireWriteGovernanceRuntime) {
+        if (effectiveOptions.RequireWriteGovernanceRuntime) {
             writeRuntime = new ToolWriteGovernanceStrictRuntime {
                 ImmutableAuditProviderId = StrictImmutableAuditProviderId,
                 RollbackProviderId = StrictRollbackProviderId
             };
         }
 
-        var sinkPath = NormalizeOptionalPath(options.WriteAuditSinkPath);
-        var writeAuditSink = TryCreateWriteAuditSink(options.WriteAuditSinkMode, sinkPath, onWarning);
-        if (options.RequireWriteAuditSinkForWriteOperations && writeAuditSink is null) {
+        var writeAuditSink = TryCreateWriteAuditSink(effectiveOptions.WriteAuditSinkMode, effectiveOptions.WriteAuditSinkPath, onWarning);
+        if (effectiveOptions.RequireWriteAuditSinkForWriteOperations && writeAuditSink is null) {
             Warn(onWarning, "write audit sink is required but was not configured.");
         }
 
         return new ToolRuntimePolicyContext {
-            Options = options with {
-                WriteAuditSinkPath = sinkPath,
-                RunAsProfilePath = normalizedRunAsPath,
-                AuthenticationProfilePath = normalizedAuthProfilePath
-            },
+            Options = effectiveOptions,
             AuthenticationProbeStore = probeStore,
             WriteAuditSink = writeAuditSink,
             WriteGovernanceRuntime = writeRuntime,
-            RequireSuccessfulSmtpProbeForSend = requireStrictProbe,
-            SmtpProbeMaxAgeSeconds = probeMaxAgeSeconds
+            RequireSuccessfulSmtpProbeForSend = resolved.RequireSuccessfulSmtpProbeForSend,
+            SmtpProbeMaxAgeSeconds = resolved.SmtpProbeMaxAgeSeconds
+        };
+    }
+
+    /// <summary>
+    /// Resolves effective runtime options from explicit flags and selected modes/presets.
+    /// </summary>
+    /// <param name="options">Runtime policy options.</param>
+    /// <returns>Resolved options and derived preset effects.</returns>
+    public static ToolRuntimePolicyResolvedOptions ResolveOptions(ToolRuntimePolicyOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var effectiveRequireWriteGovernanceRuntime = options.WriteGovernanceMode == ToolWriteGovernanceMode.Enforced &&
+                                                     options.RequireWriteGovernanceRuntime;
+        var effectiveRequireAuthenticationRuntime = options.RequireAuthenticationRuntime ||
+                                                    options.AuthenticationPreset == ToolAuthenticationRuntimePreset.Strict;
+        var normalizedAuditSinkPath = NormalizeOptionalPath(options.WriteAuditSinkPath);
+        var normalizedRunAsPath = NormalizeOptionalPath(options.RunAsProfilePath);
+        var normalizedAuthProfilePath = NormalizeOptionalPath(options.AuthenticationProfilePath);
+
+        var effectiveOptions = options with {
+            RequireWriteGovernanceRuntime = effectiveRequireWriteGovernanceRuntime,
+            RequireAuthenticationRuntime = effectiveRequireAuthenticationRuntime,
+            WriteAuditSinkPath = normalizedAuditSinkPath,
+            RunAsProfilePath = normalizedRunAsPath,
+            AuthenticationProfilePath = normalizedAuthProfilePath
+        };
+
+        return new ToolRuntimePolicyResolvedOptions {
+            Options = effectiveOptions,
+            RequireSuccessfulSmtpProbeForSend = effectiveRequireAuthenticationRuntime,
+            SmtpProbeMaxAgeSeconds = ResolveSmtpProbeMaxAgeSeconds(effectiveOptions.AuthenticationPreset)
         };
     }
 

@@ -310,6 +310,19 @@ internal static partial class AnalyzeGateCommand {
         return set;
     }
 
+    private static GateFindingFilters CreateGateFindingFilters(
+        IReadOnlySet<string> allowedTypes,
+        IReadOnlySet<string> gateRuleIds) {
+        var hasTypeFilter = allowedTypes is { Count: > 0 };
+        var hasRuleIdFilter = gateRuleIds is { Count: > 0 };
+        return new GateFindingFilters(
+            allowedTypes,
+            gateRuleIds,
+            hasTypeFilter,
+            hasRuleIdFilter,
+            IncludeAllFilters: !hasTypeFilter && !hasRuleIdFilter);
+    }
+
     private static string FormatFilterSummary(IReadOnlyCollection<string> values, bool includeAllWhenEmpty) {
         if (values is null || values.Count == 0) {
             return includeAllWhenEmpty ? "all" : "none";
@@ -386,11 +399,7 @@ internal static partial class AnalyzeGateCommand {
         IReadOnlyList<AnalysisFinding> findings,
         HashSet<string> enabledRuleIds,
         int minRank,
-        HashSet<string> allowedTypes,
-        HashSet<string> gateRuleIds,
-        bool hasTypeFilter,
-        bool hasRuleIdFilter,
-        bool includeAllFilters) {
+        GateFindingFilters gateFilters) {
         var list = new List<string>();
         if (settings?.Gate?.FailOnHotspotsToReview != true) {
             return list;
@@ -418,10 +427,7 @@ internal static partial class AnalyzeGateCommand {
                 continue;
             }
 
-            var matchesType = hasTypeFilter && allowedTypes.Contains(resolvedType);
-            var matchesRuleId = hasRuleIdFilter && gateRuleIds.Contains(ruleId);
-            var includedByFilter = includeAllFilters || matchesType || matchesRuleId;
-            if (!includedByFilter) {
+            if (!gateFilters.Matches(ruleId, resolvedType)) {
                 continue;
             }
 
@@ -667,5 +673,28 @@ internal static partial class AnalyzeGateCommand {
         public bool NewIssuesOnly { get; set; }
         public string? BaselinePath { get; set; }
         public string? WriteBaselinePath { get; set; }
+    }
+
+    private readonly record struct GateFindingFilters(
+        IReadOnlySet<string> AllowedTypes,
+        IReadOnlySet<string> RuleIds,
+        bool HasTypeFilter,
+        bool HasRuleIdFilter,
+        bool IncludeAllFilters) {
+        public bool Matches(string ruleId, string? ruleType) {
+            if (IncludeAllFilters) {
+                return true;
+            }
+
+            if (HasTypeFilter &&
+                !string.IsNullOrWhiteSpace(ruleType) &&
+                AllowedTypes.Contains(ruleType.Trim())) {
+                return true;
+            }
+
+            return HasRuleIdFilter &&
+                   !string.IsNullOrWhiteSpace(ruleId) &&
+                   RuleIds.Contains(ruleId.Trim());
+        }
     }
 }

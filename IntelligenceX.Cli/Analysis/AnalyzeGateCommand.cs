@@ -135,9 +135,7 @@ internal static partial class AnalyzeGateCommand {
         var allFindings = load.Findings ?? Array.Empty<AnalysisFinding>();
         var allowedTypes = NormalizeTypes(analysisSettings.Gate.Types);
         var gateRuleIds = NormalizeRuleIds(analysisSettings.Gate.RuleIds);
-        var hasTypeFilter = allowedTypes.Count > 0;
-        var hasRuleIdFilter = gateRuleIds.Count > 0;
-        var includeAllFilters = !hasTypeFilter && !hasRuleIdFilter;
+        var gateFilters = CreateGateFindingFilters(allowedTypes, gateRuleIds);
 
         var enabledRuleIds = new HashSet<string>(policy.Rules.Keys, StringComparer.OrdinalIgnoreCase);
         var violations = new List<AnalysisFinding>();
@@ -160,10 +158,7 @@ internal static partial class AnalyzeGateCommand {
             }
 
             var type = ResolveRuleType(ruleId, catalog, fallback: "unknown");
-            var matchesType = hasTypeFilter && allowedTypes.Contains(type);
-            var matchesRuleId = hasRuleIdFilter && gateRuleIds.Contains(ruleId);
-            var includedByFilter = includeAllFilters || matchesType || matchesRuleId;
-            if (!includedByFilter) {
+            if (!gateFilters.Matches(ruleId, type)) {
                 continue;
             }
             violations.Add(finding);
@@ -176,11 +171,7 @@ internal static partial class AnalyzeGateCommand {
             allFindings,
             enabledRuleIds,
             minRank,
-            allowedTypes,
-            gateRuleIds,
-            hasTypeFilter,
-            hasRuleIdFilter,
-            includeAllFilters);
+            gateFilters);
         var hasHotspotFailures = hotspotFailures.Count > 0;
         var useNewIssuesOnly = options.NewIssuesOnly || analysisSettings.Gate.NewIssuesOnly;
         var duplicationEnabled = analysisSettings.Gate.Duplication.Enabled;

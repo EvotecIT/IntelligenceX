@@ -56,7 +56,7 @@ internal static partial class Program {
     }
 
     private static ToolRuntimePolicyOptions BuildRuntimePolicyOptions(ReplOptions options) {
-        return new ToolRuntimePolicyOptions {
+        return ToolRuntimePolicyBootstrap.ResolveOptions(new ToolRuntimePolicyOptions {
             WriteGovernanceMode = options.WriteGovernanceMode,
             RequireWriteGovernanceRuntime = options.RequireWriteGovernanceRuntime,
             RequireWriteAuditSinkForWriteOperations = options.RequireWriteAuditSinkForWriteOperations,
@@ -66,7 +66,7 @@ internal static partial class Program {
             RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
             RunAsProfilePath = options.RunAsProfilePath,
             AuthenticationProfilePath = options.AuthenticationProfilePath
-        };
+        }).Options;
     }
 
     private static void WritePolicyBanner(
