@@ -275,5 +275,190 @@ public sealed class SampleQualifiedMaxResultsMetaTool : ToolBase {
             }
         }
     }
+
+    private static void TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsIndexerAssignment() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-max-results-meta-indexer-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample",
+                "SampleIndexerMaxResultsMetaTool.cs"), """
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleIndexerMaxResultsMetaTool : ToolBase {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_indexer_max_results_meta_tool",
+        "Sample tool with indexer-based max_results metadata write.",
+        ToolSchema.Object(("query", ToolSchema.String("Query value."))).NoAdditionalProperties());
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        var maxResults = 100;
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: new { rows = Array.Empty<object>() },
+            sourceRows: Array.Empty<object>(),
+            viewRowsPath: "rows",
+            title: "Sample",
+            baseTruncated: false,
+            scanned: 0,
+            maxTop: 1000,
+            metaMutate: meta => {
+                meta["max_results"] = maxResults;
+            }));
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run max-results metadata helper indexer assignment exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(true, findings.Any(item =>
+                    item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
+                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleIndexerMaxResultsMetaTool.cs",
+                        StringComparison.OrdinalIgnoreCase)),
+                "analyze run max-results metadata helper indexer assignment finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsCaseVariantMetadataKey() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-max-results-meta-casevariant-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample",
+                "SampleCaseVariantMaxResultsMetaTool.cs"), """
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleCaseVariantMaxResultsMetaTool : ToolBase {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_case_variant_max_results_meta_tool",
+        "Sample tool with case-variant max_results metadata key.",
+        ToolSchema.Object(("query", ToolSchema.String("Query value."))).NoAdditionalProperties());
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        var maxResults = 100;
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: new { rows = Array.Empty<object>() },
+            sourceRows: Array.Empty<object>(),
+            viewRowsPath: "rows",
+            title: "Sample",
+            baseTruncated: false,
+            scanned: 0,
+            maxTop: 1000,
+            metaMutate: meta => {
+                meta.Add("Max_Results", maxResults);
+            }));
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run max-results metadata helper case-variant key exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(true, findings.Any(item =>
+                    item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
+                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleCaseVariantMaxResultsMetaTool.cs",
+                        StringComparison.OrdinalIgnoreCase)),
+                "analyze run max-results metadata helper case-variant key finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsOnlyMaxResultsInMixedMetaAdds() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-max-results-meta-mixed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample",
+                "SampleMixedMetaAddsTool.cs"), """
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleMixedMetaAddsTool : ToolBase {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_mixed_meta_adds_tool",
+        "Sample tool with mixed metadata adds.",
+        ToolSchema.Object(("query", ToolSchema.String("Query value."))).NoAdditionalProperties());
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        var maxResults = 100;
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: new { rows = Array.Empty<object>() },
+            sourceRows: Array.Empty<object>(),
+            viewRowsPath: "rows",
+            title: "Sample",
+            baseTruncated: false,
+            scanned: 0,
+            maxTop: 1000,
+            metaMutate: meta => {
+                meta.Add("mode", "raw");
+                meta.Add("max_results", maxResults);
+                meta.Add("max_results_extra", maxResults);
+            }));
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run max-results metadata helper mixed meta adds exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            var matchingFindings = findings.Count(item =>
+                item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
+                item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleMixedMetaAddsTool.cs",
+                    StringComparison.OrdinalIgnoreCase));
+            AssertEqual(1, matchingFindings, "analyze run max-results metadata helper mixed meta adds only max_results finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
 }
 #endif
