@@ -705,9 +705,9 @@ internal static partial class AnalyzeGateCommand {
                 return true;
             }
 
+            var effectiveRuleType = string.IsNullOrEmpty(ruleType) ? "unknown" : ruleType;
             if (HasTypeFilter &&
-                !string.IsNullOrEmpty(ruleType) &&
-                AllowedTypes.Contains(ruleType)) {
+                AllowedTypes.Contains(effectiveRuleType)) {
                 return true;
             }
 

@@ -987,6 +987,18 @@ internal static partial class Program {
         AssertEqual(false, missingTypeWithoutRuleIdFilter,
             "gate matcher does not include missing type when only type filter is configured");
 
+        var unknownTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "unknown" };
+        var unknownTypeFilter = constructor.Invoke(new object[] {
+            unknownTypes,
+            noRuleIds,
+            true,
+            false,
+            false
+        });
+        var missingTypeMatchesUnknownTypeFilter = (bool)matchesMethod.Invoke(unknownTypeFilter, new object?[] { "IX001", null })!;
+        AssertEqual(true, missingTypeMatchesUnknownTypeFilter,
+            "gate matcher evaluates missing type as unknown when type filter includes unknown");
+
         var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IXMATCH" };
         var typeAndRuleFilter = constructor.Invoke(new object[] {
             allowedTypes,
