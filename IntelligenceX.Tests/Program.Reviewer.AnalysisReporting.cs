@@ -95,6 +95,38 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPolicyGateRuleOutcomesUseCaseInsensitiveLookup() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-gate-ruleids-case-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+            settings.Analysis.Gate.RuleIds = new[] { "ixtest001" };
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var findings = new[] {
+                new AnalysisFinding("src/FileA.cs", 42, "Dispose object", "warning", "IXTEST001", "Roslyn")
+            };
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(findings, report));
+
+            AssertPolicyLineEquals(policy, "Gate rule outcomes", "IXTEST001 (Rule one)=1",
+                "analysis policy gate rule outcomes case-insensitive lookup");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisPolicyPackIncludesEnableRules() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-includes-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

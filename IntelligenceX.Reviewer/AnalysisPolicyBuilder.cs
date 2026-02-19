@@ -458,10 +458,12 @@ internal static class AnalysisPolicyBuilder {
             lines.Add($"- Gate rule outcomes: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
             return;
         }
+
+        var caseInsensitiveCounts = EnsureCaseInsensitiveRuleCounts(findingRuleCounts);
         var outcomes = gateRuleIds
             .Select(ruleId => new KeyValuePair<string, int>(
                 ruleId,
-                findingRuleCounts.TryGetValue(ruleId, out var count) ? count : 0))
+                caseInsensitiveCounts.TryGetValue(ruleId, out var count) ? count : 0))
             .ToList();
         var preview = outcomes
             .Take(rulePreviewItems)
@@ -469,6 +471,34 @@ internal static class AnalysisPolicyBuilder {
             .ToList();
         var suffix = outcomes.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
         lines.Add($"- Gate rule outcomes: {string.Join(", ", preview)}{suffix}");
+    }
+
+    private static IReadOnlyDictionary<string, int> EnsureCaseInsensitiveRuleCounts(
+        IReadOnlyDictionary<string, int> findingRuleCounts) {
+        if (findingRuleCounts is Dictionary<string, int> dictionary &&
+            dictionary.Comparer.Equals(OrdinalIgnoreCaseComparer)) {
+            return dictionary;
+        }
+
+        var normalized = new Dictionary<string, int>(OrdinalIgnoreCaseComparer);
+        if (findingRuleCounts is null || findingRuleCounts.Count == 0) {
+            return normalized;
+        }
+
+        foreach (var item in findingRuleCounts) {
+            var key = NormalizeRuleId(item.Key);
+            if (string.IsNullOrWhiteSpace(key)) {
+                continue;
+            }
+
+            if (normalized.TryGetValue(key, out var existingCount)) {
+                normalized[key] = checked(existingCount + item.Value);
+            } else {
+                normalized[key] = item.Value;
+            }
+        }
+
+        return normalized;
     }
 
     private static void AddRulePreviewLine(ICollection<string> lines, string label, IReadOnlyList<string> ruleIds,
