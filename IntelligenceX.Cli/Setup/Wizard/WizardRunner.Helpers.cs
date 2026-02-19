@@ -80,6 +80,7 @@ internal static partial class WizardRunner {
             ReviewMode = ResolveMode(state),
             SkipSecret = allowSecrets && state.SkipSecret,
             ManualSecret = allowSecrets && state.ManualSecret,
+            ManualSecretStdout = allowSecrets && state.ManualSecret && state.ManualSecretStdout,
             ExplicitSecrets = allowSecrets && state.ExplicitSecrets,
             Upgrade = allowSecrets && state.Upgrade,
             Force = allowSecrets && state.Force,

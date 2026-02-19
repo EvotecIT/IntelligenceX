@@ -92,6 +92,10 @@ gh workflow run review-intelligencex.yml `
 intelligencex setup --repo owner/name --manual-secret
 ```
 
+```powershell
+intelligencex setup --repo owner/name --manual-secret --manual-secret-stdout
+```
+
 ## Explicit secrets block (no inherit)
 
 ```powershell

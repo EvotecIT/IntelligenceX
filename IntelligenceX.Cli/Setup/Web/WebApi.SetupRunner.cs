@@ -40,6 +40,7 @@ internal sealed partial class WebApi {
             AnalysisExportPath = analysisApplies && request.AnalysisEnabled == true ? request.AnalysisExportPath : null,
             SkipSecret = request.SkipSecret,
             ManualSecret = request.ManualSecret && !request.UpdateSecret,
+            ManualSecretStdout = request.ManualSecret && request.ManualSecretStdout && !request.UpdateSecret,
             ExplicitSecrets = request.ExplicitSecrets,
             Upgrade = request.Upgrade,
             Force = request.Force,

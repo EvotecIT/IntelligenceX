@@ -169,6 +169,10 @@ internal static partial class Program {
         failed += Run("Web setup args reach PR created with fake GitHub API",
             TestWebSetupArgsCanReachPullRequestCreatedWithFakeGitHubApi);
         failed += Run("Setup manual secret suppresses secret output", TestSetupManualSecretDoesNotPrintSecretValue);
+        failed += Run("Setup manual secret can print secret output when explicitly enabled",
+            TestSetupManualSecretCanPrintSecretValueWhenOptedIn);
+        failed += Run("Setup manual secret stdout requires manual secret mode",
+            TestSetupManualSecretStdoutRequiresManualSecret);
         failed += Run("Wizard post-apply verify skips callback on failed apply",
             TestWizardPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);

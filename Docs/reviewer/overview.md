@@ -87,6 +87,8 @@ jobs:
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
 ```
 
+The long value after `@` is a pinned workflow commit SHA. Keep it pinned for security; update it intentionally when you upgrade.
+
 `reviewer_source: source` is best when you want the latest workflow/reviewer behavior from source.
 Use `reviewer_source: release` when you prefer a packaged release artifact for tighter version control.
 Use `style` (review tone/style profile) and `output_style` (rendering preset) as optional inputs when needed.

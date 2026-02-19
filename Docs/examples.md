@@ -94,6 +94,9 @@ intelligencex setup autodetect --json
 
 ## Workflow Example
 
+`@68fe2c83e1a7d97d5aad6c4c8223c1d7eb8031e7` is a pinned commit SHA for the reusable workflow.
+This is recommended for supply-chain safety. To upgrade, replace it with a newer commit SHA from `evotecit/github-actions` releases.
+
 ```yaml
 name: AI Code Review
 on:

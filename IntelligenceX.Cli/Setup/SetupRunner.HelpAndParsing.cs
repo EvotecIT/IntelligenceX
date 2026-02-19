@@ -60,6 +60,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
         Console.WriteLine("  --skip-secret (skip secret update during setup)");
         Console.WriteLine("  --manual-secret (write secret to local temp file instead of uploading)");
+        Console.WriteLine("  --manual-secret-stdout (print secret to stdout; requires --manual-secret)");
         Console.WriteLine("  --cleanup (remove workflow/config and optionally secret)");
         Console.WriteLine("  --keep-secret (do not delete secret during cleanup)");
         Console.WriteLine("  --branch <name>");

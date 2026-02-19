@@ -37,6 +37,10 @@ internal static partial class SetupRunner {
                 Console.Error.WriteLine("Choose only one of --manual-secret or --update-secret.");
                 return 1;
             }
+            if (options.ManualSecretStdout && !options.ManualSecret) {
+                Console.Error.WriteLine("--manual-secret-stdout requires --manual-secret.");
+                return 1;
+            }
             if (options.TriageBootstrap && (options.Cleanup || options.UpdateSecret)) {
                 Console.Error.WriteLine("--triage-bootstrap is only supported for setup operation.");
                 return 1;
@@ -155,7 +159,7 @@ internal static partial class SetupRunner {
                 }
 
                 if (options.ManualSecret) {
-                    PrintManualSecret(state.OpenAI.AuthB64);
+                    PrintManualSecret(state.OpenAI.AuthB64, options.ManualSecretStdout);
                 } else {
                     await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
                         .ConfigureAwait(false);
@@ -701,13 +705,21 @@ internal static partial class SetupRunner {
             return options.KeepSecret ? "keep" : "delete";
         }
         if (options.ManualSecret) {
-            return "manual";
+            return options.ManualSecretStdout ? "manual (stdout)" : "manual";
         }
         return options.SkipSecret ? "skip" : "create/update";
     }
 
-    private static void PrintManualSecret(string secret) {
+    private static void PrintManualSecret(string secret, bool printToStdout) {
         Console.WriteLine("Manual secret mode enabled.");
+        if (printToStdout) {
+            Console.WriteLine("Warning: --manual-secret-stdout prints secret content to stdout.");
+            Console.WriteLine("This can leak in terminal history, CI logs, and screen recordings.");
+            Console.WriteLine("INTELLIGENCEX_AUTH_B64 value:");
+            Console.WriteLine(secret);
+            return;
+        }
+
         var path = TryWriteManualSecretFile(secret);
         if (string.IsNullOrWhiteSpace(path)) {
             Console.WriteLine("Failed to create a local secret file. Secret output was intentionally suppressed.");

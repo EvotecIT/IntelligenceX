@@ -76,6 +76,7 @@ internal static partial class SetupRunner {
         public bool UpdateSecret { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
+        public bool ManualSecretStdout { get; set; }
         public bool KeepSecret { get; set; }
         public bool Force { get; set; }
         public bool DryRun { get; set; }
@@ -323,6 +324,9 @@ internal static partial class SetupRunner {
                         break;
                     case "manual-secret":
                         options.ManualSecret = ParseBool(value, true);
+                        break;
+                    case "manual-secret-stdout":
+                        options.ManualSecretStdout = ParseBool(value, true);
                         break;
                     case "keep-secret":
                         options.KeepSecret = ParseBool(value, true);

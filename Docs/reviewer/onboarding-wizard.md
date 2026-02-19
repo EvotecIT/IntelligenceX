@@ -142,6 +142,7 @@ intelligencex setup wizard --manual-secret
 ```
 
 The wizard writes the secret value to a local temporary file and prints instructions for manual paste.
+For direct terminal output, add `--manual-secret-stdout` (requires `--manual-secret` and is less safe).
 
 ## Explicit secrets block
 

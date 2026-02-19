@@ -86,6 +86,37 @@ internal static partial class Program {
             "setup manual secret redaction no raw auth output");
     }
 
+    private static void TestSetupManualSecretCanPrintSecretValueWhenOptedIn() {
+        using var server = new SetupFakeGitHubApiServer("owner", "repo");
+        var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"kind\":\"manual-secret\",\"token\":\"sensitive\"}"));
+        var args = new[] {
+            "--repo", "owner/repo",
+            "--github-token", "test-token",
+            "--github-api-base-url", server.BaseUri.ToString().TrimEnd('/'),
+            "--with-config",
+            "--manual-secret",
+            "--manual-secret-stdout",
+            "--auth-b64", authB64,
+            "--branch", "intelligencex-setup/test-manual-secret-stdout"
+        };
+
+        var (exitCode, output) = RunSetupAndCaptureOutput(args);
+        AssertEqual(0, exitCode, "setup manual secret stdout exit");
+        AssertContainsText(output, "Manual secret mode enabled.", "setup manual secret stdout enabled message");
+        AssertContainsText(output, "Warning: --manual-secret-stdout prints secret content to stdout.",
+            "setup manual secret stdout warning message");
+        AssertContainsText(output, authB64, "setup manual secret stdout includes auth");
+        AssertEqual(false, output.Contains("Secret output to stdout is disabled for safety.", StringComparison.Ordinal),
+            "setup manual secret stdout should not show redaction message");
+    }
+
+    private static void TestSetupManualSecretStdoutRequiresManualSecret() {
+        var (exitCode, output) = RunSetupAndCaptureOutput(new[] { "--manual-secret-stdout" });
+        AssertEqual(1, exitCode, "setup manual secret stdout requires manual mode exit");
+        AssertContainsText(output, "--manual-secret-stdout requires --manual-secret.",
+            "setup manual secret stdout requires manual mode error");
+    }
+
     private static string[] BuildWebSetupArgsForAcceptance(
         string repo,
         string gitHubToken,

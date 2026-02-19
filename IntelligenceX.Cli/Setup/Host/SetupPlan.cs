@@ -29,6 +29,7 @@ internal sealed class SetupPlan {
     public string? ReviewCommentMode { get; init; }
     public bool SkipSecret { get; init; }
     public bool ManualSecret { get; init; }
+    public bool ManualSecretStdout { get; init; }
     public bool ExplicitSecrets { get; init; }
     public bool Upgrade { get; init; }
     public bool Force { get; init; }
