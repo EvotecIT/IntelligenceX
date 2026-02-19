@@ -420,7 +420,8 @@ internal static partial class AnalyzeGateCommand {
 
             var matchesType = hasTypeFilter && allowedTypes.Contains(resolvedType);
             var matchesRuleId = hasRuleIdFilter && gateRuleIds.Contains(ruleId);
-            if (!includeAllFilters && !matchesType && !matchesRuleId) {
+            var includedByFilter = includeAllFilters || matchesType || matchesRuleId;
+            if (!includedByFilter) {
                 continue;
             }
 
