@@ -45,8 +45,8 @@ Before pushing setup changes:
 ```bash
 dotnet build IntelligenceX.sln -c Release
 dotnet test IntelligenceX.sln -c Release
-dotnet ./IntelligenceX.Tests/bin/Release/net8.0/IntelligenceX.Tests.dll
-dotnet ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
+dotnet exec ./IntelligenceX.Tests/bin/Release/net8.0/IntelligenceX.Tests.dll
+dotnet exec ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
 ```
 
 Then validate reviewer behavior against a known PR:
