@@ -462,6 +462,10 @@
     post("set_export_default_format", { value: e.target.value || "xlsx" });
   });
 
+  byId("optExportVisualThemeMode").addEventListener("change", function(e) {
+    post("set_export_visual_theme_mode", { value: e.target.value || "preserve_ui_theme" });
+  });
+
   byId("btnClearExportLastDirectory").addEventListener("click", function() {
     post("clear_export_last_directory");
   });

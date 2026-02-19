@@ -254,6 +254,7 @@ public sealed partial class MainWindow : Window {
             export = new {
                 saveMode = _exportSaveMode,
                 defaultFormat = _exportDefaultFormat,
+                visualThemeMode = _exportVisualThemeMode,
                 lastDirectory = _lastExportDirectory ?? string.Empty
             },
             autonomy = new {

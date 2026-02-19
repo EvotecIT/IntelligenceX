@@ -49,6 +49,10 @@ internal static class TranscriptMarkdownNormalizer {
         @"\*\*(?<inner>[^*\r\n]+)\*\*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex OverwrappedStrongSpanRegex = new(
+        @"(?<!\*)\*{4}(?<inner>[^*\r\n]+)\*{4}(?!\*)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex LeadingWhitespaceInsideStrongOpenRegex = new(
         @"(?:(?<=^)|(?<=[\s(\[{>]))\*\*[ \t]+(?=[^\s*\r\n])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -75,6 +79,10 @@ internal static class TranscriptMarkdownNormalizer {
 
     private static readonly Regex LabeledOuterStrongLineRegex = new(
         @"(?m)^(?<prefix>\s*-\s+[^*\r\n]{2," + LabeledOuterStrongPrefixMaxChars.ToString(CultureInfo.InvariantCulture) + @"}\s+\*\*)(?<body>[^\r\n]*)(?<suffix>\*\*)(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex WrappedSignalFlowLineRegex = new(
+        @"(?m)^(?<prefix>\s*-\s+[^\r\n]*?)\*\*(?<inner>[^\r\n]*->\s+\*\*[^\r\n]*?)\*\*(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex SentenceCollapsedBulletRegex = new(
@@ -185,8 +193,10 @@ internal static class TranscriptMarkdownNormalizer {
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
             value = SentenceCollapsedBulletRegex.Replace(value, "\n");
+            value = RepairWrappedSignalFlowLines(value);
             value = TightBoldValueRegex.Replace(value, " ");
             value = TightBoldSuffixRegex.Replace(value, "$1 ");
+            value = NormalizeOverwrappedStrongSpans(value);
             value = SimpleStrongSpanRegex.Replace(value, static match => {
                 var inner = match.Groups["inner"].Value;
                 var trimmed = inner.Trim();
@@ -320,6 +330,50 @@ internal static class TranscriptMarkdownNormalizer {
                 var value = match.Groups["value"].Value.Trim();
                 return value.Length == 0 ? indent + label : indent + label + " **" + value + "**";
             });
+    }
+
+    private static string RepairWrappedSignalFlowLines(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return text;
+        }
+
+        return WrappedSignalFlowLineRegex.Replace(text, static match => {
+            // Never rewrite lines that contain inline-code markers.
+            if (match.Value.IndexOf('`', StringComparison.Ordinal) >= 0) {
+                return match.Value;
+            }
+
+            var inner = match.Groups["inner"].Value;
+            var markerIndex = inner.IndexOf("-> **", StringComparison.Ordinal);
+            if (markerIndex < 0) {
+                markerIndex = inner.IndexOf("->**", StringComparison.Ordinal);
+            }
+            if (markerIndex <= 0) {
+                return match.Value;
+            }
+
+            var headline = inner[..markerIndex].TrimEnd();
+            if (headline.Length == 0) {
+                return match.Value;
+            }
+
+            var flow = inner[markerIndex..].TrimStart();
+            if (flow.StartsWith("->**", StringComparison.Ordinal)) {
+                flow = "-> **" + flow[4..];
+            }
+            if (!flow.StartsWith("-> **", StringComparison.Ordinal)) {
+                return match.Value;
+            }
+
+            return match.Groups["prefix"].Value + "**" + headline + "** " + flow + match.Groups["tail"].Value;
+        });
+    }
+
+    private static string NormalizeOverwrappedStrongSpans(string text) {
+        return OverwrappedStrongSpanRegex.Replace(text, static match => {
+            var inner = match.Groups["inner"].Value.Trim();
+            return inner.Length == 0 ? match.Value : "**" + inner + "**";
+        });
     }
 
     private static string MergeSplitHostLabelBullets(string text) {

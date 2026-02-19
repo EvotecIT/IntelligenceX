@@ -393,6 +393,62 @@ pre:hover .code-copy-btn {
   word-break: break-word;
 }
 
+.bubble .markdown-body pre.mermaid {
+  overflow: auto;
+  padding: 8px;
+}
+
+.bubble .markdown-body pre.mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.ix-chart-host {
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: var(--ix-radius-md);
+  border: 1px solid var(--ix-code-border);
+  background: rgba(9, 30, 53, 0.48);
+  min-height: 220px;
+}
+
+.ix-chart-host .ix-chart-canvas {
+  width: 100%;
+  max-height: 320px;
+}
+
+.ix-network-host {
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: var(--ix-radius-md);
+  border: 1px solid var(--ix-code-border);
+  background: rgba(9, 30, 53, 0.48);
+  min-height: 260px;
+}
+
+.ix-network-host .ix-network-canvas {
+  width: 100%;
+  height: 320px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ix-network-host .vis-network:focus {
+  outline: none;
+}
+
+.ix-visual-invalid {
+  margin: 5px 0 10px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 167, 67, 0.62);
+  background: rgba(79, 48, 12, 0.45);
+  color: #ffd9a2;
+  font-size: 11px;
+}
+
 .ix-action-cta {
   margin: 10px 0 0;
   padding-top: 9px;

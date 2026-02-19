@@ -1153,6 +1153,37 @@
     return "xlsx";
   }
 
+  var unexpectedExportVisualThemeModes = Object.create(null);
+
+  function reportUnexpectedExportVisualThemeMode(value) {
+    if (!value || unexpectedExportVisualThemeModes[value]) {
+      return;
+    }
+    unexpectedExportVisualThemeModes[value] = true;
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      console.debug("[ix.chat] unexpected export visual theme mode:", value);
+    }
+  }
+
+  function normalizeExportVisualThemeMode(value) {
+    // Keep alias/default parity with ExportPreferencesContract.NormalizeVisualThemeMode (C# host).
+    var normalized = String(value || "").trim().toLowerCase();
+    switch (normalized) {
+      case "print_friendly":
+      case "print":
+      case "light":
+        return "print_friendly";
+      case "":
+      case "preserve_ui_theme":
+      case "preserve":
+      case "theme":
+        return "preserve_ui_theme";
+      default:
+        reportUnexpectedExportVisualThemeMode(normalized);
+        return "preserve_ui_theme";
+    }
+  }
+
   function exportFormatDisplayName(format) {
     var normalized = normalizeExportFormat(format);
     if (normalized === "docx") return "Word";
@@ -1164,6 +1195,7 @@
     var exportPrefs = state.options.export || {};
     var saveMode = normalizeExportSaveMode(exportPrefs.saveMode);
     var format = normalizeExportFormat(exportPrefs.defaultFormat);
+    var visualThemeMode = normalizeExportVisualThemeMode(exportPrefs.visualThemeMode);
     var lastDirectory = String(exportPrefs.lastDirectory || "");
 
     var saveModeSelect = byId("optExportSaveMode");
@@ -1176,6 +1208,12 @@
     if (formatSelect) {
       formatSelect.value = format;
       syncCustomSelect(formatSelect);
+    }
+
+    var visualThemeModeSelect = byId("optExportVisualThemeMode");
+    if (visualThemeModeSelect) {
+      visualThemeModeSelect.value = visualThemeMode;
+      syncCustomSelect(visualThemeModeSelect);
     }
 
     var lastDirectoryInput = byId("optExportLastDirectory");

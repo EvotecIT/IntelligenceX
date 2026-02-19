@@ -38,6 +38,7 @@
     ensureCustomSelect("optTimeMode");
     ensureCustomSelect("optExportSaveMode");
     ensureCustomSelect("optExportDefaultFormat");
+    ensureCustomSelect("optExportVisualThemeMode");
     ensureCustomSelect("optSidebarMode");
     ensureCustomSelect("optProfileApplyMode");
     ensureCustomSelect("optLocalTransport");
@@ -379,6 +380,18 @@
     var blocks = document.querySelectorAll(".bubble pre");
     for (var i = 0; i < blocks.length; i++) {
       (function(pre) {
+        if (pre.classList && pre.classList.contains("mermaid")) {
+          return;
+        }
+
+        if (pre.querySelector("code.language-ix-chart, code.language-chart")) {
+          return;
+        }
+
+        if (pre.querySelector("code.language-ix-network")) {
+          return;
+        }
+
         if (pre.querySelector(".code-copy-btn")) {
           return;
         }
@@ -493,7 +506,13 @@
   window.ixSetTranscript = function(html) {
     var shouldStickBottom = isNearBottom(transcript);
     var previousTop = transcript.scrollTop;
+    if (window.ixDisposeTranscriptVisuals) {
+      window.ixDisposeTranscriptVisuals(transcript);
+    }
     transcript.innerHTML = html || "";
+    if (window.ixRenderTranscriptVisuals) {
+      window.ixRenderTranscriptVisuals(transcript);
+    }
     if (window.ixEnhanceTranscriptTables) {
       window.ixEnhanceTranscriptTables(transcript);
     }

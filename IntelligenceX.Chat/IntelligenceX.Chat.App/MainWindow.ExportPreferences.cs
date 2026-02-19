@@ -51,6 +51,18 @@ public sealed partial class MainWindow : Window {
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
+    private async Task SetExportVisualThemeModeAsync(string value) {
+        var next = ExportPreferencesContract.NormalizeVisualThemeMode(value);
+        if (string.Equals(_exportVisualThemeMode, next, StringComparison.Ordinal)) {
+            return;
+        }
+
+        _exportVisualThemeMode = next;
+        _appState.ExportVisualThemeMode = next;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
     private async Task ClearExportLastDirectoryAsync() {
         if (string.IsNullOrWhiteSpace(_lastExportDirectory)) {
             return;

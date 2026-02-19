@@ -59,16 +59,92 @@ public static class OfficeImoArtifactWriter {
     /// <param name="markdown">Transcript markdown source.</param>
     /// <param name="outputPath">Destination .docx file path.</param>
     public static void WriteDocxTranscript(string title, string markdown, string outputPath) {
+        WriteDocxTranscript(title, markdown, outputPath, additionalAllowedImageDirectories: null);
+    }
+
+    /// <summary>
+    /// Writes transcript markdown to a Word document using OfficeIMO markdown-to-word conversion.
+    /// </summary>
+    /// <param name="title">Optional fallback heading when markdown has no heading.</param>
+    /// <param name="markdown">Transcript markdown source.</param>
+    /// <param name="outputPath">Destination .docx file path.</param>
+    /// <param name="additionalAllowedImageDirectories">Additional local image directories to allow during markdown conversion.</param>
+    public static void WriteDocxTranscript(
+        string title,
+        string markdown,
+        string outputPath,
+        IReadOnlyList<string>? additionalAllowedImageDirectories) {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, sourceMarkdown);
         var wordSafeMarkdown = NeutralizeSingleLineDefinitionLists(transcriptMarkdown);
-        WriteDocxFromMarkdown(wordSafeMarkdown, outputPath);
+        using var visualMaterialization = DocxVisualFenceMaterializer.Materialize(wordSafeMarkdown);
+        var allowedImageDirectories = BuildAllowedImageDirectories(
+            visualMaterialization.AllowedImageDirectories,
+            additionalAllowedImageDirectories);
+        WriteDocxFromMarkdown(visualMaterialization.Markdown, outputPath, allowedImageDirectories);
     }
 
-    private static void WriteDocxFromMarkdown(string markdown, string outputPath) {
+    private static void WriteDocxFromMarkdown(string markdown, string outputPath, IReadOnlyList<string>? allowedImageDirectories = null) {
         var safeMarkdown = string.IsNullOrWhiteSpace(markdown) ? "# Transcript\n" : markdown;
-        using var document = safeMarkdown.LoadFromMarkdown(new MarkdownToWordOptions { FontFamily = "Calibri" });
+        var options = new MarkdownToWordOptions {
+            FontFamily = "Calibri",
+            AllowLocalImages = allowedImageDirectories is { Count: > 0 }
+        };
+        if (allowedImageDirectories is { Count: > 0 }) {
+            for (var i = 0; i < allowedImageDirectories.Count; i++) {
+                var directory = allowedImageDirectories[i];
+                if (string.IsNullOrWhiteSpace(directory)) {
+                    continue;
+                }
+
+                if (!options.AllowedImageDirectories.Contains(directory)) {
+                    options.AllowedImageDirectories.Add(directory);
+                }
+            }
+        }
+
+        using var document = safeMarkdown.LoadFromMarkdown(options);
         document.Save(outputPath);
+    }
+
+    private static IReadOnlyList<string> BuildAllowedImageDirectories(
+        IReadOnlyList<string>? materializedDirectories,
+        IReadOnlyList<string>? additionalDirectories) {
+        var list = new List<string>();
+
+        if (materializedDirectories is { Count: > 0 }) {
+            for (var i = 0; i < materializedDirectories.Count; i++) {
+                var directory = (materializedDirectories[i] ?? string.Empty).Trim();
+                if (directory.Length == 0 || ContainsDirectory(list, directory)) {
+                    continue;
+                }
+
+                list.Add(directory);
+            }
+        }
+
+        if (additionalDirectories is { Count: > 0 }) {
+            for (var i = 0; i < additionalDirectories.Count; i++) {
+                var directory = (additionalDirectories[i] ?? string.Empty).Trim();
+                if (directory.Length == 0 || ContainsDirectory(list, directory)) {
+                    continue;
+                }
+
+                list.Add(directory);
+            }
+        }
+
+        return list;
+    }
+
+    private static bool ContainsDirectory(List<string> directories, string candidate) {
+        for (var i = 0; i < directories.Count; i++) {
+            if (string.Equals(directories[i], candidate, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string BuildMarkdownTable(string title, IReadOnlyList<string[]> rows) {

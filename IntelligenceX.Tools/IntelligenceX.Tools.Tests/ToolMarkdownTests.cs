@@ -55,4 +55,12 @@ public class ToolMarkdownTests {
         Assert.EndsWith("````", markdown, global::System.StringComparison.Ordinal);
         Assert.Contains("~~~~", markdown, global::System.StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void IxNetwork_ShouldRenderNamedFence() {
+        var markdown = ToolMarkdown.IxNetwork("{\"nodes\":[],\"edges\":[]}");
+
+        Assert.Contains("```ix-network", markdown);
+        Assert.Contains("{\"nodes\":[],\"edges\":[]}", markdown);
+    }
 }

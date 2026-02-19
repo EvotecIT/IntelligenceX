@@ -154,6 +154,12 @@ public sealed partial class MainWindow : Window {
                         }
                         break;
                     }
+                case "set_export_visual_theme_mode":
+                    {
+                        var mode = (TryGetString(root, "value") ?? string.Empty).Trim();
+                        await SetExportVisualThemeModeAsync(mode).ConfigureAwait(true);
+                        break;
+                    }
                 case "clear_export_last_directory":
                     await ClearExportLastDirectoryAsync().ConfigureAwait(true);
                     break;

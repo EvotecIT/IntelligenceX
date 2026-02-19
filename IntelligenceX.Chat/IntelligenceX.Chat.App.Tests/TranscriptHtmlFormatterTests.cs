@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.App.Rendering;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
@@ -9,6 +10,72 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests for transcript HTML rendering.
 /// </summary>
 public sealed class TranscriptHtmlFormatterTests {
+    /// <summary>
+    /// Ensures Mermaid fenced blocks are converted to Mermaid runtime placeholders when transcript rendering enables visuals.
+    /// </summary>
+    [Fact]
+    public void Format_RendersMermaidFenceAsMermaidBlockWhenEnabled() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 2, 19, 14, 41, 2, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Relationship preview:
+                          ```mermaid
+                          flowchart LR
+                            A[User] --> B[Group]
+                          ```
+                          End of preview.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("class=\"mermaid\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-mermaid-hash=", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("language-mermaid", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("flowchart LR", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures ix-chart fenced blocks remain as code blocks for host-side runtime validation and rendering.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesIxChartFenceForHostRuntime() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 2, 20, 9, 12, 45, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Chart preview:
+                          ```ix-chart
+                          {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"X","data":[1]}]}}
+                          ```
+                          Interpretation line.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("language-ix-chart", html, StringComparison.Ordinal);
+        Assert.Contains("Chart preview:", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures ix-network fenced blocks remain as code blocks for host-side runtime validation and rendering.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesIxNetworkFenceForHostRuntime() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 2, 20, 9, 16, 22, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Relationship network:
+                          ```ix-network
+                          {"nodes":[{"id":"A","label":"User"},{"id":"B","label":"Group"}],"edges":[{"from":"A","to":"B","label":"memberOf"}]}
+                          ```
+                          Interpretation line.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("language-ix-network", html, StringComparison.Ordinal);
+        Assert.Contains("Relationship network:", html, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Ensures rows, role styling, continuation classes, and copy indexes are rendered.
     /// </summary>

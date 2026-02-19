@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using DocumentFormat.OpenXml.Packaging;
 using System.Text.Json;
 using OfficeIMO.Excel;
 using OfficeIMO.Word;
@@ -232,9 +233,92 @@ public sealed class LocalExportArtifactWriterTests {
         }
     }
 
+    /// <summary>
+    /// Ensures DOCX transcript export materializes supported visual fences into embedded images.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_MaterializesVisualFencesIntoImages() {
+        const string markdown = """
+            # Transcript
+
+            Mermaid snapshot:
+            ```mermaid
+            flowchart LR
+            A[User] --> B[Group]
+            ```
+            Interpretation line.
+
+            Chart snapshot:
+            ```ix-chart
+            {"type":"bar","data":{"labels":["A","B"],"datasets":[{"label":"Count","data":[3,5]}]}}
+            ```
+            Interpretation line.
+
+            Network snapshot:
+            ```ix-network
+            {"nodes":[{"id":"A","label":"User"},{"id":"B","label":"Group"}],"edges":[{"from":"A","to":"B","label":"memberOf"}]}
+            ```
+            Interpretation line.
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-visuals.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Mermaid snapshot", bodyText, StringComparison.Ordinal);
+            Assert.Contains("Chart snapshot", bodyText, StringComparison.Ordinal);
+            Assert.Contains("Network snapshot", bodyText, StringComparison.Ordinal);
+
+            var imageCount = CountMainDocumentImageParts(docxPath);
+            Assert.Equal(3, imageCount);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures invalid visual fences remain as raw code and are not materialized into images.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_LeavesInvalidVisualFenceAsCode() {
+        const string markdown = """
+            # Transcript
+
+            Invalid chart:
+            ```ix-chart
+            {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Broken","data":"not-array"}]}}
+            ```
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-invalid-visual.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("not-array", bodyText, StringComparison.Ordinal);
+
+            var imageCount = CountMainDocumentImageParts(docxPath);
+            Assert.Equal(0, imageCount);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ixchat-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static int CountMainDocumentImageParts(string docxPath) {
+        using var package = WordprocessingDocument.Open(docxPath, false);
+        return package.MainDocumentPart?.ImageParts.Count() ?? 0;
     }
 }

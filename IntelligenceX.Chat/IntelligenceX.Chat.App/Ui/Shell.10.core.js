@@ -52,6 +52,7 @@
       export: {
         saveMode: "ask",
         defaultFormat: "xlsx",
+        visualThemeMode: "preserve_ui_theme",
         lastDirectory: ""
       },
       autonomy: {

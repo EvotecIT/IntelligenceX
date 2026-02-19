@@ -1,0 +1,6 @@
+Mermaid local assets
+Source: https://github.com/mermaid-js/mermaid
+Version: 11.x (mermaid.min.js from jsDelivr)
+License: MIT
+
+This file is vendored for local/offline WebView rendering.

@@ -87,6 +87,16 @@ public static class ToolMarkdown {
     public static string Mermaid(string? source) => CodeBlock("mermaid", source);
 
     /// <summary>
+    /// Creates an IntelligenceX chart fenced code block.
+    /// </summary>
+    public static string IxChart(string? chartJson) => CodeBlock("ix-chart", chartJson);
+
+    /// <summary>
+    /// Creates an IntelligenceX network fenced code block.
+    /// </summary>
+    public static string IxNetwork(string? networkJson) => CodeBlock("ix-network", networkJson);
+
+    /// <summary>
     /// Renders <paramref name="value"/> as markdown inline code, using a safe backtick fence.
     /// </summary>
     public static string InlineCode(string? value) {
