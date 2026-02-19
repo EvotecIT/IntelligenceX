@@ -8,6 +8,8 @@ layout: page
 
 ## Latest Posts
 
+- [Open-Source Go-Live Security Checklist (GitHub Actions)](/blog/open-source-go-live-security-checklist/)
+- [GitHub-Hosted vs Self-Hosted Runners](/blog/github-hosted-vs-self-hosted-runners/)
 - [Security-First Reviewer Setup Checklist](/blog/security-first-reviewer-setup-checklist/)
 - [Setup Best Practices for Teams](/blog/setup-best-practices-for-teams/)
 - [IX Issue Ops in Action](/blog/ix-issue-ops-in-action/)
