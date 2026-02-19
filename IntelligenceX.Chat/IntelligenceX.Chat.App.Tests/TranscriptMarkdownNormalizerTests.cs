@@ -348,6 +348,43 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures streaming preview normalizes wrapped signal-flow labels and overwrapped strong spans.
+    /// </summary>
+    [Fact]
+    public void NormalizeForStreamingPreview_RepairsSignalFlowTypographyArtifacts() {
+        var text = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules -> **Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**",
+            "- TestimoX rules available ****359****"
+        ]);
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(text);
+
+        var expected = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules** -> **Why it matters:** external/custom rules can drift or disappear between hosts -> **Next action:** break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.",
+            "- TestimoX rules available **359**"
+        ]);
+
+        Assert.Equal(expected, normalized);
+    }
+
+    /// <summary>
+    /// Ensures streaming preview does not rewrite signal-flow artifacts inside fenced code.
+    /// </summary>
+    [Fact]
+    public void NormalizeForStreamingPreview_DoesNotRewriteSignalFlowTypographyInsideFencedCode() {
+        var text = """
+                   ```text
+                   - Signal **Catalog count includes hidden rules -> **Why it matters:**external drift ->**Next action:**compare inventories.**
+                   - TestimoX rules available ****359****
+                   ```
+                   """;
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
     /// Ensures nested strong markers inside signal bullets are flattened into one strong span.
     /// </summary>
     [Fact]
