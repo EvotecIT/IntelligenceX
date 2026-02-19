@@ -45,17 +45,19 @@ Before pushing setup changes:
 ```bash
 dotnet build IntelligenceX.sln -c Release
 dotnet test IntelligenceX.sln -c Release
-dotnet exec ./IntelligenceX.Tests/bin/Release/net8.0/IntelligenceX.Tests.dll
-dotnet exec ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
 ```
+
+If your repository also uses framework-specific harness binaries, run those commands from your repo's CI or maintainer docs instead of hardcoding framework paths.
 
 Then validate reviewer behavior against a known PR:
 
 ```bash
-export INPUT_REPO=owner/name
-export INPUT_PR_NUMBER=123
+export INPUT_REPO=<owner>/<repo>
+export INPUT_PR_NUMBER=<pr-number>
 intelligencex reviewer run
 ```
+
+Replace `<owner>`, `<repo>`, and `<pr-number>` with your real values.
 
 ## 5. Treat Overrides as Temporary
 

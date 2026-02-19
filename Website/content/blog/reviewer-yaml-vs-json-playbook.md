@@ -28,18 +28,18 @@ These overrides are per key, not full-object replacement.
 
 ## Concrete YAML vs JSON Comparison
 
-Below is a real side-by-side where both files set overlapping keys.
+Below is a side-by-side example where both files set overlapping keys.
 
 ### Workflow YAML (`.github/workflows/review-intelligencex.yml`)
 
 ```yaml
 jobs:
   review:
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex.yml@<pinned-sha>
     with:
       review_config_path: .intelligencex/reviewer.json
       provider: openai
-      model: gpt-5.3-codex
+      model: <model-id>
       mode: hybrid
       length: medium
       progress_updates: true
@@ -48,6 +48,9 @@ jobs:
       INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
 ```
+
+Replace `<org>`, `<workflow-repo>`, `<pinned-sha>`, and `<model-id>` with your values.
+For latest examples, see [/docs/examples/](/docs/examples/).
 
 ### Reviewer JSON (`.intelligencex/reviewer.json`)
 
@@ -108,11 +111,11 @@ This gives CI engineers control of infrastructure and reviewers/maintainers cont
 ```yaml
 jobs:
   review:
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex.yml@<pinned-sha>
     with:
       reviewer_source: source
       provider: openai
-      model: gpt-5.3-codex
+      model: <model-id>
       review_config_path: .intelligencex/reviewer.json
     secrets:
       INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}

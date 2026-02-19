@@ -35,6 +35,8 @@ jobs:
       review_config_path: .intelligencex/reviewer.json
 ```
 
+Replace `<org>`, `<workflow-repo>`, and `<pinned-sha>` with your values.
+
 If a job does not need write scopes, keep it read-only.
 
 ## 2. Pin Reusable Workflows and Actions
@@ -50,6 +52,8 @@ For internal repositories, decide your agility policy up front:
 
 - strict mode: pin everything, including internal actions
 - balanced mode: pin third-party actions, allow branch refs for internal actions
+
+For latest examples, see [/docs/examples/](/docs/examples/).
 
 ## 3. Keep Secrets Scoped and Explicit
 
@@ -72,17 +76,20 @@ Checklist:
 
 Pick one merge contract and document it in `README.md` or maintainer docs.
 
-Option A: bot-first automation
-
-- required status check: `review / review`
-- required approving reviews: `0`
-- code owner reviews: optional
-
-Option B: human-gated merges
+Option A: human-gated baseline (recommended)
 
 - required status check: `review / review`
 - required approving reviews: `1+`
 - code owner reviews: enabled for sensitive paths
+
+Option B: bot-first automation (advanced)
+
+- required status check: `review / review`
+- required approving reviews: `0`
+- code owner reviews: policy dependent
+- only use when org policy explicitly allows bot-first merges and write access is tightly controlled
+
+If org policy is unclear, default to `1+` approving reviews.
 
 Switching between modes ad hoc usually causes confusion and merge delays.
 
