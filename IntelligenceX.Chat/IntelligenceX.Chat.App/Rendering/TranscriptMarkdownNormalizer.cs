@@ -193,37 +193,10 @@ internal static class TranscriptMarkdownNormalizer {
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
             value = SentenceCollapsedBulletRegex.Replace(value, "\n");
-            value = WrappedSignalFlowLineRegex.Replace(value, static match => {
-                var inner = match.Groups["inner"].Value;
-                var markerIndex = inner.IndexOf("-> **", StringComparison.Ordinal);
-                if (markerIndex < 0) {
-                    markerIndex = inner.IndexOf("->**", StringComparison.Ordinal);
-                }
-                if (markerIndex <= 0) {
-                    return match.Value;
-                }
-
-                var headline = inner[..markerIndex].TrimEnd();
-                if (headline.Length == 0) {
-                    return match.Value;
-                }
-
-                var flow = inner[markerIndex..].TrimStart();
-                if (flow.StartsWith("->**", StringComparison.Ordinal)) {
-                    flow = "-> **" + flow[4..];
-                }
-                if (!flow.StartsWith("-> **", StringComparison.Ordinal)) {
-                    return match.Value;
-                }
-
-                return match.Groups["prefix"].Value + "**" + headline + "** " + flow + match.Groups["tail"].Value;
-            });
+            value = RepairWrappedSignalFlowLines(value);
             value = TightBoldValueRegex.Replace(value, " ");
             value = TightBoldSuffixRegex.Replace(value, "$1 ");
-            value = OverwrappedStrongSpanRegex.Replace(value, static match => {
-                var inner = match.Groups["inner"].Value.Trim();
-                return inner.Length == 0 ? match.Value : "**" + inner + "**";
-            });
+            value = NormalizeOverwrappedStrongSpans(value);
             value = SimpleStrongSpanRegex.Replace(value, static match => {
                 var inner = match.Groups["inner"].Value;
                 var trimmed = inner.Trim();
@@ -357,6 +330,41 @@ internal static class TranscriptMarkdownNormalizer {
                 var value = match.Groups["value"].Value.Trim();
                 return value.Length == 0 ? indent + label : indent + label + " **" + value + "**";
             });
+    }
+
+    private static string RepairWrappedSignalFlowLines(string text) {
+        return WrappedSignalFlowLineRegex.Replace(text, static match => {
+            var inner = match.Groups["inner"].Value;
+            var markerIndex = inner.IndexOf("-> **", StringComparison.Ordinal);
+            if (markerIndex < 0) {
+                markerIndex = inner.IndexOf("->**", StringComparison.Ordinal);
+            }
+            if (markerIndex <= 0) {
+                return match.Value;
+            }
+
+            var headline = inner[..markerIndex].TrimEnd();
+            if (headline.Length == 0) {
+                return match.Value;
+            }
+
+            var flow = inner[markerIndex..].TrimStart();
+            if (flow.StartsWith("->**", StringComparison.Ordinal)) {
+                flow = "-> **" + flow[4..];
+            }
+            if (!flow.StartsWith("-> **", StringComparison.Ordinal)) {
+                return match.Value;
+            }
+
+            return match.Groups["prefix"].Value + "**" + headline + "** " + flow + match.Groups["tail"].Value;
+        });
+    }
+
+    private static string NormalizeOverwrappedStrongSpans(string text) {
+        return OverwrappedStrongSpanRegex.Replace(text, static match => {
+            var inner = match.Groups["inner"].Value.Trim();
+            return inner.Length == 0 ? match.Value : "**" + inner + "**";
+        });
     }
 
     private static string MergeSplitHostLabelBullets(string text) {

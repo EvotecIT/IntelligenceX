@@ -1153,10 +1153,25 @@
     return "xlsx";
   }
 
+  var unexpectedExportVisualThemeModes = Object.create(null);
+
+  function reportUnexpectedExportVisualThemeMode(value) {
+    if (!value || unexpectedExportVisualThemeModes[value]) {
+      return;
+    }
+    unexpectedExportVisualThemeModes[value] = true;
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      console.debug("[ix.chat] unexpected export visual theme mode:", value);
+    }
+  }
+
   function normalizeExportVisualThemeMode(value) {
     var normalized = String(value || "").trim().toLowerCase();
     if (normalized === "print_friendly" || normalized === "print" || normalized === "light") {
       return "print_friendly";
+    }
+    if (normalized !== "" && normalized !== "preserve_ui_theme" && normalized !== "preserve" && normalized !== "theme") {
+      reportUnexpectedExportVisualThemeMode(normalized);
     }
     return "preserve_ui_theme";
   }

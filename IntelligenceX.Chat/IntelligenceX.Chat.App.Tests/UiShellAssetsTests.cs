@@ -112,6 +112,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("id=\"optExportVisualThemeMode\"", html, StringComparison.Ordinal);
         Assert.Contains("post(\"set_export_visual_theme_mode\", { value: e.target.value || \"preserve_ui_theme\" });", html, StringComparison.Ordinal);
         Assert.Contains("visualThemeMode: \"preserve_ui_theme\"", html, StringComparison.Ordinal);
+        Assert.Contains("unexpected export visual theme mode", html, StringComparison.Ordinal);
     }
 
     /// <summary>

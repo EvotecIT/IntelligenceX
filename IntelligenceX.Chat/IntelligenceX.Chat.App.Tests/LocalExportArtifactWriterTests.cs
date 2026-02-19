@@ -274,7 +274,7 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("Network snapshot", bodyText, StringComparison.Ordinal);
 
             var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.True(imageCount >= 3, "Expected at least 3 embedded images, got " + imageCount.ToString());
+            Assert.Equal(3, imageCount);
         } finally {
             Directory.Delete(root, recursive: true);
         }
