@@ -99,7 +99,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
 
         var hasSchedule = ToolArgs.GetBoolean(arguments, "has_schedule", defaultValue: false);
         var expandSchedule = ToolArgs.GetBoolean(arguments, "expand_schedule", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryParseRequiredOptions(arguments, out var requiredOptions, out var optionNames, out var optionError)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", optionError ?? "Invalid options_all value."));
@@ -145,7 +145,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
                 scanned: scannedScheduleRows,
                 metaMutate: meta => {
                     meta.Add("mode", "schedule");
-                    meta.Add("max_results", maxResults);
+                    AddMaxResultsMeta(meta, maxResults);
                     meta.Add("has_schedule", hasSchedule);
                     meta.Add("expand_schedule", true);
                     meta.Add("options_all", ToolJson.ToJsonArray(optionNames));
@@ -178,7 +178,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("has_schedule", hasSchedule);
                 meta.Add("expand_schedule", false);
                 meta.Add("options_all", ToolJson.ToJsonArray(optionNames));
@@ -287,3 +287,4 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
         };
     }
 }
+

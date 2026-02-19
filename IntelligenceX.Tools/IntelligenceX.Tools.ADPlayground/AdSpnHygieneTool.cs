@@ -88,7 +88,7 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
         var topN = ToolArgs.GetCappedInt32(arguments, "top_n", 10, 1, 50);
         var includeInvalidSpnSample = ToolArgs.GetBoolean(arguments, "include_invalid_spn_sample", defaultValue: true);
         var maxInvalidSpnSample = ToolArgs.GetCappedInt32(arguments, "max_invalid_spn_sample", 25, 1, 200);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -170,16 +170,12 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("top_n", topN);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
                 meta.Add("allowlist_count", allowlist.Count);
                 meta.Add("blocklist_count", blocklist.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

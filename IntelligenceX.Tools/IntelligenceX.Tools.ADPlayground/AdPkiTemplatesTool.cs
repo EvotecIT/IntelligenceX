@@ -58,8 +58,8 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         var codeSigningRiskOnly = ToolArgs.GetBoolean(arguments, "code_signing_risk_only", defaultValue: false);
         var clientAuthRiskOnly = ToolArgs.GetBoolean(arguments, "client_auth_risk_only", defaultValue: false);
         var includeTakeoverRows = ToolArgs.GetBoolean(arguments, "include_takeover_rows", defaultValue: true);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-        var maxTakeoverRows = ToolArgs.GetCappedInt32(arguments, "max_takeover_rows", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxTakeoverRows = ResolveBoundedMaxResults(arguments, "max_takeover_rows");
 
         if (!TryExecute(
                 action: () => PkiApi.GetTemplates(forestName),
@@ -107,7 +107,7 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("forest_name", view.ForestName);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("max_takeover_rows", maxTakeoverRows);
                 meta.Add("weak_key_only", weakKeyOnly);
                 meta.Add("takeover_risk_only", takeoverRiskOnly);
@@ -117,5 +117,4 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-
 

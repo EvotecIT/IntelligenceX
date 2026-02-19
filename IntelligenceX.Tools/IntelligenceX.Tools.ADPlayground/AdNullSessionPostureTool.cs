@@ -69,7 +69,7 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
         var anonymousSamOnly = ToolArgs.GetBoolean(arguments, "anonymous_sam_only", defaultValue: false);
         var nullSessionOnly = ToolArgs.GetBoolean(arguments, "null_session_only", defaultValue: false);
         var maxDomainControllers = ToolArgs.GetCappedInt32(arguments, "max_domain_controllers", 200, 1, 2000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var dcRows = new List<(string DomainName, string DomainController)>();
         if (explicitDcs.Count > 0) {
@@ -159,20 +159,16 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("max_domain_controllers", maxDomainControllers);
                 meta.Add("anonymous_sam_only", anonymousSamOnly);
                 meta.Add("null_session_only", nullSessionOnly);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
                 if (explicitDcs.Count > 0) {
                     meta.Add("explicit_domain_controllers", explicitDcs.Count);
                 }
             }));
     }
 }
+

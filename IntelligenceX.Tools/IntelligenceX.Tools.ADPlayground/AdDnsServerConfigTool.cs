@@ -72,7 +72,7 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
         var recursionDisabledOnly = ToolArgs.GetBoolean(arguments, "recursion_disabled_only", defaultValue: false);
         var missingForwardersOnly = ToolArgs.GetBoolean(arguments, "missing_forwarders_only", defaultValue: false);
         var maxServers = ToolArgs.GetCappedInt32(arguments, "max_servers", 200, 1, 5000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
         var errors = new List<DnsServerConfigError>();
 
         var servers = new List<string>(maxServers);
@@ -170,17 +170,13 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("max_servers", maxServers);
                 meta.Add("recursion_disabled_only", recursionDisabledOnly);
                 meta.Add("missing_forwarders_only", missingForwardersOnly);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
                 if (explicitServers.Count > 0) {
                     meta.Add("explicit_dns_servers", explicitServers.Count);
                 }
             }));
     }
 }
+

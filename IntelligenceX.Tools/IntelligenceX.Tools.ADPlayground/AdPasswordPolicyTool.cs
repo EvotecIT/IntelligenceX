@@ -59,7 +59,7 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var includeFineGrained = ToolArgs.GetBoolean(arguments, "include_fine_grained", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var domains = LdapQueryHelper.GetTargetDomains(domainName, forestName)
             .Where(static x => !string.IsNullOrWhiteSpace(x))
@@ -108,11 +108,7 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
             }
         }
 
-        var scanned = rows.Count;
-        IReadOnlyList<PasswordPolicyInfo> projectedRows = scanned > maxResults
-            ? rows.Take(maxResults).ToArray()
-            : rows;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(rows, maxResults, out var scanned, out var truncated);
 
         var result = new AdPasswordPolicyResult(
             ForestName: forestName,
@@ -135,16 +131,12 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_fine_grained", includeFineGrained);
                 meta.Add("domains_count", domains.Count);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

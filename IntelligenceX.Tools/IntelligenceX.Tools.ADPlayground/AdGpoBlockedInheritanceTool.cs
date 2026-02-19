@@ -47,54 +47,30 @@ public sealed class AdGpoBlockedInheritanceTool : ActiveDirectoryToolBase, ITool
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
         var onlyBlocked = ToolArgs.GetBoolean(arguments, "only_blocked", defaultValue: true);
         var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 200000, 1, 500000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = GpoBlockedInheritanceService.Get(domainName, onlyBlocked: onlyBlocked, maxRows: maxRows);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO blocked-inheritance query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        var scanned = view.Items.Count;
-        IReadOnlyList<GpoBlockedInheritanceRow> rows = scanned > maxResults
-            ? view.Items.Take(maxResults).ToArray()
-            : view.Items;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdGpoBlockedInheritanceResult(
-            DomainName: domainName,
-            OnlyBlocked: onlyBlocked,
-            MaxRows: maxRows,
-            Scanned: scanned,
-            Truncated: truncated,
-            BlockedCount: view.Items.Count(static row => row.BlockedInheritance),
-            Rows: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecuteDomainRowsViewTool(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO Blocked Inheritance (preview)",
+            defaultErrorMessage: "GPO blocked-inheritance query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+            query: domainName => GpoBlockedInheritanceService.Get(domainName, onlyBlocked: onlyBlocked, maxRows: maxRows),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: static view => view.Items,
+            resultFactory: (domainName, view, _, rows, scanned, truncated) => new AdGpoBlockedInheritanceResult(
+                DomainName: domainName,
+                OnlyBlocked: onlyBlocked,
+                MaxRows: maxRows,
+                Scanned: scanned,
+                Truncated: truncated,
+                BlockedCount: view.Items.Count(static row => row.BlockedInheritance),
+                Rows: rows),
+            additionalMetaMutate: (meta, _, _, _) => {
                 meta.Add("only_blocked", onlyBlocked);
                 meta.Add("max_rows", maxRows);
-                meta.Add("max_results", maxResults);
-            }));
+            });
     }
 }
+

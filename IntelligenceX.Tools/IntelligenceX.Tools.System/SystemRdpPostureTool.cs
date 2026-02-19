@@ -42,13 +42,14 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return Task.FromResult(ToolResponse.Error("not_supported", "system_rdp_posture is available only on Windows hosts."));
+        var windowsError = ValidateWindowsSupport("system_rdp_posture");
+        if (windowsError is not null) {
+            return Task.FromResult(windowsError);
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
         var includePolicy = ToolArgs.GetBoolean(arguments, "include_policy", defaultValue: true);
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var target = ResolveTargetComputerName(computerName);
 
         try {
             var runtime = RdpQuery.Get(computerName);
@@ -99,15 +100,17 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
                     ("TlsRequired", effectiveTlsRequired.ToString()),
                     ("Warnings", warnings.Count.ToString())
                 },
-                meta: ToolOutputHints.Meta(count: warnings.Count, truncated: false)
-                    .Add("computer_name", target)
-                    .Add("include_policy", includePolicy),
+                meta: BuildFactsMeta(
+                    count: warnings.Count,
+                    truncated: false,
+                    target: target,
+                    mutate: meta => meta.Add("include_policy", includePolicy)),
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
                 render: null));
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"RDP posture query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "RDP posture query failed."));
         }
     }
 }

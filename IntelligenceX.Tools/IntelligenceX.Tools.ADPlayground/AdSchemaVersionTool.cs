@@ -47,7 +47,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var mismatchedOnly = ToolArgs.GetBoolean(arguments, "mismatched_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => {
@@ -67,9 +67,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             : Array.Empty<SchemaVersionInfo>();
 
         IReadOnlyList<SchemaVersionInfo> selectedRows = mismatchedOnly ? mismatches : versions;
-        var scanned = selectedRows.Count;
-        var rows = scanned > maxResults ? selectedRows.Take(maxResults).ToArray() : selectedRows;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(selectedRows, maxResults, out var scanned, out var truncated);
 
         var result = new AdSchemaVersionResult(
             MismatchedOnly: mismatchedOnly,
@@ -90,7 +88,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             maxTop: MaxViewTop,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("mismatched_only", mismatchedOnly);
                 meta.Add("mismatch_count", mismatches.Length);
                 if (referenceVersion.HasValue) {

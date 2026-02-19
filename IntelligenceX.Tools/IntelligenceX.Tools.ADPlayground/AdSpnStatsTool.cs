@@ -54,10 +54,7 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
         var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
         var includeExamples = ToolArgs.GetBoolean(arguments, "include_examples");
 
-        var requestedMax = arguments?.GetInt64("max_results");
-        var maxObjects = requestedMax.HasValue && requestedMax.Value > 0
-            ? (int)Math.Min(requestedMax.Value, Options.MaxResults)
-            : Options.MaxResults;
+        var maxObjects = ResolveMaxResults(arguments);
 
         var requestedServiceClasses = arguments?.GetInt64("max_service_classes");
         var maxServiceClasses = requestedServiceClasses.HasValue && requestedServiceClasses.Value > 0

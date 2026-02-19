@@ -42,7 +42,7 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
         var modelContains = ToolArgs.GetOptionalTrimmed(arguments, "model_contains");
         var interfaceContains = ToolArgs.GetOptionalTrimmed(arguments, "interface_contains");
         var mediaContains = ToolArgs.GetOptionalTrimmed(arguments, "media_contains");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
 
         var minSizeArg = arguments?.GetInt64("min_size_bytes");
         long? minSize = null;
@@ -68,7 +68,7 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new DiskInventoryQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Disks,
@@ -76,7 +76,6 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
             title: "Physical disks (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 if (!string.IsNullOrWhiteSpace(modelContains)) {
@@ -95,5 +94,4 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
 

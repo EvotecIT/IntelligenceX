@@ -52,17 +52,18 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return Task.FromResult(ToolResponse.Error("not_supported", "system_updates_installed is available only on Windows hosts."));
+        var windowsError = ValidateWindowsSupport("system_updates_installed");
+        if (windowsError is not null) {
+            return Task.FromResult(windowsError);
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var target = ResolveTargetComputerName(computerName);
         var includePendingLocal = ToolArgs.GetBoolean(arguments, "include_pending_local", defaultValue: false);
         var titleContains = ToolArgs.GetOptionalTrimmed(arguments, "title_contains");
         var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
         var installedAfterRaw = ToolArgs.GetOptionalTrimmed(arguments, "installed_after_utc");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveMaxResults(arguments);
 
         DateTime? installedAfterUtc = null;
         if (!string.IsNullOrWhiteSpace(installedAfterRaw)) {
@@ -116,10 +117,9 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("computer_name", target);
-                meta.Add("include_pending_local", includePendingLocal);
-                meta.Add("pending_included", pendingIncluded);
-                meta.Add("max_results", maxResults);
+                AddComputerNameMeta(meta, target);
+                AddPendingLocalMeta(meta, includePendingLocal, pendingIncluded);
+                AddMaxResultsMeta(meta, maxResults);
                 if (!string.IsNullOrWhiteSpace(titleContains)) {
                     meta.Add("title_contains", titleContains);
                 }

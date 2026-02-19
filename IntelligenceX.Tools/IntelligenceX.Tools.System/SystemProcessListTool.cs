@@ -37,7 +37,7 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var nameContains = arguments?.GetString("name_contains");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_processes", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_processes");
 
         if (!ProcessListQueryExecutor.TryExecute(
                 request: new ProcessListQueryRequest {
@@ -52,7 +52,7 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new ProcessListQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Processes,
@@ -60,10 +60,8 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
             title: "Processes (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned);
         return Task.FromResult(response);
     }
 }
-
 

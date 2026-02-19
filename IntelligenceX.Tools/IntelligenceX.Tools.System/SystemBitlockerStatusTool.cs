@@ -47,15 +47,16 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return Task.FromResult(ToolResponse.Error("not_supported", "system_bitlocker_status is available only on Windows hosts."));
+        var windowsError = ValidateWindowsSupport("system_bitlocker_status");
+        if (windowsError is not null) {
+            return Task.FromResult(windowsError);
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var target = ResolveTargetComputerName(computerName);
         var protectedOnly = ToolArgs.GetBoolean(arguments, "protected_only", defaultValue: false);
         var encryptedOnly = ToolArgs.GetBoolean(arguments, "encrypted_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveMaxResults(arguments);
 
         IEnumerable<BitLockerVolumeInfo> query;
         try {
@@ -89,10 +90,10 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("computer_name", target);
+                AddComputerNameMeta(meta, target);
                 meta.Add("protected_only", protectedOnly);
                 meta.Add("encrypted_only", encryptedOnly);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
             });
         return Task.FromResult(response);
     }

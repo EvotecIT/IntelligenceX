@@ -53,7 +53,7 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         var includeSubnets = ToolArgs.GetBoolean(arguments, "include_subnets", defaultValue: false);
         var includeOptions = ToolArgs.GetBoolean(arguments, "include_options", defaultValue: false);
         var noDcOnly = ToolArgs.GetBoolean(arguments, "no_dc_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => TopologyService.GetSites(
@@ -68,9 +68,7 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(errorResponse!);
         }
 
-        var scanned = allSites.Count;
-        var rows = scanned > maxResults ? allSites.Take(maxResults).ToArray() : allSites;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(allSites, maxResults, out var scanned, out var truncated);
 
         var result = new AdSitesResult(
             ForestName: forestName,
@@ -91,7 +89,7 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             maxTop: MaxViewTop,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_subnets", includeSubnets);
                 meta.Add("include_options", includeOptions);
                 meta.Add("no_dc_only", noDcOnly);
@@ -102,5 +100,4 @@ public sealed class AdSitesTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
 

@@ -104,7 +104,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", $"modified_since_utc: {modifiedSinceError}"));
         }
 
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;
@@ -149,13 +149,8 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddMaxResultsMeta(meta, maxResults);
+                AddDomainAndForestMeta(meta, domainName, forestName);
                 if (!string.IsNullOrWhiteSpace(nameContains)) {
                     meta.Add("name_contains", nameContains);
                 }
@@ -197,3 +192,4 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
         return true;
     }
 }
+

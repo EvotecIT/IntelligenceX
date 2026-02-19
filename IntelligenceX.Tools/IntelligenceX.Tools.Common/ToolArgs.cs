@@ -280,6 +280,35 @@ public static class ToolArgs {
     }
 
     /// <summary>
+    /// Reads an optional integer argument bounded by a caller-provided option max value.
+    /// </summary>
+    /// <remarks>
+    /// Useful for pack/base helpers where many tools share the same configured max cap.
+    /// </remarks>
+    public static int GetOptionBoundedInt32(
+        JsonObject? arguments,
+        string key,
+        int optionMaxInclusive,
+        int minInclusive = 1) {
+        return GetCappedInt32(arguments, key, optionMaxInclusive, minInclusive, optionMaxInclusive);
+    }
+
+    /// <summary>
+    /// Reads an optional positive integer argument where non-positive values keep a default,
+    /// then caps to a caller-provided option max value.
+    /// </summary>
+    /// <remarks>
+    /// Useful for knobs where zero/negative should preserve default behavior instead of forcing the minimum.
+    /// </remarks>
+    public static int GetPositiveOptionBoundedInt32OrDefault(
+        JsonObject? arguments,
+        string key,
+        int defaultValue,
+        int optionMaxInclusive) {
+        return GetPositiveCappedInt32OrDefault(arguments, key, defaultValue, optionMaxInclusive);
+    }
+
+    /// <summary>
     /// Normalizes a nullable 64-bit value to a positive nullable 32-bit value.
     /// Returns <c>null</c> when value is null or non-positive.
     /// </summary>

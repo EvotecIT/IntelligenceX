@@ -58,7 +58,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         }
 
         var status = parsedStatus ?? ServiceListStatusFilter.Any;
-        var max = ToolArgs.GetCappedInt32(arguments, "max_services", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_services");
 
         var attempt = await ServiceListQueryExecutor.TryExecuteAsync(
             request: new ServiceListQueryRequest {
@@ -73,7 +73,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         }
 
         var result = attempt.Result ?? new ServiceListQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Services,
@@ -81,10 +81,8 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
             title: "Services (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned);
         return response;
     }
 }
-
 

@@ -49,55 +49,32 @@ public sealed class AdNoLmHashPolicyTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = NoLmHashPolicyService.Get(domainName);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "NoLMHash policy query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        var rows = PreparePolicyAttributionRows(
-            attribution: view.Attribution,
-            includeAttribution: includeAttribution,
-            configuredAttributionOnly: configuredAttributionOnly,
-            maxResults: maxResults,
-            scanned: out var scanned,
-            truncated: out var truncated);
-
-        var result = new AdNoLmHashPolicyResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            TargetDn: view.TargetDn,
-            EffectiveValue: view.EffectiveValue,
-            Disabled: view.Disabled,
-            Attribution: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: NoLMHash Policy (preview)",
+            defaultErrorMessage: "NoLMHash policy query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                AddStandardPolicyAttributionMeta(meta, domainName, includeAttribution, configuredAttributionOnly, maxResults);
-            }));
+            query: domainName => {
+                var view = NoLmHashPolicyService.Get(domainName);
+                ThrowIfCollectionFailed(
+                    view.CollectionSucceeded,
+                    view.CollectionError,
+                    "NoLMHash policy query failed.");
+                return view;
+            },
+            attributionSelector: static view => view.Attribution,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdNoLmHashPolicyResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                TargetDn: view.TargetDn,
+                EffectiveValue: view.EffectiveValue,
+                Disabled: view.Disabled,
+                Attribution: rows)
+            );
     }
 }
+

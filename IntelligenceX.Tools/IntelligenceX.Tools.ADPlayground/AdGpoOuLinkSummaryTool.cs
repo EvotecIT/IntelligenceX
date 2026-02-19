@@ -52,66 +52,40 @@ public sealed class AdGpoOuLinkSummaryTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
         var linkCountAtLeast = ToolArgs.GetCappedInt32(arguments, "link_count_at_least", 0, 0, 100000);
         var brokenOnly = ToolArgs.GetBoolean(arguments, "broken_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 25000, 1, 250000);
         var maxOus = ToolArgs.GetCappedInt32(arguments, "max_ous", 50000, 1, 250000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = GpoOuLinkSummaryService.Get(domainName, maxGpos: maxGpos, maxOus: maxOus);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO OU link summary query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        var filtered = view.Items
-            .Where(row => row.LinkCount >= linkCountAtLeast)
-            .Where(row => !brokenOnly || row.BrokenCount > 0)
-            .ToArray();
-
-        var scanned = filtered.Length;
-        IReadOnlyList<GpoOuLinkSummaryService.Row> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdGpoOuLinkSummaryResult(
-            DomainName: domainName,
-            LinkCountAtLeast: linkCountAtLeast,
-            BrokenOnly: brokenOnly,
-            MaxGpos: maxGpos,
-            MaxOus: maxOus,
-            Scanned: scanned,
-            Truncated: truncated,
-            WithBlockedInheritanceCount: filtered.Count(static row => row.BlockedInheritance),
-            WithBrokenLinksCount: filtered.Count(static row => row.BrokenCount > 0),
-            Rows: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecuteDomainRowsViewTool(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO OU Link Summary (preview)",
+            defaultErrorMessage: "GPO OU link summary query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+            query: domainName => GpoOuLinkSummaryService.Get(domainName, maxGpos: maxGpos, maxOus: maxOus),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: view => view.Items
+                .Where(row => row.LinkCount >= linkCountAtLeast)
+                .Where(row => !brokenOnly || row.BrokenCount > 0)
+                .ToArray(),
+            resultFactory: (domainName, _, allRows, rows, scanned, truncated) => new AdGpoOuLinkSummaryResult(
+                DomainName: domainName,
+                LinkCountAtLeast: linkCountAtLeast,
+                BrokenOnly: brokenOnly,
+                MaxGpos: maxGpos,
+                MaxOus: maxOus,
+                Scanned: scanned,
+                Truncated: truncated,
+                WithBlockedInheritanceCount: allRows.Count(static row => row.BlockedInheritance),
+                WithBrokenLinksCount: allRows.Count(static row => row.BrokenCount > 0),
+                Rows: rows),
+            additionalMetaMutate: (meta, _, _, _) => {
                 meta.Add("link_count_at_least", linkCountAtLeast);
                 meta.Add("broken_only", brokenOnly);
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("max_ous", maxOus);
-                meta.Add("max_results", maxResults);
-            }));
+            });
     }
 }
+

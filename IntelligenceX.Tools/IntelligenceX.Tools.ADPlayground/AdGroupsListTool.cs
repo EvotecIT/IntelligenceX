@@ -70,10 +70,7 @@ public sealed class AdGroupsListTool : ActiveDirectoryToolBase, ITool {
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
         var namePrefix = ToolArgs.GetOptionalTrimmed(arguments, "name_prefix");
 
-        var requestedMax = arguments?.GetInt64("max_results");
-        var maxResults = requestedMax.HasValue && requestedMax.Value > 0
-            ? (int)Math.Min(requestedMax.Value, Options.MaxResults)
-            : Options.MaxResults;
+        var maxResults = ResolveMaxResults(arguments);
 
         var offset = Math.Max(arguments?.GetInt64("offset") ?? 0, 0);
         var requestedPageSize = arguments?.GetInt64("page_size");
@@ -135,4 +132,3 @@ public sealed class AdGroupsListTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-

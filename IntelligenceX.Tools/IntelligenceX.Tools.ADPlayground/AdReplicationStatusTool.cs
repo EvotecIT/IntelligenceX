@@ -48,7 +48,7 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
 
         var requestedComputerNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("computer_names"));
         var healthOnly = ToolArgs.GetBoolean(arguments, "health_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         IReadOnlyList<string> targetServers = requestedComputerNames.Count == 0
             ? DomainHelper.EnumerateDomainControllers().Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
@@ -63,9 +63,7 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(errorResponse!);
         }
 
-        var scanned = allRows.Count;
-        var rows = scanned > maxResults ? allRows.Take(maxResults).ToArray() : allRows;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(allRows, maxResults, out var scanned, out var truncated);
 
         var result = new AdReplicationStatusResult(
             HealthOnly: healthOnly,
@@ -84,11 +82,10 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("health_only", healthOnly);
                 meta.Add("target_server_count", targetServers.Count);
             }));
     }
 }
-
 

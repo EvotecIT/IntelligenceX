@@ -39,7 +39,7 @@ public sealed class AdUsersExpiredTool : ActiveDirectoryToolBase, ITool {
         }
         var referenceUtc = referenceUtcOpt ?? DateTime.UtcNow;
 
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
         if (string.IsNullOrWhiteSpace(baseDn)) {
@@ -58,3 +58,4 @@ public sealed class AdUsersExpiredTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(ToolResponse.OkModel(res));
     }
 }
+

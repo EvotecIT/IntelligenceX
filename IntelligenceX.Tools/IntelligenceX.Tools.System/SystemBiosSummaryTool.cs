@@ -40,14 +40,15 @@ public sealed class SystemBiosSummaryTool : SystemToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return ToolResponse.Error("not_supported", "system_bios_summary is available only on Windows hosts.");
+        var windowsError = ValidateWindowsSupport("system_bios_summary");
+        if (windowsError is not null) {
+            return windowsError;
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
         var includeBaseBoard = ToolArgs.GetBoolean(arguments, "include_baseboard", defaultValue: true);
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 8000, 200, 120000);
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var timeoutMs = ResolveTimeoutMs(arguments, defaultValue: 8_000);
+        var target = ResolveTargetComputerName(computerName);
         var timeout = TimeSpan.FromMilliseconds(timeoutMs);
 
         try {
@@ -81,16 +82,19 @@ public sealed class SystemBiosSummaryTool : SystemToolBase, ITool {
                     ("BaseBoardManufacturer", baseBoard?.Manufacturer ?? string.Empty),
                     ("BaseBoardProduct", baseBoard?.Product ?? string.Empty)
                 },
-                meta: ToolOutputHints.Meta(count: 1, truncated: false)
-                    .Add("computer_name", target)
-                    .Add("include_baseboard", includeBaseBoard)
-                    .Add("timeout_ms", timeoutMs),
+                meta: BuildFactsMeta(
+                    count: 1,
+                    truncated: false,
+                    target: target,
+                    mutate: meta => meta
+                        .Add("include_baseboard", includeBaseBoard)
+                        .Add("timeout_ms", timeoutMs)),
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
                 render: null);
         } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"BIOS summary query failed: {ex.Message}");
+            return ErrorFromException(ex, defaultMessage: "BIOS summary query failed.");
         }
     }
 }

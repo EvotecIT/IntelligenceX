@@ -77,7 +77,7 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
         var onlyPresent = ToolArgs.GetBoolean(arguments, "only_present", defaultValue: false);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
         var includeSpns = ToolArgs.GetBoolean(arguments, "include_spns", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -149,14 +149,10 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("only_present", onlyPresent);
                 meta.Add("risky_only", riskyOnly);
                 meta.Add("include_spns", includeSpns);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

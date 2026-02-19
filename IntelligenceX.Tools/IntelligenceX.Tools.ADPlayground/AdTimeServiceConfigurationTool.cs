@@ -50,65 +50,37 @@ public sealed class AdTimeServiceConfigurationTool : ActiveDirectoryToolBase, IT
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = TimeServiceConfigurationService.Get(domainName);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "Time service configuration query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        var attributionRows = includeAttribution
-            ? view.Attribution
-                .Where(row => !configuredAttributionOnly || !string.IsNullOrWhiteSpace(row.Effective) && !string.Equals(row.Effective, "Not configured", StringComparison.OrdinalIgnoreCase))
-                .ToArray()
-            : Array.Empty<PolicyAttribution>();
-
-        var scanned = attributionRows.Length;
-        IReadOnlyList<PolicyAttribution> projectedRows = scanned > maxResults
-            ? attributionRows.Take(maxResults).ToArray()
-            : attributionRows;
-        var truncated = scanned > projectedRows.Count;
-
-        var result = new AdTimeServiceConfigurationResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            PdcAcceptable: view.PdcAcceptable,
-            NonPdcAcceptable: view.NonPdcAcceptable,
-            Pdc: view.Pdc,
-            NonPdc: view.NonPdc,
-            Attribution: projectedRows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool(
             arguments: arguments,
-            model: result,
-            sourceRows: projectedRows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: Time Service Configuration (preview)",
+            defaultErrorMessage: "Time service configuration query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("include_attribution", includeAttribution);
-                meta.Add("configured_attribution_only", configuredAttributionOnly);
+            query: domainName => {
+                var view = TimeServiceConfigurationService.Get(domainName);
+                ThrowIfCollectionFailed(
+                    view.CollectionSucceeded,
+                    view.CollectionError,
+                    "Time service configuration query failed.");
+                return view;
+            },
+            attributionSelector: static view => view.Attribution,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdTimeServiceConfigurationResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                PdcAcceptable: view.PdcAcceptable,
+                NonPdcAcceptable: view.NonPdcAcceptable,
+                Pdc: view.Pdc,
+                NonPdc: view.NonPdc,
+                Attribution: rows),
+            additionalMetaMutate: static (meta, _, view, _) => {
                 meta.Add("pdc_acceptable", view.PdcAcceptable);
                 meta.Add("non_pdc_acceptable", view.NonPdcAcceptable);
-                meta.Add("max_results", maxResults);
-            }));
+            }
+            );
     }
 }
+

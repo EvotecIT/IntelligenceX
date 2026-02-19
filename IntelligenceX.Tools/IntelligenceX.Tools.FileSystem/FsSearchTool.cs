@@ -56,7 +56,7 @@ public sealed class FsSearchTool : FileSystemToolBase, ITool {
         }
 
         var caseSensitive = arguments?.GetBoolean("case_sensitive") ?? false;
-        var maxMatches = ToolArgs.GetCappedInt32(arguments, "max_matches", Options.MaxResults, 1, Options.MaxResults);
+        var maxMatches = ResolveBoundedOptionLimit(arguments, "max_matches");
 
         FileTextSearchResult root;
         try {
@@ -74,15 +74,14 @@ public sealed class FsSearchTool : FileSystemToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", $"Invalid regex: {ex.Message}"));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: root,
             sourceRows: root.Matches,
             viewRowsPath: "matches_view",
             title: "Search matches (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: root.Truncated,
-            response: out var response);
+            baseTruncated: root.Truncated);
         return Task.FromResult(response);
     }
 }

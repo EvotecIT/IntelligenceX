@@ -45,7 +45,7 @@ internal static class EventLogEvtxSecurityReportHelper {
             : ToolJson.ToJsonObjectSnakeCase(model);
         output.Add("ad_correlation", ToolJson.ToJsonObjectSnakeCase(adCorrelation));
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        return ToolQueryHelpers.BuildAutoTableResponse(
             arguments: arguments,
             model: output,
             sourceRows: byTargetUser ?? Array.Empty<ReportTopRow>(),
@@ -53,12 +53,10 @@ internal static class EventLogEvtxSecurityReportHelper {
             title: title,
             maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: scannedEvents,
             metaMutate: meta => meta
                 .Add("matched_events", matchedEvents)
                 .Add("max_events_scanned", maxEventsScanned));
-        return response;
     }
 
     private static object BuildAdCorrelationHints(

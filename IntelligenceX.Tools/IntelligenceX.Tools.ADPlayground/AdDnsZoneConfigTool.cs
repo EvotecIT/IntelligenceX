@@ -71,7 +71,7 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var dynamicUpdatesOnly = ToolArgs.GetBoolean(arguments, "dynamic_updates_only", defaultValue: false);
         var insecureUpdatesOnly = ToolArgs.GetBoolean(arguments, "insecure_updates_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => DnsZoneConfigService.GetZonesResult(dnsServer),
@@ -129,7 +129,7 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("query_succeeded", query.QuerySucceeded);
                 meta.Add("dynamic_updates_only", dynamicUpdatesOnly);
                 meta.Add("insecure_updates_only", insecureUpdatesOnly);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 if (!string.IsNullOrWhiteSpace(zoneNameContains)) {
                     meta.Add("zone_name_contains", zoneNameContains);
                 }
@@ -140,5 +140,4 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
 

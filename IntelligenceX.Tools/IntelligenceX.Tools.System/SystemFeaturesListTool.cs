@@ -94,8 +94,8 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
             }
         }
 
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 10_000, 200, 120_000);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
+        var timeoutMs = ResolveTimeoutMs(arguments);
 
         if (!FeatureInventoryQueryExecutor.TryExecute(
                 request: new FeatureInventoryQueryRequest {
@@ -112,7 +112,7 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new FeatureInventoryQueryResult { Source = source };
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Features,
@@ -120,7 +120,6 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
             title: "Features (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 meta.Add("source", ToolEnumBinders.ToName(source, SourceNames));
@@ -135,5 +134,3 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
-

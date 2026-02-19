@@ -60,7 +60,7 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", timeErr ?? "Invalid time range."));
         }
 
-        var maxEvents = ToolArgs.GetCappedInt32(arguments, "max_events", Options.MaxResults, 1, Options.MaxResults);
+        var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
 
         var eventIds = ToolArgs.TryReadPositiveInt32Array(arguments?.GetArray("event_ids"), "event_ids", out var eventIdsError);
         if (!string.IsNullOrWhiteSpace(eventIdsError)) {
@@ -87,16 +87,15 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
             return Task.FromResult(ErrorFromEvtxFailure(failure));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: root,
             sourceRows: root.Events,
             viewRowsPath: "events_view",
             title: "Events (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: root.Truncated,
-            response: out var response);
+            scanned: root.Events.Count,
+            maxTop: MaxViewTop);
         return Task.FromResult(response);
     }
 }
-

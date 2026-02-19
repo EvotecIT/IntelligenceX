@@ -65,7 +65,7 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
 
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
         var fileSystem = ToolArgs.GetOptionalTrimmed(arguments, "file_system");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
 
         var minSizeArg = arguments?.GetInt64("min_size_bytes");
         long? minSize = null;
@@ -110,7 +110,7 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new LogicalDiskInventoryQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Disks,
@@ -118,7 +118,6 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
             title: "Logical disks (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 if (!string.IsNullOrWhiteSpace(nameContains)) {
@@ -140,5 +139,4 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
 

@@ -72,7 +72,7 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
         var thresholdDays = ToolArgs.GetCappedInt32(arguments, "threshold_days", 30, 1, 3650);
         var missingOnly = ToolArgs.GetBoolean(arguments, "missing_only", defaultValue: false);
         var staleOnly = ToolArgs.GetBoolean(arguments, "stale_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -147,16 +147,12 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("threshold_days", thresholdDays);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("missing_only", missingOnly);
                 meta.Add("stale_only", staleOnly);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

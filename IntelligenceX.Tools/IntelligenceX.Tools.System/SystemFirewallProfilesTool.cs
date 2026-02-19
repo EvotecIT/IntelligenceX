@@ -62,7 +62,7 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
         }
 
         var enabled = arguments?.GetBoolean("enabled");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
 
         if (!FirewallProfileListQueryExecutor.TryExecute(
                 request: new FirewallProfileListQueryRequest {
@@ -77,7 +77,7 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new FirewallProfileListQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Profiles,
@@ -85,7 +85,6 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
             title: "Firewall profiles (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 if (profile.HasValue) {
@@ -103,5 +102,4 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
     }
 
 }
-
 

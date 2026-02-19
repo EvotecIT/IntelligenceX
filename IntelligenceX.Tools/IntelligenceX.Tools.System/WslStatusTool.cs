@@ -61,7 +61,7 @@ public sealed class WslStatusTool : SystemToolBase, ITool {
                 render: ToolOutputHints.RenderCode(language: "text", contentPath: "raw_output")));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Distributions,
@@ -69,7 +69,7 @@ public sealed class WslStatusTool : SystemToolBase, ITool {
             title: "WSL distributions (preview)",
             maxTop: MaxViewTop,
             baseTruncated: false,
-            response: out var response);
+            scanned: result.Distributions.Count);
         return Task.FromResult(response);
     }
 
@@ -93,4 +93,3 @@ public sealed class WslStatusTool : SystemToolBase, ITool {
         };
     }
 }
-

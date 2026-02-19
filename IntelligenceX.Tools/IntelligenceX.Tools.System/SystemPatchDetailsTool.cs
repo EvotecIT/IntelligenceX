@@ -93,7 +93,7 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
         var publiclyDisclosedOnly = ToolArgs.GetBoolean(arguments, "publicly_disclosed_only", defaultValue: false);
         var cveContains = ToolArgs.GetOptionalTrimmed(arguments, "cve_contains");
         var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveMaxResults(arguments);
 
         var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
             year: year,
@@ -160,7 +160,7 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 AddPatchFilterMeta(
                     meta: meta,
                     year: year,

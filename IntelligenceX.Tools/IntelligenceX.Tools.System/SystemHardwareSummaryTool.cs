@@ -44,7 +44,7 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "At least one include_* section must be true."));
         }
 
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 10_000, 200, 120_000);
+        var timeoutMs = ResolveTimeoutMs(arguments);
         var nameSampleArg = arguments?.GetInt64("name_sample_size");
         int? nameSampleSize = null;
         if (nameSampleArg.HasValue) {
@@ -100,4 +100,3 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
             render: null));
     }
 }
-

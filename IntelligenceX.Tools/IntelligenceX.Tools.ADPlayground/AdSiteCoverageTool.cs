@@ -62,7 +62,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeRegistry = ToolArgs.GetBoolean(arguments, "include_registry", defaultValue: false);
         var raw = ToolArgs.GetBoolean(arguments, "raw", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!raw) {
             if (!TryExecute(
@@ -94,7 +94,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
-                    meta.Add("max_results", maxResults);
+                    AddMaxResultsMeta(meta, maxResults);
                     meta.Add("include_registry", includeRegistry);
                     if (!string.IsNullOrWhiteSpace(forestName)) {
                         meta.Add("forest_name", forestName);
@@ -139,7 +139,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
             scanned: summaryScanned,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_registry", includeRegistry);
                 meta.Add("sites_scanned", sitesScanned);
                 meta.Add("subnets_scanned", subnetsScanned);
@@ -151,3 +151,4 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

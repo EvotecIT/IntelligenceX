@@ -45,16 +45,15 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
         }
 
         if (!ToolTime.TryParseUtcOptional(ToolArgs.GetOptionalTrimmed(arguments, "since_utc"), out var sinceUtc, out var sinceError)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", $"since_utc: {sinceError}"));
         }
 
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;
@@ -95,8 +94,7 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("max_results", maxResults);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 if (sinceUtc.HasValue) {
                     meta.Add("since_utc", ToolTime.FormatUtc(sinceUtc));
                 }

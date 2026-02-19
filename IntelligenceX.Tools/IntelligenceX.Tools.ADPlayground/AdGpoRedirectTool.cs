@@ -50,9 +50,8 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
         }
 
         var gpoIdsRaw = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("gpo_ids"));
@@ -66,28 +65,23 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
 
         var gpoNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("gpo_names"));
         var actualPathContains = ToolArgs.GetOptionalTrimmed(arguments, "actual_path_contains");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
-        var view = GpoRedirectAnalyzer.Get(
-            domainName,
-            ids: gpoIds.Count == 0 ? null : gpoIds.ToArray(),
-            names: gpoNames.Count == 0 ? null : gpoNames.ToArray());
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO redirect query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
+        if (!TryExecuteCollectionQuery(
+                query: () => GpoRedirectAnalyzer.Get(domainName, ids: gpoIds.Count == 0 ? null : gpoIds.ToArray(), names: gpoNames.Count == 0 ? null : gpoNames.ToArray()),
+                collectionSucceededSelector: static view => view.CollectionSucceeded,
+                collectionErrorSelector: static view => view.CollectionError,
+                result: out var view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "GPO redirect query failed.")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
             .Where(row => string.IsNullOrWhiteSpace(actualPathContains) || row.ActualSysvolPath.Contains(actualPathContains, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<GpoRedirectFinding> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdGpoRedirectResult(
             DomainName: domainName,
@@ -108,10 +102,9 @@ public sealed class AdGpoRedirectTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 meta.Add("gpo_ids_count", gpoIds.Count);
                 meta.Add("gpo_names_count", gpoNames.Count);
-                meta.Add("max_results", maxResults);
                 if (!string.IsNullOrWhiteSpace(actualPathContains)) {
                     meta.Add("actual_path_contains", actualPathContains);
                 }

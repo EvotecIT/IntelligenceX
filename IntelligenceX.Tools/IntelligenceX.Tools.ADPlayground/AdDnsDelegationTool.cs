@@ -68,7 +68,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var identityContains = ToolArgs.GetOptionalTrimmed(arguments, "identity_contains");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -111,11 +111,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
             errors: errors,
             cancellationToken: cancellationToken);
 
-        var scanned = rows.Count;
-        IReadOnlyList<DnsDelegationRow> projectedRows = scanned > maxResults
-            ? rows.Take(maxResults).ToArray()
-            : rows;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(rows, maxResults, out var scanned, out var truncated);
 
         var result = new AdDnsDelegationResult(
             DomainName: domainName,
@@ -138,7 +134,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
                 if (!string.IsNullOrWhiteSpace(zoneNameContains)) {
                     meta.Add("zone_name_contains", zoneNameContains);
@@ -146,12 +142,8 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(identityContains)) {
                     meta.Add("identity_contains", identityContains);
                 }
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.FileSystem;
@@ -103,4 +105,12 @@ public abstract class FileSystemToolBase : ToolBase {
     private static string ToPathError(string errorCode, string error, string[]? hints) {
         return ToolResponse.Error(errorCode, error, hints: hints, isTransient: false);
     }
+
+    /// <summary>
+    /// Resolves a standard option-bounded limit argument (default + cap from <see cref="FileSystemToolOptions.MaxResults"/>).
+    /// </summary>
+    protected int ResolveBoundedOptionLimit(JsonObject? arguments, string argumentName, int minInclusive = 1) {
+        return ToolArgs.GetOptionBoundedInt32(arguments, argumentName, Options.MaxResults, minInclusive);
+    }
+
 }

@@ -74,7 +74,7 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
 
         var processNameContains = ToolArgs.GetOptionalTrimmed(arguments, "process_name_contains");
         var state = ToolArgs.GetOptionalTrimmed(arguments, "state");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
 
         if (!PortInventoryQueryExecutor.TryExecute(
                 request: new PortInventoryQueryRequest {
@@ -91,7 +91,7 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult!;
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Rows,
@@ -99,7 +99,6 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
             title: "Ports (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 meta.Add("protocol", ProtocolToString(protocol));
@@ -120,5 +119,4 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
         return ToolEnumBinders.ToName(protocol, ProtocolNames);
     }
 }
-
 

@@ -92,7 +92,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
         var expiredOnly = ToolArgs.GetBoolean(arguments, "expired_only", defaultValue: false);
         var includeSamples = ToolArgs.GetBoolean(arguments, "include_samples", defaultValue: false);
         var maxSampleRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_sample_rows_per_domain", 50, 1, 1000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -180,14 +180,10 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("expired_only", expiredOnly);
                 meta.Add("include_samples", includeSamples);
                 meta.Add("max_sample_rows_per_domain", maxSampleRowsPerDomain);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             });
     }
 }
+

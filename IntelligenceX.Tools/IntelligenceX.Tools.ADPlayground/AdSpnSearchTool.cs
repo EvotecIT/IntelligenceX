@@ -51,10 +51,7 @@ public sealed class AdSpnSearchTool : ActiveDirectoryToolBase, ITool {
         var kind = string.IsNullOrWhiteSpace(kindArg) ? "any" : kindArg.Trim().ToLowerInvariant();
         var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
 
-        var requestedMax = arguments?.GetInt64("max_results");
-        var maxResults = requestedMax.HasValue && requestedMax.Value > 0
-            ? (int)Math.Min(requestedMax.Value, Options.MaxResults)
-            : Options.MaxResults;
+        var maxResults = ResolveMaxResults(arguments);
 
         var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
             arguments,
@@ -112,4 +109,3 @@ public sealed class AdSpnSearchTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-

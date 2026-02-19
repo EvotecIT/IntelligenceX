@@ -76,7 +76,7 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: true);
         var maxPrivilegedRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_privileged_rows_per_domain", 100, 1, Options.MaxResults);
         var maxFindingRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_finding_rows_per_domain", 100, 1, Options.MaxResults);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -148,14 +148,10 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("include_details", includeDetails);
                 meta.Add("max_privileged_rows_per_domain", maxPrivilegedRowsPerDomain);
                 meta.Add("max_finding_rows_per_domain", maxFindingRowsPerDomain);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

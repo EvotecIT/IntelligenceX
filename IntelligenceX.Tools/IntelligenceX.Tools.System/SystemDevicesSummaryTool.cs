@@ -54,8 +54,8 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
         var manufacturerContains = ToolArgs.GetOptionalTrimmed(arguments, "manufacturer_contains");
         var statusContains = ToolArgs.GetOptionalTrimmed(arguments, "status_contains");
         var problemOnly = arguments?.GetBoolean("problem_only", defaultValue: false) ?? false;
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 10_000, 200, 120_000);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
+        var timeoutMs = ResolveTimeoutMs(arguments);
 
         if (!DeviceInventoryQueryExecutor.TryExecute(
                 request: new DeviceInventoryQueryRequest {
@@ -76,7 +76,7 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new DeviceInventoryQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Devices,
@@ -84,7 +84,6 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
             title: "Devices (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 meta.Add("include_usb", includeUsb);
@@ -108,5 +107,3 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
-

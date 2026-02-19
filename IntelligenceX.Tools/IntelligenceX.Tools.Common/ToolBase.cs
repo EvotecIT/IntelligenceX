@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -23,6 +25,62 @@ public abstract class ToolBase : ITool {
     }
 
     /// <summary>
+    /// Adds max_results metadata consistently across tool responses.
+    /// </summary>
+    protected static void AddMaxResultsMeta(JsonObject meta, int maxResults) {
+        meta.Add("max_results", maxResults);
+    }
+
+    /// <summary>
+    /// Builds the standard auto-column table envelope used by read-only list/query tools.
+    /// </summary>
+    protected static string BuildAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int scanned,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        return ToolQueryHelpers.BuildAutoTableResponse(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            maxTop: maxTop,
+            baseTruncated: baseTruncated,
+            scanned: scanned,
+            metaMutate: metaMutate);
+    }
+
+    /// <summary>
+    /// Builds a standard auto-column table envelope using source row count as scanned.
+    /// </summary>
+    protected static string BuildAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        return BuildAutoTableResponse(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            baseTruncated: baseTruncated,
+            scanned: sourceRows.Count,
+            maxTop: maxTop,
+            metaMutate: metaMutate);
+    }
+
+    /// <summary>
     /// Tool-specific implementation.
     /// </summary>
     /// <remarks>
@@ -31,4 +89,3 @@ public abstract class ToolBase : ITool {
     /// </remarks>
     protected abstract Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken);
 }
-

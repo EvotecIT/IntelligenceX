@@ -47,15 +47,16 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return Task.FromResult(ToolResponse.Error("not_supported", "system_installed_applications is available only on Windows hosts."));
+        var windowsError = ValidateWindowsSupport("system_installed_applications");
+        if (windowsError is not null) {
+            return Task.FromResult(windowsError);
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var target = ResolveTargetComputerName(computerName);
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
         var publisherContains = ToolArgs.GetOptionalTrimmed(arguments, "publisher_contains");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveMaxResults(arguments);
 
         IEnumerable<InstalledApplicationInfo> query;
         try {
@@ -91,8 +92,8 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("computer_name", target);
-                meta.Add("max_results", maxResults);
+                AddComputerNameMeta(meta, target);
+                AddMaxResultsMeta(meta, maxResults);
                 if (!string.IsNullOrWhiteSpace(nameContains)) {
                     meta.Add("name_contains", nameContains);
                 }
