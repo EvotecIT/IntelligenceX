@@ -36,6 +36,11 @@ Capture screenshots that prove three things:
 
 Run these commands from the target repository root.
 
+Replace placeholder tokens before running commands:
+
+- `owner/repo` -> your target repository (for example `EvotecIT/IntelligenceX`)
+- `owner` -> your GitHub org or user that owns the project
+
 ```bash
 # 1) Bootstrap project fields and local config artifacts
 intelligencex todo project-bootstrap --repo owner/repo --owner owner
@@ -55,6 +60,24 @@ intelligencex todo project-sync --config artifacts/triage/ix-project-config.json
 # 6) Apply after maintainer approval
 intelligencex todo project-sync --config artifacts/triage/ix-project-config.json --issue-review artifacts/triage/ix-issue-review.json
 ```
+
+Before step 5, verify required artifacts exist (`project-bootstrap` + `issue-review` outputs):
+
+```powershell
+Test-Path artifacts/triage/ix-project-config.json
+Test-Path artifacts/triage/ix-issue-review.json
+Test-Path artifacts/triage/ix-issue-review.md
+```
+
+Expected PowerShell result: all three checks return `True`.
+
+```bash
+test -f artifacts/triage/ix-project-config.json
+test -f artifacts/triage/ix-issue-review.json
+test -f artifacts/triage/ix-issue-review.md
+```
+
+Expected bash result: each `test -f` exits with code `0`.
 
 ## Screenshot shot list
 
@@ -97,6 +120,4 @@ Place them in:
 
 ## Related docs
 
-- [Project Ops Overview](/docs/project-ops/overview/)
-- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
-- [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
+- [Project Ops Related Docs Hub](/docs/project-ops/related-docs/)

@@ -50,6 +50,13 @@
       "changefreq": "monthly"
     },
     {
+      "path": "/docs/project-ops/related-docs/",
+      "title": "Project Ops Related Docs",
+      "section": "Docs",
+      "priority": "0.7",
+      "changefreq": "monthly"
+    },
+    {
       "path": "/docs/cli/overview/",
       "title": "CLI Overview",
       "section": "Docs",

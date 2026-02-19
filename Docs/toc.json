@@ -25,7 +25,8 @@
     "title": "Project Ops",
     "items": [
       { "title": "Overview", "href": "/docs/project-ops/overview/" },
-      { "title": "Demo Capture Runbook", "href": "/docs/project-ops/demo-capture-runbook/" }
+      { "title": "Demo Capture Runbook", "href": "/docs/project-ops/demo-capture-runbook/" },
+      { "title": "Related Docs", "href": "/docs/project-ops/related-docs/" }
     ]
   },
   {

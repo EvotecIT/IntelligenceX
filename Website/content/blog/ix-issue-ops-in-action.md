@@ -60,7 +60,4 @@ intelligencex todo project-sync --config artifacts/triage/ix-project-config.json
 
 ## Related Docs
 
-- [Project Ops Overview](/docs/project-ops/overview/)
-- [Project Ops Demo Capture Runbook](/docs/project-ops/demo-capture-runbook/)
-- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
-- [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
+- [Project Ops Related Docs Hub](/docs/project-ops/related-docs/)
