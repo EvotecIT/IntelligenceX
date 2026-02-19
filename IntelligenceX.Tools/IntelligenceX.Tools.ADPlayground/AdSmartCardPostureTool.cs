@@ -71,8 +71,7 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: true);
         var maxPrivilegedRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_privileged_rows_per_domain", 100, 1, Options.MaxResults);
         var maxFindingRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_finding_rows_per_domain", 100, 1, Options.MaxResults);

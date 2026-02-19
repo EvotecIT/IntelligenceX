@@ -76,8 +76,7 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var onlyFindings = ToolArgs.GetBoolean(arguments, "only_findings", defaultValue: false);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
         var maxResults = ResolveBoundedMaxResults(arguments);

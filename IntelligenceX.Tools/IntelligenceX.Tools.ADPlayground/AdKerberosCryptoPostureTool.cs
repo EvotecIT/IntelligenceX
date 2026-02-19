@@ -61,8 +61,7 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(

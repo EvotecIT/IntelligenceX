@@ -62,8 +62,7 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var changedOnly = ToolArgs.GetBoolean(arguments, "changed_only", defaultValue: false);
         var maxResults = ResolveBoundedMaxResults(arguments);
 

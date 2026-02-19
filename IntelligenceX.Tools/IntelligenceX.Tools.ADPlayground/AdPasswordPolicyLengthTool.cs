@@ -56,8 +56,7 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var recommendedMinimumLength = ToolArgs.GetCappedInt32(arguments, "recommended_minimum_length", 12, 1, 512);
         var belowRecommendedOnly = ToolArgs.GetBoolean(arguments, "below_recommended_only", defaultValue: false);
         var maxResults = ResolveBoundedMaxResults(arguments);

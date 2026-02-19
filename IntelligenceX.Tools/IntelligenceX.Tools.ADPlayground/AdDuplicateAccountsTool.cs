@@ -81,8 +81,7 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var includeConflictDns = ToolArgs.GetBoolean(arguments, "include_conflict_dns", defaultValue: false);
         var includeDuplicateDetails = ToolArgs.GetBoolean(arguments, "include_duplicate_details", defaultValue: false);
         var conflictsOnly = ToolArgs.GetBoolean(arguments, "conflicts_only", defaultValue: false);

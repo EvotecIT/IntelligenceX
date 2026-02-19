@@ -72,8 +72,7 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var unprotectedOnly = ToolArgs.GetBoolean(arguments, "unprotected_only", defaultValue: false);
         var includeUnprotectedOus = ToolArgs.GetBoolean(arguments, "include_unprotected_ous", defaultValue: false);
         var maxOuRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_ou_rows_per_domain", 100, 1, 5000);

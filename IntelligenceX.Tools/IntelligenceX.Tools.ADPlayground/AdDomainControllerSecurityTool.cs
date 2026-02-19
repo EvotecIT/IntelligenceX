@@ -72,8 +72,7 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var domainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller");
         var insecureOnly = ToolArgs.GetBoolean(arguments, "insecure_only", defaultValue: false);
         var maxResults = ResolveBoundedMaxResults(arguments);

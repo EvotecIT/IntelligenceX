@@ -80,8 +80,7 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var allowlist = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("allowlist_classes"));
         var blocklist = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("blocklist_classes"));
         var dnsResolveClasses = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("dns_resolve_classes"));

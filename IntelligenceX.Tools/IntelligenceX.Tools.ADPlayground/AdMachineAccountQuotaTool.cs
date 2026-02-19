@@ -63,8 +63,7 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var threshold = ToolArgs.GetCappedInt32(arguments, "threshold", 0, -1, int.MaxValue);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
         var maxResults = ResolveBoundedMaxResults(arguments);

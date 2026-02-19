@@ -78,8 +78,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
 
         if (!ToolEnumBinders.TryParseOptional(

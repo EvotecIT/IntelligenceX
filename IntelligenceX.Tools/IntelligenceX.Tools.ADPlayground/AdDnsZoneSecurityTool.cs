@@ -84,8 +84,7 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var exposedOnly = ToolArgs.GetBoolean(arguments, "exposed_only", defaultValue: false);
         var broadWriteMin = ToolArgs.GetCappedInt32(arguments, "broad_write_min", 0, 0, 100000);
         var includeOffendingPrincipals = ToolArgs.GetBoolean(arguments, "include_offending_principals", defaultValue: false);

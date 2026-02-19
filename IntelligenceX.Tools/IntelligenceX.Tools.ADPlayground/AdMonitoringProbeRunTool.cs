@@ -46,8 +46,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             name = $"ix-{normalizedKind}-{DateTime.UtcNow:yyyyMMddHHmmss}";
         }
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var domainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller");
 
         var includeDomains = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("include_domains"));

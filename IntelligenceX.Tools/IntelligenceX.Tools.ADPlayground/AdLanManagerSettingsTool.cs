@@ -66,8 +66,7 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var explicitDomainControllers = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("domain_controllers"));
         var allowLmHashOnly = ToolArgs.GetBoolean(arguments, "allow_lm_hash_only", defaultValue: false);
         var legacyNtlmOnly = ToolArgs.GetBoolean(arguments, "legacy_ntlm_only", defaultValue: false);
