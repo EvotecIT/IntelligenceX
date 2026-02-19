@@ -951,7 +951,7 @@ internal static partial class Program {
         }
     }
 
-    private static void TestAnalyzeGateFiltersAllowMissingTypeWhenOnlyTypeFilterIsConfigured() {
+    private static void TestAnalyzeGateFiltersMissingTypeDoesNotMatchTypeOnlyFilter() {
         var nestedFlags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
         var gateType = typeof(IntelligenceX.Cli.Analysis.AnalyzeGateCommand);
         var filterType = gateType.GetNestedType("GateFindingFilters", nestedFlags);
@@ -984,7 +984,8 @@ internal static partial class Program {
         });
 
         var missingTypeWithoutRuleIdFilter = (bool)matchesMethod!.Invoke(onlyTypeFilter, new object?[] { "IX001", null })!;
-        AssertEqual(true, missingTypeWithoutRuleIdFilter, "gate matcher includes missing type when only type filter is configured");
+        AssertEqual(false, missingTypeWithoutRuleIdFilter,
+            "gate matcher does not include missing type when only type filter is configured");
 
         var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IXMATCH" };
         var typeAndRuleFilter = constructor.Invoke(new object[] {

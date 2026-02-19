@@ -705,14 +705,10 @@ internal static partial class AnalyzeGateCommand {
                 return true;
             }
 
-            if (HasTypeFilter) {
-                if (string.IsNullOrEmpty(ruleType)) {
-                    if (!HasRuleIdFilter) {
-                        return true;
-                    }
-                } else if (AllowedTypes.Contains(ruleType)) {
-                    return true;
-                }
+            if (HasTypeFilter &&
+                !string.IsNullOrEmpty(ruleType) &&
+                AllowedTypes.Contains(ruleType)) {
+                return true;
             }
 
             return HasRuleIdFilter &&
