@@ -129,10 +129,21 @@ public static class OfficeImoArtifactWriter {
                     insideFence = true;
                     fenceMarker = marker;
                     fenceLength = markerRunLength;
-                } else if (marker == fenceMarker && markerRunLength >= fenceLength) {
+                    continue;
+                }
+
+                if (marker == fenceMarker &&
+                    markerRunLength >= fenceLength &&
+                    IsClosingFenceLine(trimmed, markerRunLength)) {
                     insideFence = false;
                     fenceMarker = '\0';
                     fenceLength = 0;
+                    continue;
+                }
+
+                // Fence-like content inside an active fence should never be rewritten.
+                if (insideFence) {
+                    continue;
                 }
 
                 continue;
@@ -182,19 +193,42 @@ public static class OfficeImoArtifactWriter {
             return false;
         }
 
-        var scanFrom = 0;
-        while (scanFrom < line.Length) {
-            var separator = line.IndexOf(':', scanFrom);
-            if (separator < 1) {
-                return false;
+        var inlineFenceLength = 0;
+        var i = 0;
+        while (i < line.Length) {
+            var ch = line[i];
+
+            // Respect escaped punctuation and escaped backticks.
+            if (ch == '\\' && i + 1 < line.Length) {
+                i += 2;
+                continue;
             }
 
-            if (separator + 1 < line.Length && char.IsWhiteSpace(line[separator + 1])) {
-                index = separator;
+            if (ch == '`') {
+                var runLength = CountRunLength(line, i, '`');
+                if (inlineFenceLength == 0) {
+                    inlineFenceLength = runLength;
+                    i += runLength;
+                    continue;
+                }
+
+                if (runLength >= inlineFenceLength) {
+                    inlineFenceLength = 0;
+                    i += runLength;
+                    continue;
+                }
+            }
+
+            if (inlineFenceLength == 0 &&
+                ch == ':' &&
+                i > 0 &&
+                i + 1 < line.Length &&
+                char.IsWhiteSpace(line[i + 1])) {
+                index = i;
                 return true;
             }
 
-            scanFrom = separator + 1;
+            i++;
         }
 
         return false;
@@ -236,6 +270,29 @@ public static class OfficeImoArtifactWriter {
         marker = first;
         runLength = length;
         return true;
+    }
+
+    private static bool IsClosingFenceLine(string trimmedLine, int fenceLength) {
+        if (fenceLength < 3 || trimmedLine.Length < fenceLength) {
+            return false;
+        }
+
+        for (int i = fenceLength; i < trimmedLine.Length; i++) {
+            if (!char.IsWhiteSpace(trimmedLine[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static int CountRunLength(string text, int startIndex, char marker) {
+        var length = 0;
+        while (startIndex + length < text.Length && text[startIndex + length] == marker) {
+            length++;
+        }
+
+        return length;
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
