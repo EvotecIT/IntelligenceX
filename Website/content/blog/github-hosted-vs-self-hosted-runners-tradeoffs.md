@@ -2,6 +2,10 @@
 title: GitHub-Hosted vs Self-Hosted Runners
 description: A practical decision guide for security, cost, and reliability tradeoffs when choosing runner strategy.
 slug: github-hosted-vs-self-hosted-runners
+date: 2026-02-15
+categories: ["Operations"]
+tags: ["runners", "github-actions", "security"]
+image: /assets/screenshots/product-project-ops.svg
 collection: blog
 layout: page
 ---

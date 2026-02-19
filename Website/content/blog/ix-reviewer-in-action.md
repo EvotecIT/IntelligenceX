@@ -2,6 +2,10 @@
 title: IX Reviewer in Action
 description: From quick thumbs-up feedback to evidence-driven PR review with blockers, optional issues, inline follow-up, and thread auto-resolve.
 slug: ix-reviewer-in-action
+date: 2026-02-12
+categories: ["Walkthrough"]
+tags: ["reviewer", "pull-requests", "automation"]
+image: /assets/screenshots/ix-reviewer-in-action/ix-reviewer-01-pr-overview-and-baseline.jpg
 collection: blog
 layout: page
 ---

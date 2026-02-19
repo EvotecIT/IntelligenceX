@@ -2,6 +2,10 @@
 title: Security-First Reviewer Setup Checklist
 description: Practical security hardening for IntelligenceX reviewer onboarding, secrets, branch protection, and runner strategy.
 slug: security-first-reviewer-setup-checklist
+date: 2026-02-17
+categories: ["Security"]
+tags: ["setup", "reviewer", "branch-protection"]
+image: /assets/screenshots/product-reviewer.svg
 collection: blog
 layout: page
 ---

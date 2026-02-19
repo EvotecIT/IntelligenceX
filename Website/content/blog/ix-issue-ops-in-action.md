@@ -2,6 +2,10 @@
 title: IX Issue Ops in Action
 description: First-party GitHub Project triage with issue applicability review, confidence signals, and maintainer-owned close or keep-open decisions.
 slug: ix-issue-ops-in-action
+date: 2026-02-14
+categories: ["Walkthrough"]
+tags: ["issue-ops", "github-projects", "triage"]
+image: /assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg
 collection: blog
 layout: page
 ---

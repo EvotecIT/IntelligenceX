@@ -2,9 +2,12 @@
 title: Markdown-First Exports with OfficeIMO
 description: How IntelligenceX uses Markdown as the source of truth for transcript export, Word output, and Excel/Word table artifacts.
 slug: markdown-word-excel-exports-with-officeimo
+date: 2026-02-19
+categories: ["Walkthrough"]
+tags: ["officeimo", "export", "markdown"]
+image: /assets/screenshots/markdown-office-export/word-transcript-page-1.png
 collection: blog
 layout: page
-date: 2026-02-19
 ---
 
 IntelligenceX export flow is Markdown-first on purpose.

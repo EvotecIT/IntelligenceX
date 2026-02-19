@@ -2,6 +2,10 @@
 title: Reviewer Config Playbook (YAML vs JSON)
 description: A practical guide to configuring IntelligenceX Reviewer with workflow YAML, reviewer.json, and onboarding flows.
 slug: reviewer-yaml-vs-json-playbook
+date: 2026-02-13
+categories: ["Guides"]
+tags: ["reviewer", "yaml", "json"]
+image: /assets/screenshots/product-reviewer.svg
 collection: blog
 layout: page
 ---
