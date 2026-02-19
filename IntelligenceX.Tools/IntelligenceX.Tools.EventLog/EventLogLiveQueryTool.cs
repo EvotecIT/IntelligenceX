@@ -14,8 +14,6 @@ namespace IntelligenceX.Tools.EventLog;
 /// </summary>
 public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
     private const int MaxViewTop = 5000;
-    private const int MinSessionTimeoutMs = 250;
-    private const int MaxSessionTimeoutMs = 300_000;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_live_query",
@@ -53,20 +51,14 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name is required."));
         }
 
-        var xpath = arguments?.GetString("xpath");
-        if (string.IsNullOrWhiteSpace(xpath)) {
-            xpath = "*";
-        }
+        var xpath = ResolveXPathOrDefault(arguments);
 
         var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
         var includeMessage = arguments?.GetBoolean("include_message") ?? false;
         var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
-        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
-        if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
-            sessionTimeoutMs = MinSessionTimeoutMs;
-        }
+        var sessionTimeoutMs = ResolveSessionTimeoutMs(arguments, minInclusive: MinSessionTimeoutMs, maxInclusive: MaxSessionTimeoutMs);
 
-        var maxEvents = ToolArgs.GetCappedInt32(arguments, "max_events", Options.MaxResults, 1, Options.MaxResults);
+        var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
 
         if (!LiveEventQueryExecutor.TryRead(
                 request: new LiveEventQueryRequest {
@@ -85,15 +77,15 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
             return Task.FromResult(ErrorFromLiveQueryFailure(failure));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: root,
             sourceRows: root.Events,
             viewRowsPath: "events_view",
             title: "Live events (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: root.Truncated,
-            response: out var response);
+            scanned: root.Events.Count,
+            maxTop: MaxViewTop);
         return Task.FromResult(response);
     }
 }

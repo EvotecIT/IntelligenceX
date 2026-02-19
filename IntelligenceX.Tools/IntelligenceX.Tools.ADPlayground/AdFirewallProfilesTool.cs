@@ -64,77 +64,47 @@ public sealed class AdFirewallProfilesTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = FirewallProfilesService.Get(domainName);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "Firewall profile query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        var attributionRows = includeAttribution
-            ? view.Attribution
-                .Where(row => !configuredAttributionOnly || !string.IsNullOrWhiteSpace(row.Effective) && !string.Equals(row.Effective, "Not configured", StringComparison.OrdinalIgnoreCase))
-                .ToArray()
-            : Array.Empty<PolicyAttribution>();
-
-        var scanned = attributionRows.Length;
-        IReadOnlyList<PolicyAttribution> projectedRows = scanned > maxResults
-            ? attributionRows.Take(maxResults).ToArray()
-            : attributionRows;
-        var truncated = scanned > projectedRows.Count;
-
-        var result = new AdFirewallProfilesResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            DomainEnabled: view.DomainEnabled,
-            PrivateEnabled: view.PrivateEnabled,
-            PublicEnabled: view.PublicEnabled,
-            DomainDefaultInbound: view.DomainDefaultInbound,
-            DomainDefaultOutbound: view.DomainDefaultOutbound,
-            PrivateDefaultInbound: view.PrivateDefaultInbound,
-            PrivateDefaultOutbound: view.PrivateDefaultOutbound,
-            PublicDefaultInbound: view.PublicDefaultInbound,
-            PublicDefaultOutbound: view.PublicDefaultOutbound,
-            DomainNotificationsDisabled: view.DomainNotificationsDisabled,
-            PrivateNotificationsDisabled: view.PrivateNotificationsDisabled,
-            PublicNotificationsDisabled: view.PublicNotificationsDisabled,
-            DomainLogDroppedPackets: view.DomainLogDroppedPackets,
-            PrivateLogDroppedPackets: view.PrivateLogDroppedPackets,
-            PublicLogDroppedPackets: view.PublicLogDroppedPackets,
-            DomainLogSuccessfulConnections: view.DomainLogSuccessfulConnections,
-            PrivateLogSuccessfulConnections: view.PrivateLogSuccessfulConnections,
-            PublicLogSuccessfulConnections: view.PublicLogSuccessfulConnections,
-            Attribution: projectedRows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool(
             arguments: arguments,
-            model: result,
-            sourceRows: projectedRows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: Firewall Profiles (preview)",
+            defaultErrorMessage: "Firewall profile query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("include_attribution", includeAttribution);
-                meta.Add("configured_attribution_only", configuredAttributionOnly);
-                meta.Add("max_results", maxResults);
-            }));
+            query: domainName => {
+                var view = FirewallProfilesService.Get(domainName);
+                ThrowIfCollectionFailed(
+                    view.CollectionSucceeded,
+                    view.CollectionError,
+                    "Firewall profile query failed.");
+                return view;
+            },
+            attributionSelector: static view => view.Attribution,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdFirewallProfilesResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                DomainEnabled: view.DomainEnabled,
+                PrivateEnabled: view.PrivateEnabled,
+                PublicEnabled: view.PublicEnabled,
+                DomainDefaultInbound: view.DomainDefaultInbound,
+                DomainDefaultOutbound: view.DomainDefaultOutbound,
+                PrivateDefaultInbound: view.PrivateDefaultInbound,
+                PrivateDefaultOutbound: view.PrivateDefaultOutbound,
+                PublicDefaultInbound: view.PublicDefaultInbound,
+                PublicDefaultOutbound: view.PublicDefaultOutbound,
+                DomainNotificationsDisabled: view.DomainNotificationsDisabled,
+                PrivateNotificationsDisabled: view.PrivateNotificationsDisabled,
+                PublicNotificationsDisabled: view.PublicNotificationsDisabled,
+                DomainLogDroppedPackets: view.DomainLogDroppedPackets,
+                PrivateLogDroppedPackets: view.PrivateLogDroppedPackets,
+                PublicLogDroppedPackets: view.PublicLogDroppedPackets,
+                DomainLogSuccessfulConnections: view.DomainLogSuccessfulConnections,
+                PrivateLogSuccessfulConnections: view.PrivateLogSuccessfulConnections,
+                PublicLogSuccessfulConnections: view.PublicLogSuccessfulConnections,
+                Attribution: rows)
+            );
     }
 }
+

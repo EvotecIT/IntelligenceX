@@ -71,7 +71,7 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeDomainControllers = ToolArgs.GetBoolean(arguments, "include_domain_controllers", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -160,15 +160,11 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_domain_controllers", includeDomainControllers);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

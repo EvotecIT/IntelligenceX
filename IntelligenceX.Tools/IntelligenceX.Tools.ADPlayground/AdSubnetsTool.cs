@@ -55,7 +55,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
 
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var summary = ToolArgs.GetBoolean(arguments, "summary", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (summary) {
             if (!TryExecute(
@@ -89,7 +89,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
-                    meta.Add("max_results", maxResults);
+                    AddMaxResultsMeta(meta, maxResults);
                     if (!string.IsNullOrWhiteSpace(forestName)) {
                         meta.Add("forest_name", forestName);
                     }
@@ -128,12 +128,11 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
             scanned: scannedSubnets,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 if (!string.IsNullOrWhiteSpace(forestName)) {
                     meta.Add("forest_name", forestName);
                 }
             }));
     }
 }
-
 

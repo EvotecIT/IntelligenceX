@@ -61,7 +61,7 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
         var mismatchedOnly = ToolArgs.GetBoolean(arguments, "mismatched_only", defaultValue: false);
         var staleOnly = ToolArgs.GetBoolean(arguments, "stale_only", defaultValue: false);
         var scavengingEnabledOnly = ToolArgs.GetBoolean(arguments, "scavenging_enabled_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => new DnsScavengingAnalyzer()
@@ -109,12 +109,11 @@ public sealed class AdDnsScavengingTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("dns_server", dnsServer);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("mismatched_only", mismatchedOnly);
                 meta.Add("stale_only", staleOnly);
                 meta.Add("scavenging_enabled_only", scavengingEnabledOnly);
             }));
     }
 }
-
 

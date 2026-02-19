@@ -59,9 +59,8 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
         }
 
         var verifyInheritance = ToolArgs.GetBoolean(arguments, "verify_inheritance", defaultValue: false);
@@ -76,19 +75,16 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
 
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var sysvolScanCap = ToolArgs.GetCappedInt32(arguments, "sysvol_scan_cap", 2000, 1, 500000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
-        var view = GpoPermissionConsistencyService.Get(
-            domainName,
-            verifyInheritance: verifyInheritance,
-            includeConsistent: includeConsistent,
-            maxGpos: maxGpos,
-            sysvolScanCap: sysvolScanCap);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO permission consistency query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
+        if (!TryExecuteCollectionQuery(
+                query: () => GpoPermissionConsistencyService.Get(domainName, verifyInheritance: verifyInheritance, includeConsistent: includeConsistent, maxGpos: maxGpos, sysvolScanCap: sysvolScanCap),
+                collectionSucceededSelector: static view => view.CollectionSucceeded,
+                collectionErrorSelector: static view => view.CollectionError,
+                result: out var view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "GPO permission consistency query failed.")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
@@ -96,11 +92,7 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             .Where(row => !insideInconsistentOnly || row.AclConsistentInside == false)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<GpoPermissionConsistency> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdGpoPermissionConsistencyResult(
             DomainName: domainName,
@@ -127,14 +119,13 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 meta.Add("verify_inheritance", verifyInheritance);
                 meta.Add("include_consistent", includeConsistent);
                 meta.Add("top_level_inconsistent_only", topLevelInconsistentOnly);
                 meta.Add("inside_inconsistent_only", insideInconsistentOnly);
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("sysvol_scan_cap", sysvolScanCap);
-                meta.Add("max_results", maxResults);
             }));
     }
 }

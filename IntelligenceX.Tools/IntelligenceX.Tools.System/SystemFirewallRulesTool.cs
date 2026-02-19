@@ -96,7 +96,7 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
 
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
         var applicationContains = ToolArgs.GetOptionalTrimmed(arguments, "application_contains");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_entries", Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
 
         if (!ToolEnumBinders.TryParseOptional(
                 ToolArgs.GetOptionalTrimmed(arguments, "direction"),
@@ -148,7 +148,7 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new FirewallRuleListQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Rules,
@@ -156,7 +156,6 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
             title: "Firewall rules (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 if (!string.IsNullOrWhiteSpace(nameContains)) {

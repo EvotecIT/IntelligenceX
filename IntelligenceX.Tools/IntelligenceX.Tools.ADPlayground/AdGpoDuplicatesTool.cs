@@ -42,47 +42,21 @@ public sealed class AdGpoDuplicatesTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = GpoDuplicateService.Get(domainName);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO duplicate query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        var scanned = view.Items.Count;
-        IReadOnlyList<GpoDuplicateObject> rows = scanned > maxResults
-            ? view.Items.Take(maxResults).ToArray()
-            : view.Items;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdGpoDuplicatesResult(
-            DomainName: domainName,
-            Scanned: scanned,
-            Truncated: truncated,
-            Rows: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecuteDomainRowsViewTool(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO Duplicates (preview)",
+            defaultErrorMessage: "GPO duplicate query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("max_results", maxResults);
-            }));
+            query: static domainName => GpoDuplicateService.Get(domainName),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: static view => view.Items,
+            resultFactory: static (domainName, _, _, rows, scanned, truncated) => new AdGpoDuplicatesResult(
+                DomainName: domainName,
+                Scanned: scanned,
+                Truncated: truncated,
+                Rows: rows));
     }
 }
+

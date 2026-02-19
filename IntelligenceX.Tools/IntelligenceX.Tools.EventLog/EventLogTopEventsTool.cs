@@ -18,10 +18,6 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
     private const int MaxLogNameLength = 260;
     private static readonly SemaphoreSlim RemoteReadGate = new(initialCount: 4, maxCount: 4);
 
-    private const int DefaultRemoteSessionTimeoutMs = 30_000;
-    private const int MinSessionTimeoutMs = 250;
-    private const int MaxSessionTimeoutMs = 300_000;
-
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_top_events",
         "Return the most recent N events from a Windows Event Log (local or remote machine). Designed for quick triage (example: \"top 5 events from AD0 System\").",
@@ -123,10 +119,10 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             }
         }
 
-        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(sessionTimeoutRaw, maxInclusive: MaxSessionTimeoutMs);
-        if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
-            sessionTimeoutMs = MinSessionTimeoutMs;
-        }
+        var sessionTimeoutMs = ResolveSessionTimeoutMs(
+            timeoutRaw: sessionTimeoutRaw,
+            minInclusive: MinSessionTimeoutMs,
+            maxInclusive: MaxSessionTimeoutMs);
 
         if (machineName is not null && !sessionTimeoutMs.HasValue) {
             sessionTimeoutMs = DefaultRemoteSessionTimeoutMs;
@@ -189,17 +185,15 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             return ErrorFromLiveQueryFailure(failure);
         }
 
-        if (!ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: root!,
             sourceRows: root!.Events,
             viewRowsPath: "events_view",
             title: $"Top {maxEvents} recent events (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: root!.Truncated,
-            response: out var response)) {
-            return response;
-        }
+            scanned: root.Events.Count,
+            maxTop: MaxViewTop);
         return response;
     }
 }

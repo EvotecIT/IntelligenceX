@@ -62,7 +62,7 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "gpo_ids must contain at least one GUID."));
         }
 
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
         var requestedCount = rawIds.Count;
         var truncated = requestedCount > maxResults;
         if (rawIds.Count > maxResults) {
@@ -100,10 +100,9 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: rows.Count,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 meta.Add("requested_count", requestedCount);
                 meta.Add("processed_count", rows.Count);
-                meta.Add("max_results", maxResults);
             }));
     }
 
@@ -118,3 +117,4 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             : null;
     }
 }
+

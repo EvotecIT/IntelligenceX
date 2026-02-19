@@ -40,16 +40,13 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
         return Task.Run(() => {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!OperatingSystem.IsWindows()) {
-                return ToolResponse.Error(
-                    errorCode: "unsupported_platform",
-                    error: "Scheduled tasks are only available on Windows.",
-                    hints: new[] { "Run this tool on Windows, or query scheduled tasks via a remote Windows host tool (future)." },
-                    isTransient: false);
+            var unsupported = ValidateWindowsSupport("The scheduled tasks tool");
+            if (!string.IsNullOrWhiteSpace(unsupported)) {
+                return unsupported;
             }
 
             var nameContains = arguments?.GetString("name_contains");
-            var max = ToolArgs.GetCappedInt32(arguments, "max_tasks", Options.MaxResults, 1, Options.MaxResults);
+            var max = ResolveBoundedOptionLimit(arguments, "max_tasks");
 
             var suspicious = arguments?.GetBoolean("suspicious") ?? false;
             var onlySuspicious = arguments?.GetBoolean("only_suspicious") ?? false;
@@ -68,7 +65,7 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
             }
 
             var result = queryResult ?? new TaskSchedulerListQueryResult();
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            var response = BuildAutoTableResponse(
                 arguments: arguments,
                 model: result,
                 sourceRows: result.Tasks,
@@ -76,7 +73,6 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
                 title: "Scheduled tasks (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: result.Truncated,
-                response: out var response,
                 scanned: result.Scanned,
                 metaMutate: meta => {
                     meta.Add("suspicious", suspicious);
@@ -86,5 +82,4 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
         }, cancellationToken);
     }
 }
-
 

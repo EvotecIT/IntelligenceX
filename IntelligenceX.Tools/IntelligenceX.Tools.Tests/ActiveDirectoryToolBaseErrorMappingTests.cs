@@ -107,6 +107,39 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
     }
 
     [Fact]
+    public void TryReadRequiredDomainName_ShouldReturnDomainWhenPresent() {
+        var tool = new HarnessTool();
+
+        var ok = tool.TryReadRequiredDomainNameArgument(
+            arguments: new JsonObject().Add("domain_name", "contoso.local"),
+            out var domainName,
+            out var errorResponse);
+
+        Assert.True(ok);
+        Assert.Equal("contoso.local", domainName);
+        Assert.Null(errorResponse);
+    }
+
+    [Fact]
+    public void TryReadRequiredDomainName_ShouldReturnInvalidArgumentWhenMissing() {
+        var tool = new HarnessTool();
+
+        var ok = tool.TryReadRequiredDomainNameArgument(
+            arguments: new JsonObject(),
+            out var domainName,
+            out var errorResponse);
+
+        Assert.False(ok);
+        Assert.Equal(string.Empty, domainName);
+        Assert.NotNull(errorResponse);
+        using var doc = JsonDocument.Parse(errorResponse!);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+        Assert.Equal("domain_name is required.", root.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task ExecutePolicyAttributionTool_ShouldFilterRowsAndAddStandardMeta() {
         var tool = new HarnessTool();
         var arguments = new JsonObject()
@@ -148,6 +181,171 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         Assert.False(root.GetProperty("ok").GetBoolean());
         Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
         Assert.Equal("Policy service unavailable", root.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task ExecutePolicyAttributionTool_ShouldAllowAdditionalMetaMutation() {
+        var tool = new HarnessTool();
+        var arguments = new JsonObject().Add("domain_name", "contoso.local");
+
+        var json = await tool.ExecutePolicyToolAsync(
+            arguments,
+            _ => new HarnessTool.MockPolicyView(Array.Empty<PolicyAttribution>(), "marker"),
+            additionalMetaMutate: static (meta, _, result) => {
+                meta.Add("marker", result.Marker);
+            });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("marker", root.GetProperty("meta").GetProperty("marker").GetString());
+    }
+
+    [Fact]
+    public void ResolveMaxResults_ShouldDefaultOnNonPositiveAndCapHighValues() {
+        var tool = new HarnessTool();
+
+        Assert.Equal(1000, tool.ResolveDefaultingMaxResults(new JsonObject().Add("max_results", 0)));
+        Assert.Equal(1000, tool.ResolveDefaultingMaxResults(new JsonObject().Add("max_results", -5)));
+        Assert.Equal(1000, tool.ResolveDefaultingMaxResults(new JsonObject().Add("max_results", 5000)));
+        Assert.Equal(50, tool.ResolveDefaultingMaxResults(new JsonObject().Add("max_results", 50)));
+    }
+
+    [Fact]
+    public void ResolveBoundedMaxResults_ShouldClampToOneAndCapHighValues() {
+        var tool = new HarnessTool();
+
+        Assert.Equal(1, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", 0)));
+        Assert.Equal(1, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", -5)));
+        Assert.Equal(1000, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", 5000)));
+        Assert.Equal(50, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", 50)));
+    }
+
+    [Fact]
+    public void AddDomainAndForestMeta_ShouldAddOnlyNonEmptyValues() {
+        var tool = new HarnessTool();
+
+        var withBoth = tool.CreateScopeMeta("contoso.local", "corp.contoso.local");
+        Assert.Equal("contoso.local", withBoth.GetString("domain_name"));
+        Assert.Equal("corp.contoso.local", withBoth.GetString("forest_name"));
+
+        var withDomainOnly = tool.CreateScopeMeta("contoso.local", " ");
+        Assert.Equal("contoso.local", withDomainOnly.GetString("domain_name"));
+        Assert.Null(withDomainOnly.GetString("forest_name"));
+
+        var withNone = tool.CreateScopeMeta(" ", null);
+        Assert.Null(withNone.GetString("domain_name"));
+        Assert.Null(withNone.GetString("forest_name"));
+    }
+
+    [Fact]
+    public void AddDomainAndMaxResultsMeta_ShouldAddBothKeys() {
+        var tool = new HarnessTool();
+
+        var meta = tool.CreateDomainAndMaxResultsMeta("contoso.local", 123);
+
+        Assert.Equal("contoso.local", meta.GetString("domain_name"));
+        Assert.Equal(123, meta.GetInt64("max_results"));
+    }
+
+    [Fact]
+    public void TryMapCollectionFailure_ShouldReturnFalseAndDefaultMessageWhenCollectionFailsWithoutError() {
+        var tool = new HarnessTool();
+
+        var ok = tool.MapCollectionFailure(
+            collectionSucceeded: false,
+            collectionError: null,
+            defaultErrorMessage: "Policy query failed.",
+            out var errorResponse);
+
+        Assert.False(ok);
+        Assert.NotNull(errorResponse);
+        using var doc = JsonDocument.Parse(errorResponse!);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
+        Assert.Equal("Policy query failed.", root.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void TryMapCollectionFailure_ShouldReturnTrueWhenCollectionSucceeds() {
+        var tool = new HarnessTool();
+
+        var ok = tool.MapCollectionFailure(
+            collectionSucceeded: true,
+            collectionError: "ignored",
+            defaultErrorMessage: "Policy query failed.",
+            out var errorResponse);
+
+        Assert.True(ok);
+        Assert.Null(errorResponse);
+    }
+
+    [Fact]
+    public void TryExecuteCollectionQuery_ShouldReturnResultWhenCollectionSucceeds() {
+        var tool = new HarnessTool();
+
+        var ok = tool.ExecuteCollectionQuerySuccess(out var marker, out var errorResponse);
+
+        Assert.True(ok);
+        Assert.Null(errorResponse);
+        Assert.Equal("ok", marker);
+    }
+
+    [Fact]
+    public void TryExecuteCollectionQuery_ShouldMapCollectionFailureToQueryFailed() {
+        var tool = new HarnessTool();
+
+        var ok = tool.ExecuteCollectionQueryFailure(out var errorResponse);
+
+        Assert.False(ok);
+        Assert.NotNull(errorResponse);
+        using var doc = JsonDocument.Parse(errorResponse!);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
+        Assert.Equal("Collection error.", root.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void TryExecuteCollectionQuery_ShouldReturnContractErrorWhenCollectionShapeIsMissing() {
+        var tool = new HarnessTool();
+
+        var ok = tool.ExecuteCollectionQueryInvalidContract(out var errorResponse);
+
+        Assert.False(ok);
+        Assert.NotNull(errorResponse);
+        using var doc = JsonDocument.Parse(errorResponse!);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
+        Assert.Equal("Collection view contract is invalid.", root.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void TryExecuteCollectionQuery_WithTypedSelectors_ShouldReturnResultWhenCollectionSucceeds() {
+        var tool = new HarnessTool();
+
+        var ok = tool.ExecuteTypedCollectionQuerySuccess(out var marker, out var errorResponse);
+
+        Assert.True(ok);
+        Assert.Null(errorResponse);
+        Assert.Equal("ok-typed", marker);
+    }
+
+    [Fact]
+    public void TryExecuteCollectionQuery_WithTypedSelectors_ShouldMapCollectionFailureToQueryFailed() {
+        var tool = new HarnessTool();
+
+        var ok = tool.ExecuteTypedCollectionQueryFailure(out var errorResponse);
+
+        Assert.False(ok);
+        Assert.NotNull(errorResponse);
+        using var doc = JsonDocument.Parse(errorResponse!);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
+        Assert.Equal("Typed collection error.", root.GetProperty("error").GetString());
     }
 
     private sealed class HarnessTool : ActiveDirectoryToolBase {
@@ -195,9 +393,17 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             return ok;
         }
 
+        public bool TryReadRequiredDomainNameArgument(
+            JsonObject? arguments,
+            out string domainName,
+            out string? errorResponse) {
+            return TryReadRequiredDomainName(arguments, out domainName, out errorResponse);
+        }
+
         public Task<string> ExecutePolicyToolAsync(
             JsonObject? arguments,
             Func<string, MockPolicyView> query,
+            Action<JsonObject, MockPolicyView, MockPolicyResult>? additionalMetaMutate = null,
             IReadOnlyList<string>? additionalUnconfiguredValues = null) {
             return ExecutePolicyAttributionTool<MockPolicyView, MockPolicyResult>(
                 arguments: arguments,
@@ -206,6 +412,9 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
                 defaultErrorMessage: "Policy query failed.",
                 query: query,
                 attributionSelector: static view => view.Attribution,
+                additionalMetaMutate: additionalMetaMutate is null
+                    ? null
+                    : (meta, _, view, result) => additionalMetaMutate(meta, view, result),
                 additionalUnconfiguredValues: additionalUnconfiguredValues,
                 resultFactory: static (request, view, scanned, truncated, rows) => new MockPolicyResult(
                     request.DomainName,
@@ -217,13 +426,112 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
                     rows));
         }
 
+        public int ResolveDefaultingMaxResults(JsonObject? arguments) {
+            return ResolveMaxResults(arguments);
+        }
+
+        public int ResolveStrictlyBoundedMaxResults(JsonObject? arguments) {
+            return ResolveBoundedMaxResults(arguments);
+        }
+
+        public JsonObject CreateScopeMeta(string? domainName, string? forestName) {
+            var meta = new JsonObject();
+            AddDomainAndForestMeta(meta, domainName, forestName);
+            return meta;
+        }
+
+        public JsonObject CreateDomainAndMaxResultsMeta(string domainName, int maxResults) {
+            var meta = new JsonObject();
+            AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
+            return meta;
+        }
+
+        public bool MapCollectionFailure(
+            bool collectionSucceeded,
+            string? collectionError,
+            string defaultErrorMessage,
+            out string? errorResponse) {
+            return TryMapCollectionFailure(
+                collectionSucceeded,
+                collectionError,
+                defaultErrorMessage,
+                out errorResponse);
+        }
+
+        public bool ExecuteCollectionQuerySuccess(out string? marker, out string? errorResponse) {
+            var ok = TryExecuteCollectionQuery(
+                query: static () => new MockCollectionContractView(
+                    CollectionSucceeded: true,
+                    CollectionError: null,
+                    Marker: "ok"),
+                result: out var view,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: "Collection query failed.");
+            marker = ok ? view.Marker : null;
+            return ok;
+        }
+
+        public bool ExecuteCollectionQueryFailure(out string? errorResponse) {
+            return TryExecuteCollectionQuery(
+                query: static () => new MockCollectionContractView(
+                    CollectionSucceeded: false,
+                    CollectionError: "Collection error.",
+                    Marker: "failed"),
+                result: out _,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: "Collection query failed.");
+        }
+
+        public bool ExecuteCollectionQueryInvalidContract(out string? errorResponse) {
+            return TryExecuteCollectionQuery(
+                query: static () => new MockInvalidCollectionContractView("invalid"),
+                result: out _,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: "Collection query failed.");
+        }
+
+        public bool ExecuteTypedCollectionQuerySuccess(out string? marker, out string? errorResponse) {
+            var ok = TryExecuteCollectionQuery(
+                query: static () => new MockCollectionContractView(
+                    CollectionSucceeded: true,
+                    CollectionError: null,
+                    Marker: "ok-typed"),
+                collectionSucceededSelector: static view => view!.CollectionSucceeded,
+                collectionErrorSelector: static view => view!.CollectionError,
+                result: out var view,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: "Collection query failed.");
+            marker = ok ? view.Marker : null;
+            return ok;
+        }
+
+        public bool ExecuteTypedCollectionQueryFailure(out string? errorResponse) {
+            return TryExecuteCollectionQuery(
+                query: static () => new MockCollectionContractView(
+                    CollectionSucceeded: false,
+                    CollectionError: "Typed collection error.",
+                    Marker: "typed-failed"),
+                collectionSucceededSelector: static view => view!.CollectionSucceeded,
+                collectionErrorSelector: static view => view!.CollectionError,
+                result: out _,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: "Collection query failed.");
+        }
+
         protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return Task.FromResult(ToolResponse.OkModel(new { ok = true }));
         }
 
         internal sealed record MockPolicyView(IReadOnlyList<PolicyAttribution> Attribution, string Marker);
 
-        private sealed record MockPolicyResult(
+        internal sealed record MockCollectionContractView(
+            bool CollectionSucceeded,
+            string? CollectionError,
+            string Marker);
+
+        internal sealed record MockInvalidCollectionContractView(string Marker);
+
+        internal sealed record MockPolicyResult(
             string DomainName,
             bool IncludeAttribution,
             bool ConfiguredAttributionOnly,

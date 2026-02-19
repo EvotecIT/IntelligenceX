@@ -38,8 +38,8 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var max = ToolArgs.GetCappedInt32(arguments, "max_adapters", Options.MaxResults, 1, Options.MaxResults);
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 10_000, 200, 120_000);
+        var max = ResolveBoundedOptionLimit(arguments, "max_adapters");
+        var timeoutMs = ResolveTimeoutMs(arguments);
 
         if (!NetworkAdapterInventoryQueryExecutor.TryExecute(
                 request: new NetworkAdapterInventoryQueryRequest {
@@ -54,7 +54,7 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new NetworkAdapterInventoryQueryResult();
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.Adapters,
@@ -62,7 +62,6 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
             title: "Network adapters (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.Scanned,
             metaMutate: meta => {
                 meta.Add("timeout_ms", timeoutMs);
@@ -70,5 +69,3 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
-

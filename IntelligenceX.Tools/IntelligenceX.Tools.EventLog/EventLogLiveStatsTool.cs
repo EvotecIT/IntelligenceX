@@ -17,8 +17,6 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
     private const int MaxTop = 50;
     private const int MaxScanCap = 5000;
     private const int MaxViewTop = 5000;
-    private const int MinSessionTimeoutMs = 250;
-    private const int MaxSessionTimeoutMs = 300_000;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_live_stats",
@@ -57,17 +55,11 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name is required."));
         }
 
-        var xpath = arguments?.GetString("xpath");
-        if (string.IsNullOrWhiteSpace(xpath)) {
-            xpath = "*";
-        }
+        var xpath = ResolveXPathOrDefault(arguments);
 
         var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
         var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
-        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
-        if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
-            sessionTimeoutMs = MinSessionTimeoutMs;
-        }
+        var sessionTimeoutMs = ResolveSessionTimeoutMs(arguments, minInclusive: MinSessionTimeoutMs, maxInclusive: MaxSessionTimeoutMs);
 
         if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", timeErr ?? "Invalid time range."));
@@ -103,16 +95,15 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
             return Task.FromResult(ErrorFromLiveStatsFailure(failure));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.TopEventIds,
             viewRowsPath: "top_event_ids_view",
             title: "Live stats: top Event IDs (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.ScannedEvents,
+            maxTop: MaxViewTop,
             metaMutate: meta => meta
                 .Add("matched_events", result.MatchedEvents)
                 .Add("max_events_scanned", result.MaxEventsScanned));

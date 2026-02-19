@@ -64,7 +64,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         var origin = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "origin"), "any");
         var summary = ToolArgs.GetBoolean(arguments, "summary", defaultValue: false);
         var summaryBy = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "summary_by"), "site");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!IsOneOf(transport, "any", "rpc", "smtp")) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "transport must be one of: any, rpc, smtp."));
@@ -100,9 +100,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
 
         if (summary) {
             var allSummary = ConnectionsExplorer.GetSummaryBy(filtered, summaryBy);
-            var scanned = allSummary.Count;
-            var rows = scanned > maxResults ? allSummary.Take(maxResults).ToArray() : allSummary;
-            var truncated = scanned > rows.Count;
+            var rows = CapRows(allSummary, maxResults, out var scanned, out var truncated);
 
             var summaryResult = new AdReplicationConnectionsResult(
                 Mode: "summary",
@@ -129,7 +127,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                     meta.Add("mode", "summary");
                     meta.Add("summary_by", summaryBy);
                     meta.Add("total_filtered", filtered.Count);
-                    meta.Add("max_results", maxResults);
+                    AddMaxResultsMeta(meta, maxResults);
                 }));
         }
 
@@ -160,7 +158,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             scanned: scannedConnections,
             metaMutate: meta => {
                 meta.Add("mode", "raw");
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
             }));
     }
 
@@ -212,5 +210,4 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         };
     }
 }
-
 

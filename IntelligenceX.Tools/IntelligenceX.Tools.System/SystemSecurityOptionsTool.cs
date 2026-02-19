@@ -33,12 +33,13 @@ public sealed class SystemSecurityOptionsTool : SystemToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return Task.FromResult(ToolResponse.Error("not_supported", "system_security_options is available only on Windows hosts."));
+        var windowsError = ValidateWindowsSupport("system_security_options");
+        if (windowsError is not null) {
+            return Task.FromResult(windowsError);
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName;
+        var target = ResolveTargetComputerName(computerName);
 
         try {
             var state = SecurityOptionsQuery.Get(computerName);
@@ -58,10 +59,8 @@ public sealed class SystemSecurityOptionsTool : SystemToolBase, ITool {
                 valueHeader: "Value",
                 truncated: false,
                 render: null));
-        } catch (ArgumentException ex) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", ex.Message));
         } catch (Exception ex) {
-            return Task.FromResult(ToolResponse.Error("query_failed", $"Security options query failed: {ex.Message}"));
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Security options query failed."));
         }
     }
 }

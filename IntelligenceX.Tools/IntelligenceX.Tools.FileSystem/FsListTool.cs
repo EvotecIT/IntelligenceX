@@ -65,15 +65,14 @@ public sealed class FsListTool : FileSystemToolBase, ITool {
             canDescendOrIncludePath: candidate => TryResolvePath(candidate, out _, out _),
             cancellationToken: cancellationToken);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: root,
             sourceRows: root.Entries,
             viewRowsPath: "entries_view",
             title: "Directory entries (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: root.Truncated,
-            response: out var response);
+            baseTruncated: root.Truncated);
         return Task.FromResult(response);
     }
 }

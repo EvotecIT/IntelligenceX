@@ -49,69 +49,45 @@ public sealed class AdGpoInventoryHealthTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
         var slice = (ToolArgs.GetOptionalTrimmed(arguments, "slice") ?? "all").ToLowerInvariant();
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = GpoInventoryHealthService.Get(domainName);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO inventory health query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
-        }
-
-        IReadOnlyList<GpoInventoryHealthService.GpoHealthItem> selectedRows = slice switch {
-            "all" => view.All,
-            "disabled" => view.Disabled,
-            "empty" => view.Empty,
-            "unlinked" => view.Unlinked,
-            "all_settings_disabled" => view.AllSettingsDisabled,
-            _ => Array.Empty<GpoInventoryHealthService.GpoHealthItem>()
-        };
-
         if (slice is not ("all" or "disabled" or "empty" or "unlinked" or "all_settings_disabled")) {
             return Task.FromResult(ToolResponse.Error(
                 "invalid_argument",
                 "slice must be one of: all, disabled, empty, unlinked, all_settings_disabled."));
         }
 
-        var scanned = selectedRows.Count;
-        var rows = scanned > maxResults ? selectedRows.Take(maxResults).ToArray() : selectedRows;
-        var truncated = scanned > rows.Count;
-
-        var result = new AdGpoInventoryHealthResult(
-            DomainName: domainName,
-            Slice: slice,
-            GposEnumerated: view.GposEnumerated,
-            Scanned: scanned,
-            Truncated: truncated,
-            DisabledCount: view.Disabled.Count,
-            EmptyCount: view.Empty.Count,
-            UnlinkedCount: view.Unlinked.Count,
-            AllSettingsDisabledCount: view.AllSettingsDisabled.Count,
-            Rows: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecuteDomainRowsViewTool(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO Inventory Health (preview)",
+            defaultErrorMessage: "GPO inventory health query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+            query: static domainName => GpoInventoryHealthService.Get(domainName),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: view => slice switch {
+                "all" => view.All,
+                "disabled" => view.Disabled,
+                "empty" => view.Empty,
+                "unlinked" => view.Unlinked,
+                "all_settings_disabled" => view.AllSettingsDisabled,
+                _ => Array.Empty<GpoInventoryHealthService.GpoHealthItem>()
+            },
+            resultFactory: (domainName, view, _, rows, scanned, truncated) => new AdGpoInventoryHealthResult(
+                DomainName: domainName,
+                Slice: slice,
+                GposEnumerated: view.GposEnumerated,
+                Scanned: scanned,
+                Truncated: truncated,
+                DisabledCount: view.Disabled.Count,
+                EmptyCount: view.Empty.Count,
+                UnlinkedCount: view.Unlinked.Count,
+                AllSettingsDisabledCount: view.AllSettingsDisabled.Count,
+                Rows: rows),
+            additionalMetaMutate: (meta, _, _, view) => {
                 meta.Add("slice", slice);
                 meta.Add("gpos_enumerated", view.GposEnumerated);
-                meta.Add("max_results", maxResults);
-            }));
+            });
     }
 }
+

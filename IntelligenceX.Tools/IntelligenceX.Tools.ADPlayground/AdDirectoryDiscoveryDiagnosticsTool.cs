@@ -55,7 +55,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var domains = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("domains"));
         var asIssue = ToolArgs.GetBoolean(arguments, "as_issue", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var maxIssues = ToolArgs.GetCappedInt32(arguments, "max_issues", 5000, 1, 100_000);
         var dnsResolveTimeoutMs = ToolArgs.GetCappedInt32(arguments, "dns_resolve_timeout_ms", 1500, 200, 120_000);
@@ -108,7 +108,7 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("mode", asIssue ? "issues" : "snapshot");
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("max_issues", maxIssues);
                 meta.Add("include_dns_srv_comparison", includeDnsSrvComparison);
                 meta.Add("include_host_resolution", includeHostResolution);
@@ -122,5 +122,4 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
             }));
     }
 }
-
 

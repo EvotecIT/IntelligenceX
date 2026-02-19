@@ -118,4 +118,5 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
   - First PR rollout verification: `/.agents/skills/intelligencex-first-pr-rollout/SKILL.md`
   - Analysis/catalog/gate work: `/.agents/skills/intelligencex-analysis-gate/SKILL.md`
   - PR unblock/merge loop: `/.agents/skills/intelligencex-pr-unblock-loop/SKILL.md`
+  - Tool creation/refactor reuse loops: `/.agents/skills/intelligencex-tools-authoring/SKILL.md`
 - Follow each skill's strict execution order and helper scripts before posting PR updates.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using EventViewerX.Reports.Inventory;
 using EventViewerX.Reports.Evtx;
@@ -13,6 +14,21 @@ namespace IntelligenceX.Tools.EventLog;
 /// Base class for event log tools with safe-by-default path resolution.
 /// </summary>
 public abstract class EventLogToolBase : ToolBase {
+    /// <summary>
+    /// Shared default remote session timeout in milliseconds.
+    /// </summary>
+    protected const int DefaultRemoteSessionTimeoutMs = 30_000;
+
+    /// <summary>
+    /// Shared minimum session timeout in milliseconds.
+    /// </summary>
+    protected const int MinSessionTimeoutMs = 250;
+
+    /// <summary>
+    /// Shared maximum session timeout in milliseconds.
+    /// </summary>
+    protected const int MaxSessionTimeoutMs = 300_000;
+
     /// <summary>
     /// Shared options for event log tools.
     /// </summary>
@@ -91,6 +107,73 @@ public abstract class EventLogToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Maps common runtime exceptions to stable event-log tool error envelopes.
+    /// </summary>
+    protected static string ErrorFromException(
+        Exception exception,
+        string defaultMessage = "Event log query failed.",
+        string fallbackErrorCode = "query_failed",
+        string invalidOperationErrorCode = "query_failed") {
+        return ToolExceptionMapper.ErrorFromException(
+            exception,
+            defaultMessage: string.IsNullOrWhiteSpace(defaultMessage) ? "Event log query failed." : defaultMessage,
+            unauthorizedMessage: "Access denied while querying event log data.",
+            timeoutMessage: "Event log query timed out.",
+            fallbackErrorCode: fallbackErrorCode,
+            invalidOperationErrorCode: invalidOperationErrorCode);
+    }
+
+    /// <summary>
+    /// Resolves a standard option-bounded limit argument (default + cap from <see cref="EventLogToolOptions.MaxResults"/>).
+    /// </summary>
+    protected int ResolveBoundedOptionLimit(JsonObject? arguments, string argumentName, int minInclusive = 1) {
+        return ToolArgs.GetOptionBoundedInt32(arguments, argumentName, Options.MaxResults, minInclusive);
+    }
+
+    /// <summary>
+    /// Resolves max_results with optional explicit defaults/caps.
+    /// </summary>
+    protected int ResolveMaxResults(JsonObject? arguments, int? defaultValue = null, int minInclusive = 1, int? maxInclusive = null) {
+        var normalizedDefault = defaultValue ?? Options.MaxResults;
+        var normalizedMax = maxInclusive ?? Options.MaxResults;
+        return ToolArgs.GetCappedInt32(arguments, "max_results", normalizedDefault, minInclusive, normalizedMax);
+    }
+
+    /// <summary>
+    /// Resolves optional session timeout values with shared positive/min/max clamping.
+    /// </summary>
+    protected static int? ResolveSessionTimeoutMs(long? timeoutRaw, int minInclusive = 250, int maxInclusive = 300_000) {
+        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(timeoutRaw, maxInclusive: maxInclusive);
+        if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < minInclusive) {
+            return minInclusive;
+        }
+
+        return sessionTimeoutMs;
+    }
+
+    /// <summary>
+    /// Resolves optional session timeout values from tool arguments with shared clamping.
+    /// </summary>
+    protected static int? ResolveSessionTimeoutMs(
+        JsonObject? arguments,
+        string argumentName = "session_timeout_ms",
+        int minInclusive = 250,
+        int maxInclusive = 300_000) {
+        return ResolveSessionTimeoutMs(arguments?.GetInt64(argumentName), minInclusive, maxInclusive);
+    }
+
+    /// <summary>
+    /// Resolves an optional XPath argument, defaulting to <c>*</c> when missing/blank.
+    /// </summary>
+    protected static string ResolveXPathOrDefault(
+        JsonObject? arguments,
+        string argumentName = "xpath",
+        string defaultXPath = "*") {
+        var xpath = arguments?.GetString(argumentName);
+        return string.IsNullOrWhiteSpace(xpath) ? defaultXPath : xpath;
+    }
+
+    /// <summary>
     /// Shared catalog listing flow for channel/provider list tools.
     /// </summary>
     protected string RunCatalogNameList(
@@ -105,7 +188,7 @@ public abstract class EventLogToolBase : ToolBase {
         cancellationToken.ThrowIfCancellationRequested();
 
         var nameContains = arguments?.GetString("name_contains");
-        var max = ToolArgs.GetCappedInt32(arguments, maxArgumentName, Options.MaxResults, 1, Options.MaxResults);
+        var max = ResolveBoundedOptionLimit(arguments, maxArgumentName);
 
         var machineNameNormalized = (arguments?.GetString("machine_name") ?? string.Empty).Trim();
         string? machineName = machineNameNormalized.Length == 0 ? null : machineNameNormalized;
@@ -113,15 +196,7 @@ public abstract class EventLogToolBase : ToolBase {
             machineName = machineName.Substring(0, 260);
         }
 
-        int? sessionTimeoutMs = null;
-        var timeoutRaw = arguments?.GetInt64("session_timeout_ms");
-        if (timeoutRaw.HasValue) {
-            var normalizedLong = Math.Clamp(timeoutRaw.Value, (long)int.MinValue, (long)int.MaxValue);
-            var normalized = (int)normalizedLong;
-            if (normalized > 0) {
-                sessionTimeoutMs = Math.Clamp(normalized, 1000, 600_000);
-            }
-        }
+        var sessionTimeoutMs = ResolveSessionTimeoutMs(arguments, minInclusive: 1000, maxInclusive: 600_000);
 
         var request = new EventCatalogQueryRequest {
             NameContains = nameContains,

@@ -38,12 +38,13 @@ public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return ToolResponse.Error("not_supported", "system_time_sync is available only on Windows hosts.");
+        var windowsError = ValidateWindowsSupport("system_time_sync");
+        if (windowsError is not null) {
+            return windowsError;
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var target = ResolveTargetComputerName(computerName);
         var referenceRaw = ToolArgs.GetOptionalTrimmed(arguments, "reference_time_utc");
 
         DateTime referenceUtc;
@@ -57,16 +58,14 @@ public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
 
         TimeSyncInfo status;
         try {
-            var isLocalTarget = string.IsNullOrWhiteSpace(computerName)
-                || string.Equals(computerName, ".", StringComparison.Ordinal)
-                || string.Equals(target, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
+            var isLocalTarget = IsLocalTarget(computerName, target);
             if (isLocalTarget) {
                 status = TimeSync.GetLocalStatus(referenceUtc);
             } else {
                 status = await TimeSync.QueryRemoteStatusAsync(target, referenceUtc, cancellationToken).ConfigureAwait(false);
             }
         } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"Time sync query failed: {ex.Message}");
+            return ErrorFromException(ex, defaultMessage: "Time sync query failed.");
         }
 
         var model = new SystemTimeSyncResult(
@@ -90,4 +89,3 @@ public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
             render: null);
     }
 }
-

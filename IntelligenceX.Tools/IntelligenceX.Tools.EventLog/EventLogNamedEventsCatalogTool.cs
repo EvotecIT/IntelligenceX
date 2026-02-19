@@ -64,7 +64,7 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
         var availableOnly = ToolArgs.GetBoolean(arguments, "available_only");
         var includeEventIds = arguments?.GetBoolean("include_event_ids") ?? true;
         var maxEventIdsPerRow = ToolArgs.GetCappedInt32(arguments, "max_event_ids_per_row", 32, 1, MaxEventIdsPerRowCap);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveMaxResults(arguments);
 
         var categoriesFilter = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("categories"));
         List<string>? categories = null;
@@ -114,20 +114,19 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
             MaxEventIdsPerRow: maxEventIdsPerRow,
             Items: selectedRows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: selectedRows,
             viewRowsPath: "items_view",
             title: "Named events catalog (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: selectedRows.Count,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("total", all.Count);
                 meta.Add("matched", matchedRows.Count);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("available_only", availableOnly);
                 meta.Add("include_event_ids", includeEventIds);
                 if (includeEventIds) {

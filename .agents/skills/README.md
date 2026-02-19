@@ -8,6 +8,7 @@ Repo-local skills that make agents more consistent across onboarding, setup, ana
 - `intelligencex-pr-unblock-loop`: Use for PR triage, CI failure classification, and merge-blocker closure loops.
 - `intelligencex-reviewer-bootstrap`: Use for reviewer bootstrap (`reviewer.json` + workflow YAML) dry-runs, precedence checks, and managed-block validation.
 - `intelligencex-first-pr-rollout`: Use to verify first post-onboarding PR rollout signals (workflow, checks, sticky summary, analysis sections).
+- `intelligencex-tools-authoring`: Use for tool creation/refactors focused on helper reuse, stable contracts, and low-maintenance patterns.
 
 ## Shared Rules
 - Always use a dedicated `codex/*` branch and worktree.

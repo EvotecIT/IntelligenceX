@@ -60,6 +60,52 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Resolves a positive max-results argument capped by pack options.
+    /// </summary>
+    /// <param name="arguments">Tool arguments.</param>
+    /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
+    /// <returns>Normalized max-results value.</returns>
+    protected int ResolveMaxResults(JsonObject? arguments, string argumentName = "max_results") {
+        return ToolArgs.GetPositiveOptionBoundedInt32OrDefault(
+            arguments,
+            argumentName,
+            Options.MaxResults,
+            Options.MaxResults);
+    }
+
+    /// <summary>
+    /// Resolves a max-results argument with strict lower-bound clamping (minimum 1).
+    /// </summary>
+    /// <param name="arguments">Tool arguments.</param>
+    /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
+    /// <returns>Normalized max-results value.</returns>
+    protected int ResolveBoundedMaxResults(JsonObject? arguments, string argumentName = "max_results") {
+        return ToolArgs.GetOptionBoundedInt32(
+            arguments,
+            argumentName,
+            Options.MaxResults);
+    }
+
+    /// <summary>
+    /// Reads a required trimmed domain argument and returns a standard invalid-argument envelope on failure.
+    /// </summary>
+    protected static bool TryReadRequiredDomainName(
+        JsonObject? arguments,
+        out string domainName,
+        out string? errorResponse,
+        string argumentName = "domain_name") {
+        var key = string.IsNullOrWhiteSpace(argumentName) ? "domain_name" : argumentName.Trim();
+        domainName = ToolArgs.GetOptionalTrimmed(arguments, key) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(domainName)) {
+            errorResponse = ToolResponse.Error("invalid_argument", $"{key} is required.");
+            return false;
+        }
+
+        errorResponse = null;
+        return true;
+    }
+
+    /// <summary>
     /// Resolves tool-requested AD attribute list via ADPlayground policy helper.
     /// </summary>
     protected static List<string> ResolveAttributes(
@@ -119,6 +165,157 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Maps AD collection-view success/error fields to a standardized query_failed envelope.
+    /// </summary>
+    protected static bool TryMapCollectionFailure(
+        bool collectionSucceeded,
+        string? collectionError,
+        string defaultErrorMessage,
+        out string? errorResponse) {
+        if (collectionSucceeded) {
+            errorResponse = null;
+            return true;
+        }
+
+        var message = string.IsNullOrWhiteSpace(collectionError)
+            ? defaultErrorMessage
+            : collectionError!;
+        errorResponse = ToolResponse.Error("query_failed", message);
+        return false;
+    }
+
+    /// <summary>
+    /// Throws <see cref="InvalidOperationException"/> when collection did not succeed.
+    /// </summary>
+    protected static void ThrowIfCollectionFailed(
+        bool collectionSucceeded,
+        string? collectionError,
+        string defaultErrorMessage) {
+        if (collectionSucceeded) {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace(collectionError)
+                ? defaultErrorMessage
+                : collectionError!);
+    }
+
+    /// <summary>
+    /// Executes a query that returns a conventional AD collection view and maps failures consistently.
+    /// </summary>
+    protected static bool TryExecuteCollectionQuery<T>(
+        Func<T> query,
+        out T result,
+        out string? errorResponse,
+        string defaultErrorMessage,
+        string fallbackErrorCode = "query_failed",
+        string invalidOperationErrorCode = "query_failed") {
+        if (!TryExecute(
+                action: query,
+                result: out result,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: defaultErrorMessage,
+                fallbackErrorCode: fallbackErrorCode,
+                invalidOperationErrorCode: invalidOperationErrorCode)) {
+            return false;
+        }
+
+        return TryMapCollectionFailureByConvention(result, defaultErrorMessage, out errorResponse);
+    }
+
+    /// <summary>
+    /// Executes a query that returns an AD collection view and maps failures using typed selectors.
+    /// </summary>
+    protected static bool TryExecuteCollectionQuery<T>(
+        Func<T> query,
+        Func<T, bool> collectionSucceededSelector,
+        Func<T, string?> collectionErrorSelector,
+        out T result,
+        out string? errorResponse,
+        string defaultErrorMessage,
+        string fallbackErrorCode = "query_failed",
+        string invalidOperationErrorCode = "query_failed") {
+        if (collectionSucceededSelector is null) {
+            throw new ArgumentNullException(nameof(collectionSucceededSelector));
+        }
+        if (collectionErrorSelector is null) {
+            throw new ArgumentNullException(nameof(collectionErrorSelector));
+        }
+
+        if (!TryExecute(
+                action: query,
+                result: out result,
+                errorResponse: out errorResponse,
+                defaultErrorMessage: defaultErrorMessage,
+                fallbackErrorCode: fallbackErrorCode,
+                invalidOperationErrorCode: invalidOperationErrorCode)) {
+            return false;
+        }
+
+        bool collectionSucceeded;
+        string? collectionError;
+        try {
+            collectionSucceeded = collectionSucceededSelector(result);
+            collectionError = collectionErrorSelector(result);
+        } catch (Exception ex) {
+            errorResponse = ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode, invalidOperationErrorCode);
+            return false;
+        }
+
+        return TryMapCollectionFailure(collectionSucceeded, collectionError, defaultErrorMessage, out errorResponse);
+    }
+
+    /// <summary>
+    /// Maps failures from views exposing <c>CollectionSucceeded</c>/<c>CollectionError</c> members.
+    /// </summary>
+    protected static bool TryMapCollectionFailureByConvention<T>(
+        T view,
+        string defaultErrorMessage,
+        out string? errorResponse) {
+        if (!TryReadCollectionViewState(view, out var collectionSucceeded, out var collectionError)) {
+            errorResponse = ToolResponse.Error("query_failed", "Collection view contract is invalid.");
+            return false;
+        }
+
+        return TryMapCollectionFailure(
+            collectionSucceeded,
+            collectionError,
+            defaultErrorMessage,
+            out errorResponse);
+    }
+
+    private static bool TryReadCollectionViewState<T>(
+        T view,
+        out bool collectionSucceeded,
+        out string? collectionError) {
+        collectionSucceeded = false;
+        collectionError = null;
+        if (view is null) {
+            return false;
+        }
+
+        var type = view.GetType();
+        var collectionSucceededProperty = type.GetProperty("CollectionSucceeded");
+        var collectionErrorProperty = type.GetProperty("CollectionError");
+        if (collectionSucceededProperty is null ||
+            collectionSucceededProperty.PropertyType != typeof(bool) ||
+            collectionErrorProperty is null ||
+            collectionErrorProperty.PropertyType != typeof(string)) {
+            return false;
+        }
+
+        var succeededValue = collectionSucceededProperty.GetValue(view);
+        if (succeededValue is not bool succeeded) {
+            return false;
+        }
+
+        collectionSucceeded = succeeded;
+        collectionError = collectionErrorProperty.GetValue(view) as string;
+        return true;
+    }
+
+    /// <summary>
     /// Executes a query delegate and maps exceptions into a stable error envelope.
     /// </summary>
     protected static bool TryExecute<T>(
@@ -144,28 +341,75 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
-    /// Builds the standard auto-column table envelope used by AD read tools.
+    /// Executes the common AD rows-view pipeline:
+    /// parse required domain, run typed collection query, cap rows, build result, and emit table response.
     /// </summary>
-    protected static string BuildAutoTableResponse<TModel, TRow>(
+    protected Task<string> ExecuteDomainRowsViewTool<TView, TRow, TResult>(
         JsonObject? arguments,
-        TModel model,
-        IReadOnlyList<TRow> sourceRows,
-        string viewRowsPath,
+        CancellationToken cancellationToken,
         string title,
-        bool baseTruncated,
-        int scanned,
-        int maxTop,
-        Action<JsonObject>? metaMutate = null) {
-        return ToolQueryHelpers.BuildAutoTableResponse(
+        string defaultErrorMessage,
+        Func<string, TView> query,
+        Func<TView, bool> collectionSucceededSelector,
+        Func<TView, string?> collectionErrorSelector,
+        Func<TView, IReadOnlyList<TRow>> allRowsSelector,
+        Func<string, TView, IReadOnlyList<TRow>, IReadOnlyList<TRow>, int, bool, TResult> resultFactory,
+        Action<JsonObject, string, int, TView>? additionalMetaMutate = null,
+        int maxTop = DefaultPolicyAttributionMaxTop,
+        string viewRowsPath = "rows_view",
+        string invalidOperationErrorCode = "query_failed") {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (query is null) {
+            throw new ArgumentNullException(nameof(query));
+        }
+        if (collectionSucceededSelector is null) {
+            throw new ArgumentNullException(nameof(collectionSucceededSelector));
+        }
+        if (collectionErrorSelector is null) {
+            throw new ArgumentNullException(nameof(collectionErrorSelector));
+        }
+        if (allRowsSelector is null) {
+            throw new ArgumentNullException(nameof(allRowsSelector));
+        }
+        if (resultFactory is null) {
+            throw new ArgumentNullException(nameof(resultFactory));
+        }
+
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
+        }
+
+        var maxResults = ResolveBoundedMaxResults(arguments);
+
+        if (!TryExecuteCollectionQuery(
+                query: () => query(domainName),
+                collectionSucceededSelector: collectionSucceededSelector,
+                collectionErrorSelector: collectionErrorSelector,
+                result: out TView view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: defaultErrorMessage,
+                invalidOperationErrorCode: invalidOperationErrorCode)) {
+            return Task.FromResult(errorResponse!);
+        }
+
+        var allRows = allRowsSelector(view) ?? Array.Empty<TRow>();
+        var rows = CapRows(allRows, maxResults, out var scanned, out var truncated);
+        var result = resultFactory(domainName, view, allRows, rows, scanned, truncated);
+
+        return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
-            model: model,
-            sourceRows: sourceRows,
+            model: result,
+            sourceRows: rows,
             viewRowsPath: viewRowsPath,
             title: title,
             maxTop: maxTop,
-            baseTruncated: baseTruncated,
+            baseTruncated: truncated,
             scanned: scanned,
-            metaMutate: metaMutate);
+            metaMutate: meta => {
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
+                additionalMetaMutate?.Invoke(meta, domainName, maxResults, view);
+            }));
     }
 
     /// <summary>
@@ -258,7 +502,34 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         meta.Add("domain_name", domainName);
         meta.Add("include_attribution", includeAttribution);
         meta.Add("configured_attribution_only", configuredAttributionOnly);
-        meta.Add("max_results", maxResults);
+        AddMaxResultsMeta(meta, maxResults);
+    }
+
+    /// <summary>
+    /// Adds optional <c>domain_name</c> and <c>forest_name</c> metadata keys when values are present.
+    /// </summary>
+    protected static void AddDomainAndForestMeta(JsonObject meta, string? domainName, string? forestName) {
+        AddOptionalStringMeta(meta, "domain_name", domainName);
+        AddOptionalStringMeta(meta, "forest_name", forestName);
+    }
+
+    /// <summary>
+    /// Adds standard <c>domain_name</c> and <c>max_results</c> metadata keys.
+    /// </summary>
+    protected static void AddDomainAndMaxResultsMeta(JsonObject meta, string domainName, int maxResults) {
+        AddOptionalStringMeta(meta, "domain_name", domainName);
+        AddMaxResultsMeta(meta, maxResults);
+    }
+
+    /// <summary>
+    /// Adds an optional string metadata key when value is non-empty.
+    /// </summary>
+    protected static void AddOptionalStringMeta(JsonObject meta, string key, string? value) {
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(key)) {
+            return;
+        }
+
+        meta.Add(key, value);
     }
 
     /// <summary>
@@ -335,6 +606,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         Func<string, TView> query,
         Func<TView, IReadOnlyList<PolicyAttribution>> attributionSelector,
         Func<PolicyAttributionToolRequest, TView, int, bool, IReadOnlyList<PolicyAttribution>, TResult> resultFactory,
+        Action<JsonObject, PolicyAttributionToolRequest, TView, TResult>? additionalMetaMutate = null,
         IReadOnlyList<string>? additionalUnconfiguredValues = null,
         string invalidOperationErrorCode = "query_failed",
         int maxTop = DefaultPolicyAttributionMaxTop) {
@@ -383,12 +655,15 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             maxTop: maxTop,
             baseTruncated: truncated,
             scanned: scanned,
-            metaMutate: meta => AddStandardPolicyAttributionMeta(
-                meta,
-                request.DomainName,
-                request.IncludeAttribution,
-                request.ConfiguredAttributionOnly,
-                request.MaxResults)));
+            metaMutate: meta => {
+                AddStandardPolicyAttributionMeta(
+                    meta,
+                    request.DomainName,
+                    request.IncludeAttribution,
+                    request.ConfiguredAttributionOnly,
+                    request.MaxResults);
+                additionalMetaMutate?.Invoke(meta, request, view, result);
+            }));
     }
 
     /// <summary>
@@ -409,7 +684,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             DomainName: domainName,
             IncludeAttribution: ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true),
             ConfiguredAttributionOnly: ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false),
-            MaxResults: ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults));
+            MaxResults: ResolveBoundedMaxResults(arguments));
         errorResponse = null;
         return true;
     }

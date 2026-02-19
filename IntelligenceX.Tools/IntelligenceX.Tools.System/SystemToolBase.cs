@@ -288,28 +288,77 @@ public abstract class SystemToolBase : ToolBase {
     }
 
     /// <summary>
-    /// Builds the standard auto-column table envelope used by System read tools.
+    /// Resolves a standard option-bounded limit argument (default + cap from <see cref="SystemToolOptions.MaxResults"/>).
     /// </summary>
-    protected static string BuildAutoTableResponse<TModel, TRow>(
+    protected int ResolveBoundedOptionLimit(JsonObject? arguments, string argumentName, int minInclusive = 1) {
+        return ToolArgs.GetOptionBoundedInt32(arguments, argumentName, Options.MaxResults, minInclusive);
+    }
+
+    /// <summary>
+    /// Resolves max_results using the default option-bounded limit behavior.
+    /// </summary>
+    protected int ResolveMaxResults(JsonObject? arguments) {
+        return ResolveBoundedOptionLimit(arguments, "max_results");
+    }
+
+    /// <summary>
+    /// Adds computer_name metadata consistently across system tool responses.
+    /// </summary>
+    protected static void AddComputerNameMeta(JsonObject meta, string target) {
+        meta.Add("computer_name", target);
+    }
+
+    /// <summary>
+    /// Adds include/pending-local metadata consistently across system update responses.
+    /// </summary>
+    protected static void AddPendingLocalMeta(JsonObject meta, bool includePendingLocal, bool pendingIncluded) {
+        meta.Add("include_pending_local", includePendingLocal);
+        meta.Add("pending_included", pendingIncluded);
+    }
+
+    /// <summary>
+    /// Builds common facts-view metadata with computer_name and optional extra fields.
+    /// </summary>
+    protected static JsonObject BuildFactsMeta(
+        int count,
+        bool truncated,
+        string target,
+        Action<JsonObject>? mutate = null) {
+        var meta = ToolOutputHints.Meta(count: count, truncated: truncated);
+        AddComputerNameMeta(meta, target);
+        mutate?.Invoke(meta);
+        return meta;
+    }
+
+    /// <summary>
+    /// Returns a standardized not-supported error when a system tool is invoked on non-Windows hosts.
+    /// </summary>
+    protected static string? ValidateWindowsSupport(string toolName) {
+        if (OperatingSystem.IsWindows()) {
+            return null;
+        }
+
+        var safeToolName = string.IsNullOrWhiteSpace(toolName) ? "This tool" : toolName.Trim();
+        return ToolResponse.Error("not_supported", $"{safeToolName} is available only on Windows hosts.");
+    }
+
+    /// <summary>
+    /// Resolves local/remote target display name from optional computer_name argument.
+    /// </summary>
+    protected static string ResolveTargetComputerName(string? computerName) {
+        return string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName;
+    }
+
+    /// <summary>
+    /// Resolves timeout arguments with shared bounds used by system inventory tools.
+    /// </summary>
+    protected static int ResolveTimeoutMs(
         JsonObject? arguments,
-        TModel model,
-        IReadOnlyList<TRow> sourceRows,
-        string viewRowsPath,
-        string title,
-        bool baseTruncated,
-        int scanned,
-        int maxTop,
-        Action<JsonObject>? metaMutate = null) {
-        return ToolQueryHelpers.BuildAutoTableResponse(
-            arguments: arguments,
-            model: model,
-            sourceRows: sourceRows,
-            viewRowsPath: viewRowsPath,
-            title: title,
-            maxTop: maxTop,
-            baseTruncated: baseTruncated,
-            scanned: scanned,
-            metaMutate: metaMutate);
+        string argumentName = "timeout_ms",
+        int defaultValue = 10_000,
+        int minInclusive = 200,
+        int maxInclusive = 120_000) {
+        return ToolArgs.GetCappedInt32(arguments, argumentName, defaultValue, minInclusive, maxInclusive);
     }
 
     private static bool TryNormalizePatchSeverity(string input, out string normalized) {
@@ -328,7 +377,10 @@ public abstract class SystemToolBase : ToolBase {
         return false;
     }
 
-    private static bool IsLocalTarget(string? computerName, string target) {
+    /// <summary>
+    /// Determines whether the requested target should be treated as local machine execution.
+    /// </summary>
+    protected static bool IsLocalTarget(string? computerName, string target) {
         return string.IsNullOrWhiteSpace(computerName)
                || string.Equals(computerName, ".", StringComparison.Ordinal)
                || string.Equals(target, Environment.MachineName, StringComparison.OrdinalIgnoreCase);

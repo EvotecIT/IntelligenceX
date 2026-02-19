@@ -79,7 +79,7 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
         var psoHistoryMin = ToolArgs.GetCappedInt32(arguments, "pso_history_min", 24, 0, 1024);
         var includePsoDetails = ToolArgs.GetBoolean(arguments, "include_pso_details", defaultValue: true);
         var maxPsoRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_pso_rows_per_domain", 100, 1, Options.MaxResults);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -149,14 +149,10 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
                 meta.Add("pso_history_min", psoHistoryMin);
                 meta.Add("include_pso_details", includePsoDetails);
                 meta.Add("max_pso_rows_per_domain", maxPsoRowsPerDomain);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

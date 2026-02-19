@@ -94,18 +94,16 @@ public sealed class EventLogEvtxStatsTool : EventLogToolBase, ITool {
             return Task.FromResult(ErrorFromEvtxFailure(failure));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: result.TopEventIds,
             viewRowsPath: "top_event_ids_view",
             title: "Top Event IDs (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            response: out var response,
             scanned: result.ScannedEvents,
+            maxTop: MaxViewTop,
             metaMutate: meta => meta.Add("max_events_scanned", result.MaxEventsScanned));
         return Task.FromResult(response);
     }
 }
-

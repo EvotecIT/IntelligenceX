@@ -54,23 +54,24 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
         }
 
         var resolutionErrorContains = ToolArgs.GetOptionalTrimmed(arguments, "resolution_error_contains");
         var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var maxFindings = ToolArgs.GetCappedInt32(arguments, "max_findings", 200000, 1, 2000000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
-        var view = GpoPermissionUnknownService.Get(domainName, maxGpos: maxGpos, maxFindings: maxFindings);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO unknown-permission query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
+        if (!TryExecuteCollectionQuery(
+                query: () => GpoPermissionUnknownService.Get(domainName, maxGpos: maxGpos, maxFindings: maxFindings),
+                collectionSucceededSelector: static view => view.CollectionSucceeded,
+                collectionErrorSelector: static view => view.CollectionError,
+                result: out var view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "GPO unknown-permission query failed.")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
@@ -78,11 +79,7 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
             .Where(row => string.IsNullOrWhiteSpace(resolutionErrorContains) || !string.IsNullOrWhiteSpace(row.ResolutionError) && row.ResolutionError.Contains(resolutionErrorContains, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<GpoPermissionUnknownRow> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdGpoPermissionUnknownResult(
             DomainName: domainName,
@@ -106,11 +103,10 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 meta.Add("inherited_only", inheritedOnly);
                 meta.Add("max_gpos", maxGpos);
                 meta.Add("max_findings", maxFindings);
-                meta.Add("max_results", maxResults);
                 if (!string.IsNullOrWhiteSpace(resolutionErrorContains)) {
                     meta.Add("resolution_error_contains", resolutionErrorContains);
                 }

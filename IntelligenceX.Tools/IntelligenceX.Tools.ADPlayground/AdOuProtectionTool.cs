@@ -77,7 +77,7 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
         var unprotectedOnly = ToolArgs.GetBoolean(arguments, "unprotected_only", defaultValue: false);
         var includeUnprotectedOus = ToolArgs.GetBoolean(arguments, "include_unprotected_ous", defaultValue: false);
         var maxOuRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_ou_rows_per_domain", 100, 1, 5000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -161,14 +161,10 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("unprotected_only", unprotectedOnly);
                 meta.Add("include_unprotected_ous", includeUnprotectedOus);
                 meta.Add("max_ou_rows_per_domain", maxOuRowsPerDomain);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

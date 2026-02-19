@@ -159,7 +159,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
         }
         var eventIdSet = eventIds is null ? null : new HashSet<int>(eventIds);
 
-        var maxEvents = ToolArgs.GetCappedInt32(arguments, "max_events", Options.MaxResults, 1, Options.MaxResults);
+        var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
         var maxThreads = ToolArgs.GetCappedInt32(arguments, "max_threads", 4, 1, MaxThreadsCap);
         var maxEventsPerNamedEvent = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("max_events_per_named_event"), maxEvents);
         var includePayload = arguments?.GetBoolean("include_payload") ?? true;
@@ -219,10 +219,11 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             }
         } catch (ArgumentException ex) {
             return ToolResponse.Error("invalid_argument", ex.Message);
-        } catch (InvalidOperationException ex) {
-            return ToolResponse.Error("query_failed", ex.Message);
         } catch (Exception ex) {
-            return ToolResponse.Error("query_failed", $"Named events query failed: {ex.Message}");
+            return ErrorFromException(
+                ex,
+                defaultMessage: "Named events query failed.",
+                invalidOperationErrorCode: "query_failed");
         }
 
         var result = new NamedEventsQueryResult(
@@ -235,16 +236,15 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             Truncated: truncated,
             Events: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        var response = BuildAutoTableResponse(
             arguments: arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "events_view",
             title: "Named events (preview)",
-            maxTop: MaxViewTop,
             baseTruncated: truncated,
-            response: out var response,
             scanned: rows.Count,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta.Add("requested_named_events_count", namedEvents.Count);
                 meta.Add("max_events", maxEvents);

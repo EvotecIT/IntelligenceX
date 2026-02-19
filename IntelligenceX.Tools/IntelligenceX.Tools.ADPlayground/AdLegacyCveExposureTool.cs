@@ -53,59 +53,29 @@ public sealed class AdLegacyCveExposureTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
-        }
-
-        var includeAttribution = ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true);
-        var configuredAttributionOnly = ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
-
-        var view = LegacyCveExposureService.Get(domainName);
-        var attributionRows = includeAttribution
-            ? view.Attribution
-                .Where(row => !configuredAttributionOnly || !string.IsNullOrWhiteSpace(row.Effective) && !string.Equals(row.Effective, "Not configured", StringComparison.OrdinalIgnoreCase))
-                .ToArray()
-            : Array.Empty<PolicyAttribution>();
-
-        var scanned = attributionRows.Length;
-        IReadOnlyList<PolicyAttribution> projectedRows = scanned > maxResults
-            ? attributionRows.Take(maxResults).ToArray()
-            : attributionRows;
-        var truncated = scanned > projectedRows.Count;
-
-        var result = new AdLegacyCveExposureResult(
-            DomainName: domainName,
-            IncludeAttribution: includeAttribution,
-            ConfiguredAttributionOnly: configuredAttributionOnly,
-            Scanned: scanned,
-            Truncated: truncated,
-            SmbSigningWeak: view.Smb.ServerSigningRequired != true || view.Smb.ClientSigningRequired != true,
-            Smb1Enabled: view.Smb.Smb1Disabled == false,
-            NetlogonMissingKeys: view.Netlogon.MissingKeys > 0,
-            NetlogonRefuseComputerPasswordChange: view.Netlogon.RefuseComputerPasswordChange,
-            Smb: view.Smb,
-            Netlogon: view.Netlogon,
-            Kerberos: view.Kerberos,
-            Attribution: projectedRows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return ExecutePolicyAttributionTool(
             arguments: arguments,
-            model: result,
-            sourceRows: projectedRows,
-            viewRowsPath: "attribution_view",
+            cancellationToken: cancellationToken,
             title: "Active Directory: Legacy CVE Exposure Posture (preview)",
+            defaultErrorMessage: "Legacy CVE exposure query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                meta.Add("domain_name", domainName);
-                meta.Add("include_attribution", includeAttribution);
-                meta.Add("configured_attribution_only", configuredAttributionOnly);
-                meta.Add("max_results", maxResults);
-            }));
+            query: static domainName => LegacyCveExposureService.Get(domainName),
+            attributionSelector: static view => view.Attribution,
+            resultFactory: static (request, view, scanned, truncated, rows) => new AdLegacyCveExposureResult(
+                DomainName: request.DomainName,
+                IncludeAttribution: request.IncludeAttribution,
+                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                Scanned: scanned,
+                Truncated: truncated,
+                SmbSigningWeak: view.Smb.ServerSigningRequired != true || view.Smb.ClientSigningRequired != true,
+                Smb1Enabled: view.Smb.Smb1Disabled == false,
+                NetlogonMissingKeys: view.Netlogon.MissingKeys > 0,
+                NetlogonRefuseComputerPasswordChange: view.Netlogon.RefuseComputerPasswordChange,
+                Smb: view.Smb,
+                Netlogon: view.Netlogon,
+                Kerberos: view.Kerberos,
+                Attribution: rows)
+            );
     }
 }
+

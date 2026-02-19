@@ -53,33 +53,30 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
         }
 
         var includeCompliant = ToolArgs.GetBoolean(arguments, "include_compliant", defaultValue: false);
         var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
-        var view = GpoPermissionReadService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO read-permission baseline query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
+        if (!TryExecuteCollectionQuery(
+                query: () => GpoPermissionReadService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos),
+                collectionSucceededSelector: static view => view.CollectionSucceeded,
+                collectionErrorSelector: static view => view.CollectionError,
+                result: out var view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "GPO read-permission baseline query failed.")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
             .Where(row => !denyOnly || row.HasAuthenticatedUsersDeny)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<GpoPermissionReadRow> projectedRows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdGpoPermissionReadResult(
             DomainName: domainName,
@@ -103,11 +100,10 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 meta.Add("include_compliant", includeCompliant);
                 meta.Add("deny_only", denyOnly);
                 meta.Add("max_gpos", maxGpos);
-                meta.Add("max_results", maxResults);
             }));
     }
 }

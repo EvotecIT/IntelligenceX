@@ -87,7 +87,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
         var query = (arguments?.GetString("query") ?? string.Empty).Trim();
         var logHint = (arguments?.GetString("log_name") ?? string.Empty).Trim();
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", MaxDefaultResults, 1, MaxMaxResults);
+        var maxResults = ResolveMaxResults(arguments, MaxDefaultResults, maxInclusive: MaxMaxResults);
         var maxDepth = Options.EvtxFindMaxDepth;
         var maxDirsScanned = Options.EvtxFindMaxDirsScanned;
         var maxFilesScanned = Options.EvtxFindMaxFilesScanned;

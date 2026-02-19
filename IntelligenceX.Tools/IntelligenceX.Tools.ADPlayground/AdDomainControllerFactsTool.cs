@@ -79,7 +79,7 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
         var onlyGlobalCatalog = ToolArgs.GetBoolean(arguments, "only_global_catalog", defaultValue: false);
         var onlyRodc = ToolArgs.GetBoolean(arguments, "only_rodc", defaultValue: false);
         var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 3000, 300, 60000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -130,11 +130,7 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
             errors: errors,
             cancellationToken: cancellationToken);
 
-        var scanned = rows.Count;
-        IReadOnlyList<DomainControllerFactRow> projectedRows = scanned > maxResults
-            ? rows.Take(maxResults).ToArray()
-            : rows;
-        var truncated = scanned > projectedRows.Count;
+        var projectedRows = CapRows(rows, maxResults, out var scanned, out var truncated);
 
         var result = new AdDomainControllerFactsResult(
             DomainName: domainName,
@@ -164,14 +160,10 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
                 meta.Add("only_global_catalog", onlyGlobalCatalog);
                 meta.Add("only_rodc", onlyRodc);
                 meta.Add("additional_attributes_count", additionalAttributes.Count);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

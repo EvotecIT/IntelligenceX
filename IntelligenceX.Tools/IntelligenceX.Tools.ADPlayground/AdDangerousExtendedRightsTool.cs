@@ -72,7 +72,7 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeFindings = ToolArgs.GetBoolean(arguments, "include_findings", defaultValue: true);
         var maxFindingsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_findings_per_domain", 200, 1, Options.MaxResults);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -137,14 +137,10 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
             metaMutate: meta => {
                 meta.Add("include_findings", includeFindings);
                 meta.Add("max_findings_per_domain", maxFindingsPerDomain);
-                meta.Add("max_results", maxResults);
+                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                if (!string.IsNullOrWhiteSpace(domainName)) {
-                    meta.Add("domain_name", domainName);
-                }
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
-                }
+                AddDomainAndForestMeta(meta, domainName, forestName);
             }));
     }
 }
+

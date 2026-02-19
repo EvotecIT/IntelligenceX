@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -14,39 +12,21 @@ public static class ToolRegistryReviewerSetupExtensions {
     /// Returns the tool names registered by <see cref="RegisterReviewerSetupPack"/>.
     /// </summary>
     public static IReadOnlyList<string> GetRegisteredToolNames(ReviewerSetupToolOptions options) {
-        if (options is null) {
-            throw new ArgumentNullException(nameof(options));
-        }
-
-        return CreateTools(options).Select(static tool => tool.Definition.Name).ToArray();
+        return ToolPackRegistry.GetRegisteredToolNames(options, CreateTools);
     }
 
     /// <summary>
     /// Returns tool catalog metadata for tools registered by <see cref="RegisterReviewerSetupPack"/>.
     /// </summary>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(ReviewerSetupToolOptions options) {
-        if (options is null) {
-            throw new ArgumentNullException(nameof(options));
-        }
-
-        return ToolPackGuidance.CatalogFromTools(CreateTools(options));
+        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
     }
 
     /// <summary>
     /// Registers all reviewer setup tools into the provided registry.
     /// </summary>
     public static ToolRegistry RegisterReviewerSetupPack(this ToolRegistry registry, ReviewerSetupToolOptions options) {
-        if (registry is null) {
-            throw new ArgumentNullException(nameof(registry));
-        }
-        if (options is null) {
-            throw new ArgumentNullException(nameof(options));
-        }
-
-        foreach (var tool in CreateTools(options)) {
-            registry.Register(tool);
-        }
-        return registry;
+        return ToolPackRegistry.RegisterPack(registry, options, CreateTools);
     }
 
     private static IEnumerable<ITool> CreateTools(ReviewerSetupToolOptions options) {

@@ -190,25 +190,18 @@ public sealed class ToolRegistry {
                 ToolWriteGovernanceRequest request = CreateGovernanceRequest(arguments, contract);
 
                 if (contract.RequireExplicitConfirmation && !contract.HasExplicitConfirmation(arguments)) {
-                    ToolWriteGovernanceResult denied = new() {
-                        IsAuthorized = false,
-                        ErrorCode = ToolWriteGovernanceErrorCodes.WriteConfirmationRequired,
-                        Error = $"Tool '{_definition.Name}' requires explicit write confirmation via '{contract.ConfirmationArgumentName}=true'.",
-                        Hints = new[] {
+                    ToolWriteGovernanceResult denied = CreateDeniedResult(
+                        request: request,
+                        errorCode: ToolWriteGovernanceErrorCodes.WriteConfirmationRequired,
+                        error: $"Tool '{_definition.Name}' requires explicit write confirmation via '{contract.ConfirmationArgumentName}=true'.",
+                        hints: new[] {
                             $"Set {contract.ConfirmationArgumentName}=true to confirm write intent.",
                             "Provide governance metadata for immutable audit and rollback tracking."
                         },
-                        MissingRequirements = new[] { contract.ConfirmationArgumentName },
-                        IsTransient = false,
-                        ExecutionId = request.ExecutionId,
-                        AuditCorrelationId = request.AuditCorrelationId
-                    };
-                    ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, denied);
-                    if (appendFailure is not null) {
-                        return CreateGovernanceErrorOutput(
-                            appendFailure,
-                            ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
-                            $"Write governance audit append failed for tool '{_definition.Name}'.");
+                        missingRequirements: new[] { contract.ConfirmationArgumentName });
+                    string? appendFailureOutput = TryCreateAuditAppendFailureOutput(request, denied);
+                    if (appendFailureOutput is not null) {
+                        return appendFailureOutput;
                     }
 
                     return CreateGovernanceErrorOutput(
@@ -219,19 +212,15 @@ public sealed class ToolRegistry {
 
                 if (contract.RequiresGovernanceAuthorization) {
                     if (_owner.RequireWriteAuditSinkForWriteOperations && _owner.WriteAuditSink is null) {
-                        ToolWriteGovernanceResult denied = new() {
-                            IsAuthorized = false,
-                            ErrorCode = ToolWriteGovernanceErrorCodes.WriteAuditSinkRequired,
-                            Error = $"Tool '{_definition.Name}' requires a configured write audit sink for write operations.",
-                            Hints = new[] {
+                        ToolWriteGovernanceResult denied = CreateDeniedResult(
+                            request: request,
+                            errorCode: ToolWriteGovernanceErrorCodes.WriteAuditSinkRequired,
+                            error: $"Tool '{_definition.Name}' requires a configured write audit sink for write operations.",
+                            hints: new[] {
                                 "Configure ToolRegistry.WriteAuditSink.",
                                 $"Required contract: {contract.GovernanceContractId}."
                             },
-                            MissingRequirements = new[] { "write_audit_sink" },
-                            IsTransient = false,
-                            ExecutionId = request.ExecutionId,
-                            AuditCorrelationId = request.AuditCorrelationId
-                        };
+                            missingRequirements: new[] { "write_audit_sink" });
                         return CreateGovernanceErrorOutput(
                             denied,
                             ToolWriteGovernanceErrorCodes.WriteAuditSinkRequired,
@@ -240,25 +229,18 @@ public sealed class ToolRegistry {
 
                     if (_owner.WriteGovernanceRuntime is null) {
                         if (_owner.RequireWriteGovernanceRuntime) {
-                            ToolWriteGovernanceResult denied = new() {
-                                IsAuthorized = false,
-                                ErrorCode = ToolWriteGovernanceErrorCodes.WriteGovernanceRuntimeRequired,
-                                Error = $"Tool '{_definition.Name}' requires a configured write governance runtime.",
-                                Hints = new[] {
+                            ToolWriteGovernanceResult denied = CreateDeniedResult(
+                                request: request,
+                                errorCode: ToolWriteGovernanceErrorCodes.WriteGovernanceRuntimeRequired,
+                                error: $"Tool '{_definition.Name}' requires a configured write governance runtime.",
+                                hints: new[] {
                                     "Configure ToolRegistry.WriteGovernanceRuntime.",
                                     $"Required contract: {contract.GovernanceContractId}."
                                 },
-                                MissingRequirements = new[] { "write_governance_runtime" },
-                                IsTransient = false,
-                                ExecutionId = request.ExecutionId,
-                                AuditCorrelationId = request.AuditCorrelationId
-                            };
-                            ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, denied);
-                            if (appendFailure is not null) {
-                                return CreateGovernanceErrorOutput(
-                                    appendFailure,
-                                    ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
-                                    $"Write governance audit append failed for tool '{_definition.Name}'.");
+                                missingRequirements: new[] { "write_governance_runtime" });
+                            string? appendFailureOutput = TryCreateAuditAppendFailureOutput(request, denied);
+                            if (appendFailureOutput is not null) {
+                                return appendFailureOutput;
                             }
 
                             return CreateGovernanceErrorOutput(
@@ -269,12 +251,9 @@ public sealed class ToolRegistry {
                     } else {
                         ToolWriteGovernanceResult authorization = _owner.WriteGovernanceRuntime.Authorize(request);
                         ToolWriteGovernanceResult normalizedAuthorization = NormalizeDeniedAuthorizationResult(authorization);
-                        ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, normalizedAuthorization);
-                        if (appendFailure is not null) {
-                            return CreateGovernanceErrorOutput(
-                                appendFailure,
-                                ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
-                                $"Write governance audit append failed for tool '{_definition.Name}'.");
+                        string? appendFailureOutput = TryCreateAuditAppendFailureOutput(request, normalizedAuthorization);
+                        if (appendFailureOutput is not null) {
+                            return appendFailureOutput;
                         }
 
                         if (!normalizedAuthorization.IsAuthorized) {
@@ -288,6 +267,39 @@ public sealed class ToolRegistry {
             }
 
             return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+        }
+
+        private ToolWriteGovernanceResult CreateDeniedResult(
+            ToolWriteGovernanceRequest request,
+            string errorCode,
+            string error,
+            IReadOnlyList<string>? hints = null,
+            IReadOnlyList<string>? missingRequirements = null,
+            bool isTransient = false) {
+            return new ToolWriteGovernanceResult {
+                IsAuthorized = false,
+                ErrorCode = errorCode ?? string.Empty,
+                Error = error ?? string.Empty,
+                Hints = hints ?? Array.Empty<string>(),
+                MissingRequirements = missingRequirements ?? Array.Empty<string>(),
+                IsTransient = isTransient,
+                ExecutionId = request.ExecutionId,
+                AuditCorrelationId = request.AuditCorrelationId
+            };
+        }
+
+        private string? TryCreateAuditAppendFailureOutput(
+            ToolWriteGovernanceRequest request,
+            ToolWriteGovernanceResult authorization) {
+            ToolWriteGovernanceResult? appendFailure = AppendWriteAuditRecord(request, authorization);
+            if (appendFailure is null) {
+                return null;
+            }
+
+            return CreateGovernanceErrorOutput(
+                appendFailure,
+                ToolWriteGovernanceErrorCodes.WriteAuditAppendFailed,
+                $"Write governance audit append failed for tool '{_definition.Name}'.");
         }
 
         private ToolWriteGovernanceRequest CreateGovernanceRequest(

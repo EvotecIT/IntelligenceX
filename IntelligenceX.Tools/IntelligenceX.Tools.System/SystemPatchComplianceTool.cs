@@ -96,12 +96,13 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!OperatingSystem.IsWindows()) {
-            return ToolResponse.Error("not_supported", "system_patch_compliance is available only on Windows hosts.");
+        var windowsError = ValidateWindowsSupport("system_patch_compliance");
+        if (windowsError is not null) {
+            return windowsError;
         }
 
         var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = string.IsNullOrWhiteSpace(computerName) ? Environment.MachineName : computerName!;
+        var target = ResolveTargetComputerName(computerName);
         var includePendingLocal = ToolArgs.GetBoolean(arguments, "include_pending_local", defaultValue: false);
         var missingOnly = ToolArgs.GetBoolean(arguments, "missing_only", defaultValue: false);
 
@@ -125,7 +126,7 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
         var publiclyDisclosedOnly = ToolArgs.GetBoolean(arguments, "publicly_disclosed_only", defaultValue: false);
         var cveContains = ToolArgs.GetOptionalTrimmed(arguments, "cve_contains");
         var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveMaxResults(arguments);
 
         var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
             year: year,
@@ -247,10 +248,9 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("computer_name", target);
-                meta.Add("max_results", maxResults);
-                meta.Add("include_pending_local", includePendingLocal);
-                meta.Add("pending_included", pendingIncluded);
+                AddComputerNameMeta(meta, target);
+                AddMaxResultsMeta(meta, maxResults);
+                AddPendingLocalMeta(meta, includePendingLocal, pendingIncluded);
                 AddPatchFilterMeta(
                     meta: meta,
                     year: year,

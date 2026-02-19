@@ -55,9 +55,8 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "domain_name is required."));
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out var argumentError)) {
+            return Task.FromResult(argumentError!);
         }
 
         var permission = ToolArgs.GetOptionalTrimmed(arguments, "permission");
@@ -72,14 +71,16 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
         var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
         var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
         var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 100000, 1, 1000000);
-        var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxResults, 1, Options.MaxResults);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
-        var view = GpoPermissionRootService.Get(domainName, maxRows: maxRows);
-        if (!view.CollectionSucceeded) {
-            var message = string.IsNullOrWhiteSpace(view.CollectionError)
-                ? "GPO root-permission query failed."
-                : view.CollectionError!;
-            return Task.FromResult(ToolResponse.Error("query_failed", message));
+        if (!TryExecuteCollectionQuery(
+                query: () => GpoPermissionRootService.Get(domainName, maxRows: maxRows),
+                collectionSucceededSelector: static view => view.CollectionSucceeded,
+                collectionErrorSelector: static view => view.CollectionError,
+                result: out var view,
+                errorResponse: out var errorResponse,
+                defaultErrorMessage: "GPO root-permission query failed.")) {
+            return Task.FromResult(errorResponse!);
         }
 
         var filtered = view.Items
@@ -88,11 +89,7 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
             .Where(row => !inheritedOnly || row.Inherited)
             .ToArray();
 
-        var scanned = filtered.Length;
-        IReadOnlyList<GpoPermissionRootRow> rows = scanned > maxResults
-            ? filtered.Take(maxResults).ToArray()
-            : filtered;
-        var truncated = scanned > rows.Count;
+        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
 
         var result = new AdGpoPermissionRootResult(
             DomainName: domainName,
@@ -117,11 +114,10 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("domain_name", domainName);
+                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
                 meta.Add("deny_only", denyOnly);
                 meta.Add("inherited_only", inheritedOnly);
                 meta.Add("max_rows", maxRows);
-                meta.Add("max_results", maxResults);
                 if (!string.IsNullOrWhiteSpace(permission)) {
                     meta.Add("permission", permission);
                 }
