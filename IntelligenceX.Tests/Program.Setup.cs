@@ -821,6 +821,36 @@ jobs:
         AssertContainsText(content, "diagnostics:", "workflow explicit-secrets diagnostics input");
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
+        AssertContainsText(content, "INTELLIGENCEX_AUTH_B64:", "workflow explicit-secrets includes auth bundle mapping");
+        AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_KEY:", StringComparison.Ordinal),
+            "workflow explicit-secrets does not pass undeclared auth key");
+    }
+
+    private static void TestSetupWorkflowTemplateNonExplicitSecretsUsesInheritMode() {
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      provider: openai
+      model: gpt-5.3-codex
+""";
+
+        var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(new[] {
+            "--explicit-secrets", "false"
+        }, seed);
+
+        AssertContainsText(content, "secrets: inherit", "workflow non-explicit secrets inherit");
+        AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_B64:", StringComparison.Ordinal),
+            "workflow non-explicit secrets no explicit auth mapping");
+        AssertEqual(false, content.Contains("INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY:", StringComparison.Ordinal),
+            "workflow non-explicit secrets no explicit app key mapping");
     }
 
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
