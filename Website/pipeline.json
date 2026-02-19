@@ -168,7 +168,7 @@
       "noVerify": true,
       "baseline": "./.powerforge/audit-baseline.json",
       "failOnNewIssues": true,
-      "maxTotalFiles": 1120,
+      "maxTotalFiles": 1130,
       "ignoreNav": "sitemap/**,search/**",
       "noDefaultIgnoreNav": true,
       "navSelector": "header nav.ix-nav",
