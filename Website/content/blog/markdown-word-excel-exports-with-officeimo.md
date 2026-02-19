@@ -37,7 +37,7 @@ When you export a transcript:
 
 ### Real transcript markdown (snippet)
 
-```markdown
+```
 ### User (10:16:28)
 can you give me table
 
@@ -68,17 +68,8 @@ This gives fast in-app triage with DataTables plus durable artifacts for reporti
 ### Chat message with table and Data View action
 ![Chat transcript showing replication table and Open Data View action](/assets/screenshots/markdown-office-export/chat-table-dataview-button.png)
 
-### Assistant Data View modal
-![Assistant Data View modal with searchable table and export buttons](/assets/screenshots/markdown-office-export/dataview-modal-table.png)
-
 ### Transcript exported to Word from Markdown
 ![Word document showing transcript export with headings and lists](/assets/screenshots/markdown-office-export/word-transcript-page-1.png)
-
-### Transcript table section in Word
-![Word document section showing the exported markdown table](/assets/screenshots/markdown-office-export/word-transcript-page-2.png)
-
-### Data View exported to Word
-![Word document showing Data View table export](/assets/screenshots/markdown-office-export/word-dataview-export.png)
 
 ### Data View exported to Excel
 ![Excel workbook showing Data View table export](/assets/screenshots/markdown-office-export/excel-dataview-export.png)

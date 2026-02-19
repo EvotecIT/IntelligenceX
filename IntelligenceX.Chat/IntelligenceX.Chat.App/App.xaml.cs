@@ -98,12 +98,16 @@ public sealed class App : Application {
         var timer = dispatcher.CreateTimer();
         timer.Interval = TimeSpan.FromMilliseconds(160);
         timer.IsRepeating = true;
-        timer.Tick += (_, _) => {
+
+        void OnTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object _) {
             attempt++;
             if (TryBringToForeground(window, attempt) || attempt >= 5) {
-                timer.Stop();
+                sender.Stop();
+                sender.Tick -= OnTick;
             }
-        };
+        }
+
+        timer.Tick += OnTick;
         timer.Start();
     }
 
@@ -122,16 +126,31 @@ public sealed class App : Application {
             }
 
             // Topmost flip nudges z-order without leaving the window always-on-top.
-            _ = SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
-            _ = SetWindowPos(handle, HwndNoTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow);
-            _ = SetForegroundWindow(handle);
+            LogSetWindowPosFailureIfAny(
+                SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate),
+                "topmost",
+                attempt);
+            LogSetWindowPosFailureIfAny(
+                SetWindowPos(handle, HwndNoTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow),
+                "notopmost",
+                attempt);
+            var foregroundRequestOk = SetForegroundWindow(handle);
 
             var active = GetForegroundWindow() == handle;
-            StartupLog.Write("Window foreground request attempt=" + attempt + " active=" + active);
+            StartupLog.Write("Window foreground request attempt=" + attempt + " requested=" + foregroundRequestOk + " active=" + active);
             return active;
         } catch (Exception ex) {
-            StartupLog.Write("Window foreground request failed: " + ex.Message);
+            StartupLog.Write("Window foreground request failed: " + ex.GetType().Name + ": " + ex.Message);
             return false;
         }
+    }
+
+    private static void LogSetWindowPosFailureIfAny(bool result, string stage, int attempt) {
+        if (result) {
+            return;
+        }
+
+        var error = Marshal.GetLastWin32Error();
+        StartupLog.Write("SetWindowPos failed stage=" + stage + " attempt=" + attempt + " error=" + error);
     }
 }
