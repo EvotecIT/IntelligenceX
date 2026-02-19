@@ -26,12 +26,7 @@ Project Ops is assistive automation, not autonomous production governance.
 
 Issue Ops creates a maintainer-focused board view for stale/no-longer-applicable blockers:
 
-<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg"
-     alt="Issue Ops project board overview with issue review action and confidence fields visible for infra blocker triage"
-     width="1600"
-     height="900"
-     loading="lazy"
-     decoding="async" />
+![Issue Ops project board overview with issue review action and confidence fields visible for infra blocker triage](/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg)
 
 Key decision fields are synced directly to project rows:
 
@@ -40,12 +35,7 @@ Key decision fields are synced directly to project rows:
 - `Matched Pull Request`
 - `Signal Quality`
 
-<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg"
-     alt="Issue Ops table detail with action confidence and matched pull request columns used during issue applicability review"
-     width="1600"
-     height="900"
-     loading="lazy"
-     decoding="async" />
+![Issue Ops table detail with action confidence and matched pull request columns used during issue applicability review](/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg)
 
 ## Recommended start
 
