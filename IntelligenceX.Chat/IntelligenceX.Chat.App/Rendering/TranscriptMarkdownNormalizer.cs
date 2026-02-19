@@ -281,6 +281,10 @@ internal static class TranscriptMarkdownNormalizer {
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var value = ZeroWidthWhitespaceRegex.Replace(segment, string.Empty);
+            if (RequiresStreamingFullTypographyNormalization(value)) {
+                return NormalizeForRendering(value);
+            }
+
             value = LineStartUnicodeDashBulletRegex.Replace(value, "${indent}-");
             value = LineStartMissingSpaceBeforeBoldBulletRegex.Replace(value, "${indent}- ");
             value = LineStartHostLabelBulletRegex.Replace(value, "${indent}- ");
@@ -445,6 +449,23 @@ internal static class TranscriptMarkdownNormalizer {
 
         var trimmed = line.TrimStart();
         return !StructuralMarkdownLineRegex.IsMatch(trimmed);
+    }
+
+    private static bool RequiresStreamingFullTypographyNormalization(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return false;
+        }
+
+        return text.Contains("****", StringComparison.Ordinal)
+               || text.Contains("->**", StringComparison.Ordinal)
+               || text.Contains("-> **Why it matters:**", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("-> **Action:**", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("-> **Next action:**", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("-> **Fix action:**", StringComparison.OrdinalIgnoreCase)
+               || text.IndexOf("why it matters:", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("action:", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("next action:", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("fix action:", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string FlattenNestedStrongOutsideInlineCode(string body) {
