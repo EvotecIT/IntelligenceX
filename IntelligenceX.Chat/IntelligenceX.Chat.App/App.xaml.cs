@@ -105,14 +105,24 @@ public sealed class App : Application {
         timer.Interval = TimeSpan.FromMilliseconds(ForegroundRetryIntervalMs);
         timer.IsRepeating = true;
 
+        void CleanupTimer() {
+            timer.Stop();
+            timer.Tick -= OnTick;
+            window.Closed -= OnWindowClosed;
+        }
+
+        void OnWindowClosed(object sender, WindowEventArgs args) {
+            CleanupTimer();
+        }
+
         void OnTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object _) {
             attempt++;
             if (attempt >= ForegroundRetryMaxAttempts || TryBringToForeground(window, attempt)) {
-                sender.Stop();
-                sender.Tick -= OnTick;
+                CleanupTimer();
             }
         }
 
+        window.Closed += OnWindowClosed;
         timer.Tick += OnTick;
         timer.Start();
     }
@@ -124,9 +134,11 @@ public sealed class App : Application {
                 return false;
             }
 
-            _ = ShowWindow(handle, SwShow);
+            var showRequestOk = ShowWindow(handle, SwShow);
+            LogWin32CallFailureIfAny(showRequestOk, "ShowWindow(SW_SHOW)", attempt);
             if (IsIconic(handle)) {
-                _ = ShowWindow(handle, SwRestore);
+                var restoreRequestOk = ShowWindow(handle, SwRestore);
+                LogWin32CallFailureIfAny(restoreRequestOk, "ShowWindow(SW_RESTORE)", attempt);
             }
 
             // Topmost flip nudges z-order without leaving the window always-on-top.
@@ -163,6 +175,19 @@ public sealed class App : Application {
 
         var error = Marshal.GetLastWin32Error();
         StartupLog.Write("SetWindowPos failed stage=" + stage + " attempt=" + attempt + " error=" + error);
+    }
+
+    private static void LogWin32CallFailureIfAny(bool result, string apiName, int attempt) {
+        if (result) {
+            return;
+        }
+
+        var error = Marshal.GetLastWin32Error();
+        if (error == 0) {
+            return;
+        }
+
+        StartupLog.Write(apiName + " failed attempt=" + attempt + " error=" + error);
     }
 
     private static bool TryGetWindowHandle(Window window, int attempt, out IntPtr handle) {
