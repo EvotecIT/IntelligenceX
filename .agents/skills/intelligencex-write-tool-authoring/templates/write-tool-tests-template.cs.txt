@@ -1,0 +1,62 @@
+using System.Text.Json;
+using System.Threading.Tasks;
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using Xunit;
+
+namespace __TEST_NAMESPACE__;
+
+public sealed class __TOOL_CLASS_NAME__Tests {
+    [Fact]
+    public void Definition_ShouldExposeWriteGovernanceMetadataArguments() {
+        var tool = new __TOOL_CLASS_NAME__();
+        var schema = Assert.IsType<JsonObject>(tool.Definition.Parameters);
+        var properties = Assert.IsType<JsonObject>(schema["properties"]);
+
+        Assert.NotNull(properties["write_execution_id"]);
+        Assert.NotNull(properties["write_actor_id"]);
+        Assert.NotNull(properties["write_change_reason"]);
+        Assert.NotNull(properties["write_rollback_plan_id"]);
+        Assert.NotNull(properties["write_rollback_provider_id"]);
+        Assert.NotNull(properties["write_audit_correlation_id"]);
+    }
+
+    [Fact]
+    public void WriteGovernanceContract_ShouldDeclareApplyIntent() {
+        var tool = new __TOOL_CLASS_NAME__();
+        var contract = tool.GetWriteGovernanceContract();
+        Assert.NotNull(contract);
+        Assert.True(contract!.MutatingArgumentNames.Contains("apply"));
+    }
+
+    [Fact]
+    public void AuthenticationContract_ShouldDeclareProbeSupport() {
+        var tool = new __TOOL_CLASS_NAME__();
+        var contract = tool.GetAuthenticationContract();
+        Assert.NotNull(contract);
+        Assert.True(contract!.SupportsConnectivityProbe);
+        Assert.Equal("__PROBE_TOOL_NAME__", contract.ProbeToolName);
+    }
+
+    [Fact]
+    public async Task Invoke_WhenDryRun_ShouldReturnWriteEnvelopeWithDryRunMode() {
+        var tool = new __TOOL_CLASS_NAME__();
+        var json = await tool.InvokeAsync(new JsonObject().Add("apply", false));
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("dry-run", root.GetProperty("mode").GetString());
+    }
+
+    [Fact]
+    public async Task Invoke_WhenApply_ShouldReturnWriteEnvelopeWithApplyMode() {
+        var tool = new __TOOL_CLASS_NAME__();
+        var json = await tool.InvokeAsync(new JsonObject().Add("apply", true));
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("apply", root.GetProperty("mode").GetString());
+    }
+}

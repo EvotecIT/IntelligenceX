@@ -14,6 +14,10 @@ namespace IntelligenceX.Chat.Profiles;
 /// SQLite-backed profile store (file-based).
 /// </summary>
 internal sealed class SqliteServiceProfileStore : IServiceProfileStore, IDisposable {
+    private const string DefaultWriteGovernanceMode = "enforced";
+    private const string DefaultWriteAuditSinkMode = "none";
+    private const string DefaultAuthenticationRuntimePreset = "default";
+
     private const string ProfileTable = "ix_service_profiles";
     private const string AllowedRootsTable = "ix_service_profile_allowed_roots";
     private const string PluginPathsTable = "ix_service_profile_plugin_paths";
@@ -118,8 +122,8 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
 
     private bool HasLegacyJsonSchema() {
         try {
-            var result = _db.Query(_dbPath, $"PRAGMA table_info('{ProfileTable}')");
-            if (result is not DataTable dt || dt.Rows.Count == 0) {
+            var dt = QueryAsTable(_db.Query(_dbPath, $"PRAGMA table_info('{ProfileTable}')"));
+            if (dt is null || dt.Rows.Count == 0) {
                 return false;
             }
 
@@ -141,8 +145,8 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         }
 
         try {
-            var result = _db.Query(_dbPath, $"PRAGMA table_info('{tableName}')");
-            if (result is not DataTable dt || dt.Rows.Count == 0) {
+            var dt = QueryAsTable(_db.Query(_dbPath, $"PRAGMA table_info('{tableName}')"));
+            if (dt is null || dt.Rows.Count == 0) {
                 return;
             }
 
@@ -166,7 +170,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         }
 
         var trimmed = name.Trim();
-        var row = _db.Query(
+        var row = QueryAsTable(_db.Query(
             _dbPath,
             $@"
 SELECT
@@ -209,7 +213,7 @@ SELECT
 FROM {ProfileTable}
 WHERE name = @name
 LIMIT 1;",
-            parameters: new Dictionary<string, object?> { ["@name"] = trimmed }) as DataTable;
+            parameters: new Dictionary<string, object?> { ["@name"] = trimmed }));
 
         if (row is null || row.Rows.Count == 0) {
             return Task.FromResult<ServiceProfile?>(null);
@@ -259,15 +263,15 @@ LIMIT 1;",
             EnableTestimoXPack = ReadBool(r, "enable_testimox_pack", defaultValue: true),
             EnableOfficeImoPack = ReadBool(r, "enable_officeimo_pack", defaultValue: true),
             EnableDefaultPluginPaths = ReadBool(r, "enable_default_plugin_paths", defaultValue: true),
-            WriteGovernanceMode = ReadString(r, "write_governance_mode") ?? "enforced",
+            WriteGovernanceMode = NormalizeWriteGovernanceMode(ReadString(r, "write_governance_mode")),
             RequireWriteGovernanceRuntime = ReadBool(r, "require_write_governance_runtime", defaultValue: true),
             RequireWriteAuditSinkForWriteOperations = ReadBool(r, "require_write_audit_sink", defaultValue: false),
-            WriteAuditSinkMode = ReadString(r, "write_audit_sink_mode") ?? "none",
-            WriteAuditSinkPath = ReadString(r, "write_audit_sink_path"),
-            AuthenticationRuntimePreset = ReadString(r, "authentication_runtime_preset") ?? "default",
+            WriteAuditSinkMode = NormalizeWriteAuditSinkMode(ReadString(r, "write_audit_sink_mode")),
+            WriteAuditSinkPath = NormalizeOptionalPath(ReadString(r, "write_audit_sink_path")),
+            AuthenticationRuntimePreset = NormalizeAuthenticationRuntimePreset(ReadString(r, "authentication_runtime_preset")),
             RequireAuthenticationRuntime = ReadBool(r, "require_authentication_runtime", defaultValue: false),
-            RunAsProfilePath = ReadString(r, "run_as_profile_path"),
-            AuthenticationProfilePath = ReadString(r, "authentication_profile_path")
+            RunAsProfilePath = NormalizeOptionalPath(ReadString(r, "run_as_profile_path")),
+            AuthenticationProfilePath = NormalizeOptionalPath(ReadString(r, "authentication_profile_path"))
         };
 
         profile.AllowedRoots = ReadOrderedList(trimmed, AllowedRootsTable);
@@ -286,13 +290,10 @@ LIMIT 1;",
         var transportKind = SerializeTransport(profile.OpenAITransport);
         var apiKeyBytes = string.IsNullOrWhiteSpace(profile.OpenAIApiKey) ? null : DpapiSecretProtector.ProtectString(profile.OpenAIApiKey!.Trim());
 
-        // Keep writes atomic and deterministic: overwrite the scalar row and replace list rows.
-        _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
-        try {
-            _db.ExecuteNonQuery(
-                _dbPath,
-                $@"
-INSERT INTO {ProfileTable} (
+        _db.ExecuteNonQuery(
+            _dbPath,
+            $@"
+INSERT OR REPLACE INTO {ProfileTable} (
   name, model, transport_kind, openai_base_url, openai_api_key, openai_streaming,
   openai_allow_insecure_http, openai_allow_insecure_http_non_loopback,
   reasoning_effort, reasoning_summary, text_verbosity, temperature,
@@ -319,99 +320,51 @@ VALUES (
   @write_audit_sink_mode, @write_audit_sink_path,
   @authentication_runtime_preset, @require_authentication_runtime, @run_as_profile_path, @authentication_profile_path,
   @updated_utc
-)
-ON CONFLICT(name) DO UPDATE SET
-  model = excluded.model,
-  transport_kind = excluded.transport_kind,
-  openai_base_url = excluded.openai_base_url,
-  openai_api_key = excluded.openai_api_key,
-  openai_streaming = excluded.openai_streaming,
-  openai_allow_insecure_http = excluded.openai_allow_insecure_http,
-  openai_allow_insecure_http_non_loopback = excluded.openai_allow_insecure_http_non_loopback,
-  reasoning_effort = excluded.reasoning_effort,
-  reasoning_summary = excluded.reasoning_summary,
-  text_verbosity = excluded.text_verbosity,
-  temperature = excluded.temperature,
-  max_tool_rounds = excluded.max_tool_rounds,
-  parallel_tools = excluded.parallel_tools,
-  turn_timeout_seconds = excluded.turn_timeout_seconds,
-  tool_timeout_seconds = excluded.tool_timeout_seconds,
-  instructions_file = excluded.instructions_file,
-  max_table_rows = excluded.max_table_rows,
-  max_sample = excluded.max_sample,
-  redact = excluded.redact,
-  ad_domain_controller = excluded.ad_domain_controller,
-  ad_default_search_base_dn = excluded.ad_default_search_base_dn,
-  ad_max_results = excluded.ad_max_results,
-  enable_powershell_pack = excluded.enable_powershell_pack,
-  powershell_allow_write = excluded.powershell_allow_write,
-  enable_testimox_pack = excluded.enable_testimox_pack,
-  enable_officeimo_pack = excluded.enable_officeimo_pack,
-  enable_default_plugin_paths = excluded.enable_default_plugin_paths,
-  write_governance_mode = excluded.write_governance_mode,
-  require_write_governance_runtime = excluded.require_write_governance_runtime,
-  require_write_audit_sink = excluded.require_write_audit_sink,
-  write_audit_sink_mode = excluded.write_audit_sink_mode,
-  write_audit_sink_path = excluded.write_audit_sink_path,
-  authentication_runtime_preset = excluded.authentication_runtime_preset,
-  require_authentication_runtime = excluded.require_authentication_runtime,
-  run_as_profile_path = excluded.run_as_profile_path,
-  authentication_profile_path = excluded.authentication_profile_path,
-  updated_utc = excluded.updated_utc;",
-                parameters: new Dictionary<string, object?> {
-                    ["@name"] = trimmed,
-                    ["@model"] = string.IsNullOrWhiteSpace(profile.Model) ? "gpt-5.3-codex" : profile.Model.Trim(),
-                    ["@transport_kind"] = transportKind,
-                    ["@openai_base_url"] = string.IsNullOrWhiteSpace(profile.OpenAIBaseUrl) ? null : profile.OpenAIBaseUrl.Trim(),
-                    ["@openai_api_key"] = apiKeyBytes,
-                    ["@openai_streaming"] = profile.OpenAIStreaming ? 1 : 0,
-                    ["@openai_allow_insecure_http"] = profile.OpenAIAllowInsecureHttp ? 1 : 0,
-                    ["@openai_allow_insecure_http_non_loopback"] = profile.OpenAIAllowInsecureHttpNonLoopback ? 1 : 0,
-                    // Store stable lowercase tokens; parsing uses ChatEnumParser which tolerates hyphens/underscores.
-                    ["@reasoning_effort"] = profile.ReasoningEffort.HasValue ? profile.ReasoningEffort.Value.ToString().ToLowerInvariant() : null,
-                    ["@reasoning_summary"] = profile.ReasoningSummary.HasValue ? profile.ReasoningSummary.Value.ToString().ToLowerInvariant() : null,
-                    ["@text_verbosity"] = profile.TextVerbosity.HasValue ? profile.TextVerbosity.Value.ToString().ToLowerInvariant() : null,
-                    ["@temperature"] = profile.Temperature,
-                    ["@max_tool_rounds"] = profile.MaxToolRounds,
-                    ["@parallel_tools"] = profile.ParallelTools ? 1 : 0,
-                    ["@turn_timeout_seconds"] = profile.TurnTimeoutSeconds,
-                    ["@tool_timeout_seconds"] = profile.ToolTimeoutSeconds,
-                    ["@instructions_file"] = string.IsNullOrWhiteSpace(profile.InstructionsFile) ? null : profile.InstructionsFile.Trim(),
-                    ["@max_table_rows"] = profile.MaxTableRows,
-                    ["@max_sample"] = profile.MaxSample,
-                    ["@redact"] = profile.Redact ? 1 : 0,
-                    ["@ad_domain_controller"] = string.IsNullOrWhiteSpace(profile.AdDomainController) ? null : profile.AdDomainController.Trim(),
-                    ["@ad_default_search_base_dn"] = string.IsNullOrWhiteSpace(profile.AdDefaultSearchBaseDn) ? null : profile.AdDefaultSearchBaseDn.Trim(),
-                    ["@ad_max_results"] = profile.AdMaxResults,
-                    ["@enable_powershell_pack"] = profile.EnablePowerShellPack ? 1 : 0,
-                    ["@powershell_allow_write"] = profile.PowerShellAllowWrite ? 1 : 0,
-                    ["@enable_testimox_pack"] = profile.EnableTestimoXPack ? 1 : 0,
-                    ["@enable_officeimo_pack"] = profile.EnableOfficeImoPack ? 1 : 0,
-                    ["@enable_default_plugin_paths"] = profile.EnableDefaultPluginPaths ? 1 : 0,
-                    ["@write_governance_mode"] = string.IsNullOrWhiteSpace(profile.WriteGovernanceMode) ? "enforced" : profile.WriteGovernanceMode.Trim(),
-                    ["@require_write_governance_runtime"] = profile.RequireWriteGovernanceRuntime ? 1 : 0,
-                    ["@require_write_audit_sink"] = profile.RequireWriteAuditSinkForWriteOperations ? 1 : 0,
-                    ["@write_audit_sink_mode"] = string.IsNullOrWhiteSpace(profile.WriteAuditSinkMode) ? "none" : profile.WriteAuditSinkMode.Trim(),
-                    ["@write_audit_sink_path"] = string.IsNullOrWhiteSpace(profile.WriteAuditSinkPath) ? null : profile.WriteAuditSinkPath.Trim(),
-                    ["@authentication_runtime_preset"] = string.IsNullOrWhiteSpace(profile.AuthenticationRuntimePreset) ? "default" : profile.AuthenticationRuntimePreset.Trim(),
-                    ["@require_authentication_runtime"] = profile.RequireAuthenticationRuntime ? 1 : 0,
-                    ["@run_as_profile_path"] = string.IsNullOrWhiteSpace(profile.RunAsProfilePath) ? null : profile.RunAsProfilePath.Trim(),
-                    ["@authentication_profile_path"] = string.IsNullOrWhiteSpace(profile.AuthenticationProfilePath) ? null : profile.AuthenticationProfilePath.Trim(),
-                    ["@updated_utc"] = now
-                });
+);",
+            parameters: new Dictionary<string, object?> {
+                ["@name"] = trimmed,
+                ["@model"] = string.IsNullOrWhiteSpace(profile.Model) ? "gpt-5.3-codex" : profile.Model.Trim(),
+                ["@transport_kind"] = transportKind,
+                ["@openai_base_url"] = string.IsNullOrWhiteSpace(profile.OpenAIBaseUrl) ? null : profile.OpenAIBaseUrl.Trim(),
+                ["@openai_api_key"] = apiKeyBytes,
+                ["@openai_streaming"] = profile.OpenAIStreaming ? 1 : 0,
+                ["@openai_allow_insecure_http"] = profile.OpenAIAllowInsecureHttp ? 1 : 0,
+                ["@openai_allow_insecure_http_non_loopback"] = profile.OpenAIAllowInsecureHttpNonLoopback ? 1 : 0,
+                // Store stable lowercase tokens; parsing uses ChatEnumParser which tolerates hyphens/underscores.
+                ["@reasoning_effort"] = profile.ReasoningEffort.HasValue ? profile.ReasoningEffort.Value.ToString().ToLowerInvariant() : null,
+                ["@reasoning_summary"] = profile.ReasoningSummary.HasValue ? profile.ReasoningSummary.Value.ToString().ToLowerInvariant() : null,
+                ["@text_verbosity"] = profile.TextVerbosity.HasValue ? profile.TextVerbosity.Value.ToString().ToLowerInvariant() : null,
+                ["@temperature"] = profile.Temperature,
+                ["@max_tool_rounds"] = profile.MaxToolRounds,
+                ["@parallel_tools"] = profile.ParallelTools ? 1 : 0,
+                ["@turn_timeout_seconds"] = profile.TurnTimeoutSeconds,
+                ["@tool_timeout_seconds"] = profile.ToolTimeoutSeconds,
+                ["@instructions_file"] = string.IsNullOrWhiteSpace(profile.InstructionsFile) ? null : profile.InstructionsFile.Trim(),
+                ["@max_table_rows"] = profile.MaxTableRows,
+                ["@max_sample"] = profile.MaxSample,
+                ["@redact"] = profile.Redact ? 1 : 0,
+                ["@ad_domain_controller"] = string.IsNullOrWhiteSpace(profile.AdDomainController) ? null : profile.AdDomainController.Trim(),
+                ["@ad_default_search_base_dn"] = string.IsNullOrWhiteSpace(profile.AdDefaultSearchBaseDn) ? null : profile.AdDefaultSearchBaseDn.Trim(),
+                ["@ad_max_results"] = profile.AdMaxResults,
+                ["@enable_powershell_pack"] = profile.EnablePowerShellPack ? 1 : 0,
+                ["@powershell_allow_write"] = profile.PowerShellAllowWrite ? 1 : 0,
+                ["@enable_testimox_pack"] = profile.EnableTestimoXPack ? 1 : 0,
+                ["@enable_officeimo_pack"] = profile.EnableOfficeImoPack ? 1 : 0,
+                ["@enable_default_plugin_paths"] = profile.EnableDefaultPluginPaths ? 1 : 0,
+                ["@write_governance_mode"] = NormalizeWriteGovernanceMode(profile.WriteGovernanceMode),
+                ["@require_write_governance_runtime"] = profile.RequireWriteGovernanceRuntime ? 1 : 0,
+                ["@require_write_audit_sink"] = profile.RequireWriteAuditSinkForWriteOperations ? 1 : 0,
+                ["@write_audit_sink_mode"] = NormalizeWriteAuditSinkMode(profile.WriteAuditSinkMode),
+                ["@write_audit_sink_path"] = NormalizeOptionalPath(profile.WriteAuditSinkPath),
+                ["@authentication_runtime_preset"] = NormalizeAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset),
+                ["@require_authentication_runtime"] = profile.RequireAuthenticationRuntime ? 1 : 0,
+                ["@run_as_profile_path"] = NormalizeOptionalPath(profile.RunAsProfilePath),
+                ["@authentication_profile_path"] = NormalizeOptionalPath(profile.AuthenticationProfilePath),
+                ["@updated_utc"] = now
+            });
 
-            ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots);
-            ReplaceOrderedList(trimmed, PluginPathsTable, profile.PluginPaths);
-
-            _db.ExecuteNonQuery(_dbPath, "COMMIT;");
-        } catch {
-            try {
-                _db.ExecuteNonQuery(_dbPath, "ROLLBACK;");
-            } catch {
-                // Ignore.
-            }
-            throw;
-        }
+        ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots);
+        ReplaceOrderedList(trimmed, PluginPathsTable, profile.PluginPaths);
 
         return Task.CompletedTask;
     }
@@ -420,8 +373,8 @@ ON CONFLICT(name) DO UPDATE SET
         cancellationToken.ThrowIfCancellationRequested();
 
         var list = new List<string>();
-        var result = _db.Query(_dbPath, $"SELECT name FROM {ProfileTable} ORDER BY name");
-        if (result is DataTable dt) {
+        var dt = QueryAsTable(_db.Query(_dbPath, $"SELECT name FROM {ProfileTable} ORDER BY name"));
+        if (dt is not null) {
             foreach (DataRow row in dt.Rows) {
                 var v = row[0]?.ToString();
                 if (!string.IsNullOrWhiteSpace(v)) {
@@ -434,10 +387,10 @@ ON CONFLICT(name) DO UPDATE SET
 
     private List<string> ReadOrderedList(string profileName, string tableName) {
         var list = new List<string>();
-        var result = _db.Query(
+        var result = QueryAsTable(_db.Query(
             _dbPath,
             $"SELECT path FROM {tableName} WHERE profile_name = @name ORDER BY ord",
-            parameters: new Dictionary<string, object?> { ["@name"] = profileName }) as DataTable;
+            parameters: new Dictionary<string, object?> { ["@name"] = profileName }));
 
         if (result is null || result.Rows.Count == 0) {
             return list;
@@ -535,6 +488,38 @@ ON CONFLICT(name) DO UPDATE SET
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
+    private static string NormalizeWriteGovernanceMode(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized == "yolo" ? "yolo" : DefaultWriteGovernanceMode;
+    }
+
+    private static string NormalizeWriteAuditSinkMode(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "file" => "file",
+            "fileappendonly" => "file",
+            "jsonl" => "file",
+            "sql" => "sqlite",
+            "sqlite" => "sqlite",
+            "sqliteappendonly" => "sqlite",
+            _ => DefaultWriteAuditSinkMode
+        };
+    }
+
+    private static string NormalizeAuthenticationRuntimePreset(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "strict" => "strict",
+            "lab" => "lab",
+            _ => DefaultAuthenticationRuntimePreset
+        };
+    }
+
+    private static string? NormalizeOptionalPath(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
     private static byte[]? ReadBytes(DataRow row, string col) {
         if (!row.Table.Columns.Contains(col)) {
             return null;
@@ -607,6 +592,18 @@ ON CONFLICT(name) DO UPDATE SET
             return l;
         }
         return double.TryParse(value.ToString(), out var parsed) ? parsed : null;
+    }
+
+    private static DataTable? QueryAsTable(object? queryResult) {
+        if (queryResult is DataTable table) {
+            return table;
+        }
+
+        if (queryResult is DataSet dataSet && dataSet.Tables.Count > 0) {
+            return dataSet.Tables[0];
+        }
+
+        return null;
     }
 
     public void Dispose() {

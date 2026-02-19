@@ -143,6 +143,49 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal("--write-governance-mode must be one of: enforced, yolo.", error);
     }
 
+    [Fact]
+    public void Parse_ProfileRoundTrip_PersistsRuntimePolicyWithCanonicalValues() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            var save = ServiceOptions.Parse(new[] {
+                "--state-db", dbPath,
+                "--profile", "runtime",
+                "--save-profile", "runtime",
+                "--write-governance-mode", "yolo",
+                "--no-require-write-governance-runtime",
+                "--require-write-audit-sink",
+                "--write-audit-sink-mode", "jsonl",
+                "--write-audit-sink-path", "C:/temp/ix-audit.jsonl",
+                "--auth-runtime-preset", "strict",
+                "--require-auth-runtime",
+                "--run-as-profile-path", "C:/temp/runas-profiles.json",
+                "--auth-profile-path", "C:/temp/auth-profiles.json"
+            }, out var saveError);
+
+            Assert.NotNull(save);
+            Assert.True(string.IsNullOrWhiteSpace(saveError));
+
+            var loaded = ServiceOptions.Parse(new[] {
+                "--state-db", dbPath,
+                "--profile", "runtime"
+            }, out var loadError);
+
+            Assert.NotNull(loaded);
+            Assert.True(string.IsNullOrWhiteSpace(loadError));
+            Assert.Equal(ToolWriteGovernanceMode.Yolo, loaded.WriteGovernanceMode);
+            Assert.False(loaded.RequireWriteGovernanceRuntime);
+            Assert.True(loaded.RequireWriteAuditSinkForWriteOperations);
+            Assert.Equal(ToolWriteAuditSinkMode.FileAppendOnly, loaded.WriteAuditSinkMode);
+            Assert.Equal("C:/temp/ix-audit.jsonl", loaded.WriteAuditSinkPath);
+            Assert.Equal(ToolAuthenticationRuntimePreset.Strict, loaded.AuthenticationRuntimePreset);
+            Assert.True(loaded.RequireAuthenticationRuntime);
+            Assert.Equal("C:/temp/runas-profiles.json", loaded.RunAsProfilePath);
+            Assert.Equal("C:/temp/auth-profiles.json", loaded.AuthenticationProfilePath);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
     private static void TryDelete(string path) {
         try {
             if (File.Exists(path)) {

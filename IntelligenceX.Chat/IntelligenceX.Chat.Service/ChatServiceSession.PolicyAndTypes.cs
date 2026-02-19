@@ -25,7 +25,7 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
-    private static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
+    internal static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
         IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths, ToolRuntimePolicyDiagnostics runtimePolicy) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 

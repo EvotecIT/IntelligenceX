@@ -60,10 +60,10 @@ CREATE INDEX IF NOT EXISTS ix_model_recents_profile_last_used ON {RecentsTable}(
         }
 
         var list = new List<string>();
-        var result = _db.Query(
+        var result = QueryAsTable(_db.Query(
             _dbPath,
             $"SELECT model FROM {FavoritesTable} WHERE profile_name = @name ORDER BY model",
-            parameters: new Dictionary<string, object?> { ["@name"] = profile }) as DataTable;
+            parameters: new Dictionary<string, object?> { ["@name"] = profile }));
 
         if (result is not null) {
             foreach (DataRow row in result.Rows) {
@@ -163,7 +163,7 @@ WHERE profile_name = @name
         }
 
         var list = new List<string>();
-        var result = _db.Query(
+        var result = QueryAsTable(_db.Query(
             _dbPath,
             $@"
 SELECT model
@@ -171,7 +171,7 @@ FROM {RecentsTable}
 WHERE profile_name = @name
 ORDER BY last_used_utc DESC
 LIMIT @limit;",
-            parameters: new Dictionary<string, object?> { ["@name"] = profile, ["@limit"] = max }) as DataTable;
+            parameters: new Dictionary<string, object?> { ["@name"] = profile, ["@limit"] = max }));
 
         if (result is not null) {
             foreach (DataRow row in result.Rows) {
@@ -188,8 +188,19 @@ LIMIT @limit;",
     private static string NormalizeProfileName(string? name) => (name ?? string.Empty).Trim();
     private static string NormalizeModel(string? model) => (model ?? string.Empty).Trim();
 
+    private static DataTable? QueryAsTable(object? queryResult) {
+        if (queryResult is DataTable table) {
+            return table;
+        }
+
+        if (queryResult is DataSet dataSet && dataSet.Tables.Count > 0) {
+            return dataSet.Tables[0];
+        }
+
+        return null;
+    }
+
     public void Dispose() {
         _db.Dispose();
     }
 }
-

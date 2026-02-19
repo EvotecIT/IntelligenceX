@@ -68,6 +68,21 @@ Use this skill when adding or refactoring write-capable (mutating) tools.
   - response envelope tests for write mode (`dry-run` vs `apply`)
 - Prefer focused unit tests over broad end-to-end tests unless behavior spans components.
 
+## Reusable Scaffold Assets
+- Tool template:
+  - `templates/write-tool-template.cs.txt`
+- Test template:
+  - `templates/write-tool-tests-template.cs.txt`
+- Pre-PR checklist helper:
+  - `scripts/new-write-tool-checklist.ps1`
+
+## Suggested Execution Order
+1. Copy the tool template and replace `__PLACEHOLDER__` markers.
+2. Register schema + write/auth contracts before implementing business logic.
+3. Return mutating responses via `ToolResponse.OkWriteActionModel(...)`.
+4. Copy test template and wire tool-specific argument names and expected contracts.
+5. Run checklist script and fix all failing checks before opening PR.
+
 ## Special Cases (Read + Write Dual-Mode Tools)
 - For tools that can run safely in read-only mode and mutating mode (for example shell tools):
   - keep read-only path default
