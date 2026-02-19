@@ -3,10 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
-using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
-using S = DocumentFormat.OpenXml.Spreadsheet;
-using W = DocumentFormat.OpenXml.Wordprocessing;
+using IntelligenceX.Chat.ExportArtifacts;
 
 namespace IntelligenceX.Chat.App;
 
@@ -98,10 +95,10 @@ internal static class LocalExportArtifactWriter {
                 WriteCsv(rows, outputPath);
                 break;
             case ExportPreferencesContract.FormatXlsx:
-                WriteXlsx(title, rows, outputPath);
+                OfficeImoArtifactWriter.WriteXlsx(title, rows, outputPath);
                 break;
             case ExportPreferencesContract.FormatDocx:
-                WriteDocxTable(title, rows, outputPath);
+                OfficeImoArtifactWriter.WriteDocxTable(title, rows, outputPath);
                 break;
             default:
                 throw new InvalidOperationException("Unsupported export format: " + normalizedFormat);
@@ -115,7 +112,7 @@ internal static class LocalExportArtifactWriter {
                 File.WriteAllText(outputPath, markdown ?? string.Empty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
                 break;
             case ExportPreferencesContract.FormatDocx:
-                WriteDocxTranscript(title, markdown ?? string.Empty, outputPath);
+                OfficeImoArtifactWriter.WriteDocxTranscript(title, markdown ?? string.Empty, outputPath);
                 break;
             default:
                 throw new InvalidOperationException("Unsupported transcript export format: " + normalizedFormat);
@@ -158,140 +155,6 @@ internal static class LocalExportArtifactWriter {
         return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
-    private static void WriteXlsx(string title, IReadOnlyList<string[]> rows, string outputPath) {
-        using var document = SpreadsheetDocument.Create(outputPath, SpreadsheetDocumentType.Workbook);
-        var workbookPart = document.AddWorkbookPart();
-        workbookPart.Workbook = new S.Workbook();
-
-        var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-        var sheetData = new S.SheetData();
-        worksheetPart.Worksheet = new S.Worksheet(sheetData);
-
-        for (int r = 0; r < rows.Count; r++) {
-            var rowIndex = (uint)(r + 1);
-            var row = new S.Row { RowIndex = rowIndex };
-            var values = rows[r];
-            for (int c = 0; c < values.Length; c++) {
-                row.Append(CreateSpreadsheetTextCell(c + 1, rowIndex, values[c] ?? string.Empty));
-            }
-            sheetData.Append(row);
-        }
-
-        var sheets = workbookPart.Workbook.AppendChild(new S.Sheets());
-        var sheetName = SanitizeSheetName(title);
-        sheets.Append(new S.Sheet {
-            Id = workbookPart.GetIdOfPart(worksheetPart),
-            SheetId = 1U,
-            Name = sheetName
-        });
-
-        workbookPart.Workbook.Save();
-    }
-
-    private static S.Cell CreateSpreadsheetTextCell(int columnIndexOneBased, uint rowIndex, string value) {
-        return new S.Cell {
-            CellReference = BuildSpreadsheetCellReference(columnIndexOneBased, rowIndex),
-            DataType = S.CellValues.InlineString,
-            InlineString = new S.InlineString(new S.Text(value) { Space = SpaceProcessingModeValues.Preserve })
-        };
-    }
-
-    private static string BuildSpreadsheetCellReference(int columnIndexOneBased, uint rowIndex) {
-        return BuildSpreadsheetColumnName(columnIndexOneBased) + rowIndex.ToString();
-    }
-
-    private static string BuildSpreadsheetColumnName(int columnIndexOneBased) {
-        if (columnIndexOneBased < 1) {
-            throw new ArgumentOutOfRangeException(nameof(columnIndexOneBased));
-        }
-
-        var columnName = string.Empty;
-        var column = columnIndexOneBased;
-        while (column > 0) {
-            var remainder = (column - 1) % 26;
-            columnName = (char)('A' + remainder) + columnName;
-            column = (column - 1) / 26;
-        }
-        return columnName;
-    }
-
-    private static void WriteDocxTable(string title, IReadOnlyList<string[]> rows, string outputPath) {
-        using var document = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
-        var mainPart = document.AddMainDocumentPart();
-        mainPart.Document = new W.Document(new W.Body());
-
-        var body = mainPart.Document.Body!;
-        body.Append(CreateHeadingParagraph(string.IsNullOrWhiteSpace(title) ? "Data Export" : title.Trim()));
-        body.Append(new W.Paragraph(new W.Run(new W.Text(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")))));
-
-        var table = new W.Table();
-        table.AppendChild(new W.TableProperties(
-            new W.TableStyle { Val = "TableGrid" },
-            new W.TableWidth { Width = "0", Type = W.TableWidthUnitValues.Auto },
-            new W.TableBorders(
-                new W.TopBorder { Val = W.BorderValues.Single, Size = 8 },
-                new W.BottomBorder { Val = W.BorderValues.Single, Size = 8 },
-                new W.LeftBorder { Val = W.BorderValues.Single, Size = 8 },
-                new W.RightBorder { Val = W.BorderValues.Single, Size = 8 },
-                new W.InsideHorizontalBorder { Val = W.BorderValues.Single, Size = 6 },
-                new W.InsideVerticalBorder { Val = W.BorderValues.Single, Size = 6 })));
-
-        for (int r = 0; r < rows.Count; r++) {
-            var row = new W.TableRow();
-            var values = rows[r];
-            for (int c = 0; c < values.Length; c++) {
-                row.Append(CreateTableCell(values[c] ?? string.Empty, bold: r == 0));
-            }
-            table.Append(row);
-        }
-
-        body.Append(table);
-        mainPart.Document.Save();
-    }
-
-    private static void WriteDocxTranscript(string title, string markdown, string outputPath) {
-        using var document = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
-        var mainPart = document.AddMainDocumentPart();
-        mainPart.Document = new W.Document(new W.Body());
-
-        var body = mainPart.Document.Body!;
-        body.Append(CreateHeadingParagraph(string.IsNullOrWhiteSpace(title) ? "Transcript" : title.Trim()));
-        body.Append(new W.Paragraph(new W.Run(new W.Text("Source: Markdown"))));
-        body.Append(new W.Paragraph());
-
-        var normalized = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
-        var lines = normalized.Split('\n');
-        for (int i = 0; i < lines.Length; i++) {
-            var line = lines[i];
-            if (line.Length == 0) {
-                body.Append(new W.Paragraph());
-                continue;
-            }
-
-            body.Append(new W.Paragraph(new W.Run(new W.Text(line) { Space = SpaceProcessingModeValues.Preserve })));
-        }
-
-        mainPart.Document.Save();
-    }
-
-    private static W.Paragraph CreateHeadingParagraph(string text) {
-        return new W.Paragraph(
-            new W.ParagraphProperties(new W.ParagraphStyleId { Val = "Heading1" }),
-            new W.Run(new W.Text(text) { Space = SpaceProcessingModeValues.Preserve }));
-    }
-
-    private static W.TableCell CreateTableCell(string value, bool bold) {
-        var run = new W.Run(new W.Text(value) { Space = SpaceProcessingModeValues.Preserve });
-        if (bold) {
-            run.RunProperties = new W.RunProperties(new W.Bold());
-        }
-
-        var paragraph = new W.Paragraph(run);
-        return new W.TableCell(
-            paragraph,
-            new W.TableCellProperties(new W.TableCellVerticalAlignment { Val = W.TableVerticalAlignmentValues.Top }));
-    }
-
     private static string GetFileExtension(string format) {
         return (format ?? string.Empty).Trim().ToLowerInvariant() switch {
             ExportPreferencesContract.FormatXlsx => ".xlsx",
@@ -316,27 +179,5 @@ internal static class LocalExportArtifactWriter {
         }
 
         return stem.Length == 0 ? fallback : stem;
-    }
-
-    private static string SanitizeSheetName(string title) {
-        var raw = (title ?? string.Empty).Trim();
-        if (raw.Length == 0) {
-            raw = "Sheet1";
-        }
-
-        raw = raw
-            .Replace(":", string.Empty, StringComparison.Ordinal)
-            .Replace("\\", string.Empty, StringComparison.Ordinal)
-            .Replace("/", string.Empty, StringComparison.Ordinal)
-            .Replace("?", string.Empty, StringComparison.Ordinal)
-            .Replace("*", string.Empty, StringComparison.Ordinal)
-            .Replace("[", string.Empty, StringComparison.Ordinal)
-            .Replace("]", string.Empty, StringComparison.Ordinal);
-
-        if (raw.Length > 31) {
-            raw = raw[..31];
-        }
-
-        return raw.Length == 0 ? "Sheet1" : raw;
     }
 }

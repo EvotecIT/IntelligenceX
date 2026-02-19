@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using DocumentFormat.OpenXml.Packaging;
-using S = DocumentFormat.OpenXml.Spreadsheet;
-using W = DocumentFormat.OpenXml.Wordprocessing;
+using OfficeIMO.Excel;
+using OfficeIMO.Word;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -58,22 +57,24 @@ public sealed class LocalExportArtifactWriterTests {
             var xlsxPath = Path.Combine(root, "table.xlsx");
             LocalExportArtifactWriter.ExportTable(ExportPreferencesContract.FormatXlsx, "sample", rows, xlsxPath);
             Assert.True(File.Exists(xlsxPath));
-            using (var sheet = SpreadsheetDocument.Open(xlsxPath, false)) {
-                var workbookPart = sheet.WorkbookPart!;
-                var firstSheet = workbookPart.Workbook.Sheets!.Elements<S.Sheet>().First();
-                var worksheetPart = (WorksheetPart)workbookPart.GetPartById(firstSheet.Id!);
-                var firstRow = worksheetPart.Worksheet.GetFirstChild<S.SheetData>()!.Elements<S.Row>().First();
-                var firstCell = firstRow.Elements<S.Cell>().First();
-                Assert.Equal("Name", ReadSpreadsheetCellText(firstCell));
+            using (var workbook = ExcelDocument.Load(xlsxPath, readOnly: true)) {
+                var sheet = workbook[0];
+                Assert.True(sheet.TryGetCellText(1, 1, out var header));
+                Assert.Equal("Name", header);
             }
 
             var docxPath = Path.Combine(root, "table.docx");
             LocalExportArtifactWriter.ExportTable(ExportPreferencesContract.FormatDocx, "sample", rows, docxPath);
             Assert.True(File.Exists(docxPath));
-            using (var docx = WordprocessingDocument.Open(docxPath, false)) {
-                var table = docx.MainDocumentPart!.Document.Body!.Elements<W.Table>().First();
-                var headerCell = table.Elements<W.TableRow>().First().Elements<W.TableCell>().First();
-                Assert.Equal("Name", headerCell.InnerText);
+            using (var docx = WordDocument.Load(docxPath, readOnly: true)) {
+                var table = docx.Tables.First();
+                var headerTexts = table.Rows[0]
+                    .Cells
+                    .SelectMany(cell => cell.Paragraphs)
+                    .Select(paragraph => paragraph.Text)
+                    .ToArray();
+
+                Assert.Contains("Name", headerTexts);
             }
         } finally {
             Directory.Delete(root, recursive: true);
@@ -101,25 +102,13 @@ public sealed class LocalExportArtifactWriterTests {
             var docxPath = Path.Combine(root, "transcript.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
-            using var docx = WordprocessingDocument.Open(docxPath, false);
-            var bodyText = docx.MainDocumentPart!.Document.Body!.InnerText;
-            Assert.Contains("Source: Markdown", bodyText);
-            Assert.Contains("- item 1", bodyText);
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Transcript", bodyText);
+            Assert.Contains("item 1", bodyText);
         } finally {
             Directory.Delete(root, recursive: true);
         }
-    }
-
-    private static string ReadSpreadsheetCellText(S.Cell cell) {
-        if (cell.InlineString?.Text is not null) {
-            return cell.InlineString.Text.Text ?? string.Empty;
-        }
-
-        if (cell.CellValue is not null) {
-            return cell.CellValue.Text ?? string.Empty;
-        }
-
-        return cell.InnerText ?? string.Empty;
     }
 
     private static string CreateTempDirectory() {

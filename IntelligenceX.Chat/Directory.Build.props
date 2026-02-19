@@ -30,5 +30,7 @@
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
 
     <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.1.7</OfficeImoMarkdownRendererNuGetVersion>
+    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.10</OfficeImoExcelNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.4</OfficeImoWordMarkdownNuGetVersion>
   </PropertyGroup>
 </Project>

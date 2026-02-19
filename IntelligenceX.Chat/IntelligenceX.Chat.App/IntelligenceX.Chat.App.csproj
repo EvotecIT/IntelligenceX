@@ -42,6 +42,7 @@
   <ItemGroup>
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
+    <ProjectReference Include="..\\IntelligenceX.Chat.ExportArtifacts\\IntelligenceX.Chat.ExportArtifacts.csproj" />
     <ProjectReference Include="$(DbaClientXProjectOverride)"
                       Condition="Exists('$(DbaClientXProjectOverride)')" />
     <ProjectReference Include="$(DbaClientXProjectCandidate1)"
@@ -55,7 +56,6 @@
   <ItemGroup>
     <!-- Use a stable WinAppSDK version. -->
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
 
     <!-- Local development: prefer an external OfficeIMO checkout for markdown rendering. -->
     <ProjectReference Include="$(OfficeImoMarkdownRendererProject)"
