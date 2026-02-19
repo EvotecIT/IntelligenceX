@@ -61,7 +61,7 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
             ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
             : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
 
-        var maxResults = ResolveMaxResults(arguments);
+        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
 
         var requestedPageSize = arguments?.GetInt64("page_size");
         var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0

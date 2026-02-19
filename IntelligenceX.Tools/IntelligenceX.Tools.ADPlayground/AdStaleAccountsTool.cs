@@ -53,7 +53,7 @@ public sealed class AdStaleAccountsTool : ActiveDirectoryToolBase, ITool {
 
         var match = ParseMatch(ToolArgs.GetOptionalTrimmed(arguments, "match"));
 
-        var maxResults = ResolveMaxResults(arguments);
+        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
 
         var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
 

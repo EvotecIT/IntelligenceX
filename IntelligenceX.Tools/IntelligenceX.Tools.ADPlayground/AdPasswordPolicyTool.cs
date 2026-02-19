@@ -59,7 +59,7 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var includeFineGrained = ToolArgs.GetBoolean(arguments, "include_fine_grained", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         var domains = LdapQueryHelper.GetTargetDomains(domainName, forestName)
             .Where(static x => !string.IsNullOrWhiteSpace(x))
@@ -139,4 +139,3 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

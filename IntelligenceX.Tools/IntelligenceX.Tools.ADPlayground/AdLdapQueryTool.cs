@@ -56,7 +56,7 @@ public sealed class AdLdapQueryTool : ActiveDirectoryToolBase, ITool {
             ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
             : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
 
-        var maxResults = ResolveMaxResults(arguments);
+        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
 
         var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
 

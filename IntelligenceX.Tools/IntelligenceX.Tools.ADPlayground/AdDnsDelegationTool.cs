@@ -68,7 +68,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var identityContains = ToolArgs.GetOptionalTrimmed(arguments, "identity_contains");
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -146,4 +146,3 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

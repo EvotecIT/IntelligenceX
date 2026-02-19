@@ -104,6 +104,7 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         var root = doc.RootElement;
         Assert.False(root.GetProperty("ok").GetBoolean());
         Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+        Assert.Equal("domain_name is required.", root.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -427,11 +428,11 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         }
 
         public int ResolveDefaultingMaxResults(JsonObject? arguments) {
-            return ResolveMaxResults(arguments);
+            return ResolveMaxResultsDefaultOnNonPositive(arguments);
         }
 
         public int ResolveStrictlyBoundedMaxResults(JsonObject? arguments) {
-            return ResolveBoundedMaxResults(arguments);
+            return ResolveMaxResultsClampToOne(arguments);
         }
 
         public JsonObject CreateScopeMeta(string? domainName, string? forestName) {

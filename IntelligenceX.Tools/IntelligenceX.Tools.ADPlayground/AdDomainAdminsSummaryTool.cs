@@ -47,7 +47,7 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
 
         var includeMembers = arguments?.GetBoolean("include_members") ?? true;
 
-        var maxResults = ResolveMaxResults(arguments);
+        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
 
         try {
             var summary = await DomainAdminsSummaryService

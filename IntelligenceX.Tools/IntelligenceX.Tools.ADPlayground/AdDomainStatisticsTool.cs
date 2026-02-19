@@ -71,7 +71,7 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeDomainControllers = ToolArgs.GetBoolean(arguments, "include_domain_controllers", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -167,4 +167,3 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

@@ -88,7 +88,7 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
 
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 200000, 1, 2000000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionReportService.Get(domainName, gpoId: gpoId, gpoName: gpoName, maxGpos: maxGpos, maxRows: maxRows),

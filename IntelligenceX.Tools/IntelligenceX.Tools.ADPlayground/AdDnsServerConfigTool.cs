@@ -72,7 +72,7 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
         var recursionDisabledOnly = ToolArgs.GetBoolean(arguments, "recursion_disabled_only", defaultValue: false);
         var missingForwardersOnly = ToolArgs.GetBoolean(arguments, "missing_forwarders_only", defaultValue: false);
         var maxServers = ToolArgs.GetCappedInt32(arguments, "max_servers", 200, 1, 5000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
         var errors = new List<DnsServerConfigError>();
 
         var servers = new List<string>(maxServers);
@@ -179,4 +179,3 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

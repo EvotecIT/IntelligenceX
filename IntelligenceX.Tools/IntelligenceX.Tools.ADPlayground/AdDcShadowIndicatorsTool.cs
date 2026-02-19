@@ -68,7 +68,7 @@ public sealed class AdDcShadowIndicatorsTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeFindings = ToolArgs.GetBoolean(arguments, "include_findings", defaultValue: true);
         var maxFindingsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_findings_per_domain", 100, 1, Options.MaxResults);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -134,4 +134,3 @@ public sealed class AdDcShadowIndicatorsTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

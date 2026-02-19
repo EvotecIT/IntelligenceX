@@ -62,7 +62,7 @@ public sealed class AdGpoPermissionUnknownTool : ActiveDirectoryToolBase, ITool 
         var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var maxFindings = ToolArgs.GetCappedInt32(arguments, "max_findings", 200000, 1, 2000000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionUnknownService.Get(domainName, maxGpos: maxGpos, maxFindings: maxFindings),

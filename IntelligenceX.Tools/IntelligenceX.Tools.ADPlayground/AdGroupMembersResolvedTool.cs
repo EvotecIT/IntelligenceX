@@ -72,7 +72,7 @@ public sealed class AdGroupMembersResolvedTool : ActiveDirectoryToolBase, ITool 
             return Task.FromResult(Error("identity is required."));
         }
 
-        var maxResults = ResolveMaxResults(arguments);
+        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
 
         var includeNested = ToolArgs.GetBoolean(arguments, "include_nested");
 

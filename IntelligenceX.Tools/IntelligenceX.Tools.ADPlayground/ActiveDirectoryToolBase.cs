@@ -60,12 +60,12 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
-    /// Resolves a positive max-results argument capped by pack options.
+    /// Resolves max-results where non-positive input falls back to the default option cap.
     /// </summary>
     /// <param name="arguments">Tool arguments.</param>
     /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
     /// <returns>Normalized max-results value.</returns>
-    protected int ResolveMaxResults(JsonObject? arguments, string argumentName = "max_results") {
+    protected int ResolveMaxResultsDefaultOnNonPositive(JsonObject? arguments, string argumentName = "max_results") {
         return ToolArgs.GetPositiveOptionBoundedInt32OrDefault(
             arguments,
             argumentName,
@@ -74,12 +74,12 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
-    /// Resolves a max-results argument with strict lower-bound clamping (minimum 1).
+    /// Resolves max-results where non-positive input is clamped to 1 (strictly positive).
     /// </summary>
     /// <param name="arguments">Tool arguments.</param>
     /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
     /// <returns>Normalized max-results value.</returns>
-    protected int ResolveBoundedMaxResults(JsonObject? arguments, string argumentName = "max_results") {
+    protected int ResolveMaxResultsClampToOne(JsonObject? arguments, string argumentName = "max_results") {
         return ToolArgs.GetOptionBoundedInt32(
             arguments,
             argumentName,
@@ -380,7 +380,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             return Task.FromResult(argumentError!);
         }
 
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResultsClampToOne(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => query(domainName),
@@ -673,10 +673,8 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         JsonObject? arguments,
         out PolicyAttributionToolRequest request,
         out string? errorResponse) {
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        if (string.IsNullOrWhiteSpace(domainName)) {
+        if (!TryReadRequiredDomainName(arguments, out var domainName, out errorResponse)) {
             request = default;
-            errorResponse = ToolResponse.Error("invalid_argument", "domain_name is required.");
             return false;
         }
 
@@ -684,7 +682,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             DomainName: domainName,
             IncludeAttribution: ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true),
             ConfiguredAttributionOnly: ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false),
-            MaxResults: ResolveBoundedMaxResults(arguments));
+            MaxResults: ResolveMaxResultsClampToOne(arguments));
         errorResponse = null;
         return true;
     }
