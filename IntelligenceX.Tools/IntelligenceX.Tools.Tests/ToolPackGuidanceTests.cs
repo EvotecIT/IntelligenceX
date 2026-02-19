@@ -105,6 +105,7 @@ public class ToolPackGuidanceTests {
                         ("attributes", ToolSchema.Array(ToolSchema.String())),
                         ("domain_controller", ToolSchema.String()),
                         ("send", ToolSchema.Boolean()))
+                    .WithWriteGovernanceMetadata()
                     .NoAdditionalProperties(),
                 writeGovernance: new ToolWriteGovernanceContract {
                     IsWriteCapable = true,
@@ -136,6 +137,8 @@ public class ToolPackGuidanceTests {
         Assert.False(a.Traits.SupportsDynamicAttributes);
         Assert.False(a.Traits.SupportsTargetScoping);
         Assert.False(a.Traits.SupportsMutatingActions);
+        Assert.False(a.Traits.SupportsWriteGovernanceMetadata);
+        Assert.Empty(a.Traits.WriteGovernanceMetadataArguments);
         Assert.False(a.IsWriteCapable);
         Assert.False(a.RequiresWriteGovernance);
         Assert.Null(a.WriteGovernanceContractId);
@@ -144,7 +147,7 @@ public class ToolPackGuidanceTests {
         Assert.Equal("stub_b", b.Name);
         Assert.True(b.RequiredArguments.Count == 0);
         Assert.True(b.SupportsTableViewProjection);
-        Assert.Equal(9, b.Arguments.Count);
+        Assert.Equal(15, b.Arguments.Count);
         Assert.Contains(b.Arguments, static arg => arg.Name == "columns" && arg.Type == "array<string>" && !arg.Required);
         Assert.Contains(b.Arguments, static arg => arg.Name == "sort_by" && arg.Type == "string" && !arg.Required);
         Assert.NotNull(b.Traits);
@@ -160,6 +163,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal(new[] { "domain_controller" }, b.Traits.TargetScopeArguments);
         Assert.True(b.Traits.SupportsMutatingActions);
         Assert.Equal(new[] { "send" }, b.Traits.MutatingActionArguments);
+        Assert.True(b.Traits.SupportsWriteGovernanceMetadata);
+        Assert.Equal(ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments, b.Traits.WriteGovernanceMetadataArguments);
         Assert.True(b.IsWriteCapable);
         Assert.True(b.RequiresWriteGovernance);
         Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, b.WriteGovernanceContractId);

@@ -296,6 +296,16 @@ public sealed class ToolPackToolTraitsModel {
     /// Mutating/action argument names when <see cref="SupportsMutatingActions"/> is true.
     /// </summary>
     public IReadOnlyList<string> MutatingActionArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates support for canonical write-governance metadata arguments.
+    /// </summary>
+    public bool SupportsWriteGovernanceMetadata { get; init; }
+
+    /// <summary>
+    /// Canonical write-governance metadata argument names present in the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> WriteGovernanceMetadataArguments { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -545,6 +555,9 @@ public static class ToolPackGuidance {
         var dynamicAttributeArguments = IntersectKnownArguments(names, DynamicAttributeArgumentNames);
         var targetScopeArguments = IntersectKnownArguments(names, TargetScopeArgumentNames);
         var mutatingActionArguments = IntersectKnownArguments(names, MutatingActionArgumentNames);
+        var writeGovernanceMetadataArguments = IntersectKnownArguments(
+            names,
+            ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments);
 
         return new ToolPackToolTraitsModel {
             SupportsTableViewProjection = supportsTableViewProjection,
@@ -558,7 +571,9 @@ public static class ToolPackGuidance {
             SupportsTargetScoping = targetScopeArguments.Count > 0,
             TargetScopeArguments = targetScopeArguments,
             SupportsMutatingActions = mutatingActionArguments.Count > 0,
-            MutatingActionArguments = mutatingActionArguments
+            MutatingActionArguments = mutatingActionArguments,
+            SupportsWriteGovernanceMetadata = writeGovernanceMetadataArguments.Count > 0,
+            WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments
         };
     }
 
@@ -573,6 +588,7 @@ public static class ToolPackGuidance {
         var dynamicAttributeArguments = NormalizeValues(traits.DynamicAttributeArguments);
         var targetScopeArguments = NormalizeValues(traits.TargetScopeArguments);
         var mutatingActionArguments = NormalizeValues(traits.MutatingActionArguments);
+        var writeGovernanceMetadataArguments = NormalizeValues(traits.WriteGovernanceMetadataArguments);
 
         return new ToolPackToolTraitsModel {
             SupportsTableViewProjection = traits.SupportsTableViewProjection || projectionArguments.Count > 0,
@@ -586,7 +602,9 @@ public static class ToolPackGuidance {
             SupportsTargetScoping = traits.SupportsTargetScoping || targetScopeArguments.Count > 0,
             TargetScopeArguments = targetScopeArguments,
             SupportsMutatingActions = traits.SupportsMutatingActions || mutatingActionArguments.Count > 0,
-            MutatingActionArguments = mutatingActionArguments
+            MutatingActionArguments = mutatingActionArguments,
+            SupportsWriteGovernanceMetadata = traits.SupportsWriteGovernanceMetadata || writeGovernanceMetadataArguments.Count > 0,
+            WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments
         };
     }
 

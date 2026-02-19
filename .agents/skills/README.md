@@ -9,6 +9,7 @@ Repo-local skills that make agents more consistent across onboarding, setup, ana
 - `intelligencex-reviewer-bootstrap`: Use for reviewer bootstrap (`reviewer.json` + workflow YAML) dry-runs, precedence checks, and managed-block validation.
 - `intelligencex-first-pr-rollout`: Use to verify first post-onboarding PR rollout signals (workflow, checks, sticky summary, analysis sections).
 - `intelligencex-tools-authoring`: Use for tool creation/refactors focused on helper reuse, stable contracts, and low-maintenance patterns.
+- `intelligencex-write-tool-authoring`: Use for adding/refactoring mutating tools with shared write-governance schema, contracts, auth probe contracts, responses, and tests.
 
 ## Shared Rules
 - Always use a dedicated `codex/*` branch and worktree.

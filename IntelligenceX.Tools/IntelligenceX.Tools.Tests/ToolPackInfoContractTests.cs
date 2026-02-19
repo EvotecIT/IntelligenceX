@@ -240,6 +240,7 @@ public class ToolPackInfoContractTests {
         Assert.Equal(expectedTraits.SupportsDynamicAttributes, actualTraits.GetProperty("supports_dynamic_attributes").GetBoolean());
         Assert.Equal(expectedTraits.SupportsTargetScoping, actualTraits.GetProperty("supports_target_scoping").GetBoolean());
         Assert.Equal(expectedTraits.SupportsMutatingActions, actualTraits.GetProperty("supports_mutating_actions").GetBoolean());
+        Assert.Equal(expectedTraits.SupportsWriteGovernanceMetadata, actualTraits.GetProperty("supports_write_governance_metadata").GetBoolean());
 
         Assert.Equal(
             expectedTraits.TableViewArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
@@ -259,6 +260,9 @@ public class ToolPackInfoContractTests {
         Assert.Equal(
             expectedTraits.MutatingActionArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("mutating_action_arguments")));
+        Assert.Equal(
+            expectedTraits.WriteGovernanceMetadataArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualTraits.GetProperty("write_governance_metadata_arguments")));
     }
 
     private sealed record PackCase(

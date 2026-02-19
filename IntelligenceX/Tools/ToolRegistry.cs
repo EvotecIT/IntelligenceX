@@ -167,6 +167,32 @@ public sealed class ToolRegistry {
             throw new InvalidOperationException(
                 $"Tool '{definition.Name}' is write-capable and must declare GovernanceContractId.");
         }
+
+        ValidateWriteGovernanceSchemaMetadata(definition);
+    }
+
+    private static void ValidateWriteGovernanceSchemaMetadata(ToolDefinition definition) {
+        JsonObject? properties = definition.Parameters?.GetObject("properties");
+        if (properties is null) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is write-capable and must define an object schema with properties.");
+        }
+
+        List<string> missingArguments = new();
+        for (var i = 0; i < ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments.Count; i++) {
+            string argumentName = ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments[i];
+            if (properties.GetObject(argumentName) is null) {
+                missingArguments.Add(argumentName);
+            }
+        }
+
+        if (missingArguments.Count == 0) {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Tool '{definition.Name}' is write-capable and must expose canonical write governance metadata arguments in schema properties: {string.Join(", ", missingArguments)}. " +
+            "Use ToolSchemaExtensions.WithWriteGovernanceMetadata().");
     }
 
     private sealed class RegistryToolWrapper : ITool {

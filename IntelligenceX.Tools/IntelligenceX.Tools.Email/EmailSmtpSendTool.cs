@@ -125,7 +125,6 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             };
 
             var summaryItems = new List<(string Key, string Value)> {
-                ("Mode", send ? "send" : "dry-run"),
                 ("From", from),
                 ("To", string.Join("; ", to)),
                 ("Subject", subject),
@@ -143,11 +142,13 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 .Add("sent", send)
                 .Add("provider", "smtp");
 
-            var summaryMarkdown = ToolMarkdown.SummaryFacts(
-                title: "SMTP send",
-                facts: summaryItems);
-
-            return ToolResponse.OkModel(model: root, meta: meta, summaryMarkdown: summaryMarkdown);
+            return ToolResponse.OkWriteActionModel(
+                model: root,
+                action: "smtp_send",
+                writeApplied: send,
+                facts: summaryItems,
+                meta: meta,
+                summaryTitle: "SMTP send");
         } finally {
             try {
                 smtp.Disconnect();

@@ -189,32 +189,27 @@ public static class ToolSchemaExtensions {
             return schema;
         }
 
-        AddStringPropertyIfMissing(
-            properties,
-            ToolWriteGovernanceArgumentNames.ExecutionId,
-            "Write execution identifier for audit correlation.");
-        AddStringPropertyIfMissing(
-            properties,
-            ToolWriteGovernanceArgumentNames.ActorId,
-            "Actor identifier responsible for the write intent.");
-        AddStringPropertyIfMissing(
-            properties,
-            ToolWriteGovernanceArgumentNames.ChangeReason,
-            "Change reason, ticket, or approval reference.");
-        AddStringPropertyIfMissing(
-            properties,
-            ToolWriteGovernanceArgumentNames.RollbackPlanId,
-            "Rollback plan identifier for safe revert operations.");
-        AddStringPropertyIfMissing(
-            properties,
-            ToolWriteGovernanceArgumentNames.RollbackProviderId,
-            "Optional rollback provider identifier.");
-        AddStringPropertyIfMissing(
-            properties,
-            ToolWriteGovernanceArgumentNames.AuditCorrelationId,
-            "Optional immutable audit correlation identifier.");
+        for (var i = 0; i < ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments.Count; i++) {
+            string argumentName = ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments[i];
+            AddStringPropertyIfMissing(
+                properties,
+                argumentName,
+                GetWriteGovernanceDescription(argumentName));
+        }
 
         return schema;
+    }
+
+    private static string GetWriteGovernanceDescription(string argumentName) {
+        return argumentName switch {
+            ToolWriteGovernanceArgumentNames.ExecutionId => "Write execution identifier for audit correlation.",
+            ToolWriteGovernanceArgumentNames.ActorId => "Actor identifier responsible for the write intent.",
+            ToolWriteGovernanceArgumentNames.ChangeReason => "Change reason, ticket, or approval reference.",
+            ToolWriteGovernanceArgumentNames.RollbackPlanId => "Rollback plan identifier for safe revert operations.",
+            ToolWriteGovernanceArgumentNames.RollbackProviderId => "Optional rollback provider identifier.",
+            ToolWriteGovernanceArgumentNames.AuditCorrelationId => "Optional immutable audit correlation identifier.",
+            _ => "Write governance metadata value."
+        };
     }
 
     private static void AddStringPropertyIfMissing(JsonObject properties, string name, string description) {
