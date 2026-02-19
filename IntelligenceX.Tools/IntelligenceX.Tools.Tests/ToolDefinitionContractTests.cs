@@ -150,6 +150,10 @@ public class ToolDefinitionContractTests {
         Assert.Equal(ToolAuthenticationMode.HostManaged, smtpSend.Authentication.Mode);
         Assert.True(smtpSend.Authentication.SupportsConnectivityProbe);
         Assert.Equal("email_smtp_probe", smtpSend.Authentication.ProbeToolName);
+        Assert.Contains(ToolAuthenticationArgumentNames.ProbeId, smtpSend.Authentication.GetSchemaArgumentNames());
+        var smtpSendProperties = smtpSend.Parameters?.GetObject("properties");
+        Assert.NotNull(smtpSendProperties);
+        Assert.NotNull(smtpSendProperties!.GetObject(ToolAuthenticationArgumentNames.ProbeId));
 
         Assert.True(definitionsByName.TryGetValue("email_smtp_probe", out var smtpProbe));
         Assert.Null(smtpProbe.WriteGovernance);

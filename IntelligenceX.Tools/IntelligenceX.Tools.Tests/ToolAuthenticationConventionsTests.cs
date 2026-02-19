@@ -41,6 +41,8 @@ public sealed class ToolAuthenticationConventionsTests {
 
         Assert.True(contract.SupportsConnectivityProbe);
         Assert.Equal("email_smtp_probe", contract.ProbeToolName);
+        Assert.Equal(ToolAuthenticationArgumentNames.ProbeId, contract.ProbeIdArgumentName);
+        Assert.Equal(new[] { ToolAuthenticationArgumentNames.ProbeId }, contract.GetSchemaArgumentNames());
     }
 
     [Fact]

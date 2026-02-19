@@ -53,6 +53,11 @@ public sealed class ToolAuthenticationContract {
     public string ProbeToolName { get; set; } = string.Empty;
 
     /// <summary>
+    /// Argument name used when <see cref="SupportsConnectivityProbe"/> is enabled.
+    /// </summary>
+    public string ProbeIdArgumentName { get; set; } = ToolAuthenticationArgumentNames.ProbeId;
+
+    /// <summary>
     /// Validates the contract and throws when invalid.
     /// </summary>
     public void Validate() {
@@ -81,9 +86,16 @@ public sealed class ToolAuthenticationContract {
                 "RunAsProfileIdArgumentName is required when Mode is RunAsReference.");
         }
 
-        if (SupportsConnectivityProbe && string.IsNullOrWhiteSpace(ProbeToolName)) {
-            throw new InvalidOperationException(
-                "ProbeToolName is required when SupportsConnectivityProbe is enabled.");
+        if (SupportsConnectivityProbe) {
+            if (string.IsNullOrWhiteSpace(ProbeToolName)) {
+                throw new InvalidOperationException(
+                    "ProbeToolName is required when SupportsConnectivityProbe is enabled.");
+            }
+
+            if (string.IsNullOrWhiteSpace(ProbeIdArgumentName)) {
+                throw new InvalidOperationException(
+                    "ProbeIdArgumentName is required when SupportsConnectivityProbe is enabled.");
+            }
         }
     }
 
@@ -95,10 +107,22 @@ public sealed class ToolAuthenticationContract {
             return Array.Empty<string>();
         }
 
-        return Mode switch {
-            ToolAuthenticationMode.ProfileReference => new[] { ProfileIdArgumentName.Trim() },
-            ToolAuthenticationMode.RunAsReference => new[] { RunAsProfileIdArgumentName.Trim() },
-            _ => Array.Empty<string>()
-        };
+        var arguments = new List<string>();
+        switch (Mode) {
+            case ToolAuthenticationMode.ProfileReference:
+                arguments.Add(ProfileIdArgumentName.Trim());
+                break;
+            case ToolAuthenticationMode.RunAsReference:
+                arguments.Add(RunAsProfileIdArgumentName.Trim());
+                break;
+        }
+
+        if (SupportsConnectivityProbe) {
+            arguments.Add(ProbeIdArgumentName.Trim());
+        }
+
+        return arguments.Count == 0
+            ? Array.Empty<string>()
+            : arguments.ToArray();
     }
 }

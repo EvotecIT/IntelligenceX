@@ -19,6 +19,7 @@ public static class ToolAuthenticationConventions {
             AuthenticationContractId = ToolAuthenticationContract.DefaultContractId,
             Mode = ToolAuthenticationMode.HostManaged,
             SupportsConnectivityProbe = supportsConnectivityProbe,
+            ProbeIdArgumentName = ToolAuthenticationArgumentNames.ProbeId,
             ProbeToolName = NormalizeProbeName(supportsConnectivityProbe, probeToolName)
         };
     }
@@ -42,6 +43,7 @@ public static class ToolAuthenticationConventions {
             Mode = ToolAuthenticationMode.ProfileReference,
             ProfileIdArgumentName = profileIdArgumentName.Trim(),
             SupportsConnectivityProbe = supportsConnectivityProbe,
+            ProbeIdArgumentName = ToolAuthenticationArgumentNames.ProbeId,
             ProbeToolName = NormalizeProbeName(supportsConnectivityProbe, probeToolName)
         };
     }
@@ -65,6 +67,7 @@ public static class ToolAuthenticationConventions {
             Mode = ToolAuthenticationMode.RunAsReference,
             RunAsProfileIdArgumentName = runAsProfileIdArgumentName.Trim(),
             SupportsConnectivityProbe = supportsConnectivityProbe,
+            ProbeIdArgumentName = ToolAuthenticationArgumentNames.ProbeId,
             ProbeToolName = NormalizeProbeName(supportsConnectivityProbe, probeToolName)
         };
     }
