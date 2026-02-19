@@ -91,9 +91,17 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         JsonObject? arguments,
         string argumentName = "max_results",
         MaxResultsNonPositiveBehavior nonPositiveBehavior = MaxResultsNonPositiveBehavior.ClampToOne) {
-        return nonPositiveBehavior == MaxResultsNonPositiveBehavior.DefaultToOptionCap
-            ? ToolArgs.GetPositiveOptionBoundedInt32OrDefault(arguments, argumentName, Options.MaxResults, Options.MaxResults)
-            : ToolArgs.GetOptionBoundedInt32(arguments, argumentName, Options.MaxResults);
+        var behavior = nonPositiveBehavior == MaxResultsNonPositiveBehavior.DefaultToOptionCap
+            ? ToolArgs.NonPositiveInt32Behavior.UseDefault
+            : ToolArgs.NonPositiveInt32Behavior.ClampToMinimum;
+
+        return ToolArgs.GetOptionBoundedInt32(
+            arguments,
+            argumentName,
+            Options.MaxResults,
+            minInclusive: 1,
+            nonPositiveBehavior: behavior,
+            defaultValue: Options.MaxResults);
     }
 
     /// <summary>

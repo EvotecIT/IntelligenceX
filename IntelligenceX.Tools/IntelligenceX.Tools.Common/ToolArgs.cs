@@ -9,6 +9,20 @@ namespace IntelligenceX.Tools.Common;
 /// </summary>
 public static class ToolArgs {
     /// <summary>
+    /// Controls how non-positive numeric arguments are normalized in bounded integer helpers.
+    /// </summary>
+    public enum NonPositiveInt32Behavior {
+        /// <summary>
+        /// Non-positive values are clamped to <c>minInclusive</c>.
+        /// </summary>
+        ClampToMinimum,
+        /// <summary>
+        /// Non-positive values keep the bounded default value.
+        /// </summary>
+        UseDefault
+    }
+
+    /// <summary>
     /// Reads an optional string and trims it. Returns <c>null</c> when missing/empty.
     /// </summary>
     public static string? GetOptionalTrimmed(JsonObject? arguments, string key) {
@@ -48,15 +62,39 @@ public static class ToolArgs {
     /// JSON numbers come in as 64-bit from our JSON model, so we normalize here.
     /// </remarks>
     public static int GetCappedInt32(JsonObject? arguments, string key, int defaultValue, int minInclusive, int maxInclusive) {
+        return GetCappedInt32(arguments, key, defaultValue, minInclusive, maxInclusive, NonPositiveInt32Behavior.ClampToMinimum);
+    }
+
+    /// <summary>
+    /// Reads an optional positive integer argument (stored as JSON integer) and applies a safety cap.
+    /// </summary>
+    /// <remarks>
+    /// JSON numbers come in as 64-bit from our JSON model, so we normalize here.
+    /// </remarks>
+    public static int GetCappedInt32(
+        JsonObject? arguments,
+        string key,
+        int defaultValue,
+        int minInclusive,
+        int maxInclusive,
+        NonPositiveInt32Behavior nonPositiveBehavior) {
         if (maxInclusive < minInclusive) throw new ArgumentOutOfRangeException(nameof(maxInclusive));
+        var boundedDefault = Clamp(defaultValue, minInclusive, maxInclusive);
         if (arguments is null || string.IsNullOrWhiteSpace(key)) {
-            return Clamp(defaultValue, minInclusive, maxInclusive);
+            return boundedDefault;
         }
 
         var raw = arguments.GetInt64(key);
         if (!raw.HasValue) {
-            return Clamp(defaultValue, minInclusive, maxInclusive);
+            return boundedDefault;
         }
+
+        if (raw.Value <= 0) {
+            return nonPositiveBehavior == NonPositiveInt32Behavior.UseDefault
+                ? boundedDefault
+                : minInclusive;
+        }
+
         if (raw.Value < minInclusive) {
             return minInclusive;
         }
@@ -265,18 +303,13 @@ public static class ToolArgs {
             maxInclusive = 1;
         }
 
-        var boundedDefault = Clamp(defaultValue, 1, maxInclusive);
-        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
-            return boundedDefault;
-        }
-
-        var raw = arguments.GetInt64(key);
-        if (!raw.HasValue || raw.Value <= 0) {
-            return boundedDefault;
-        }
-
-        var candidate = raw.Value > int.MaxValue ? int.MaxValue : (int)raw.Value;
-        return Clamp(candidate, 1, maxInclusive);
+        return GetCappedInt32(
+            arguments,
+            key,
+            defaultValue,
+            minInclusive: 1,
+            maxInclusive: maxInclusive,
+            nonPositiveBehavior: NonPositiveInt32Behavior.UseDefault);
     }
 
     /// <summary>
@@ -290,7 +323,32 @@ public static class ToolArgs {
         string key,
         int optionMaxInclusive,
         int minInclusive = 1) {
-        return GetCappedInt32(arguments, key, optionMaxInclusive, minInclusive, optionMaxInclusive);
+        return GetOptionBoundedInt32(
+            arguments,
+            key,
+            optionMaxInclusive,
+            minInclusive,
+            nonPositiveBehavior: NonPositiveInt32Behavior.ClampToMinimum,
+            defaultValue: optionMaxInclusive);
+    }
+
+    /// <summary>
+    /// Reads an optional integer argument bounded by a caller-provided option max value,
+    /// with explicit handling for non-positive values.
+    /// </summary>
+    /// <remarks>
+    /// Use this overload to keep max-results normalization semantics explicit:
+    /// either clamp non-positive values to <paramref name="minInclusive"/> or keep a bounded default.
+    /// </remarks>
+    public static int GetOptionBoundedInt32(
+        JsonObject? arguments,
+        string key,
+        int optionMaxInclusive,
+        int minInclusive,
+        NonPositiveInt32Behavior nonPositiveBehavior,
+        int? defaultValue = null) {
+        var resolvedDefault = defaultValue ?? optionMaxInclusive;
+        return GetCappedInt32(arguments, key, resolvedDefault, minInclusive, optionMaxInclusive, nonPositiveBehavior);
     }
 
     /// <summary>
@@ -305,7 +363,13 @@ public static class ToolArgs {
         string key,
         int defaultValue,
         int optionMaxInclusive) {
-        return GetPositiveCappedInt32OrDefault(arguments, key, defaultValue, optionMaxInclusive);
+        return GetOptionBoundedInt32(
+            arguments,
+            key,
+            optionMaxInclusive,
+            minInclusive: 1,
+            nonPositiveBehavior: NonPositiveInt32Behavior.UseDefault,
+            defaultValue: defaultValue);
     }
 
     /// <summary>
