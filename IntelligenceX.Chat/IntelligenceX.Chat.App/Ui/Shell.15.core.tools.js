@@ -1154,7 +1154,7 @@
   }
 
   function normalizeExportVisualThemeMode(value) {
-    var normalized = String(value || "").toLowerCase();
+    var normalized = String(value || "").trim().toLowerCase();
     if (normalized === "print_friendly" || normalized === "print" || normalized === "light") {
       return "print_friendly";
     }

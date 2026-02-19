@@ -414,6 +414,50 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures overwrapped strong spans like <c>****359****</c> are normalized into valid markdown.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_NormalizesOverwrappedStrongSpans() {
+        var text = "- TestimoX rules available ****359****";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- TestimoX rules available **359**", normalized);
+    }
+
+    /// <summary>
+    /// Ensures malformed signal-flow bullets wrapped in one outer strong span are repaired to stable markdown.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RepairsMalformedWrappedSignalFlowBullets() {
+        var text = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules -> **Why it matters:** \"Available\" may be overstated for operational runs -> **Next action:** compare with a second listing using default filters (enabled + visible) to get the runnable baseline.**",
+            "- Signal **Unclear execution baseline -> **Why it matters:** reviewers may run too many/non-runnable checks -> **Fix action:** generate a baseline inventory: enabled + visible + non-deprecated count, then use that for run scope.**"
+        ]);
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        var expected = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules** -> **Why it matters:** \"Available\" may be overstated for operational runs -> **Next action:** compare with a second listing using default filters (enabled + visible) to get the runnable baseline.",
+            "- Signal **Unclear execution baseline** -> **Why it matters:** reviewers may run too many/non-runnable checks -> **Fix action:** generate a baseline inventory: enabled + visible + non-deprecated count, then use that for run scope."
+        ]);
+
+        Assert.Equal(expected, normalized);
+    }
+
+    /// <summary>
+    /// Ensures already-valid signal-flow bullets stay unchanged.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesWellFormedSignalFlowBullets() {
+        var text = "- Signal **No current failures** -> **Why it matters:** transport/auth issues can still be latent -> **Action:** validate LDAP/GC/LDAPS endpoint health on all DCs.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
     /// Ensures sentence-collapsed bullets after a closing parenthesis are split and normalized.
     /// </summary>
     [Fact]
