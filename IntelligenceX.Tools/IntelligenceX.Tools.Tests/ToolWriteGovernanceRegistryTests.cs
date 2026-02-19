@@ -202,6 +202,24 @@ public sealed class ToolWriteGovernanceRegistryTests {
     }
 
     [Fact]
+    public async Task InvokeAsync_WriteIntentInYoloMode_BypassesGovernanceAndInvokesTool() {
+        var tool = new StubTool(CreateWriteToolDefinition());
+        var registry = new ToolRegistry {
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo
+        };
+        registry.Register(tool);
+
+        Assert.True(registry.TryGet("stub_write", out var registeredTool));
+        string output = await registeredTool.InvokeAsync(
+            new JsonObject().Add("send", true),
+            CancellationToken.None);
+
+        using JsonDocument doc = JsonDocument.Parse(output);
+        Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("invoked", doc.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task InvokeAsync_WriteIntentDenied_AppendsAuditRecord() {
         var tool = new StubTool(CreateWriteToolDefinition());
         var sink = new InMemoryAuditSink();
@@ -280,6 +298,24 @@ public sealed class ToolWriteGovernanceRegistryTests {
         Assert.Contains("must require governance authorization", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Register_WriteCapableToolWithoutCanonicalGovernanceMetadata_Throws() {
+        var definition = new ToolDefinition(
+            "bad_write_metadata",
+            parameters: ToolSchema.Object(
+                    ("send", ToolSchema.Boolean()),
+                    ("allow_write", ToolSchema.Boolean()))
+                .NoAdditionalProperties(),
+            writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
+                intentArgumentName: "send",
+                confirmationArgumentName: "allow_write"));
+
+        var registry = new ToolRegistry();
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
+        Assert.Contains("must expose canonical write governance metadata arguments", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ToolDefinition CreateWriteToolDefinition() {
         return new ToolDefinition(
             "stub_write",
@@ -290,16 +326,11 @@ public sealed class ToolWriteGovernanceRegistryTests {
                     ("write_actor_id", ToolSchema.String()),
                     ("write_change_reason", ToolSchema.String()),
                     ("write_rollback_plan_id", ToolSchema.String()))
+                .WithWriteGovernanceMetadata()
                 .NoAdditionalProperties(),
-            writeGovernance: new ToolWriteGovernanceContract {
-                IsWriteCapable = true,
-                RequiresGovernanceAuthorization = true,
-                GovernanceContractId = ToolWriteGovernanceContract.DefaultContractId,
-                IntentMode = ToolWriteIntentMode.BooleanFlagTrue,
-                IntentArgumentName = "send",
-                RequireExplicitConfirmation = true,
-                ConfirmationArgumentName = "allow_write"
-            });
+            writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
+                intentArgumentName: "send",
+                confirmationArgumentName: "allow_write"));
     }
 
     private static ToolDefinition CreateWriteToolDefinitionWithCustomGovernanceFields() {
@@ -314,16 +345,11 @@ public sealed class ToolWriteGovernanceRegistryTests {
                     ("custom_rollback_plan_id", ToolSchema.String()),
                     ("custom_rollback_provider_id", ToolSchema.String()),
                     ("custom_audit_correlation_id", ToolSchema.String()))
+                .WithWriteGovernanceMetadata()
                 .NoAdditionalProperties(),
-            writeGovernance: new ToolWriteGovernanceContract {
-                IsWriteCapable = true,
-                RequiresGovernanceAuthorization = true,
-                GovernanceContractId = ToolWriteGovernanceContract.DefaultContractId,
-                IntentMode = ToolWriteIntentMode.BooleanFlagTrue,
-                IntentArgumentName = "send",
-                RequireExplicitConfirmation = true,
-                ConfirmationArgumentName = "allow_write"
-            });
+            writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
+                intentArgumentName: "send",
+                confirmationArgumentName: "allow_write"));
     }
 
     private sealed class StubTool : ITool {

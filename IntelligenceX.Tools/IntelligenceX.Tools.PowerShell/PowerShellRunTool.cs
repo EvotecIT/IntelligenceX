@@ -85,17 +85,12 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                 ("timeout_ms", ToolSchema.Integer("Execution timeout in milliseconds.")),
                 ("max_output_chars", ToolSchema.Integer("Maximum combined output characters to return.")),
                 ("include_error_stream", ToolSchema.Boolean("When true, include stderr in output. Default true.")))
+            .WithWriteGovernanceMetadata()
             .NoAdditionalProperties(),
-        writeGovernance: new ToolWriteGovernanceContract {
-            IsWriteCapable = true,
-            RequiresGovernanceAuthorization = true,
-            GovernanceContractId = ToolWriteGovernanceContract.DefaultContractId,
-            IntentMode = ToolWriteIntentMode.StringEquals,
-            IntentArgumentName = "intent",
-            IntentStringValue = "read_write",
-            RequireExplicitConfirmation = true,
-            ConfirmationArgumentName = "allow_write"
-        });
+        writeGovernance: ToolWriteGovernanceConventions.StringEquals(
+            intentArgumentName: "intent",
+            intentStringValue: "read_write",
+            confirmationArgumentName: "allow_write"));
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PowerShellRunTool"/> class.

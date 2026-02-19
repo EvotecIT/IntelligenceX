@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.Json;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tools.Common;
 
@@ -169,5 +170,140 @@ public static class ToolSchemaExtensions {
         }
 
         return schema;
+    }
+
+    /// <summary>
+    /// Adds canonical write-governance metadata arguments to an object schema.
+    /// </summary>
+    /// <remarks>
+    /// All fields are optional by schema because runtime policy decides whether they are required.
+    /// </remarks>
+    /// <param name="schema">Schema to mutate.</param>
+    public static JsonObject WithWriteGovernanceMetadata(this JsonObject schema) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        for (var i = 0; i < ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments.Count; i++) {
+            string argumentName = ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments[i];
+            AddStringPropertyIfMissing(
+                properties,
+                argumentName,
+                GetWriteGovernanceDescription(argumentName));
+        }
+
+        return schema;
+    }
+
+    /// <summary>
+    /// Adds an authentication profile reference argument to an object schema.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Profile-id argument name.</param>
+    /// <param name="description">Optional custom description.</param>
+    public static JsonObject WithAuthenticationProfileReference(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.ProfileId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+        if (string.IsNullOrWhiteSpace(argumentName)) {
+            throw new ArgumentException("Argument name cannot be empty.", nameof(argumentName));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            argumentName.Trim(),
+            description ?? "Authentication profile identifier resolved by host/service configuration.");
+        return schema;
+    }
+
+    /// <summary>
+    /// Adds a run-as profile reference argument to an object schema.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Run-as profile-id argument name.</param>
+    /// <param name="description">Optional custom description.</param>
+    public static JsonObject WithRunAsProfileReference(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.RunAsProfileId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+        if (string.IsNullOrWhiteSpace(argumentName)) {
+            throw new ArgumentException("Argument name cannot be empty.", nameof(argumentName));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            argumentName.Trim(),
+            description ?? "Run-as profile identifier for alternate execution identity.");
+        return schema;
+    }
+
+    /// <summary>
+    /// Adds a probe/session reference argument to an object schema.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Probe-id argument name.</param>
+    /// <param name="description">Optional custom description.</param>
+    public static JsonObject WithAuthenticationProbeReference(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.ProbeId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+        if (string.IsNullOrWhiteSpace(argumentName)) {
+            throw new ArgumentException("Argument name cannot be empty.", nameof(argumentName));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            argumentName.Trim(),
+            description ?? "Authentication/connectivity probe identifier returned by preflight tools.");
+        return schema;
+    }
+
+    private static string GetWriteGovernanceDescription(string argumentName) {
+        return argumentName switch {
+            ToolWriteGovernanceArgumentNames.ExecutionId => "Write execution identifier for audit correlation.",
+            ToolWriteGovernanceArgumentNames.ActorId => "Actor identifier responsible for the write intent.",
+            ToolWriteGovernanceArgumentNames.ChangeReason => "Change reason, ticket, or approval reference.",
+            ToolWriteGovernanceArgumentNames.RollbackPlanId => "Rollback plan identifier for safe revert operations.",
+            ToolWriteGovernanceArgumentNames.RollbackProviderId => "Optional rollback provider identifier.",
+            ToolWriteGovernanceArgumentNames.AuditCorrelationId => "Optional immutable audit correlation identifier.",
+            _ => "Write governance metadata value."
+        };
+    }
+
+    private static void AddStringPropertyIfMissing(JsonObject properties, string name, string description) {
+        if (properties.TryGetValue(name, out _)) {
+            return;
+        }
+
+        properties.Add(name, ToolSchema.String(description));
     }
 }

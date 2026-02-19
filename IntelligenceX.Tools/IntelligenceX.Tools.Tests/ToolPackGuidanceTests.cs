@@ -105,6 +105,8 @@ public class ToolPackGuidanceTests {
                         ("attributes", ToolSchema.Array(ToolSchema.String())),
                         ("domain_controller", ToolSchema.String()),
                         ("send", ToolSchema.Boolean()))
+                    .WithAuthenticationProfileReference()
+                    .WithWriteGovernanceMetadata()
                     .NoAdditionalProperties(),
                 writeGovernance: new ToolWriteGovernanceContract {
                     IsWriteCapable = true,
@@ -114,7 +116,8 @@ public class ToolPackGuidanceTests {
                     IntentArgumentName = "send",
                     RequireExplicitConfirmation = true,
                     ConfirmationArgumentName = "send"
-                }))
+                },
+                authentication: ToolAuthenticationConventions.ProfileReference()))
         });
 
         Assert.Equal(2, catalog.Count);
@@ -136,15 +139,26 @@ public class ToolPackGuidanceTests {
         Assert.False(a.Traits.SupportsDynamicAttributes);
         Assert.False(a.Traits.SupportsTargetScoping);
         Assert.False(a.Traits.SupportsMutatingActions);
+        Assert.False(a.Traits.SupportsWriteGovernanceMetadata);
+        Assert.Empty(a.Traits.WriteGovernanceMetadataArguments);
+        Assert.False(a.Traits.SupportsAuthentication);
+        Assert.Empty(a.Traits.AuthenticationArguments);
         Assert.False(a.IsWriteCapable);
         Assert.False(a.RequiresWriteGovernance);
         Assert.Null(a.WriteGovernanceContractId);
+        Assert.False(a.IsAuthenticationAware);
+        Assert.False(a.RequiresAuthentication);
+        Assert.Null(a.AuthenticationContractId);
+        Assert.Null(a.AuthenticationMode);
+        Assert.Empty(a.AuthenticationArguments);
+        Assert.False(a.SupportsConnectivityProbe);
+        Assert.Null(a.ProbeToolName);
 
         var b = catalog[1];
         Assert.Equal("stub_b", b.Name);
         Assert.True(b.RequiredArguments.Count == 0);
         Assert.True(b.SupportsTableViewProjection);
-        Assert.Equal(9, b.Arguments.Count);
+        Assert.Equal(16, b.Arguments.Count);
         Assert.Contains(b.Arguments, static arg => arg.Name == "columns" && arg.Type == "array<string>" && !arg.Required);
         Assert.Contains(b.Arguments, static arg => arg.Name == "sort_by" && arg.Type == "string" && !arg.Required);
         Assert.NotNull(b.Traits);
@@ -160,9 +174,40 @@ public class ToolPackGuidanceTests {
         Assert.Equal(new[] { "domain_controller" }, b.Traits.TargetScopeArguments);
         Assert.True(b.Traits.SupportsMutatingActions);
         Assert.Equal(new[] { "send" }, b.Traits.MutatingActionArguments);
+        Assert.True(b.Traits.SupportsWriteGovernanceMetadata);
+        Assert.Equal(ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments, b.Traits.WriteGovernanceMetadataArguments);
+        Assert.True(b.Traits.SupportsAuthentication);
+        Assert.Equal(new[] { ToolAuthenticationArgumentNames.ProfileId }, b.Traits.AuthenticationArguments);
         Assert.True(b.IsWriteCapable);
         Assert.True(b.RequiresWriteGovernance);
         Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, b.WriteGovernanceContractId);
+        Assert.True(b.IsAuthenticationAware);
+        Assert.True(b.RequiresAuthentication);
+        Assert.Equal(ToolAuthenticationContract.DefaultContractId, b.AuthenticationContractId);
+        Assert.Equal("profile_reference", b.AuthenticationMode);
+        Assert.Equal(new[] { ToolAuthenticationArgumentNames.ProfileId }, b.AuthenticationArguments);
+        Assert.False(b.SupportsConnectivityProbe);
+        Assert.Null(b.ProbeToolName);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldExposeConnectivityProbeMetadata() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "smtp_send",
+                "SMTP send",
+                ToolSchema.Object(("send", ToolSchema.Boolean())).NoAdditionalProperties(),
+                authentication: ToolAuthenticationConventions.HostManaged(
+                    requiresAuthentication: true,
+                    supportsConnectivityProbe: true,
+                    probeToolName: "email_smtp_probe")))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.True(item.IsAuthenticationAware);
+        Assert.True(item.RequiresAuthentication);
+        Assert.True(item.SupportsConnectivityProbe);
+        Assert.Equal("email_smtp_probe", item.ProbeToolName);
     }
 
     private sealed class StubTool : ITool {

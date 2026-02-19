@@ -21,6 +21,7 @@ public sealed class ToolDefinition {
     /// <param name="writeGovernance">Optional write-governance contract for mutating tools.</param>
     /// <param name="aliases">Optional aliases that should invoke the same tool implementation.</param>
     /// <param name="aliasOf">Optional canonical tool name when this definition is an alias.</param>
+    /// <param name="authentication">Optional authentication contract for tools that require/declare auth behavior.</param>
     public ToolDefinition(
         string name,
         string? description = null,
@@ -30,7 +31,8 @@ public sealed class ToolDefinition {
         IReadOnlyList<string>? tags = null,
         ToolWriteGovernanceContract? writeGovernance = null,
         IReadOnlyList<ToolAliasDefinition>? aliases = null,
-        string? aliasOf = null) {
+        string? aliasOf = null,
+        ToolAuthenticationContract? authentication = null) {
         if (string.IsNullOrWhiteSpace(name)) {
             throw new ArgumentException("Tool name cannot be empty.", nameof(name));
         }
@@ -47,6 +49,8 @@ public sealed class ToolDefinition {
         Tags = NormalizeTags(tags);
         writeGovernance?.Validate();
         WriteGovernance = writeGovernance;
+        authentication?.Validate();
+        Authentication = authentication;
         Aliases = NormalizeAliases(aliases, Name);
         AliasOf = string.IsNullOrWhiteSpace(aliasOf) ? null : aliasOf!.Trim();
     }
@@ -88,6 +92,11 @@ public sealed class ToolDefinition {
     public ToolWriteGovernanceContract? WriteGovernance { get; }
 
     /// <summary>
+    /// Gets optional authentication contract for tools that require/declare auth behavior.
+    /// </summary>
+    public ToolAuthenticationContract? Authentication { get; }
+
+    /// <summary>
     /// Gets the canonical tool name when this definition represents an alias.
     /// </summary>
     public string? AliasOf { get; }
@@ -123,7 +132,8 @@ public sealed class ToolDefinition {
             tags: mergedTags,
             writeGovernance: WriteGovernance,
             aliases: null,
-            aliasOf: CanonicalName);
+            aliasOf: CanonicalName,
+            authentication: Authentication);
     }
 
     /// <summary>

@@ -183,6 +183,61 @@ public static class ToolResponse {
     }
 
     /// <summary>
+    /// Serializes a success envelope for mutating tools with a standardized dry-run/apply summary and metadata.
+    /// </summary>
+    /// <typeparam name="T">Model type.</typeparam>
+    /// <param name="model">Typed model mapped to snake_case root payload fields.</param>
+    /// <param name="action">Human-readable action name.</param>
+    /// <param name="writeApplied">True when the write action actually executed; false for dry-run mode.</param>
+    /// <param name="facts">Optional additional summary facts.</param>
+    /// <param name="meta">Optional metadata object. When omitted, a default meta object is produced.</param>
+    /// <param name="render">Optional render hint override.</param>
+    /// <param name="summaryTitle">Optional summary title override.</param>
+    public static string OkWriteActionModel<T>(
+        T model,
+        string action,
+        bool writeApplied,
+        IReadOnlyList<(string Key, string Value)>? facts = null,
+        JsonObject? meta = null,
+        JsonObject? render = null,
+        string? summaryTitle = null) {
+        if (string.IsNullOrWhiteSpace(action)) {
+            throw new ArgumentException("Action name is required.", nameof(action));
+        }
+
+        string normalizedAction = action.Trim();
+        string mode = writeApplied ? "apply" : "dry-run";
+
+        var summaryFacts = new List<(string Key, string Value)> {
+            ("Mode", mode),
+            ("Action", normalizedAction)
+        };
+
+        foreach (var fact in facts ?? Array.Empty<(string Key, string Value)>()) {
+            if (string.IsNullOrWhiteSpace(fact.Key)) {
+                continue;
+            }
+
+            summaryFacts.Add((fact.Key.Trim(), fact.Value ?? string.Empty));
+        }
+
+        var resolvedMeta = meta ?? ToolOutputHints.Meta(count: 1, truncated: false);
+        resolvedMeta
+            .Add("mode", mode)
+            .Add("write_applied", writeApplied)
+            .Add("action", normalizedAction);
+
+        string resolvedTitle = string.IsNullOrWhiteSpace(summaryTitle)
+            ? normalizedAction
+            : summaryTitle.Trim();
+        var summaryMarkdown = ToolMarkdown.SummaryFacts(
+            title: resolvedTitle,
+            facts: summaryFacts);
+
+        return OkModel(model, meta: resolvedMeta, summaryMarkdown: summaryMarkdown, render: render);
+    }
+
+    /// <summary>
     /// Serializes an error envelope (<c>ok=false</c>) as JSON.
     /// </summary>
     public static string Error(string errorCode, string error, IEnumerable<string>? hints = null, bool isTransient = false)

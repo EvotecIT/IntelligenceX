@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace IntelligenceX.Tools;
 
 /// <summary>
@@ -33,4 +35,16 @@ public static class ToolWriteGovernanceArgumentNames {
     /// Optional write audit correlation identifier argument.
     /// </summary>
     public const string AuditCorrelationId = "write_audit_correlation_id";
+
+    /// <summary>
+    /// Canonical governance metadata argument names expected on write-capable tool schemas.
+    /// </summary>
+    public static IReadOnlyList<string> CanonicalSchemaMetadataArguments { get; } = new[] {
+        ExecutionId,
+        ActorId,
+        ChangeReason,
+        RollbackPlanId,
+        RollbackProviderId,
+        AuditCorrelationId
+    };
 }

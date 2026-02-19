@@ -41,6 +41,28 @@ public class ToolResponseContractTests {
         Assert.Contains("Value", json);
     }
 
+    [Fact]
+    public void OkWriteActionModel_ShouldEmitStandardWriteMetadataAndSummary() {
+        var payload = new { Sent = true, Provider = "smtp" };
+        var json = ToolResponse.OkWriteActionModel(
+            model: payload,
+            action: "smtp_send",
+            writeApplied: true,
+            facts: new[] {
+                ("Target", "alerts@contoso.com")
+            },
+            summaryTitle: "SMTP send");
+
+        Assert.Contains("\"ok\":true", json);
+        Assert.Contains("\"sent\":true", json);
+        Assert.Contains("\"provider\":\"smtp\"", json);
+        Assert.Contains("\"mode\":\"apply\"", json);
+        Assert.Contains("\"write_applied\":true", json);
+        Assert.Contains("\"action\":\"smtp_send\"", json);
+        Assert.Contains("SMTP send", json);
+        Assert.Contains("Target", json);
+    }
+
     private sealed class MermaidPayload {
         public string MermaidSource { get; init; } = string.Empty;
     }

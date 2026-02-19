@@ -143,6 +143,48 @@ public class ToolDefinitionContractTests {
         Assert.True(smtpSend.WriteGovernance!.IsWriteCapable);
         Assert.True(smtpSend.WriteGovernance.RequiresGovernanceAuthorization);
         Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, smtpSend.WriteGovernance.GovernanceContractId);
+        Assert.NotNull(smtpSend.Authentication);
+        Assert.True(smtpSend.Authentication!.IsAuthenticationAware);
+        Assert.True(smtpSend.Authentication.RequiresAuthentication);
+        Assert.Equal(ToolAuthenticationContract.DefaultContractId, smtpSend.Authentication.AuthenticationContractId);
+        Assert.Equal(ToolAuthenticationMode.HostManaged, smtpSend.Authentication.Mode);
+        Assert.True(smtpSend.Authentication.SupportsConnectivityProbe);
+        Assert.Equal("email_smtp_probe", smtpSend.Authentication.ProbeToolName);
+        Assert.Contains(ToolAuthenticationArgumentNames.ProbeId, smtpSend.Authentication.GetSchemaArgumentNames());
+        var smtpSendProperties = smtpSend.Parameters?.GetObject("properties");
+        Assert.NotNull(smtpSendProperties);
+        Assert.NotNull(smtpSendProperties!.GetObject(ToolAuthenticationArgumentNames.ProbeId));
+
+        Assert.True(definitionsByName.TryGetValue("email_smtp_probe", out var smtpProbe));
+        Assert.Null(smtpProbe.WriteGovernance);
+        Assert.NotNull(smtpProbe.Authentication);
+        Assert.True(smtpProbe.Authentication!.IsAuthenticationAware);
+        Assert.True(smtpProbe.Authentication.RequiresAuthentication);
+        Assert.Equal(ToolAuthenticationContract.DefaultContractId, smtpProbe.Authentication.AuthenticationContractId);
+        Assert.Equal(ToolAuthenticationMode.HostManaged, smtpProbe.Authentication.Mode);
+    }
+
+    [Fact]
+    public void WriteCapableTools_ShouldExposeCanonicalGovernanceMetadataArguments() {
+        var registry = new ToolRegistry();
+        registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
+        registry.RegisterEmailPack(new EmailToolOptions());
+
+        var writeCapableDefinitions = registry.GetDefinitions()
+            .Where(static definition => definition.WriteGovernance?.IsWriteCapable == true)
+            .ToArray();
+        Assert.NotEmpty(writeCapableDefinitions);
+
+        foreach (var definition in writeCapableDefinitions) {
+            var properties = definition.Parameters?.GetObject("properties");
+            Assert.NotNull(properties);
+            Assert.NotNull(properties!.GetObject(ToolWriteGovernanceArgumentNames.ExecutionId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ActorId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ChangeReason));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackPlanId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackProviderId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.AuditCorrelationId));
+        }
     }
 
     [Fact]
