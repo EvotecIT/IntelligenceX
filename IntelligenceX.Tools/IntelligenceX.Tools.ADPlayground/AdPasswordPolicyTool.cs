@@ -58,7 +58,7 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
 
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var includeFineGrained = ToolArgs.GetBoolean(arguments, "include_fine_grained", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         var domains = LdapQueryHelper.GetTargetDomains(domainName, forestName)
             .Where(static x => !string.IsNullOrWhiteSpace(x))

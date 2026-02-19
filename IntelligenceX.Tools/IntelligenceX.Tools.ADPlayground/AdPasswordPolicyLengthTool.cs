@@ -59,7 +59,7 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var recommendedMinimumLength = ToolArgs.GetCappedInt32(arguments, "recommended_minimum_length", 12, 1, 512);
         var belowRecommendedOnly = ToolArgs.GetBoolean(arguments, "below_recommended_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

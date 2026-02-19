@@ -87,7 +87,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
     /// <param name="nonPositiveBehavior">Behavior used when provided value is zero or negative.</param>
     /// <returns>Normalized max-results value.</returns>
-    protected int ResolveBoundedMaxResults(
+    protected int ResolveMaxResults(
         JsonObject? arguments,
         string argumentName = "max_results",
         MaxResultsNonPositiveBehavior nonPositiveBehavior = MaxResultsNonPositiveBehavior.ClampToOne) {
@@ -132,7 +132,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
 
         request = new RequiredDomainQueryRequest(
             DomainName: domainName,
-            MaxResults: ResolveBoundedMaxResults(arguments, maxResultsArgumentName, nonPositiveBehavior));
+            MaxResults: ResolveMaxResults(arguments, maxResultsArgumentName, nonPositiveBehavior));
         errorResponse = null;
         return true;
     }

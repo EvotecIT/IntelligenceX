@@ -55,7 +55,7 @@ public sealed class AdSubnetsTool : ActiveDirectoryToolBase, ITool {
 
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var summary = ToolArgs.GetBoolean(arguments, "summary", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (summary) {
             if (!TryExecute(

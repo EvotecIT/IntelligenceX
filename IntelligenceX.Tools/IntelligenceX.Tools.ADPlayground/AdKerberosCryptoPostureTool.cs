@@ -62,7 +62,7 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
         cancellationToken.ThrowIfCancellationRequested();
 
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

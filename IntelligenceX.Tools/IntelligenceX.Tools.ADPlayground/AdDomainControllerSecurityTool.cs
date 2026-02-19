@@ -75,7 +75,7 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var domainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller");
         var insecureOnly = ToolArgs.GetBoolean(arguments, "insecure_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!string.IsNullOrWhiteSpace(domainController) && string.IsNullOrWhiteSpace(domainName)) {
             return ToolResponse.Error(

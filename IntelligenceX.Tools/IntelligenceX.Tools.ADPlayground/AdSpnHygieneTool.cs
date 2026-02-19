@@ -87,7 +87,7 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
         var topN = ToolArgs.GetCappedInt32(arguments, "top_n", 10, 1, 50);
         var includeInvalidSpnSample = ToolArgs.GetBoolean(arguments, "include_invalid_spn_sample", defaultValue: true);
         var maxInvalidSpnSample = ToolArgs.GetCappedInt32(arguments, "max_invalid_spn_sample", 25, 1, 200);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

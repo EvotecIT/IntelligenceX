@@ -47,7 +47,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var mismatchedOnly = ToolArgs.GetBoolean(arguments, "mismatched_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => {

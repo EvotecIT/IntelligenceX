@@ -251,13 +251,13 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
     }
 
     [Fact]
-    public void ResolveBoundedMaxResults_ShouldClampToOneAndCapHighValues() {
+    public void ResolveMaxResults_ShouldClampToOneAndCapHighValues_ByDefault() {
         var tool = new HarnessTool();
 
-        Assert.Equal(1, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", 0)));
-        Assert.Equal(1, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", -5)));
-        Assert.Equal(1000, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", 5000)));
-        Assert.Equal(50, tool.ResolveStrictlyBoundedMaxResults(new JsonObject().Add("max_results", 50)));
+        Assert.Equal(1, tool.ResolveClampedMaxResults(new JsonObject().Add("max_results", 0)));
+        Assert.Equal(1, tool.ResolveClampedMaxResults(new JsonObject().Add("max_results", -5)));
+        Assert.Equal(1000, tool.ResolveClampedMaxResults(new JsonObject().Add("max_results", 5000)));
+        Assert.Equal(50, tool.ResolveClampedMaxResults(new JsonObject().Add("max_results", 50)));
     }
 
     [Fact]
@@ -484,11 +484,11 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         }
 
         public int ResolveDefaultingMaxResults(JsonObject? arguments) {
-            return ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+            return ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
         }
 
-        public int ResolveStrictlyBoundedMaxResults(JsonObject? arguments) {
-            return ResolveBoundedMaxResults(arguments);
+        public int ResolveClampedMaxResults(JsonObject? arguments) {
+            return ResolveMaxResults(arguments);
         }
 
         public JsonObject CreateScopeMeta(string? domainName, string? forestName) {
@@ -598,4 +598,3 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             IReadOnlyList<PolicyAttribution> Attribution);
     }
 }
-
