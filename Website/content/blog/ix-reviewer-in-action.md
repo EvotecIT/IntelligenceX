@@ -92,6 +92,69 @@ Some high-impact knobs teams usually tune first:
 - `reviewThreadsAutoResolve*`: evidence-gated thread cleanup and summary behavior
 - `triageOnly`: skip full review and only triage existing threads
 
+## Exact YAML and JSON Pattern (Copy/Paste Starter)
+
+If you want output shape similar to this walkthrough, start with this split.
+
+### Workflow YAML
+
+```yaml
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    with:
+      reviewer_source: source
+      provider: openai
+      model: gpt-5.3-codex
+      mode: hybrid
+      length: medium
+      review_config_path: .intelligencex/reviewer.json
+      include_issue_comments: true
+      include_review_comments: true
+      include_related_prs: true
+      progress_updates: true
+    secrets:
+      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+      INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
+      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+```
+
+### Reviewer JSON
+
+```json
+{
+  "review": {
+    "mode": "hybrid",
+    "length": "medium",
+    "style": "direct",
+    "reviewDiffRange": "pr-base",
+    "reviewThreadsNeedsAttentionSummary": true,
+    "reviewThreadsAutoResolveOnEvidence": true,
+    "reviewThreadsAutoResolveComment": true
+  }
+}
+```
+
+This keeps CI wiring in YAML and policy in JSON, which makes behavior easier to debug when teams iterate quickly.
+
+## Reproduce the Review Loop Locally
+
+For a quick local verification before pushing workflow/config changes:
+
+```bash
+export INPUT_REPO=owner/name
+export INPUT_PR_NUMBER=123
+intelligencex reviewer run
+```
+
+Then after fixes are pushed:
+
+```bash
+intelligencex reviewer resolve-threads --repo owner/name --pr 123
+```
+
+That mirrors the practical PR dance: run review, fix blockers, re-run, then resolve stale bot threads when evidence is present.
+
 ## Why Teams Keep It
 
 The value is not "more comments". The value is better merge decisions:

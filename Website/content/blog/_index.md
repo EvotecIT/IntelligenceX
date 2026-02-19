@@ -8,6 +8,8 @@ layout: page
 
 ## Latest Posts
 
+- [Security-First Reviewer Setup Checklist](/blog/security-first-reviewer-setup-checklist/)
+- [Setup Best Practices for Teams](/blog/setup-best-practices-for-teams/)
 - [IX Issue Ops in Action](/blog/ix-issue-ops-in-action/)
 - [Reviewer Config Playbook (YAML vs JSON)](/blog/reviewer-yaml-vs-json-playbook/)
 - [Multilanguage Support in Action](/blog/multilanguage-support-in-action/)
