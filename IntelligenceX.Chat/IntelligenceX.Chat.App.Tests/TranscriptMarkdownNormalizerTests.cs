@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using IntelligenceX.Chat.App.Rendering;
 using Xunit;
 
@@ -552,6 +554,69 @@ public sealed class TranscriptMarkdownNormalizerTests {
         Assert.Contains(sentinel, normalized, System.StringComparison.Ordinal);
         Assert.Contains("`a**b`", normalized, System.StringComparison.Ordinal);
         Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures large collapsed metric chains expand deterministically without malformed leftovers.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_ExpandsLargeCollapsedMetricChainsDeterministically() {
+        var segments = new List<string> { "**Status: HEALTHY**" };
+        for (var i = 1; i <= 128; i++) {
+            segments.Add("**Metric " + i + ":**" + i);
+        }
+
+        var text = string.Join(" - ", segments);
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("Status **HEALTHY**", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("-**", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("**Metric 1:**", normalized, StringComparison.Ordinal);
+        for (var i = 1; i <= 128; i++) {
+            Assert.Contains("- Metric " + i + " **" + i + "**", normalized, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Ensures deep nested strong artifacts flatten to a single outer strong pair.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FlattensDeepNestedStrongSpansWithinBoundedPasses() {
+        var levels = new List<string>();
+        for (var i = 1; i <= 40; i++) {
+            levels.Add("L" + i);
+        }
+
+        var text = "- Signal **" + string.Join(" **", levels) + " complete.**";
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        var normalizedAgain = TranscriptMarkdownNormalizer.NormalizeForRendering(normalized);
+
+        var strongMarkerCount = normalized.Split("**", StringSplitOptions.None).Length - 1;
+        Assert.True(strongMarkerCount <= 4, "Expected bounded strong markers, got " + strongMarkerCount.ToString());
+        Assert.Contains("L40 complete.", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("**L2 **", normalized, StringComparison.Ordinal);
+        Assert.Equal(normalized, normalizedAgain);
+    }
+
+    /// <summary>
+    /// Ensures long host-label bullet stacks merge continuation lines at scale.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_MergesLongHostLabelBulletSeries() {
+        var lines = new List<string>();
+        for (var i = 1; i <= 180; i++) {
+            lines.Add("-AD" + i);
+            lines.Add("host detail " + i);
+        }
+
+        var text = string.Join('\n', lines);
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        var normalizedLines = normalized.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal(180, normalizedLines.Length);
+        Assert.DoesNotContain("\n-AD", normalized, StringComparison.Ordinal);
+        Assert.Contains("- AD1 host detail 1", normalized, StringComparison.Ordinal);
+        Assert.Contains("- AD180 host detail 180", normalized, StringComparison.Ordinal);
     }
 
     /// <summary>

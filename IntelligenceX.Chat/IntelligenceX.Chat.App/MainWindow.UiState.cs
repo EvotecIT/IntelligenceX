@@ -105,7 +105,8 @@ public sealed partial class MainWindow : Window {
 
             var messagesSnapshot = SnapshotMessagesForRender(_messages);
             var timestampFormat = _timestampFormat;
-            var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat)).ConfigureAwait(false);
+            var markdownOptions = _markdownOptions;
+            var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat, markdownOptions)).ConfigureAwait(false);
             latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
             if (requestedGeneration < latestGeneration) {
                 return;

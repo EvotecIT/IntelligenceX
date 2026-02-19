@@ -88,8 +88,11 @@ public sealed partial class MainWindow : Window {
         return TranscriptMarkdownFormatter.Format(messages, timestampFormat);
     }
 
-    private static string BuildMessagesHtml(IEnumerable<(string Role, string Text, DateTime Time)> messages, string timestampFormat) {
-        return TranscriptHtmlFormatter.Format(messages, timestampFormat, MarkdownOptions);
+    private static string BuildMessagesHtml(
+        IEnumerable<(string Role, string Text, DateTime Time)> messages,
+        string timestampFormat,
+        MarkdownRendererOptions markdownOptions) {
+        return TranscriptHtmlFormatter.Format(messages, timestampFormat, markdownOptions);
     }
 
     private async Task<string?> ShowTranscriptSavePickerAsync(string? title, string preferredFormat) {
