@@ -853,7 +853,8 @@ public static class ToolPackGuidance {
             ToolAuthenticationMode.HostManaged => "host_managed",
             ToolAuthenticationMode.ProfileReference => "profile_reference",
             ToolAuthenticationMode.RunAsReference => "run_as_reference",
-            _ => "none"
+            _ => throw new InvalidOperationException(
+                $"Unsupported authentication mode '{contract.Mode}' in tool authentication contract.")
         };
     }
 }

@@ -68,6 +68,9 @@ public sealed class ToolAuthenticationContract {
         if (string.IsNullOrWhiteSpace(AuthenticationContractId)) {
             throw new InvalidOperationException("AuthenticationContractId is required when IsAuthenticationAware is enabled.");
         }
+        if (!Enum.IsDefined(typeof(ToolAuthenticationMode), Mode)) {
+            throw new InvalidOperationException("Mode must be a supported ToolAuthenticationMode value when IsAuthenticationAware is enabled.");
+        }
 
         if (RequiresAuthentication && Mode == ToolAuthenticationMode.None) {
             throw new InvalidOperationException(

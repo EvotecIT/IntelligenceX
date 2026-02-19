@@ -53,4 +53,15 @@ public sealed class ToolAuthenticationConventionsTests {
 
         Assert.Throws<InvalidOperationException>(() => contract.Validate());
     }
+
+    [Fact]
+    public void Validate_UnknownAuthenticationMode_ShouldThrow() {
+        var contract = new ToolAuthenticationContract {
+            IsAuthenticationAware = true,
+            RequiresAuthentication = true,
+            Mode = (ToolAuthenticationMode)999
+        };
+
+        Assert.Throws<InvalidOperationException>(() => contract.Validate());
+    }
 }
