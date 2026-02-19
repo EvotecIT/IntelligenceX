@@ -73,3 +73,12 @@ Use this skill when adding or refactoring write-capable (mutating) tools.
   - keep read-only path default
   - require explicit intent switch for write path
   - enforce governance only on write-intent calls
+
+## Runtime Policy Integration (Host/Service)
+- Do not hand-wire per-tool runtime guardrails in app code.
+- Use centralized runtime policy bootstrap so host/service stay aligned:
+  - write mode: `enforced|yolo`
+  - audit sink mode/path: `none|file|sqlite`
+  - auth runtime preset: `default|strict|lab`
+  - run-as profile catalog path
+- Ensure tool packs consume shared runtime dependencies through pack options (for example shared auth probe store) instead of creating private per-tool stores in each runtime host.

@@ -43,6 +43,7 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolPackIdsByToolName = new(StringComparer.OrdinalIgnoreCase);
+    private ToolRuntimePolicyDiagnostics _runtimePolicyDiagnostics;
     private readonly object _toolRoutingStatsLock = new();
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();
@@ -72,6 +73,9 @@ internal sealed partial class ChatServiceSession {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         var startupWarnings = new List<string>();
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+            BuildRuntimePolicyOptions(_options),
+            warning => RecordBootstrapWarning(startupWarnings, warning));
         var bootstrapOptions = new ToolPackBootstrapOptions {
             AllowedRoots = _options.AllowedRoots.ToArray(),
             AdDomainController = _options.AdDomainController,
@@ -83,6 +87,11 @@ internal sealed partial class ChatServiceSession {
             EnableOfficeImoPack = _options.EnableOfficeImoPack,
             EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
             PluginPaths = _options.PluginPaths.ToArray(),
+            AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,
+            RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
+            SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
+            RunAsProfilePath = runtimePolicyContext.Options.RunAsProfilePath,
+            AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
             OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
         };
 
@@ -94,6 +103,7 @@ internal sealed partial class ChatServiceSession {
         _registry = new ToolRegistry();
         _toolPackIdsByToolName.Clear();
         ToolPackBootstrap.RegisterAll(_registry, _packs, _toolPackIdsByToolName);
+        _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(_registry, runtimePolicyContext);
         UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
 
         _json = new JsonSerializerOptions {
@@ -188,7 +198,7 @@ internal sealed partial class ChatServiceSession {
                             Name = "IntelligenceX.Chat.Service",
                             Version = typeof(ChatServiceSession).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                             ProcessId = Environment.ProcessId.ToString(),
-                            Policy = BuildSessionPolicy(_options, _packAvailability, _startupWarnings, _pluginSearchPaths)
+                            Policy = BuildSessionPolicy(_options, _packAvailability, _startupWarnings, _pluginSearchPaths, _runtimePolicyDiagnostics)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 

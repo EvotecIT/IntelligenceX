@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
+using IntelligenceX.Tools;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -103,6 +105,42 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error));
         Assert.Equal(OpenAITransportKind.CopilotCli, options.OpenAITransport);
+    }
+
+    [Fact]
+    public void Parse_AppliesWriteAndAuthRuntimePolicyOptions() {
+        var options = ServiceOptions.Parse(new[] {
+            "--write-governance-mode", "yolo",
+            "--no-require-write-governance-runtime",
+            "--require-write-audit-sink",
+            "--write-audit-sink-mode", "file",
+            "--write-audit-sink-path", "C:/temp/ix-audit.jsonl",
+            "--auth-runtime-preset", "strict",
+            "--require-auth-runtime",
+            "--run-as-profile-path", "C:/temp/runas-profiles.json",
+            "--auth-profile-path", "C:/temp/auth-profiles.json"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, options.WriteGovernanceMode);
+        Assert.False(options.RequireWriteGovernanceRuntime);
+        Assert.True(options.RequireWriteAuditSinkForWriteOperations);
+        Assert.Equal(ToolWriteAuditSinkMode.FileAppendOnly, options.WriteAuditSinkMode);
+        Assert.Equal("C:/temp/ix-audit.jsonl", options.WriteAuditSinkPath);
+        Assert.Equal(ToolAuthenticationRuntimePreset.Strict, options.AuthenticationRuntimePreset);
+        Assert.True(options.RequireAuthenticationRuntime);
+        Assert.Equal("C:/temp/runas-profiles.json", options.RunAsProfilePath);
+        Assert.Equal("C:/temp/auth-profiles.json", options.AuthenticationProfilePath);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidWriteGovernanceMode() {
+        _ = ServiceOptions.Parse(new[] {
+            "--write-governance-mode", "invalid_mode"
+        }, out var error);
+
+        Assert.Equal("--write-governance-mode must be one of: enforced, yolo.", error);
     }
 
     private static void TryDelete(string path) {

@@ -154,6 +154,60 @@ public sealed class PluginFolderLoaderTests {
         }
     }
 
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_PassesDistinctRunAsAndAuthProfilePathsToPluginOptions() {
+        PluginFolderLoaderOptionsPack.ResetCapturedOptions();
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-options-test");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            var copiedAssemblyPath = Path.Combine(pluginFolder, entryAssemblyName);
+            File.Copy(sourceAssemblyPath, copiedAssemblyPath, overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderOptionsPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-options-test",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                EnableFileSystemPack = false,
+                EnableSystemPack = false,
+                EnableActiveDirectoryPack = false,
+                EnablePowerShellPack = false,
+                EnableTestimoXPack = false,
+                EnableEmailPack = false,
+                EnableReviewerSetupPack = false,
+                RunAsProfilePath = "C:/temp/run-as-profiles.json",
+                AuthenticationProfilePath = "C:/temp/auth-profiles.json"
+            });
+
+            _ = Assert.Single(packs, static p => string.Equals(p.Descriptor.Id, "plugin-loader-options-test", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("C:/temp/run-as-profiles.json", PluginFolderLoaderOptionsPack.LastRunAsProfilePath);
+            Assert.Equal("C:/temp/auth-profiles.json", PluginFolderLoaderOptionsPack.LastAuthenticationProfilePath);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+            PluginFolderLoaderOptionsPack.ResetCapturedOptions();
+        }
+    }
+
     public sealed class PluginFolderLoaderTestPack : IToolPack {
         public ToolPackDescriptor Descriptor { get; } = new() {
             Id = "plugin-loader-test",
@@ -162,6 +216,39 @@ public sealed class PluginFolderLoaderTests {
             IsDangerous = false,
             SourceKind = "open_source"
         };
+
+        public void Register(ToolRegistry registry) {
+            ArgumentNullException.ThrowIfNull(registry);
+        }
+    }
+
+    public sealed class PluginFolderLoaderOptionsPack : IToolPack {
+        public sealed class PluginOptions {
+            public string? RunAsProfilePath { get; set; }
+            public string? AuthenticationProfilePath { get; set; }
+        }
+
+        public static string? LastRunAsProfilePath { get; private set; }
+        public static string? LastAuthenticationProfilePath { get; private set; }
+
+        public PluginFolderLoaderOptionsPack(PluginOptions options) {
+            ArgumentNullException.ThrowIfNull(options);
+            LastRunAsProfilePath = options.RunAsProfilePath;
+            LastAuthenticationProfilePath = options.AuthenticationProfilePath;
+        }
+
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "plugin-loader-options-test",
+            Name = "Plugin Loader Options Test",
+            Tier = ToolCapabilityTier.ReadOnly,
+            IsDangerous = false,
+            SourceKind = "open_source"
+        };
+
+        public static void ResetCapturedOptions() {
+            LastRunAsProfilePath = null;
+            LastAuthenticationProfilePath = null;
+        }
 
         public void Register(ToolRegistry registry) {
             ArgumentNullException.ThrowIfNull(registry);

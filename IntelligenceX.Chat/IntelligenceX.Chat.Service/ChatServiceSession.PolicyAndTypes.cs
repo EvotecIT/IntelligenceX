@@ -26,7 +26,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
-        IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths) {
+        IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths, ToolRuntimePolicyDiagnostics runtimePolicy) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var packList = new List<ToolPackInfoDto>();
@@ -69,7 +69,37 @@ internal sealed partial class ChatServiceSession {
             MaxSample = options.MaxSample <= 0 ? null : options.MaxSample,
             Redact = options.Redact,
             StartupWarnings = startupWarnings.Count == 0 ? Array.Empty<string>() : startupWarnings.ToArray(),
-            PluginSearchPaths = pluginSearchPaths.Count == 0 ? Array.Empty<string>() : pluginSearchPaths.ToArray()
+            PluginSearchPaths = pluginSearchPaths.Count == 0 ? Array.Empty<string>() : pluginSearchPaths.ToArray(),
+            RuntimePolicy = new SessionRuntimePolicyDto {
+                WriteGovernanceMode = ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(runtimePolicy.WriteGovernanceMode),
+                RequireWriteGovernanceRuntime = runtimePolicy.RequireWriteGovernanceRuntime,
+                WriteGovernanceRuntimeConfigured = runtimePolicy.WriteGovernanceRuntimeConfigured,
+                RequireWriteAuditSinkForWriteOperations = runtimePolicy.RequireWriteAuditSinkForWriteOperations,
+                WriteAuditSinkMode = ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(runtimePolicy.WriteAuditSinkMode),
+                WriteAuditSinkConfigured = runtimePolicy.WriteAuditSinkConfigured,
+                WriteAuditSinkPath = runtimePolicy.WriteAuditSinkPath,
+                AuthenticationRuntimePreset = ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(runtimePolicy.AuthenticationPreset),
+                RequireAuthenticationRuntime = runtimePolicy.RequireAuthenticationRuntime,
+                AuthenticationRuntimeConfigured = runtimePolicy.AuthenticationRuntimeConfigured,
+                RequireSuccessfulSmtpProbeForSend = runtimePolicy.RequireSuccessfulSmtpProbeForSend,
+                SmtpProbeMaxAgeSeconds = runtimePolicy.SmtpProbeMaxAgeSeconds,
+                RunAsProfilePath = runtimePolicy.RunAsProfilePath,
+                AuthenticationProfilePath = runtimePolicy.AuthenticationProfilePath
+            }
+        };
+    }
+
+    private static ToolRuntimePolicyOptions BuildRuntimePolicyOptions(ServiceOptions options) {
+        return new ToolRuntimePolicyOptions {
+            WriteGovernanceMode = options.WriteGovernanceMode,
+            RequireWriteGovernanceRuntime = options.RequireWriteGovernanceRuntime,
+            RequireWriteAuditSinkForWriteOperations = options.RequireWriteAuditSinkForWriteOperations,
+            WriteAuditSinkMode = options.WriteAuditSinkMode,
+            WriteAuditSinkPath = options.WriteAuditSinkPath,
+            AuthenticationPreset = options.AuthenticationRuntimePreset,
+            RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
+            RunAsProfilePath = options.RunAsProfilePath,
+            AuthenticationProfilePath = options.AuthenticationProfilePath
         };
     }
 

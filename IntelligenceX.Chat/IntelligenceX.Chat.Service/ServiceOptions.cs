@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using IntelligenceX.Chat.Profiles;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.CompatibleHttp;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -47,6 +49,15 @@ internal sealed class ServiceOptions {
     public bool EnableOfficeImoPack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
+    public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
+    public bool RequireWriteGovernanceRuntime { get; set; } = true;
+    public bool RequireWriteAuditSinkForWriteOperations { get; set; }
+    public ToolWriteAuditSinkMode WriteAuditSinkMode { get; set; } = ToolWriteAuditSinkMode.None;
+    public string? WriteAuditSinkPath { get; set; }
+    public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
+    public bool RequireAuthenticationRuntime { get; set; }
+    public string? RunAsProfilePath { get; set; }
+    public string? AuthenticationProfilePath { get; set; }
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; }
@@ -332,6 +343,84 @@ internal sealed class ServiceOptions {
                 options.EnableDefaultPluginPaths = false;
                 continue;
             }
+            if (arg is "--write-governance-mode") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(value, out var mode)) {
+                    error = "--write-governance-mode must be one of: enforced, yolo.";
+                    return options;
+                }
+                options.WriteGovernanceMode = mode;
+                continue;
+            }
+            if (arg is "--require-write-governance-runtime") {
+                options.RequireWriteGovernanceRuntime = true;
+                continue;
+            }
+            if (arg is "--no-require-write-governance-runtime") {
+                options.RequireWriteGovernanceRuntime = false;
+                continue;
+            }
+            if (arg is "--require-write-audit-sink") {
+                options.RequireWriteAuditSinkForWriteOperations = true;
+                continue;
+            }
+            if (arg is "--no-require-write-audit-sink") {
+                options.RequireWriteAuditSinkForWriteOperations = false;
+                continue;
+            }
+            if (arg is "--write-audit-sink-mode") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(value, out var sinkMode)) {
+                    error = "--write-audit-sink-mode must be one of: none, file, sqlite.";
+                    return options;
+                }
+                options.WriteAuditSinkMode = sinkMode;
+                continue;
+            }
+            if (arg is "--write-audit-sink-path") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.WriteAuditSinkPath = value;
+                continue;
+            }
+            if (arg is "--auth-runtime-preset") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(value, out var preset)) {
+                    error = "--auth-runtime-preset must be one of: default, strict, lab.";
+                    return options;
+                }
+                options.AuthenticationRuntimePreset = preset;
+                continue;
+            }
+            if (arg is "--require-auth-runtime") {
+                options.RequireAuthenticationRuntime = true;
+                continue;
+            }
+            if (arg is "--no-require-auth-runtime") {
+                options.RequireAuthenticationRuntime = false;
+                continue;
+            }
+            if (arg is "--run-as-profile-path") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.RunAsProfilePath = value;
+                continue;
+            }
+            if (arg is "--auth-profile-path") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.AuthenticationProfilePath = value;
+                continue;
+            }
             if (arg is "--max-table-rows") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -440,6 +529,18 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
+        Console.WriteLine("  --write-governance-mode <MODE>  Write governance mode: enforced|yolo (default: enforced).");
+        Console.WriteLine("  --require-write-governance-runtime  Require configured write runtime for write-intent calls (default: on).");
+        Console.WriteLine("  --no-require-write-governance-runtime Disable runtime requirement for write-intent calls.");
+        Console.WriteLine("  --require-write-audit-sink  Require write audit sink for write-intent calls.");
+        Console.WriteLine("  --no-require-write-audit-sink Disable write audit sink requirement.");
+        Console.WriteLine("  --write-audit-sink-mode <MODE>  Write audit sink mode: none|file|sqlite (default: none).");
+        Console.WriteLine("  --write-audit-sink-path <PATH>  Write audit sink path (JSONL file or SQLite db).");
+        Console.WriteLine("  --auth-runtime-preset <MODE>  Auth runtime preset: default|strict|lab (default: default).");
+        Console.WriteLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
+        Console.WriteLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
+        Console.WriteLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");
+        Console.WriteLine("  --auth-profile-path <PATH>  Authentication profile catalog path for auth-aware packs.");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
@@ -550,6 +651,21 @@ internal sealed class ServiceOptions {
         if (profile.PluginPaths != null && profile.PluginPaths.Count > 0) {
             PluginPaths.AddRange(profile.PluginPaths);
         }
+        if (ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(profile.WriteGovernanceMode, out var writeMode)) {
+            WriteGovernanceMode = writeMode;
+        }
+        RequireWriteGovernanceRuntime = profile.RequireWriteGovernanceRuntime;
+        RequireWriteAuditSinkForWriteOperations = profile.RequireWriteAuditSinkForWriteOperations;
+        if (ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(profile.WriteAuditSinkMode, out var writeAuditMode)) {
+            WriteAuditSinkMode = writeAuditMode;
+        }
+        WriteAuditSinkPath = profile.WriteAuditSinkPath;
+        if (ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset, out var authPreset)) {
+            AuthenticationRuntimePreset = authPreset;
+        }
+        RequireAuthenticationRuntime = profile.RequireAuthenticationRuntime;
+        RunAsProfilePath = profile.RunAsProfilePath;
+        AuthenticationProfilePath = profile.AuthenticationProfilePath;
 
         InstructionsFile = profile.InstructionsFile;
         MaxTableRows = profile.MaxTableRows;
@@ -584,6 +700,15 @@ internal sealed class ServiceOptions {
             EnableOfficeImoPack = EnableOfficeImoPack,
             EnableDefaultPluginPaths = EnableDefaultPluginPaths,
             PluginPaths = new List<string>(PluginPaths),
+            WriteGovernanceMode = ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(WriteGovernanceMode),
+            RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
+            RequireWriteAuditSinkForWriteOperations = RequireWriteAuditSinkForWriteOperations,
+            WriteAuditSinkMode = ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(WriteAuditSinkMode),
+            WriteAuditSinkPath = WriteAuditSinkPath,
+            AuthenticationRuntimePreset = ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(AuthenticationRuntimePreset),
+            RequireAuthenticationRuntime = RequireAuthenticationRuntime,
+            RunAsProfilePath = RunAsProfilePath,
+            AuthenticationProfilePath = AuthenticationProfilePath,
             InstructionsFile = InstructionsFile,
             MaxTableRows = MaxTableRows,
             MaxSample = MaxSample,

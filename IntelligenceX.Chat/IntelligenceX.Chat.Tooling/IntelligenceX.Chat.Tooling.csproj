@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="DBAClientX.SQLite" Version="0.1.1" />
+  </ItemGroup>
+
 </Project>
