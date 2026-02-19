@@ -45,7 +45,7 @@ Use this split to avoid 90% of configuration churn:
   - `runs_on`
   - `reviewer_source`
   - `provider`, `model`, `openai_transport`
-  - secret wiring (`secrets: inherit` or explicit)
+  - secret wiring (explicit mapping by default; `secrets: inherit` is legacy)
   - temporary `workflow_dispatch` overrides
 - Keep in JSON:
   - `mode`, `length`, `profile`, `style`

@@ -34,7 +34,7 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, ubuntu]
+    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
       contents: read
     steps:
@@ -62,4 +62,3 @@ jobs:
         run: |
           set -euo pipefail
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
-

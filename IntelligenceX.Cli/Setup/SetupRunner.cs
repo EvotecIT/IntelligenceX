@@ -708,9 +708,29 @@ internal static partial class SetupRunner {
 
     private static void PrintManualSecret(string secret) {
         Console.WriteLine("Manual secret mode enabled.");
-        Console.WriteLine("Set INTELLIGENCEX_AUTH_B64 in your repo/org secrets with the following value:");
-        Console.WriteLine(secret);
-        Console.WriteLine("Warning: this value is sensitive. Avoid sharing logs.");
+        var path = TryWriteManualSecretFile(secret);
+        if (string.IsNullOrWhiteSpace(path)) {
+            Console.WriteLine("Failed to create a local secret file. Secret output was intentionally suppressed.");
+            Console.WriteLine("Use --auth-b64 or --auth-b64-path to provide the secret value securely.");
+            return;
+        }
+        Console.WriteLine("Secret output to stdout is disabled for safety.");
+        Console.WriteLine("Set INTELLIGENCEX_AUTH_B64 in your repo/org secrets using the value in:");
+        Console.WriteLine(path);
+        Console.WriteLine("Delete that file after pasting the value.");
+    }
+
+    private static string? TryWriteManualSecretFile(string secret) {
+        try {
+            var dir = Path.Combine(Path.GetTempPath(), "intelligencex-setup");
+            Directory.CreateDirectory(dir);
+            var file = $"auth-b64-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt";
+            var path = Path.Combine(dir, file);
+            File.WriteAllText(path, secret + Environment.NewLine);
+            return path;
+        } catch {
+            return null;
+        }
     }
 
     private static string? ResolveAuthB64(SetupOptions options) {

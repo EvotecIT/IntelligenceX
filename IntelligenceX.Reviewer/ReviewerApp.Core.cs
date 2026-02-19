@@ -107,9 +107,6 @@ public static partial class ReviewerApp {
         var progress = new ReviewProgress { StatusLine = "Starting review." };
         try {
             var cancellationToken = cts.Token;
-            if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
-                return 1;
-            }
             settings = ReviewSettings.Load();
             secretsAudit = SecretsAudit.TryStart(settings);
             var validation = ReviewConfigValidator.ValidateCurrent();
@@ -136,6 +133,9 @@ public static partial class ReviewerApp {
                     $"Retry count ({settings.RetryCount}) exceeds recommended limit ({providerContract.MaxRecommendedRetryCount}) for {providerContract.DisplayName}.");
             }
             if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
+                if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
+                    return 1;
+                }
                 if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                     return 1;
                 }
@@ -210,6 +210,9 @@ public static partial class ReviewerApp {
                 }
             }
 
+            if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
+                return 1;
+            }
             if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                 return 1;
             }
@@ -537,6 +540,7 @@ public static partial class ReviewerApp {
             if (cancelHandler is not null) {
                 Console.CancelKeyPress -= cancelHandler;
             }
+            CleanupTempAuthPathFromEnv();
         }
     }
 

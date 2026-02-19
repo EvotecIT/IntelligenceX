@@ -141,11 +141,11 @@ If you do not want the CLI to upload secrets automatically:
 intelligencex setup wizard --manual-secret
 ```
 
-The wizard will print the secret value and instructions for manual paste.
+The wizard writes the secret value to a local temporary file and prints instructions for manual paste.
 
 ## Explicit secrets block
 
-If you want to avoid `secrets: inherit` in the workflow, enable explicit secrets:
+Explicit secrets mapping is enabled by default. If needed, you can force it explicitly:
 
 ```powershell
 intelligencex setup wizard --explicit-secrets

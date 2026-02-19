@@ -62,6 +62,30 @@ internal static partial class Program {
         }
     }
 
+    private static void TestSetupManualSecretDoesNotPrintSecretValue() {
+        using var server = new SetupFakeGitHubApiServer("owner", "repo");
+        var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"kind\":\"manual-secret\",\"token\":\"sensitive\"}"));
+        var args = new[] {
+            "--repo", "owner/repo",
+            "--github-token", "test-token",
+            "--github-api-base-url", server.BaseUri.ToString().TrimEnd('/'),
+            "--with-config",
+            "--manual-secret",
+            "--auth-b64", authB64,
+            "--branch", "intelligencex-setup/test-manual-secret-redaction"
+        };
+
+        var (exitCode, output) = RunSetupAndCaptureOutput(args);
+        AssertEqual(0, exitCode, "setup manual secret redaction exit");
+        AssertContainsText(output, "Manual secret mode enabled.", "setup manual secret redaction enabled message");
+        AssertContainsText(output, "Secret output to stdout is disabled for safety.",
+            "setup manual secret redaction suppression message");
+        AssertContainsText(output, "Delete that file after pasting the value.",
+            "setup manual secret redaction cleanup hint");
+        AssertEqual(false, output.Contains(authB64, StringComparison.Ordinal),
+            "setup manual secret redaction no raw auth output");
+    }
+
     private static string[] BuildWebSetupArgsForAcceptance(
         string repo,
         string gitHubToken,

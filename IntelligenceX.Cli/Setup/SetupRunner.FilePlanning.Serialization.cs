@@ -154,14 +154,18 @@ internal static partial class SetupRunner {
     }
 
     private static string NormalizeRunsOn(string? value) {
-        var trimmed = string.IsNullOrWhiteSpace(value) ? "[\"self-hosted\",\"ubuntu\"]" : value.Trim();
+        var trimmed = string.IsNullOrWhiteSpace(value) ? DefaultRunsOn : value.Trim();
+        if (trimmed.StartsWith("${{", StringComparison.Ordinal) && trimmed.EndsWith("}}", StringComparison.Ordinal)) {
+            return trimmed;
+        }
         if (trimmed.StartsWith("'") && trimmed.EndsWith("'")) {
             return trimmed;
         }
         if (trimmed.StartsWith("\"") && trimmed.EndsWith("\"")) {
             return trimmed;
         }
-        return $"'{trimmed}'";
+        var escaped = trimmed.Replace("'", "''", StringComparison.Ordinal);
+        return $"'{escaped}'";
     }
 
     private static string NormalizeActionsRepo(string value) {

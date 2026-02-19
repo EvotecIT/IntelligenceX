@@ -36,7 +36,7 @@ Best for:
 - Runner targeting (`runs_on`)
 - Reviewer binary source (`reviewer_source: source|release`)
 - Provider wiring and transport (`provider`, `model`, `openai_transport`)
-- Secrets mode (`secrets: inherit` vs explicit mapping)
+- Secrets wiring (explicit mapping is the default/recommended mode; `secrets: inherit` is legacy)
 - Temporary run-time overrides from `workflow_dispatch` inputs
 
 ### JSON (`.intelligencex/reviewer.json`)
@@ -62,7 +62,7 @@ Best for:
 | Usage budget guard | `usage_budget_*` | `review.reviewUsageBudget*` | Early fail/allow behavior when budget is low |
 | Analysis policy | `analysis_*` dispatch overrides | `analysis.*` | Findings and policy sections in output; gate behavior if analyze gate is used |
 | Runner/source | `runs_on`, `reviewer_source` | not applicable | CI execution path and release-vs-source behavior |
-| Secrets strategy | `secrets: inherit` / explicit | not applicable | Auth availability and trust boundaries |
+| Secrets strategy | explicit (default) / `secrets: inherit` (legacy) | not applicable | Auth availability and trust boundaries |
 
 ## Build and Check Impact
 
