@@ -1,5 +1,7 @@
   var toolDataViewRowsByTableId = Object.create(null);
   var toolDataViewTableIdCounter = 0;
+  var dataViewSessionCounter = 0;
+  var activeDataViewSessionId = 0;
 
   function clearToolDataViewRowsCache() {
     toolDataViewRowsByTableId = Object.create(null);
@@ -131,6 +133,8 @@
       return;
     }
 
+    dataViewSessionCounter += 1;
+    activeDataViewSessionId = dataViewSessionCounter;
     pendingExports = Object.create(null);
     setDataViewExportButtonsBusy();
     setDataViewFeedback("", "info", 0);
@@ -190,7 +194,8 @@
     var exportId = buildExportId(resolvedFormat);
     pendingExports[exportId] = {
       format: resolvedFormat,
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      sessionId: activeDataViewSessionId
     };
     setDataViewExportButtonsBusy();
 
@@ -268,8 +273,15 @@
   window.ixOnDataViewExportResult = function(payload) {
     payload = payload || {};
     var exportId = String(payload.exportId || "");
-    if (exportId && Object.prototype.hasOwnProperty.call(pendingExports, exportId)) {
-      delete pendingExports[exportId];
+    if (!exportId || !Object.prototype.hasOwnProperty.call(pendingExports, exportId)) {
+      return;
+    }
+
+    var pending = pendingExports[exportId];
+    delete pendingExports[exportId];
+    if (pending && pending.sessionId && pending.sessionId !== activeDataViewSessionId) {
+      setDataViewExportButtonsBusy();
+      return;
     }
     setDataViewExportButtonsBusy();
 
@@ -277,6 +289,9 @@
     var tone = ok ? "ok" : "bad";
     var message = String(payload.message || "").trim();
     var path = String(payload.filePath || "").trim();
+    if (ok && !path && pending && pending.path) {
+      path = String(pending.path || "").trim();
+    }
 
     if (!message) {
       if (ok) {
