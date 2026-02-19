@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using OfficeIMO.Excel;
 using OfficeIMO.Word.Markdown;
 
@@ -10,6 +11,10 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 /// OfficeIMO-backed document writers used by chat export flows.
 /// </summary>
 public static class OfficeImoArtifactWriter {
+    private static readonly Regex OrderedListLineRegex = new(
+        @"^\s*\d+[.)]\s",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     /// <summary>
     /// Writes tabular rows to an Excel workbook using OfficeIMO.Excel.
     /// </summary>
@@ -56,7 +61,8 @@ public static class OfficeImoArtifactWriter {
     public static void WriteDocxTranscript(string title, string markdown, string outputPath) {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, sourceMarkdown);
-        WriteDocxFromMarkdown(transcriptMarkdown, outputPath);
+        var wordSafeMarkdown = NeutralizeSingleLineDefinitionLists(transcriptMarkdown);
+        WriteDocxFromMarkdown(wordSafeMarkdown, outputPath);
     }
 
     private static void WriteDocxFromMarkdown(string markdown, string outputPath) {
@@ -100,6 +106,86 @@ public static class OfficeImoArtifactWriter {
         }
 
         return "# " + title.Trim() + "\n\n" + markdown;
+    }
+
+    private static string NeutralizeSingleLineDefinitionLists(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return string.Empty;
+        }
+
+        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        bool insideFence = false;
+
+        for (int i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            var trimmed = line.TrimStart();
+
+            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal)) {
+                insideFence = !insideFence;
+                continue;
+            }
+
+            if (insideFence || !LooksLikeSingleLineDefinition(trimmed)) {
+                continue;
+            }
+
+            if (!TryGetDefinitionSeparatorIndex(line, out var separatorIndex)) {
+                continue;
+            }
+
+            if (separatorIndex > 0 && line[separatorIndex - 1] == '\\') {
+                continue;
+            }
+
+            lines[i] = line.Insert(separatorIndex, "\\");
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static bool LooksLikeSingleLineDefinition(string trimmedLine) {
+        if (string.IsNullOrWhiteSpace(trimmedLine)) {
+            return false;
+        }
+
+        if (trimmedLine.StartsWith("#", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith(">", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("- ", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("* ", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("+ ", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("|", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("```", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("~~~", StringComparison.Ordinal) ||
+            OrderedListLineRegex.IsMatch(trimmedLine)) {
+            return false;
+        }
+
+        return TryGetDefinitionSeparatorIndex(trimmedLine, out _);
+    }
+
+    private static bool TryGetDefinitionSeparatorIndex(string line, out int index) {
+        index = -1;
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var scanFrom = 0;
+        while (scanFrom < line.Length) {
+            var separator = line.IndexOf(':', scanFrom);
+            if (separator < 1) {
+                return false;
+            }
+
+            if (separator + 1 < line.Length && line[separator + 1] == ' ') {
+                index = separator;
+                return true;
+            }
+
+            scanFrom = separator + 1;
+        }
+
+        return false;
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
