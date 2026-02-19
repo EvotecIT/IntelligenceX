@@ -272,6 +272,41 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures clean transcript markdown is returned byte-for-byte when no normalization signal exists.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_NormalizationLeavesCleanMarkdownUnchanged() {
+        const string markdown = """
+            # Transcript
+
+            - Signal **Healthy baseline established** -> **Why it matters:** repeatability is preserved.
+            - Next step: collect another sample tomorrow.
+            """;
+
+        var normalized = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown);
+
+        Assert.Equal(markdown, normalized);
+    }
+
+    /// <summary>
+    /// Ensures malformed transcript normalization is idempotent after the first repair pass.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_NormalizationIsIdempotentForMalformedSignalFlow() {
+        const string markdown = """
+            # Transcript
+
+            - Signal **Only total count checked, not origin split -> **Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**
+            - TestimoX rules available ****359****
+            """;
+
+        var once = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown);
+        var twice = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(once);
+
+        Assert.Equal(once, twice);
+    }
+
+    /// <summary>
     /// Ensures DOCX transcript export materializes supported visual fences into embedded images.
     /// </summary>
     [Fact]

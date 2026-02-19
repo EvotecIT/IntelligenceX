@@ -11,27 +11,43 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 /// OfficeIMO-backed document writers used by chat export flows.
 /// </summary>
 public static class OfficeImoArtifactWriter {
+    private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(250);
+
+    // Detect ordered-list starters so definition-list escaping can skip true list items.
     private static readonly Regex OrderedListLineRegex = new(
         @"^\s*\d+[.)]\s",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexMatchTimeout);
+    // Repair malformed strong spans like ****359**** into valid markdown emphasis.
     private static readonly Regex OverwrappedStrongSpanRegex = new(
         @"(?<!\*)\*{4}(?<inner>[^*\r\n]+)\*{4}(?!\*)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexMatchTimeout);
+    // Detect single wrapped signal-flow bullets where one outer strong span swallowed inner labels.
     private static readonly Regex WrappedSignalFlowLineRegex = new(
         @"^(?<prefix>\s*-\s+[^\r\n]*?)\*\*(?<inner>[^\r\n]*->\s*\*\*[^\r\n]*?)\*\*(?<tail>\s*)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexMatchTimeout);
+    // Normalize tight arrow-label joins like "->**Why it matters:**" to "-> **Why it matters:**".
     private static readonly Regex SignalFlowArrowLabelTightRegex = new(
         @"->\s*\*\*(?=(?:Why it matters|Action|Next action|Fix action):)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        RegexMatchTimeout);
+    // Ensure a space after bold labels such as "**Action:**next".
     private static readonly Regex SignalFlowBoldLabelMissingSpaceRegex = new(
         @"(?<label>\*\*(?:Why it matters|Action|Next action|Fix action):\*\*)(?=\S)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        RegexMatchTimeout);
+    // Ensure a space after plain labels such as "Action:next", excluding markdown emphasis starts.
     private static readonly Regex SignalFlowPlainLabelMissingSpaceRegex = new(
         @"(?<label>(?<![\p{L}\p{N}_])(?:Why it matters|Action|Next action|Fix action):)(?=\S)(?!\*)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        RegexMatchTimeout);
+    // Fast gate for deciding whether signal-label spacing repairs are needed at all.
     private static readonly Regex TightSignalLabelRegex = new(
         @"(?:Why it matters|Action|Next action|Fix action):\S",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        RegexMatchTimeout);
 
     /// <summary>
     /// Writes tabular rows to an Excel workbook using OfficeIMO.Excel.
