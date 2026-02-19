@@ -72,12 +72,20 @@ Test-Path artifacts/triage/ix-issue-review.md
 Expected PowerShell result: all three checks return `True`.
 
 ```bash
-test -f artifacts/triage/ix-project-config.json
-test -f artifacts/triage/ix-issue-review.json
-test -f artifacts/triage/ix-issue-review.md
+set -euo pipefail
+for f in \
+  artifacts/triage/ix-project-config.json \
+  artifacts/triage/ix-issue-review.json \
+  artifacts/triage/ix-issue-review.md; do
+  if [ ! -f "$f" ]; then
+    echo "Missing required artifact: $f" >&2
+    exit 1
+  fi
+done
+echo "Artifact verification passed."
 ```
 
-Expected bash result: each `test -f` exits with code `0`.
+Expected bash result: the script prints `Artifact verification passed.` and exits with code `0`.
 
 ## Screenshot shot list
 
