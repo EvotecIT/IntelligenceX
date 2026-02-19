@@ -109,6 +109,7 @@ internal sealed partial class WebApi {
         public string? SecretOrg { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
+        public bool ManualSecretStdout { get; set; }
         public bool ExplicitSecrets { get; set; }
         public bool Upgrade { get; set; }
         public bool Force { get; set; }

@@ -381,6 +381,7 @@ build/*
 /Ignore/*
 /Module/Artefacts/*
 /Module/Lib/*dotnet-install.sh
+.intelligencex/auth.json
 packages-microsoft-prod.deb
 dotnet-install.sh
 

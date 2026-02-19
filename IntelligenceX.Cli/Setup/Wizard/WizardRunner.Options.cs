@@ -17,6 +17,7 @@ internal static partial class WizardRunner {
         Console.WriteLine("  --with-config");
         Console.WriteLine("  --skip-secret");
         Console.WriteLine("  --manual-secret");
+        Console.WriteLine("  --manual-secret-stdout");
         Console.WriteLine("  --explicit-secrets");
         Console.WriteLine("  --operation <setup|update-secret|cleanup>");
         Console.WriteLine("  --path <new-setup|refresh-auth|cleanup|maintenance>");
@@ -67,6 +68,7 @@ internal static partial class WizardRunner {
         public bool WithConfig { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
+        public bool ManualSecretStdout { get; set; }
         public bool ExplicitSecrets { get; set; }
         public string? PathId { get; set; }
         public bool PathSpecified { get; set; }
@@ -103,6 +105,9 @@ internal static partial class WizardRunner {
                         break;
                     case "manual-secret":
                         options.ManualSecret = ParseBool(value, true);
+                        break;
+                    case "manual-secret-stdout":
+                        options.ManualSecretStdout = ParseBool(value, true);
                         break;
                     case "explicit-secrets":
                         options.ExplicitSecrets = ParseBool(value, true);

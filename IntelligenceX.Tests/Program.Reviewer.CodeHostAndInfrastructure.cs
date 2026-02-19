@@ -2,6 +2,69 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static void TestReviewerUntrustedPrSkipsAuthStoreWriteFromEnv() {
+        var previousReviewerToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+        var previousGitHubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        var previousEventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        var previousAuthB64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_B64");
+        var previousAuthPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        var tempDir = Path.Combine(Path.GetTempPath(), "intelligencex-reviewer-untrusted-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var eventPath = Path.Combine(tempDir, "event.json");
+        var authPath = Path.Combine(tempDir, "auth.json");
+        var eventJson = """
+{
+  "repository": { "full_name": "owner/repo" },
+  "pull_request": {
+    "title": "Test",
+    "number": 1,
+    "draft": false,
+    "author_association": "CONTRIBUTOR",
+    "head": {
+      "sha": "head",
+      "repo": {
+        "full_name": "fork/repo",
+        "fork": true
+      }
+    },
+    "base": {
+      "sha": "base"
+    }
+  }
+}
+""";
+
+        try {
+            File.WriteAllText(eventPath, eventJson);
+            var bundleJson = "{\"provider\":\"openai-codex\",\"access_token\":\"access\",\"refresh_token\":\"refresh\"}";
+            var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(bundleJson));
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN", "test-token");
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", "test-token");
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", eventPath);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_B64", authB64);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", authPath);
+
+            var (exitCode, output) = RunReviewerAndCaptureOutput(Array.Empty<string>());
+            AssertEqual(0, exitCode, "reviewer untrusted auth store skip exit");
+            AssertContainsText(output, "Skipping review to avoid secret access",
+                "reviewer untrusted auth store skip message");
+            AssertEqual(false, File.Exists(authPath), "reviewer untrusted auth store file should not be written");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN", previousReviewerToken);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", previousGitHubToken);
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", previousEventPath);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_B64", previousAuthB64);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
+            try {
+                if (Directory.Exists(tempDir)) {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private static void TestReviewCodeHostEnv() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CODE_HOST");
         try {
@@ -427,6 +490,24 @@ internal static partial class Program {
         }
         sb.Append("]}");
         return sb.ToString();
+    }
+
+    private static (int ExitCode, string Output) RunReviewerAndCaptureOutput(string[] args) {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        using var outWriter = new StringWriter();
+        using var errWriter = new StringWriter();
+        Console.SetOut(outWriter);
+        Console.SetError(errWriter);
+        try {
+            var exitCode = ReviewerApp.RunAsync(args).GetAwaiter().GetResult();
+            outWriter.Flush();
+            errWriter.Flush();
+            return (exitCode, outWriter.ToString() + errWriter.ToString());
+        } finally {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
     }
 
     private sealed record HttpRequest(string Method, string Path, string Body);

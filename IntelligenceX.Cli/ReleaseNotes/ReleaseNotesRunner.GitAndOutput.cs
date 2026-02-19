@@ -16,6 +16,7 @@ using IntelligenceX.OpenAI.Chat;
 namespace IntelligenceX.Cli.ReleaseNotes;
 
 internal static partial class ReleaseNotesRunner {
+    private static string? _temporaryAuthPathFromEnv;
 
     private static string NormalizeReleaseNotes(string raw, out bool hasChanges) {
         var summary = new List<string>();
@@ -418,11 +419,11 @@ internal static partial class ReleaseNotesRunner {
         }
     }
 
-    private static void TryWriteAuthFromEnv() {
+    private static bool TryWriteAuthFromEnv() {
         var authJson = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_JSON");
         var authB64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_B64");
         if (string.IsNullOrWhiteSpace(authJson) && string.IsNullOrWhiteSpace(authB64)) {
-            return;
+            return true;
         }
 
         string content;
@@ -434,15 +435,64 @@ internal static partial class ReleaseNotesRunner {
                 content = Encoding.UTF8.GetString(bytes);
             } catch {
                 Console.Error.WriteLine("Failed to decode INTELLIGENCEX_AUTH_B64.");
-                return;
+                return false;
             }
         }
 
-        var path = AuthPaths.ResolveAuthPath();
+        var path = ResolveAuthWritePathForEnvImport();
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(dir)) {
             Directory.CreateDirectory(dir);
         }
         File.WriteAllText(path, content);
+        return true;
+    }
+
+    private static string ResolveAuthWritePathForEnvImport() {
+        var configuredPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath)) {
+            return configuredPath;
+        }
+        if (!string.IsNullOrWhiteSpace(_temporaryAuthPathFromEnv)) {
+            return _temporaryAuthPathFromEnv!;
+        }
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "intelligencex-release-notes");
+        Directory.CreateDirectory(tempDir);
+        var tempPath = Path.Combine(tempDir, $"auth-{Guid.NewGuid():N}.json");
+        _temporaryAuthPathFromEnv = tempPath;
+        Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", tempPath);
+        return tempPath;
+    }
+
+    private static void CleanupTempAuthPathFromEnv() {
+        var tempPath = _temporaryAuthPathFromEnv;
+        if (string.IsNullOrWhiteSpace(tempPath)) {
+            return;
+        }
+        try {
+            if (File.Exists(tempPath)) {
+                File.Delete(tempPath);
+            }
+        } catch {
+            // Best-effort cleanup.
+        }
+
+        try {
+            var tempDir = Path.GetDirectoryName(tempPath);
+            if (!string.IsNullOrWhiteSpace(tempDir)
+                && Directory.Exists(tempDir)
+                && !Directory.EnumerateFileSystemEntries(tempDir).Any()) {
+                Directory.Delete(tempDir);
+            }
+        } catch {
+            // Best-effort cleanup.
+        }
+
+        var currentPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        if (string.Equals(currentPath, tempPath, StringComparison.OrdinalIgnoreCase)) {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", null);
+        }
+        _temporaryAuthPathFromEnv = null;
     }
 }

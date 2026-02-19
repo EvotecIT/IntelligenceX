@@ -61,7 +61,9 @@ internal static partial class ReleaseNotesRunner {
         }
 
         try {
-            TryWriteAuthFromEnv();
+            if (!TryWriteAuthFromEnv()) {
+                return 1;
+            }
             var repoPath = options.RepoPath ?? Environment.CurrentDirectory;
             if (!Directory.Exists(repoPath)) {
                 Console.Error.WriteLine($"Repository path not found: {repoPath}");
@@ -132,6 +134,8 @@ internal static partial class ReleaseNotesRunner {
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             return 1;
+        } finally {
+            CleanupTempAuthPathFromEnv();
         }
     }
 

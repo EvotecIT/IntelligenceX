@@ -63,7 +63,8 @@ If you do not want automatic secret upload:
 intelligencex setup wizard --manual-secret
 ```
 
-The CLI prints the base64 auth bundle for manual secret entry.
+The CLI writes the base64 auth bundle to a local temporary file and prints only that file path for manual secret entry.
+If you prefer the old copy/paste flow, add `--manual-secret-stdout` to print it directly (less safe due to terminal/log exposure).
 
 ## Best Practices
 

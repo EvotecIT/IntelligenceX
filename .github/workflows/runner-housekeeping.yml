@@ -18,6 +18,9 @@ on:
         required: false
         default: '20'
 
+permissions:
+  contents: read
+
 concurrency:
   group: self-hosted-runner-housekeeping-${{ github.repository }}
   cancel-in-progress: false

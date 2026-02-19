@@ -32,7 +32,8 @@ If you prefer not to upload secrets automatically, use manual secret mode:
 intelligencex setup --manual-secret
 ```
 
-The CLI prints the base64 auth store for manual paste into GitHub secrets.
+The CLI writes the base64 auth store to a local temporary file and prints the file path for manual paste into GitHub secrets.
+If you need direct terminal output, add `--manual-secret-stdout` (requires `--manual-secret` and is less safe).
 
 ## What the tool changes
 
@@ -52,4 +53,5 @@ comments will appear authored by `github-actions`.
 
 - Auto-upload secrets via the CLI or wizard (`--set-github-secret`).
 - Manual paste flow (`--manual-secret`) for maximum control.
-- Explicit secrets block (`--explicit-secrets`) to avoid `secrets: inherit`.
+- Optional direct stdout paste mode (`--manual-secret --manual-secret-stdout`) for convenience.
+- Explicit secrets block (`--explicit-secrets`, now default) to scope only required secrets.

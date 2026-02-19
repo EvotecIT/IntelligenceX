@@ -18,6 +18,9 @@ internal static class SetupArgsBuilder {
         if (plan.ManualSecret && plan.UpdateSecret) {
             throw new InvalidOperationException("Choose only one of --manual-secret or --update-secret.");
         }
+        if (plan.ManualSecretStdout && !plan.ManualSecret) {
+            throw new InvalidOperationException("--manual-secret-stdout requires --manual-secret.");
+        }
 
         if (plan.SkipSecret && plan.UpdateSecret) {
             throw new InvalidOperationException("Choose only one of --skip-secret or --update-secret.");
@@ -142,6 +145,9 @@ internal static class SetupArgsBuilder {
 
         if (plan.ManualSecret) {
             args.Add("--manual-secret");
+        }
+        if (plan.ManualSecretStdout) {
+            args.Add("--manual-secret-stdout");
         }
 
         if (plan.ExplicitSecrets) {

@@ -39,6 +39,7 @@ internal static partial class WizardRunner {
             WithConfig = options.WithConfig,
             SkipSecret = options.SkipSecret,
             ManualSecret = options.ManualSecret,
+            ManualSecretStdout = options.ManualSecretStdout,
             ExplicitSecrets = options.ExplicitSecrets,
             DryRun = options.DryRun,
             BranchName = options.BranchName,
@@ -112,6 +113,7 @@ internal static partial class WizardRunner {
             if (string.Equals(state.Provider, "copilot", StringComparison.OrdinalIgnoreCase)) {
                 state.SkipSecret = true;
                 state.ManualSecret = false;
+                state.ManualSecretStdout = false;
                 state.OpenAiAccountId = null;
                 state.OpenAiAccountIds = null;
                 state.OpenAiAccountRotation = "first-available";
@@ -135,6 +137,7 @@ internal static partial class WizardRunner {
         if (state.Operation == WizardOperation.UpdateSecret) {
             state.SkipSecret = false;
             state.ManualSecret = false;
+            state.ManualSecretStdout = false;
             state.ExplicitSecrets = false;
             state.Upgrade = false;
             state.Force = false;

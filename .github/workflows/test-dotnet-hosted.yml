@@ -5,6 +5,9 @@ on:
     # Keep this workflow manual so maintainers can opt-in when needed.
     workflow_dispatch:
 
+permissions:
+    contents: read
+
 env:
     DOTNET_VERSION: |
         8.x

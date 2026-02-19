@@ -1,0 +1,10 @@
+# Default ownership
+* @PrzemyslawKlys
+
+# Security-sensitive paths
+/.github/workflows/* @PrzemyslawKlys
+/.github/dependabot.yml @PrzemyslawKlys
+/SECURITY.md @PrzemyslawKlys
+/IntelligenceX.Cli/Templates/* @PrzemyslawKlys
+/IntelligenceX.Cli/Setup/** @PrzemyslawKlys
+/IntelligenceX.Reviewer/** @PrzemyslawKlys

@@ -22,9 +22,9 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@68fe2c83e1a7d97d5aad6c4c8223c1d7eb8031e7
     with:
-      runs_on: '["self-hosted","ubuntu"]'
+      runs_on: ${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]' }}
       reviewer_source: source
       
       
@@ -51,5 +51,9 @@ jobs:
       cleanup_min_confidence: 0.85
       cleanup_allowed_edits: 'formatting,grammar,title,sections'
       cleanup_post_edit_comment: true
-    secrets: inherit
+    secrets:
+      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+      INTELLIGENCEX_AUTH_KEY: ${{ secrets.INTELLIGENCEX_AUTH_KEY }}
+      INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
+      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
   # INTELLIGENCEX:END

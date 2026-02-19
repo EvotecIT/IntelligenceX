@@ -6,6 +6,11 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
+    private const string DefaultActionsRepo = "evotecit/github-actions";
+    private const string DefaultActionsRef = "68fe2c83e1a7d97d5aad6c4c8223c1d7eb8031e7";
+    private const string DefaultRunsOn =
+        "${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '[\"self-hosted\",\"ubuntu\"]' || '[\"ubuntu-latest\"]' }}";
+
     private sealed class SetupOptions {
         public string? RepoFullName { get; set; }
         public string? GitHubClientId { get; set; }
@@ -13,9 +18,9 @@ internal static partial class SetupRunner {
         public string GitHubApiBaseUrl { get; set; } = "https://api.github.com";
         public string GitHubAuthBaseUrl { get; set; } = "https://github.com";
         public string GitHubScopes { get; set; } = "repo workflow read:org";
-        public string? ActionsRepo { get; set; } = "evotecit/github-actions";
-        public string? ActionsRef { get; set; } = "master";
-        public string? RunsOn { get; set; } = "[\"self-hosted\",\"ubuntu\"]";
+        public string? ActionsRepo { get; set; } = DefaultActionsRepo;
+        public string? ActionsRef { get; set; } = DefaultActionsRef;
+        public string? RunsOn { get; set; } = DefaultRunsOn;
         public string? Provider { get; set; } = "openai";
         public string? OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string? OpenAITransport { get; set; } = "native";
@@ -71,6 +76,7 @@ internal static partial class SetupRunner {
         public bool UpdateSecret { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
+        public bool ManualSecretStdout { get; set; }
         public bool KeepSecret { get; set; }
         public bool Force { get; set; }
         public bool DryRun { get; set; }
@@ -103,7 +109,7 @@ internal static partial class SetupRunner {
         public bool CleanupMinConfidenceSet { get; set; }
         public bool CleanupAllowedEditsSet { get; set; }
         public bool CleanupPostEditCommentSet { get; set; }
-        public bool ExplicitSecrets { get; set; }
+        public bool ExplicitSecrets { get; set; } = true;
 
         public static SetupOptions Parse(string[] args) {
             var options = new SetupOptions {
@@ -319,6 +325,9 @@ internal static partial class SetupRunner {
                     case "manual-secret":
                         options.ManualSecret = ParseBool(value, true);
                         break;
+                    case "manual-secret-stdout":
+                        options.ManualSecretStdout = ParseBool(value, true);
+                        break;
                     case "keep-secret":
                         options.KeepSecret = ParseBool(value, true);
                         break;
@@ -372,9 +381,9 @@ internal static partial class SetupRunner {
     }
 
     private sealed class WorkflowSettings {
-        public string ActionsRepo { get; set; } = "evotecit/github-actions";
-        public string ActionsRef { get; set; } = "master";
-        public string RunsOn { get; set; } = "[\"self-hosted\",\"ubuntu\"]";
+        public string ActionsRepo { get; set; } = DefaultActionsRepo;
+        public string ActionsRef { get; set; } = DefaultActionsRef;
+        public string RunsOn { get; set; } = DefaultRunsOn;
         public string ReviewerSource { get; set; } = "release";
         public string ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
         public string ReviewerReleaseTag { get; set; } = "latest";
@@ -387,7 +396,7 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
-        public bool ExplicitSecrets { get; set; }
+        public bool ExplicitSecrets { get; set; } = true;
         public bool Diagnostics { get; set; }
         public bool Preflight { get; set; }
         public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -401,9 +410,9 @@ internal static partial class SetupRunner {
 
         public static WorkflowSettings FromOptions(SetupOptions options) {
             return new WorkflowSettings {
-                ActionsRepo = NormalizeActionsRepo(options.ActionsRepo ?? "evotecit/github-actions"),
-                ActionsRef = options.ActionsRef ?? "master",
-                RunsOn = options.RunsOn ?? "[\"self-hosted\",\"ubuntu\"]",
+                ActionsRepo = NormalizeActionsRepo(options.ActionsRepo ?? DefaultActionsRepo),
+                ActionsRef = options.ActionsRef ?? DefaultActionsRef,
+                RunsOn = options.RunsOn ?? DefaultRunsOn,
                 ReviewerSource = options.ReviewerSource ?? "release",
                 ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? "EvotecIT/github-actions",
                 ReviewerReleaseTag = options.ReviewerReleaseTag ?? "latest",
