@@ -139,4 +139,16 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("td.textContent = cell == null ? \"\" : String(cell);", script, StringComparison.Ordinal);
         Assert.DoesNotContain("td.textContent = bodyRows[r][c] || \"\";", script, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures Data View ignores stale/unknown export callbacks so old failures cannot overwrite current export feedback.
+    /// </summary>
+    [Fact]
+    public void DataViewActions_IgnoresStaleExportCallbacks() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.19.core.dataview.actions.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("if (!exportId || !Object.prototype.hasOwnProperty.call(pendingExports, exportId)) {", script, StringComparison.Ordinal);
+        Assert.Contains("if (pending && pending.sessionId && pending.sessionId !== activeDataViewSessionId) {", script, StringComparison.Ordinal);
+    }
 }
