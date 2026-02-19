@@ -32,31 +32,36 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private async Task ExportTranscriptAsync() {
-        var conversation = GetActiveConversation();
-        var md = BuildTranscriptMarkdown(conversation.Messages, _timestampFormat);
-        if (string.IsNullOrWhiteSpace(md)) {
-            return;
+        try {
+            var conversation = GetActiveConversation();
+            var md = BuildTranscriptMarkdown(conversation.Messages, _timestampFormat);
+            if (string.IsNullOrWhiteSpace(md)) {
+                return;
+            }
+
+            var baseName = string.IsNullOrWhiteSpace(conversation.ThreadId) ? conversation.Id : conversation.ThreadId!;
+            var preferredFormat = string.Equals(_exportDefaultFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)
+                ? ExportPreferencesContract.FormatDocx
+                : ExportPreferencesContract.FormatMarkdown;
+            var pickedPath = await ShowTranscriptSavePickerAsync(baseName, preferredFormat).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(pickedPath)) {
+                return;
+            }
+
+            var normalizedPath = Path.GetFullPath(pickedPath);
+            var normalizedExtension = Path.GetExtension(normalizedPath).Trim().ToLowerInvariant();
+            var transcriptFormat = string.Equals(normalizedExtension, ".docx", StringComparison.OrdinalIgnoreCase)
+                ? ExportPreferencesContract.FormatDocx
+                : ExportPreferencesContract.FormatMarkdown;
+            var filePath = LocalExportArtifactWriter.ResolveOutputPath(transcriptFormat, baseName, normalizedPath, defaultPrefix: "transcript");
+
+            LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
+            await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
+            AppendSystem(SystemNotice.TranscriptExported(filePath));
+        } catch (Exception ex) {
+            await SetStatusAsync(SessionStatus.ExportFailed()).ConfigureAwait(false);
+            AppendSystem("Transcript export failed: " + ex.Message);
         }
-
-        var baseName = string.IsNullOrWhiteSpace(conversation.ThreadId) ? conversation.Id : conversation.ThreadId!;
-        var preferredFormat = string.Equals(_exportDefaultFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)
-            ? ExportPreferencesContract.FormatDocx
-            : "md";
-        var pickedPath = await ShowTranscriptSavePickerAsync(baseName, preferredFormat).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(pickedPath)) {
-            return;
-        }
-
-        var normalizedPath = Path.GetFullPath(pickedPath);
-        var normalizedExtension = Path.GetExtension(normalizedPath).Trim().ToLowerInvariant();
-        var transcriptFormat = string.Equals(normalizedExtension, ".docx", StringComparison.OrdinalIgnoreCase)
-            ? ExportPreferencesContract.FormatDocx
-            : "md";
-        var filePath = LocalExportArtifactWriter.ResolveOutputPath(transcriptFormat, baseName, normalizedPath, defaultPrefix: "transcript");
-
-        LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
-        await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
-        AppendSystem(SystemNotice.TranscriptExported(filePath));
     }
 
     private void CopyTranscript() {

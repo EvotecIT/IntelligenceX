@@ -201,7 +201,7 @@ public sealed partial class MainWindow {
         return normalizedFormat switch {
             "xlsx" => ".xlsx",
             "docx" => ".docx",
-            "md" => ".md",
+            ExportPreferencesContract.FormatMarkdown => ".md",
             _ => ".csv"
         };
     }

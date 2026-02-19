@@ -111,7 +111,7 @@ internal static class LocalExportArtifactWriter {
     public static void ExportTranscript(string format, string title, string markdown, string outputPath) {
         var normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
         switch (normalizedFormat) {
-            case "md":
+            case ExportPreferencesContract.FormatMarkdown:
                 File.WriteAllText(outputPath, markdown ?? string.Empty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
                 break;
             case ExportPreferencesContract.FormatDocx:
@@ -296,7 +296,7 @@ internal static class LocalExportArtifactWriter {
         return (format ?? string.Empty).Trim().ToLowerInvariant() switch {
             ExportPreferencesContract.FormatXlsx => ".xlsx",
             ExportPreferencesContract.FormatDocx => ".docx",
-            "md" => ".md",
+            ExportPreferencesContract.FormatMarkdown => ".md",
             _ => ".csv"
         };
     }

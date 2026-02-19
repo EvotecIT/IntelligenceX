@@ -162,8 +162,7 @@
     var pageLength = rowCount > 1000 ? 100 : (rowCount > 300 ? 50 : (rowCount > 100 ? 25 : 10));
     var viewportHeight = Math.max(320, Math.floor((window.innerHeight || 900) * 0.52));
     var useVirtualScroll = rowCount > pageLength;
-    var scrollY = useVirtualScroll ? String(viewportHeight) + "px" : "";
-    dataViewState.api = new window.DataTable(dataViewTable, {
+    var options = {
       data: bodyRows,
       columns: columns,
       paging: enablePaging,
@@ -176,8 +175,6 @@
       deferRender: rowCount > 200,
       autoWidth: false,
       scrollX: true,
-      scrollY: scrollY,
-      scrollCollapse: true,
       order: [],
       language: {
         search: "",
@@ -188,8 +185,32 @@
         topEnd: enablePaging ? "pageLength" : null,
         bottomStart: rowCount > 0 ? "info" : null,
         bottomEnd: enablePaging ? "paging" : null
+      },
+      createdRow: function(row) {
+        if (!row || !row.cells) {
+          return;
+        }
+
+        for (var c = 0; c < row.cells.length; c++) {
+          var cell = row.cells[c];
+          if (!cell) {
+            continue;
+          }
+
+          var value = String(cell.textContent || "").trim();
+          if (value.length > 0) {
+            cell.title = value;
+          }
+        }
       }
-    });
+    };
+
+    if (useVirtualScroll) {
+      options.scrollY = String(viewportHeight) + "px";
+      options.scrollCollapse = true;
+    }
+
+    dataViewState.api = new window.DataTable(dataViewTable, options);
   }
 
   function setDataViewMeta(metaText) {

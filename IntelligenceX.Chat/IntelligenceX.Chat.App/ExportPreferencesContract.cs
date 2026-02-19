@@ -11,6 +11,7 @@ internal static class ExportPreferencesContract {
     public const string FormatCsv = "csv";
     public const string FormatXlsx = "xlsx";
     public const string FormatDocx = "docx";
+    public const string FormatMarkdown = "md";
     public const string DefaultFormat = FormatXlsx;
 
     public static string NormalizeSaveMode(string? value) {
@@ -30,6 +31,8 @@ internal static class ExportPreferencesContract {
         format = normalized switch {
             "excel" => FormatXlsx,
             "word" => FormatDocx,
+            "markdown" => FormatMarkdown,
+            FormatMarkdown => FormatMarkdown,
             FormatCsv => FormatCsv,
             FormatXlsx => FormatXlsx,
             FormatDocx => FormatDocx,
