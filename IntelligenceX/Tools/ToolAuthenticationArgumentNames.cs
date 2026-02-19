@@ -17,10 +17,16 @@ public static class ToolAuthenticationArgumentNames {
     public const string RunAsProfileId = "run_as_profile_id";
 
     /// <summary>
+    /// Probe/session identifier returned by connectivity preflight tools.
+    /// </summary>
+    public const string ProbeId = "auth_probe_id";
+
+    /// <summary>
     /// Canonical authentication-related argument names.
     /// </summary>
     public static IReadOnlyList<string> CanonicalArguments { get; } = new[] {
         ProfileId,
-        RunAsProfileId
+        RunAsProfileId,
+        ProbeId
     };
 }

@@ -34,6 +34,7 @@ public sealed class EmailPackInfoTool : EmailToolBase, ITool {
             recommendedFlow: new[] {
                 "Use email_imap_search to find candidate messages.",
                 "Use email_imap_get to fetch specific message content/metadata.",
+                "Use email_smtp_probe to validate SMTP auth/connectivity before outbound actions.",
                 "Use email_smtp_send only when outbound email actions are requested."
             },
             flowSteps: new[] {
@@ -44,9 +45,12 @@ public sealed class EmailPackInfoTool : EmailToolBase, ITool {
                     goal: "Extract full message evidence",
                     suggestedTools: new[] { "email_imap_get" }),
                 ToolPackGuidance.FlowStep(
+                    goal: "Validate SMTP connectivity/authentication for outbound workflows",
+                    suggestedTools: new[] { "email_smtp_probe" }),
+                ToolPackGuidance.FlowStep(
                     goal: "Perform outbound action only on explicit intent",
                     suggestedTools: new[] { "email_smtp_send" },
-                    notes: "Default behavior should remain dry-run unless send=true is set.")
+                    notes: "Default behavior should remain dry-run unless send=true is set. Strict mode may require auth_probe_id from email_smtp_probe.")
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
@@ -57,6 +61,10 @@ public sealed class EmailPackInfoTool : EmailToolBase, ITool {
                     id: "message_extraction",
                     summary: "Read complete message content (headers/text/html/attachments metadata) with truncation safety.",
                     primaryTools: new[] { "email_imap_get" }),
+                ToolPackGuidance.Capability(
+                    id: "smtp_preflight",
+                    summary: "Validate SMTP connectivity/authentication and issue probe identifiers for strict send gating.",
+                    primaryTools: new[] { "email_smtp_probe" }),
                 ToolPackGuidance.Capability(
                     id: "outbound_delivery",
                     summary: "Send messages via SMTP with explicit confirmation and dry-run-first behavior.",
@@ -69,7 +77,9 @@ public sealed class EmailPackInfoTool : EmailToolBase, ITool {
                 ImapConfigured = Options.Imap is not null,
                 SmtpConfigured = Options.Smtp is not null,
                 MaxBodyBytes = Options.MaxBodyBytes,
-                MaxListResults = Options.MaxListResults
+                MaxListResults = Options.MaxListResults,
+                RequireSuccessfulSmtpProbeForSend = Options.RequireSuccessfulSmtpProbeForSend,
+                SmtpProbeMaxAgeSeconds = Options.SmtpProbeMaxAgeSeconds
             });
 
         return Task.FromResult(ToolResponse.OkModel(root));

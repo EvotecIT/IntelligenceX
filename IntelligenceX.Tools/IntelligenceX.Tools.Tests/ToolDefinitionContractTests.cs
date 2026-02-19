@@ -148,6 +148,16 @@ public class ToolDefinitionContractTests {
         Assert.True(smtpSend.Authentication.RequiresAuthentication);
         Assert.Equal(ToolAuthenticationContract.DefaultContractId, smtpSend.Authentication.AuthenticationContractId);
         Assert.Equal(ToolAuthenticationMode.HostManaged, smtpSend.Authentication.Mode);
+        Assert.True(smtpSend.Authentication.SupportsConnectivityProbe);
+        Assert.Equal("email_smtp_probe", smtpSend.Authentication.ProbeToolName);
+
+        Assert.True(definitionsByName.TryGetValue("email_smtp_probe", out var smtpProbe));
+        Assert.Null(smtpProbe.WriteGovernance);
+        Assert.NotNull(smtpProbe.Authentication);
+        Assert.True(smtpProbe.Authentication!.IsAuthenticationAware);
+        Assert.True(smtpProbe.Authentication.RequiresAuthentication);
+        Assert.Equal(ToolAuthenticationContract.DefaultContractId, smtpProbe.Authentication.AuthenticationContractId);
+        Assert.Equal(ToolAuthenticationMode.HostManaged, smtpProbe.Authentication.Mode);
     }
 
     [Fact]

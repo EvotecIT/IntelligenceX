@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tools.Email;
 
@@ -15,6 +16,22 @@ public sealed class EmailToolOptions {
     /// SMTP account configuration used by SMTP tools.
     /// </summary>
     public SmtpAccountOptions? Smtp { get; set; }
+
+    /// <summary>
+    /// When true, <c>email_smtp_send</c> requires a recent successful <c>email_smtp_probe</c> result
+    /// (referenced by <c>auth_probe_id</c>) before applying <c>send=true</c>.
+    /// </summary>
+    public bool RequireSuccessfulSmtpProbeForSend { get; set; }
+
+    /// <summary>
+    /// Maximum allowed age (in seconds) for a successful SMTP probe when strict send gating is enabled.
+    /// </summary>
+    public int SmtpProbeMaxAgeSeconds { get; set; } = 900;
+
+    /// <summary>
+    /// Probe-session store shared by SMTP probe/send tools.
+    /// </summary>
+    public IToolAuthenticationProbeStore AuthenticationProbeStore { get; set; } = new InMemoryToolAuthenticationProbeStore();
 
     /// <summary>
     /// Maximum bytes returned per message body (text or HTML). Tool calls may cap further.
@@ -36,6 +53,12 @@ public sealed class EmailToolOptions {
         }
         if (MaxListResults <= 0) {
             throw new ArgumentOutOfRangeException(nameof(MaxListResults), "MaxListResults must be positive.");
+        }
+        if (SmtpProbeMaxAgeSeconds <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(SmtpProbeMaxAgeSeconds), "SmtpProbeMaxAgeSeconds must be positive.");
+        }
+        if (AuthenticationProbeStore is null) {
+            throw new InvalidOperationException("AuthenticationProbeStore is required.");
         }
     }
 }

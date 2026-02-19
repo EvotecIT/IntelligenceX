@@ -359,7 +359,8 @@ public static class ToolPackGuidance {
     private static readonly string[] MutatingActionArgumentNames = { "send", "dry_run", "confirm", "execute", "apply", "force", "enable", "disable", "allow_write" };
     private static readonly string[] AuthenticationArgumentNames = {
         ToolAuthenticationArgumentNames.ProfileId,
-        ToolAuthenticationArgumentNames.RunAsProfileId
+        ToolAuthenticationArgumentNames.RunAsProfileId,
+        ToolAuthenticationArgumentNames.ProbeId
     };
 
     /// <summary>

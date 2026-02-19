@@ -24,7 +24,7 @@ public sealed class EmailToolPack : IToolPack {
         Name = "Email (Mailozaurr)",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
-        Description = "IMAP/SMTP workflows (search/get/send) via Mailozaurr.",
+        Description = "IMAP/SMTP workflows (search/get/probe/send) via Mailozaurr.",
         SourceKind = "builtin"
     };
 

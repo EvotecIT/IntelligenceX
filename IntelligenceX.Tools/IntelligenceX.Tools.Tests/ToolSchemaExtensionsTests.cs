@@ -60,4 +60,16 @@ public class ToolSchemaExtensionsTests {
         Assert.NotNull(properties);
         Assert.NotNull(properties!.GetObject(ToolAuthenticationArgumentNames.RunAsProfileId));
     }
+
+    [Fact]
+    public void WithAuthenticationProbeReference_ShouldAddProbeIdProperty() {
+        var schema = ToolSchema.Object(
+                ("query", ToolSchema.String("query text")))
+            .WithAuthenticationProbeReference()
+            .NoAdditionalProperties();
+
+        var properties = schema.GetObject("properties");
+        Assert.NotNull(properties);
+        Assert.NotNull(properties!.GetObject(ToolAuthenticationArgumentNames.ProbeId));
+    }
 }

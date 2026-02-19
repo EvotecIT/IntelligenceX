@@ -31,4 +31,24 @@ public sealed class ToolAuthenticationConventionsTests {
         Assert.Throws<ArgumentException>(() =>
             ToolAuthenticationConventions.RunAsReference(runAsProfileIdArgumentName: " "));
     }
+
+    [Fact]
+    public void HostManaged_WithConnectivityProbe_ShouldExposeProbeMetadata() {
+        ToolAuthenticationContract contract = ToolAuthenticationConventions.HostManaged(
+            requiresAuthentication: true,
+            supportsConnectivityProbe: true,
+            probeToolName: "email_smtp_probe");
+
+        Assert.True(contract.SupportsConnectivityProbe);
+        Assert.Equal("email_smtp_probe", contract.ProbeToolName);
+    }
+
+    [Fact]
+    public void HostManaged_ProbeEnabledWithoutProbeName_ShouldFailValidation() {
+        ToolAuthenticationContract contract = ToolAuthenticationConventions.HostManaged(
+            requiresAuthentication: true,
+            supportsConnectivityProbe: true);
+
+        Assert.Throws<InvalidOperationException>(() => contract.Validate());
+    }
 }

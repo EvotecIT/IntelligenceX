@@ -258,6 +258,35 @@ public static class ToolSchemaExtensions {
         return schema;
     }
 
+    /// <summary>
+    /// Adds a probe/session reference argument to an object schema.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Probe-id argument name.</param>
+    /// <param name="description">Optional custom description.</param>
+    public static JsonObject WithAuthenticationProbeReference(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.ProbeId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+        if (string.IsNullOrWhiteSpace(argumentName)) {
+            throw new ArgumentException("Argument name cannot be empty.", nameof(argumentName));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            argumentName.Trim(),
+            description ?? "Authentication/connectivity probe identifier returned by preflight tools.");
+        return schema;
+    }
+
     private static string GetWriteGovernanceDescription(string argumentName) {
         return argumentName switch {
             ToolWriteGovernanceArgumentNames.ExecutionId => "Write execution identifier for audit correlation.",

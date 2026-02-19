@@ -40,6 +40,7 @@ public static class ToolRegistryEmailExtensions {
         yield return new EmailPackInfoTool(options);
         yield return new EmailImapSearchTool(options);
         yield return new EmailImapGetTool(options);
+        yield return new EmailSmtpProbeTool(options);
         yield return new EmailSmtpSendTool(options);
     }
 }

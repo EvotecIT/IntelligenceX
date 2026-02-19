@@ -27,6 +27,8 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 ("text_body", ToolSchema.String("Plain text body.")),
                 ("html_body", ToolSchema.String("HTML body.")),
                 ("send", ToolSchema.Boolean("When true, actually sends. Otherwise dry-run.")))
+            .WithAuthenticationProbeReference(
+                description: "Optional auth probe id from email_smtp_probe. Required only when strict probe gating is enabled.")
             .Required("from", "to", "subject")
             .WithWriteGovernanceMetadata()
             .NoAdditionalProperties(),
@@ -34,7 +36,9 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             intentArgumentName: "send",
             confirmationArgumentName: "send"),
         authentication: ToolAuthenticationConventions.HostManaged(
-            requiresAuthentication: true));
+            requiresAuthentication: true,
+            supportsConnectivityProbe: true,
+            probeToolName: SmtpProbePolicy.ProbeToolName));
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EmailSmtpSendTool"/> class.
@@ -69,6 +73,7 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
         var textBody = arguments?.GetString("text_body") ?? string.Empty;
         var htmlBody = arguments?.GetString("html_body") ?? string.Empty;
         var send = arguments?.GetBoolean("send") ?? false;
+        var probeId = ToolArgs.GetOptionalTrimmed(arguments, ToolAuthenticationArgumentNames.ProbeId);
 
         if (string.IsNullOrWhiteSpace(from)) {
             return ToolResponse.Error("invalid_argument", "from is required.");
@@ -81,6 +86,15 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
         }
         if (string.IsNullOrWhiteSpace(textBody) && string.IsNullOrWhiteSpace(htmlBody)) {
             return ToolResponse.Error("invalid_argument", "Either text_body or html_body must be provided.");
+        }
+        if (send && !SmtpProbePolicy.TryValidateForStrictSend(
+                options: Options,
+                smtpOptions: smtpOptions,
+                probeId: probeId,
+                nowUtc: DateTimeOffset.UtcNow,
+                out var probeErrorCode,
+                out var probeError)) {
+            return ToolResponse.Error(probeErrorCode, probeError);
         }
 
         var secure = ParseSecureSocketOptions(smtpOptions.SecureSocketOptions);
@@ -123,7 +137,8 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 Provider = "smtp",
                 Server = smtpOptions.Server,
                 Port = smtpOptions.Port,
-                MessageId = sendResult.MessageId ?? string.Empty
+                MessageId = sendResult.MessageId ?? string.Empty,
+                ProbeId = probeId ?? string.Empty
             };
 
             var summaryItems = new List<(string Key, string Value)> {
@@ -139,10 +154,16 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             if (bcc.Count > 0) {
                 summaryItems.Add(("Bcc", string.Join("; ", bcc)));
             }
+            if (!string.IsNullOrWhiteSpace(probeId)) {
+                summaryItems.Add(("Probe ID", probeId));
+            }
 
             var meta = ToolOutputHints.Meta(count: 1, truncated: false)
                 .Add("sent", send)
                 .Add("provider", "smtp");
+            if (!string.IsNullOrWhiteSpace(probeId)) {
+                meta.Add("auth_probe_id", probeId);
+            }
 
             return ToolResponse.OkWriteActionModel(
                 model: root,
