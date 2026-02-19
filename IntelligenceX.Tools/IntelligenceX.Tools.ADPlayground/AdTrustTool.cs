@@ -216,11 +216,8 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             truncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("mode", "communication_issues");
-                meta.Add("max_results", context.MaxResults);
-                if (!string.IsNullOrWhiteSpace(context.ForestName)) {
-                    meta.Add("forest_name", context.ForestName);
-                }
+                AddTrustModeMeta(meta, mode: "communication_issues", context.MaxResults);
+                AddOptionalStringMeta(meta, "forest_name", context.ForestName);
             });
     }
 
@@ -246,8 +243,7 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             truncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("mode", "raw");
-                meta.Add("max_results", context.MaxResults);
+                AddTrustModeMeta(meta, mode: "raw", context.MaxResults);
             });
     }
 
@@ -276,10 +272,9 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             truncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("mode", "summary");
+                AddTrustModeMeta(meta, mode: "summary", context.MaxResults);
                 meta.Add("summary_by", summaryBy);
                 meta.Add("total_filtered", filtered.Count);
-                meta.Add("max_results", context.MaxResults);
             });
     }
 
@@ -306,9 +301,8 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             truncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("mode", "summary_matrix");
+                AddTrustModeMeta(meta, mode: "summary_matrix", context.MaxResults);
                 meta.Add("total_filtered", filtered.Count);
-                meta.Add("max_results", context.MaxResults);
             });
     }
 
@@ -373,6 +367,11 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
             metaMutate: metaMutate);
     }
 
+    private static void AddTrustModeMeta(JsonObject meta, string mode, int maxResults) {
+        meta.Add("mode", mode);
+        AddMaxResultsMeta(meta, maxResults);
+    }
+
     private static bool IsOneOf(string value, params string[] allowed) {
         for (var i = 0; i < allowed.Length; i++) {
             if (string.Equals(value, allowed[i], StringComparison.OrdinalIgnoreCase)) {
@@ -419,4 +418,3 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         };
     }
 }
-
