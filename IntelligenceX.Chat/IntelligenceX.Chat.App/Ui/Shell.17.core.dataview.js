@@ -123,28 +123,8 @@
     }
 
     if (typeof window.DataTable !== "function") {
-      // Fallback plain rendering.
-      var thead = document.createElement("thead");
-      var trHead = document.createElement("tr");
-      for (var h = 0; h < headers.length; h++) {
-        var th = document.createElement("th");
-        th.textContent = headers[h] || ("Column " + String(h + 1));
-        trHead.appendChild(th);
-      }
-      thead.appendChild(trHead);
-      dataViewTable.appendChild(thead);
-
-      var tbody = document.createElement("tbody");
-      for (var r = 0; r < bodyRows.length; r++) {
-        var tr = document.createElement("tr");
-        for (var c = 0; c < headers.length; c++) {
-          var td = document.createElement("td");
-          td.textContent = bodyRows[r][c] || "";
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-      dataViewTable.appendChild(tbody);
+      renderDataViewPlainTable(headers, bodyRows);
+      setDataViewFeedback("Enhanced table mode unavailable. Showing basic table view.", "warn", 4000);
       return;
     }
 
@@ -158,59 +138,75 @@
     }
 
     var rowCount = bodyRows.length;
-    var enablePaging = rowCount > 20;
-    var pageLength = rowCount > 1000 ? 100 : (rowCount > 300 ? 50 : (rowCount > 100 ? 25 : 10));
-    var viewportHeight = Math.max(320, Math.floor((window.innerHeight || 900) * 0.52));
-    var useVirtualScroll = rowCount > pageLength;
-    var options = {
-      data: bodyRows,
-      columns: columns,
-      paging: enablePaging,
-      pageLength: pageLength,
-      lengthMenu: [10, 25, 50, 100, 250],
-      lengthChange: enablePaging,
-      searching: true,
-      ordering: true,
-      info: rowCount > 0,
-      deferRender: rowCount > 200,
-      autoWidth: false,
-      scrollX: true,
-      order: [],
-      language: {
-        search: "",
-        searchPlaceholder: "Search rows / values..."
-      },
-      layout: {
-        topStart: "search",
-        topEnd: enablePaging ? "pageLength" : null,
-        bottomStart: rowCount > 0 ? "info" : null,
-        bottomEnd: enablePaging ? "paging" : null
-      },
-      createdRow: function(row) {
-        if (!row || !row.cells) {
-          return;
-        }
+    var enablePaging = rowCount > 16;
+    var pageLength = rowCount > 2500 ? 250 : (rowCount > 900 ? 100 : (rowCount > 240 ? 50 : 25));
+    var lengthMenu = rowCount > 2500 ? [50, 100, 250, 500] : [25, 50, 100, 250];
+    var enableScrollY = rowCount > 140;
 
-        for (var c = 0; c < row.cells.length; c++) {
-          var cell = row.cells[c];
-          if (!cell) {
-            continue;
-          }
-
-          var value = String(cell.textContent || "").trim();
-          if (value.length > 0) {
-            cell.title = value;
-          }
+    try {
+      var options = {
+        data: bodyRows,
+        columns: columns,
+        paging: enablePaging,
+        pageLength: pageLength,
+        lengthMenu: lengthMenu,
+        deferRender: rowCount > 200,
+        searching: true,
+        ordering: true,
+        info: true,
+        autoWidth: false,
+        scrollX: true,
+        order: [],
+        language: {
+          search: "",
+          searchPlaceholder: "Search rows / values..."
+        },
+        layout: {
+          topStart: "search",
+          topEnd: enablePaging ? "pageLength" : null,
+          bottomStart: "info",
+          bottomEnd: enablePaging ? "paging" : null
         }
+      };
+
+      if (enableScrollY) {
+        options.scrollY = "52vh";
+        options.scrollCollapse = true;
       }
-    };
 
-    if (useVirtualScroll) {
-      options.scrollY = String(viewportHeight) + "px";
-      options.scrollCollapse = true;
+      dataViewState.api = new window.DataTable(dataViewTable, options);
+    } catch (_) {
+      renderDataViewPlainTable(headers, bodyRows);
+      setDataViewFeedback("Enhanced table mode failed to initialize. Showing basic table view.", "warn", 4500);
+      dataViewState.api = null;
+      return;
     }
 
-    dataViewState.api = new window.DataTable(dataViewTable, options);
+    setDataViewFeedback("", "info", 0);
+  }
+
+  function renderDataViewPlainTable(headers, bodyRows) {
+    var thead = document.createElement("thead");
+    var trHead = document.createElement("tr");
+    for (var h = 0; h < headers.length; h++) {
+      var th = document.createElement("th");
+      th.textContent = headers[h] || ("Column " + String(h + 1));
+      trHead.appendChild(th);
+    }
+    thead.appendChild(trHead);
+    dataViewTable.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    for (var r = 0; r < bodyRows.length; r++) {
+      var tr = document.createElement("tr");
+      for (var c = 0; c < headers.length; c++) {
+        var td = document.createElement("td");
+        td.textContent = bodyRows[r][c] || "";
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    dataViewTable.appendChild(tbody);
   }
 
   function setDataViewMeta(metaText) {
