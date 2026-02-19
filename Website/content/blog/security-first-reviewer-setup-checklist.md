@@ -15,11 +15,11 @@ Use a pinned reusable workflow SHA so upgrades are intentional and auditable.
 ```yaml
 jobs:
   review:
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex.yml@<pinned-sha>
     with:
       reviewer_source: source
       provider: openai
-      model: gpt-5.3-codex
+      model: <model-id>
       review_config_path: .intelligencex/reviewer.json
       progress_updates: true
     secrets:
@@ -27,6 +27,9 @@ jobs:
       INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
 ```
+
+Replace `<org>`, `<workflow-repo>`, `<pinned-sha>`, and `<model-id>` with your values.
+For latest examples, see [/docs/examples/](/docs/examples/).
 
 ## 2. Keep Policy in reviewer.json
 
@@ -60,15 +63,17 @@ Use it only in a trusted local session with shell history and terminal logging c
 
 Pick one mode per repo and document it:
 
-- Bot-first automation mode:
-  - required check: `review / review`
-  - required approving reviews: `0`
-  - code owner review requirement: `false`
-- Human-gated mode:
+- Recommended baseline (most public repos):
   - required check: `review / review`
   - required approving reviews: `1+`
-  - code owner review requirement: team dependent
+  - code owner review requirement: enabled for sensitive paths
+- Bot-first mode (advanced, explicit approval):
+  - required check: `review / review`
+  - required approving reviews: `0`
+  - code owner review requirement: policy dependent
+  - use only when merge access is tightly limited and audit controls are in place
 
+If your organization policy is unclear, default to `1+` approving reviews.
 Mixing modes ad hoc is what causes merge confusion.
 
 ## 5. Keep Runner Strategy Explicit

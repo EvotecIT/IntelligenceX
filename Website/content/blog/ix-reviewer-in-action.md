@@ -79,7 +79,7 @@ The trust model is intentionally BYO:
 - authentication uses your own `intelligencex auth login` flow
 - usage runs on your own account/subscription limits
 - bot identity can use your own GitHub App installation
-- provider/model is configurable (`gpt-5.3-codex` by default, but not required)
+- provider/model is configurable (for example `gpt-5.3-codex`)
 
 ## Options You Can Tune
 
@@ -101,11 +101,11 @@ If you want output shape similar to this walkthrough, start with this split.
 ```yaml
 jobs:
   review:
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex.yml@<pinned-sha>
     with:
       reviewer_source: source
       provider: openai
-      model: gpt-5.3-codex
+      model: <model-id>
       mode: hybrid
       length: medium
       review_config_path: .intelligencex/reviewer.json
@@ -118,6 +118,9 @@ jobs:
       INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
 ```
+
+Replace `<org>`, `<workflow-repo>`, `<pinned-sha>`, and `<model-id>` with your values.
+For latest examples, see [/docs/examples/](/docs/examples/).
 
 ### Reviewer JSON
 
@@ -142,16 +145,18 @@ This keeps CI wiring in YAML and policy in JSON, which makes behavior easier to 
 For a quick local verification before pushing workflow/config changes:
 
 ```bash
-export INPUT_REPO=owner/name
-export INPUT_PR_NUMBER=123
+export INPUT_REPO=<owner>/<repo>
+export INPUT_PR_NUMBER=<pr-number>
 intelligencex reviewer run
 ```
 
 Then after fixes are pushed:
 
 ```bash
-intelligencex reviewer resolve-threads --repo owner/name --pr 123
+intelligencex reviewer resolve-threads --repo <owner>/<repo> --pr <pr-number>
 ```
+
+Replace `<owner>`, `<repo>`, and `<pr-number>` with your real values.
 
 That mirrors the practical PR dance: run review, fix blockers, re-run, then resolve stale bot threads when evidence is present.
 
