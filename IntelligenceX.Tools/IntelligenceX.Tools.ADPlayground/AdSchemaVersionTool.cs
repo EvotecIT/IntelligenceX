@@ -47,7 +47,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var mismatchedOnly = ToolArgs.GetBoolean(arguments, "mismatched_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => {
@@ -98,3 +98,4 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

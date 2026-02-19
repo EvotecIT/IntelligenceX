@@ -99,7 +99,7 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
 
         var hasSchedule = ToolArgs.GetBoolean(arguments, "has_schedule", defaultValue: false);
         var expandSchedule = ToolArgs.GetBoolean(arguments, "expand_schedule", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryParseRequiredOptions(arguments, out var requiredOptions, out var optionNames, out var optionError)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", optionError ?? "Invalid options_all value."));
@@ -287,3 +287,4 @@ public sealed class AdSiteLinksTool : ActiveDirectoryToolBase, ITool {
         };
     }
 }
+

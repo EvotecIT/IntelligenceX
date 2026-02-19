@@ -75,7 +75,7 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
 
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
         var sysvolScanCap = ToolArgs.GetCappedInt32(arguments, "sysvol_scan_cap", 2000, 1, 500000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionConsistencyService.Get(domainName, verifyInheritance: verifyInheritance, includeConsistent: includeConsistent, maxGpos: maxGpos, sysvolScanCap: sysvolScanCap),
@@ -129,3 +129,4 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             }));
     }
 }
+

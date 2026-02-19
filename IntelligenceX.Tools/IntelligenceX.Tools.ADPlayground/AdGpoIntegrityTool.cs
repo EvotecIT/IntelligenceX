@@ -60,7 +60,7 @@ public sealed class AdGpoIntegrityTool : ActiveDirectoryToolBase, ITool {
         var sysvolMissingOnly = ToolArgs.GetBoolean(arguments, "sysvol_missing_only", defaultValue: false);
         var adMissingOnly = ToolArgs.GetBoolean(arguments, "ad_missing_only", defaultValue: false);
         var errorsOnly = ToolArgs.GetBoolean(arguments, "errors_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoIntegrityService.Get(domainName),
@@ -109,3 +109,4 @@ public sealed class AdGpoIntegrityTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

@@ -88,7 +88,7 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
         var conflictsOnly = ToolArgs.GetBoolean(arguments, "conflicts_only", defaultValue: false);
         var duplicatesOnly = ToolArgs.GetBoolean(arguments, "duplicates_only", defaultValue: false);
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 5000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -185,3 +185,4 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

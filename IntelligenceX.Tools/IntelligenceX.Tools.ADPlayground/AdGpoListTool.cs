@@ -104,7 +104,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", $"modified_since_utc: {modifiedSinceError}"));
         }
 
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;
@@ -192,3 +192,4 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
         return true;
     }
 }
+

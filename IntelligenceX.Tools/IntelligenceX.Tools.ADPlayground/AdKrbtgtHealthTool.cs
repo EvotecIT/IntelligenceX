@@ -57,7 +57,7 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var ageThresholdDays = ToolArgs.GetCappedInt32(arguments, "age_threshold_days", 180, 1, 3650);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -109,3 +109,4 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

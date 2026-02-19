@@ -79,7 +79,7 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
         var onlyGlobalCatalog = ToolArgs.GetBoolean(arguments, "only_global_catalog", defaultValue: false);
         var onlyRodc = ToolArgs.GetBoolean(arguments, "only_rodc", defaultValue: false);
         var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", 3000, 300, 60000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -166,3 +166,4 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
             }));
     }
 }
+

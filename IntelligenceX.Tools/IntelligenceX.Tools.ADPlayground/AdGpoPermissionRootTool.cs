@@ -71,7 +71,7 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
         var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
         var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
         var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 100000, 1, 1000000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionRootService.Get(domainName, maxRows: maxRows),
@@ -124,3 +124,4 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

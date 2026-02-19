@@ -63,7 +63,7 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
 
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -121,3 +121,4 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
             });
     }
 }
+
