@@ -1166,6 +1166,7 @@
   }
 
   function normalizeExportVisualThemeMode(value) {
+    // Keep alias/default parity with ExportPreferencesContract.NormalizeVisualThemeMode (C# host).
     var normalized = String(value || "").trim().toLowerCase();
     if (normalized === "print_friendly" || normalized === "print" || normalized === "light") {
       return "print_friendly";

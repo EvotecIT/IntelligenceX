@@ -458,6 +458,18 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures wrapped-signal-flow repair does not rewrite literal marker text when it appears inside inline code.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotRewriteSignalFlowMarkerInsideInlineCode() {
+        var text = "- Signal **Use `literal -> **marker**` for parser tests.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
     /// Ensures sentence-collapsed bullets after a closing parenthesis are split and normalized.
     /// </summary>
     [Fact]

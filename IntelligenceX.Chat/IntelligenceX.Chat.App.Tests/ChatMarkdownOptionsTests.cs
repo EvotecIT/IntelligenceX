@@ -20,4 +20,17 @@ public sealed class ChatMarkdownOptionsTests {
         Assert.False(options.EnableCodeCopyButtons);
         Assert.False(options.EnableTableCopyButtons);
     }
+
+    /// <summary>
+    /// Ensures each options instance is independent so per-call mutations cannot leak across callers.
+    /// </summary>
+    [Fact]
+    public void Create_ReturnsIndependentOptionInstances() {
+        var first = ChatMarkdownOptions.Create();
+        var second = ChatMarkdownOptions.Create();
+
+        first.Mermaid.Enabled = false;
+
+        Assert.True(second.Mermaid.Enabled);
+    }
 }

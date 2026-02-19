@@ -10,6 +10,7 @@ internal static class ChatMarkdownOptions {
     /// Creates strict markdown options with Mermaid enabled for transcript visualization.
     /// </summary>
     public static MarkdownRendererOptions Create() {
+        // Preset factory returns a fresh options object per call; this mutation is call-local.
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         options.Mermaid.Enabled = true;
         return options;
