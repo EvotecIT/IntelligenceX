@@ -27,6 +27,24 @@ public sealed class ExportPreferencesContractTests {
     }
 
     /// <summary>
+    /// Ensures visual-theme-mode normalization accepts aliases and defaults safely.
+    /// </summary>
+    [Theory]
+    [InlineData(null, ExportPreferencesContract.VisualThemeModePreserveUi)]
+    [InlineData("", ExportPreferencesContract.VisualThemeModePreserveUi)]
+    [InlineData("preserve_ui_theme", ExportPreferencesContract.VisualThemeModePreserveUi)]
+    [InlineData("preserve", ExportPreferencesContract.VisualThemeModePreserveUi)]
+    [InlineData("print_friendly", ExportPreferencesContract.VisualThemeModePrintFriendly)]
+    [InlineData("print", ExportPreferencesContract.VisualThemeModePrintFriendly)]
+    [InlineData("light", ExportPreferencesContract.VisualThemeModePrintFriendly)]
+    [InlineData("unexpected", ExportPreferencesContract.VisualThemeModePreserveUi)]
+    public void NormalizeVisualThemeMode_ReturnsExpected(string? input, string expected) {
+        var actual = ExportPreferencesContract.NormalizeVisualThemeMode(input);
+
+        Assert.Equal(expected, actual);
+    }
+
+    /// <summary>
     /// Ensures format parsing accepts canonical and alias values.
     /// </summary>
     [Theory]

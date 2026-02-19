@@ -252,6 +252,7 @@ public sealed partial class MainWindow : Window {
     private bool _proactiveModeEnabled = true;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
+    private string _exportVisualThemeMode = ExportPreferencesContract.DefaultVisualThemeMode;
     private string? _lastExportDirectory;
     private bool _persistentMemoryEnabled = true;
     private string _localProviderTransport = TransportNative;
@@ -1365,6 +1366,8 @@ public sealed partial class MainWindow : Window {
         _appState.ExportSaveMode = _exportSaveMode;
         _exportDefaultFormat = ExportPreferencesContract.NormalizeFormat(_appState.ExportDefaultFormat);
         _appState.ExportDefaultFormat = _exportDefaultFormat;
+        _exportVisualThemeMode = ExportPreferencesContract.NormalizeVisualThemeMode(_appState.ExportVisualThemeMode);
+        _appState.ExportVisualThemeMode = _exportVisualThemeMode;
         _lastExportDirectory = ExportPreferencesContract.NormalizeDirectory(_appState.ExportLastDirectory);
         _appState.ExportLastDirectory = _lastExportDirectory;
         _queueAutoDispatchEnabled = _appState.QueueAutoDispatchEnabled;

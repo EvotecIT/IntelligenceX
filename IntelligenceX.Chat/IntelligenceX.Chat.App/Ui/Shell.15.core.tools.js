@@ -1153,6 +1153,14 @@
     return "xlsx";
   }
 
+  function normalizeExportVisualThemeMode(value) {
+    var normalized = String(value || "").toLowerCase();
+    if (normalized === "print_friendly" || normalized === "print" || normalized === "light") {
+      return "print_friendly";
+    }
+    return "preserve_ui_theme";
+  }
+
   function exportFormatDisplayName(format) {
     var normalized = normalizeExportFormat(format);
     if (normalized === "docx") return "Word";
@@ -1164,6 +1172,7 @@
     var exportPrefs = state.options.export || {};
     var saveMode = normalizeExportSaveMode(exportPrefs.saveMode);
     var format = normalizeExportFormat(exportPrefs.defaultFormat);
+    var visualThemeMode = normalizeExportVisualThemeMode(exportPrefs.visualThemeMode);
     var lastDirectory = String(exportPrefs.lastDirectory || "");
 
     var saveModeSelect = byId("optExportSaveMode");
@@ -1176,6 +1185,12 @@
     if (formatSelect) {
       formatSelect.value = format;
       syncCustomSelect(formatSelect);
+    }
+
+    var visualThemeModeSelect = byId("optExportVisualThemeMode");
+    if (visualThemeModeSelect) {
+      visualThemeModeSelect.value = visualThemeMode;
+      syncCustomSelect(visualThemeModeSelect);
     }
 
     var lastDirectoryInput = byId("optExportLastDirectory");

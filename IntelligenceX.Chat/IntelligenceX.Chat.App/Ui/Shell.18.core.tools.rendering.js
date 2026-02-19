@@ -38,6 +38,7 @@
     ensureCustomSelect("optTimeMode");
     ensureCustomSelect("optExportSaveMode");
     ensureCustomSelect("optExportDefaultFormat");
+    ensureCustomSelect("optExportVisualThemeMode");
     ensureCustomSelect("optSidebarMode");
     ensureCustomSelect("optProfileApplyMode");
     ensureCustomSelect("optLocalTransport");

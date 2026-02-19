@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window {
             CaptureAutonomyOverridesIntoAppState();
             _appState.ExportSaveMode = _exportSaveMode;
             _appState.ExportDefaultFormat = _exportDefaultFormat;
+            _appState.ExportVisualThemeMode = _exportVisualThemeMode;
             _appState.ExportLastDirectory = _lastExportDirectory;
             _appState.QueueAutoDispatchEnabled = _queueAutoDispatchEnabled;
             _appState.ProactiveModeEnabled = _proactiveModeEnabled;

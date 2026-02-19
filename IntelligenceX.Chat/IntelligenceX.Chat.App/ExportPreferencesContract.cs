@@ -8,6 +8,10 @@ internal static class ExportPreferencesContract {
     public const string SaveModeRemember = "remember";
     public const string DefaultSaveMode = SaveModeAsk;
 
+    public const string VisualThemeModePreserveUi = "preserve_ui_theme";
+    public const string VisualThemeModePrintFriendly = "print_friendly";
+    public const string DefaultVisualThemeMode = VisualThemeModePreserveUi;
+
     public const string FormatCsv = "csv";
     public const string FormatXlsx = "xlsx";
     public const string FormatDocx = "docx";
@@ -24,6 +28,15 @@ internal static class ExportPreferencesContract {
 
     public static string NormalizeFormat(string? value) {
         return TryNormalizeFormat(value, out var format) ? format : DefaultFormat;
+    }
+
+    public static string NormalizeVisualThemeMode(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            VisualThemeModePrintFriendly or "print" or "light" => VisualThemeModePrintFriendly,
+            VisualThemeModePreserveUi or "preserve" or "theme" => VisualThemeModePreserveUi,
+            _ => DefaultVisualThemeMode
+        };
     }
 
     public static bool TryNormalizeFormat(string? value, out string format) {
