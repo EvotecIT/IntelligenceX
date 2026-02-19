@@ -19,46 +19,59 @@ public sealed partial class MainWindow {
             return;
         }
 
-        if (rowsElement.ValueKind != JsonValueKind.Array || rowsElement.GetArrayLength() == 0) {
+        if (!LocalExportArtifactWriter.TryReadRows(rowsElement, out var rows)) {
             await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.NoRows, normalizedFormat)).ConfigureAwait(false);
             return;
         }
 
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
-            await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.Disconnected, normalizedFormat)).ConfigureAwait(false);
-            return;
-        }
-
+        string? remoteFailure = null;
+        var toolKnown = _toolDescriptions.ContainsKey("export_table_artifact");
+        var toolEnabled = !_toolStates.TryGetValue("export_table_artifact", out var enabled) || enabled;
         var client = _client;
-        if (client is null) {
-            await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.Disconnected, normalizedFormat)).ConfigureAwait(false);
-            return;
-        }
+        var canInvokeRemote = _isConnected && client is not null && toolKnown && toolEnabled;
 
-        var argumentsJson = BuildExportArgumentsJson(normalizedFormat, title, rowsElement, outputPath);
-        var request = new InvokeToolRequest {
-            RequestId = NextId(),
-            ToolName = "export_table_artifact",
-            ArgumentsJson = argumentsJson
-        };
+        if (canInvokeRemote) {
+            var argumentsJson = BuildExportArgumentsJson(normalizedFormat, title, rowsElement, outputPath);
+            var request = new InvokeToolRequest {
+                RequestId = NextId(),
+                ToolName = "export_table_artifact",
+                ArgumentsJson = argumentsJson
+            };
+
+            await SetStatusAsync(SessionStatus.Exporting()).ConfigureAwait(false);
+            try {
+                var response = await client!.RequestAsync<InvokeToolResultMessage>(request, CancellationToken.None).ConfigureAwait(false);
+                var output = response.Output;
+                if (output.Ok == true) {
+                    var filePath = TryExtractExportFilePath(output.Output);
+                    var completedNotice = ExportNotice.Succeeded(normalizedFormat, filePath);
+                    if (!string.IsNullOrWhiteSpace(filePath)) {
+                        await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
+                    }
+                    await ReportExportNoticeAsync(exportId, completedNotice).ConfigureAwait(false);
+                    return;
+                }
+
+                remoteFailure = (output.Error ?? string.Empty).Trim();
+            } catch (Exception ex) {
+                remoteFailure = ex.Message;
+            }
+        }
 
         await SetStatusAsync(SessionStatus.Exporting()).ConfigureAwait(false);
         try {
-            var response = await client.RequestAsync<InvokeToolResultMessage>(request, CancellationToken.None).ConfigureAwait(false);
-            var output = response.Output;
-            if (output.Ok == false) {
-                await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.ToolError, normalizedFormat, output.Error)).ConfigureAwait(false);
-                return;
-            }
-
-            var filePath = TryExtractExportFilePath(output.Output);
-            var completedNotice = ExportNotice.Succeeded(normalizedFormat, filePath);
-            if (!string.IsNullOrWhiteSpace(filePath)) {
-                await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
-            }
-            await ReportExportNoticeAsync(exportId, completedNotice).ConfigureAwait(false);
+            var resolvedPath = LocalExportArtifactWriter.ResolveOutputPath(normalizedFormat, title, outputPath);
+            LocalExportArtifactWriter.ExportTable(normalizedFormat, title, rows, resolvedPath);
+            await UpdateLastExportDirectoryFromFilePathAsync(resolvedPath).ConfigureAwait(false);
+            await ReportExportNoticeAsync(exportId, ExportNotice.Succeeded(normalizedFormat, resolvedPath)).ConfigureAwait(false);
         } catch (Exception ex) {
-            await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.Exception, normalizedFormat, ex.Message)).ConfigureAwait(false);
+            var detail = (remoteFailure ?? string.Empty).Trim();
+            if (detail.Length > 0) {
+                detail = "Runtime export failed (" + detail + "); local export failed: " + ex.Message;
+            } else {
+                detail = ex.Message;
+            }
+            await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.Exception, normalizedFormat, detail)).ConfigureAwait(false);
         }
     }
 
@@ -188,6 +201,7 @@ public sealed partial class MainWindow {
         return normalizedFormat switch {
             "xlsx" => ".xlsx",
             "docx" => ".docx",
+            "md" => ".md",
             _ => ".csv"
         };
     }

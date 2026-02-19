@@ -13,8 +13,8 @@
   position: fixed;
   left: 50%;
   top: 50%;
-  width: min(1200px, 94vw);
-  height: min(88vh, 860px);
+  width: min(1320px, 96vw);
+  height: min(90vh, 900px);
   transform: translate(-50%, -48%);
   border: 1px solid var(--ix-border-subtle);
   border-radius: 12px;
@@ -150,12 +150,15 @@ body.data-view-open .data-view-panel {
   flex: 1;
   padding: 10px 12px 12px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
   scrollbar-width: thin;
   scrollbar-color: var(--ix-scrollbar-thumb) transparent;
 }
 
 .data-view-table {
   width: 100%;
+  min-width: 100%;
 }
 
 .data-view-body::-webkit-scrollbar {
@@ -176,10 +179,12 @@ body.data-view-open .data-view-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
+  gap: 8px;
 }
 
 .data-view-panel .dt-layout-row {
   gap: 8px;
+  margin: 0;
 }
 
 .data-view-panel .dt-layout-row:first-child {
@@ -200,6 +205,10 @@ body.data-view-open .data-view-panel {
   min-height: 28px;
   padding: 5px 8px;
   outline: none;
+}
+
+.data-view-panel .dt-search input {
+  min-width: min(430px, 62vw);
 }
 
 .data-view-panel .dt-search input::placeholder {
@@ -255,6 +264,10 @@ body.data-view-open .data-view-panel {
 .data-view-panel table.dataTable tbody td {
   border-bottom: 1px solid rgba(63, 103, 148, 0.45);
   color: var(--ix-text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 520px;
 }
 
 .data-view-panel table.dataTable tbody tr:hover {
@@ -267,7 +280,10 @@ body.data-view-open .data-view-panel {
 }
 
 .data-view-panel .dt-scroll-body {
-  max-height: calc(88vh - 278px);
+  max-height: min(56vh, 620px);
+  border: 1px solid rgba(63, 103, 148, 0.4);
+  border-radius: 8px;
+  background: rgba(6, 24, 47, 0.45);
 }
 
 .data-view-panel .dt-scroll-body::-webkit-scrollbar,

@@ -63,7 +63,7 @@ public sealed partial class MainWindow : Window {
                     await CancelActiveTurnAsync().ConfigureAwait(true);
                     break;
                 case "export":
-                    ExportTranscript();
+                    await ExportTranscriptAsync().ConfigureAwait(true);
                     break;
                 case "copy":
                     CopyTranscript();
