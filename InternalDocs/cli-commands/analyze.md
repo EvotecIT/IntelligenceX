@@ -28,7 +28,8 @@ This command:
 - `IXTOOL001` flags write-capable `ToolDefinition` schemas under `IntelligenceX.Tools/**` that do not use
   `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
 - `IXTOOL002` flags AD tool definitions with required `domain_name` that do not use canonical required-domain helper paths.
-- `IXTOOL003` flags direct `meta.Add("max_results", ...)` usage in tool source files and requires `AddMaxResultsMeta(...)`.
+- `IXTOOL003` flags direct `max_results` metadata writes (for example `meta.Add("max_results", ...)` and
+  `meta["max_results"] = ...`) in tool source files and requires `AddMaxResultsMeta(...)`.
 - Emits duplication metrics sidecar JSON (`artifacts/intelligencex.duplication.json`, schema `intelligencex.duplication.v2`) for duplication gate checks.
 - Applies `configMode` during the run without committing analyzer config files.
 

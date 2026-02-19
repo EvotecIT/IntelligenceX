@@ -631,6 +631,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNearMissMetadataKeys);
         failed += Run("Analyze run internal max-results metadata helper rule accepts qualified canonical helper call",
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsQualifiedCanonicalHelperCall);
+        failed += Run("Analyze run internal max-results metadata helper rule flags indexer assignment",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsIndexerAssignment);
+        failed += Run("Analyze run internal max-results metadata helper rule flags case-variant metadata key",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsCaseVariantMetadataKey);
+        failed += Run("Analyze run internal max-results metadata helper rule flags only max_results in mixed adds",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsOnlyMaxResultsInMixedMetaAdds);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",

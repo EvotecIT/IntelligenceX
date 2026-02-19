@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using IntelligenceX.Analysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -69,12 +70,7 @@ internal static partial class AnalyzeRunCommand {
 
         var syntaxTree = CSharpSyntaxTree.ParseText(content ?? string.Empty);
         var root = syntaxTree.GetRoot();
-        foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>()) {
-            if (!IsDirectMaxResultsMetaAddInvocation(invocation)) {
-                continue;
-            }
-
-            var line = syntaxTree.GetLineSpan(invocation.Span).StartLinePosition.Line + 1;
+        foreach (var line in EnumerateDirectMaxResultsMetadataWriteLines(root, syntaxTree)) {
             findings.Add(new AnalysisFindingItem {
                 Path = sourceFile.RelativePath,
                 Line = line,
@@ -87,6 +83,24 @@ internal static partial class AnalyzeRunCommand {
         }
 
         return findings;
+    }
+
+    private static IEnumerable<int> EnumerateDirectMaxResultsMetadataWriteLines(SyntaxNode root, SyntaxTree syntaxTree) {
+        foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>()) {
+            if (!IsDirectMaxResultsMetaAddInvocation(invocation)) {
+                continue;
+            }
+
+            yield return syntaxTree.GetLineSpan(invocation.Span).StartLinePosition.Line + 1;
+        }
+
+        foreach (var assignment in root.DescendantNodes().OfType<AssignmentExpressionSyntax>()) {
+            if (!IsDirectMaxResultsMetaIndexerAssignment(assignment)) {
+                continue;
+            }
+
+            yield return syntaxTree.GetLineSpan(assignment.Span).StartLinePosition.Line + 1;
+        }
     }
 
     private static bool IsDirectMaxResultsMetaAddInvocation(InvocationExpressionSyntax invocation) {
@@ -105,6 +119,29 @@ internal static partial class AnalyzeRunCommand {
 
         var arguments = invocation.ArgumentList?.Arguments;
         if (arguments is null || arguments.Value.Count < 2) {
+            return false;
+        }
+
+        return TryGetStringLiteralValue(arguments.Value[0].Expression, out var value) &&
+               string.Equals(value, "max_results", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDirectMaxResultsMetaIndexerAssignment(AssignmentExpressionSyntax assignment) {
+        if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)) {
+            return false;
+        }
+
+        if (assignment.Left is not ElementAccessExpressionSyntax elementAccess) {
+            return false;
+        }
+
+        if (elementAccess.Expression is not IdentifierNameSyntax identifierName ||
+            !string.Equals(identifierName.Identifier.ValueText, "meta", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var arguments = elementAccess.ArgumentList?.Arguments;
+        if (arguments is null || arguments.Value.Count != 1) {
             return false;
         }
 
