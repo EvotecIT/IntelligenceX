@@ -18,6 +18,7 @@ using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
+using IntelligenceX.Chat.ExportArtifacts;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -55,7 +56,14 @@ public sealed partial class MainWindow : Window {
                 : ExportPreferencesContract.FormatMarkdown;
             var filePath = LocalExportArtifactWriter.ResolveOutputPath(transcriptFormat, baseName, normalizedPath, defaultPrefix: "transcript");
 
-            LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
+            if (string.Equals(transcriptFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)) {
+                using var runtimeMaterialization = await MaterializeTranscriptVisualsForDocxAsync(md).ConfigureAwait(false);
+                var exportMarkdown = runtimeMaterialization?.Markdown ?? md;
+                var allowedImageDirectories = runtimeMaterialization?.AllowedImageDirectories;
+                OfficeImoArtifactWriter.WriteDocxTranscript(baseName, exportMarkdown, filePath, allowedImageDirectories);
+            } else {
+                LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
+            }
             await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
             AppendSystem(SystemNotice.TranscriptExported(filePath));
         } catch (Exception ex) {
@@ -245,5 +253,167 @@ public sealed partial class MainWindow : Window {
 
         var json = JsonSerializer.Serialize(vars);
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTheme(" + json + ");").AsTask()).ConfigureAwait(false);
+    }
+
+    private async Task<RuntimeVisualExportMaterialization?> MaterializeTranscriptVisualsForDocxAsync(string markdown) {
+        if (!_webViewReady || string.IsNullOrWhiteSpace(markdown)) {
+            return null;
+        }
+
+        var payloadJson = JsonSerializer.Serialize(new {
+            markdown,
+            themeMode = _exportVisualThemeMode
+        });
+        var script = "(async () => {" +
+                     "if (!window.ixMaterializeVisualFencesForDocx) { return null; }" +
+                     "try { return await window.ixMaterializeVisualFencesForDocx(" + payloadJson + "); }" +
+                     "catch (_) { return null; }" +
+                     "})()";
+
+        string? rawResult = null;
+        await RunOnUiThreadAsync(async () => {
+            rawResult = await _webView.ExecuteScriptAsync(script).AsTask().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(rawResult)) {
+            return null;
+        }
+
+        JsonElement root;
+        try {
+            using var resultDoc = JsonDocument.Parse(rawResult);
+            if (resultDoc.RootElement.ValueKind != JsonValueKind.Object) {
+                return null;
+            }
+
+            root = resultDoc.RootElement.Clone();
+        } catch {
+            return null;
+        }
+
+        if (!root.TryGetProperty("markdown", out var markdownElement) || markdownElement.ValueKind != JsonValueKind.String) {
+            return null;
+        }
+
+        var materializedMarkdown = markdownElement.GetString() ?? string.Empty;
+        if (materializedMarkdown.Length == 0) {
+            return null;
+        }
+
+        if (!root.TryGetProperty("images", out var imagesElement) || imagesElement.ValueKind != JsonValueKind.Array) {
+            return null;
+        }
+
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "docx-runtime-visuals", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        var imageCount = 0;
+        try {
+            foreach (var image in imagesElement.EnumerateArray()) {
+                if (image.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                var id = TryReadVisualExportString(image, "id", maxLength: 64);
+                var mimeType = TryReadVisualExportString(image, "mimeType", maxLength: 64);
+                var dataBase64 = TryReadVisualExportString(image, "dataBase64", maxLength: 16 * 1024 * 1024);
+                if (id.Length == 0 || mimeType.Length == 0 || dataBase64.Length == 0) {
+                    continue;
+                }
+
+                var bytes = TryDecodeBase64(dataBase64);
+                if (bytes is null || bytes.Length == 0) {
+                    continue;
+                }
+
+                var extension = ResolveVisualImageExtension(mimeType);
+                var fileName = "visual-" + id + extension;
+                var imagePath = Path.Combine(tempDirectory, fileName);
+                File.WriteAllBytes(imagePath, bytes);
+
+                var markdownImagePath = imagePath.Replace('\\', '/');
+                materializedMarkdown = materializedMarkdown.Replace(
+                    "ix-export-image://" + id,
+                    markdownImagePath,
+                    StringComparison.Ordinal);
+                imageCount++;
+            }
+        } catch {
+            TryDeleteRuntimeVisualDirectory(tempDirectory);
+            return null;
+        }
+
+        if (imageCount == 0) {
+            TryDeleteRuntimeVisualDirectory(tempDirectory);
+            return null;
+        }
+
+        return new RuntimeVisualExportMaterialization(materializedMarkdown, tempDirectory);
+    }
+
+    private static string TryReadVisualExportString(JsonElement root, string propertyName, int maxLength) {
+        if (!root.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.String) {
+            return string.Empty;
+        }
+
+        var text = (value.GetString() ?? string.Empty).Trim();
+        if (text.Length == 0 || text.Length > maxLength) {
+            return string.Empty;
+        }
+
+        return text;
+    }
+
+    private static byte[]? TryDecodeBase64(string payload) {
+        if (string.IsNullOrWhiteSpace(payload) || payload.Length > 16 * 1024 * 1024) {
+            return null;
+        }
+
+        try {
+            return Convert.FromBase64String(payload);
+        } catch {
+            return null;
+        }
+    }
+
+    private static string ResolveVisualImageExtension(string mimeType) {
+        var normalized = (mimeType ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "image/svg+xml" => ".svg",
+            "image/jpeg" => ".jpg",
+            "image/jpg" => ".jpg",
+            "image/webp" => ".webp",
+            _ => ".png"
+        };
+    }
+
+    private static void TryDeleteRuntimeVisualDirectory(string path) {
+        try {
+            if (Directory.Exists(path)) {
+                Directory.Delete(path, recursive: true);
+            }
+        } catch {
+            // Best-effort cleanup.
+        }
+    }
+
+    private sealed class RuntimeVisualExportMaterialization : IDisposable {
+        private readonly string? _directory;
+
+        internal RuntimeVisualExportMaterialization(string markdown, string directory) {
+            Markdown = markdown ?? string.Empty;
+            _directory = string.IsNullOrWhiteSpace(directory) ? null : directory;
+        }
+
+        public string Markdown { get; }
+        public IReadOnlyList<string> AllowedImageDirectories =>
+            string.IsNullOrWhiteSpace(_directory) ? Array.Empty<string>() : [_directory!];
+
+        public void Dispose() {
+            if (string.IsNullOrWhiteSpace(_directory)) {
+                return;
+            }
+
+            TryDeleteRuntimeVisualDirectory(_directory);
+        }
     }
 }

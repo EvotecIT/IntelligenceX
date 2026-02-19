@@ -1548,3 +1548,583 @@
         // Keep transcript rendering resilient even when visual runtime fails.
       });
   };
+
+  var ixVisualExportState = {
+    maxImages: 24,
+    renderTimeoutMs: 3500,
+    chartWidth: 1200,
+    chartHeight: 760,
+    networkWidth: 1280,
+    networkHeight: 760
+  };
+
+  function normalizeVisualExportThemeMode(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "print_friendly" || normalized === "print" || normalized === "light") {
+      return "print_friendly";
+    }
+    return "preserve_ui_theme";
+  }
+
+  function resolveVisualExportPalette(themeMode) {
+    if (themeMode === "print_friendly") {
+      return {
+        background: "#ffffff",
+        surface: "#f8fbff",
+        text: "#1f2933",
+        muted: "#4b5b6b",
+        grid: "#d8e2ee",
+        accents: ["#2563eb", "#059669", "#ea580c", "#db2777", "#7c3aed", "#0891b2"]
+      };
+    }
+
+    var rootStyles = window.getComputedStyle ? window.getComputedStyle(document.documentElement) : null;
+    var bg = rootStyles ? String(rootStyles.getPropertyValue("--ix-bg") || "").trim() : "";
+    var panel = rootStyles ? String(rootStyles.getPropertyValue("--ix-panel") || "").trim() : "";
+    var text = rootStyles ? String(rootStyles.getPropertyValue("--ix-text") || "").trim() : "";
+    var muted = rootStyles ? String(rootStyles.getPropertyValue("--ix-muted") || "").trim() : "";
+    var border = rootStyles ? String(rootStyles.getPropertyValue("--ix-border") || "").trim() : "";
+    var accent = rootStyles ? String(rootStyles.getPropertyValue("--ix-accent") || "").trim() : "";
+    return {
+      background: bg || "#0f172a",
+      surface: panel || "#111f35",
+      text: text || "#eaf3ff",
+      muted: muted || "#a3bad1",
+      grid: border || "#35506a",
+      accents: [accent || "#4cc3ff", "#66d9a8", "#ffb86b", "#ff7ea7", "#9e9eff", "#9be7ff"]
+    };
+  }
+
+  function utf8ToBase64(value) {
+    try {
+      return btoa(unescape(encodeURIComponent(String(value || ""))));
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function parseDataUrlPayload(dataUrl) {
+    if (typeof dataUrl !== "string") {
+      return null;
+    }
+
+    var match = /^data:([^;,]+);base64,(.+)$/i.exec(dataUrl.trim());
+    if (!match) {
+      return null;
+    }
+
+    return {
+      mimeType: String(match[1] || "").trim().toLowerCase(),
+      dataBase64: String(match[2] || "").trim()
+    };
+  }
+
+  function tryReadFenceRun(line) {
+    var trimmed = String(line || "").replace(/^\s+/, "");
+    if (!trimmed) {
+      return null;
+    }
+
+    var marker = trimmed.charAt(0);
+    if (marker !== "`" && marker !== "~") {
+      return null;
+    }
+
+    var idx = 0;
+    while (idx < trimmed.length && trimmed.charAt(idx) === marker) {
+      idx += 1;
+    }
+
+    if (idx < 3) {
+      return null;
+    }
+
+    return {
+      marker: marker,
+      runLength: idx,
+      suffix: trimmed.slice(idx)
+    };
+  }
+
+  function tryReadFenceStart(line) {
+    var run = tryReadFenceRun(line);
+    if (!run) {
+      return null;
+    }
+
+    var language = "";
+    var suffix = String(run.suffix || "").trim();
+    if (suffix) {
+      var pieces = suffix.split(/\s+/, 2);
+      language = String(pieces[0] || "").trim().toLowerCase();
+    }
+
+    return {
+      marker: run.marker,
+      runLength: run.runLength,
+      language: language
+    };
+  }
+
+  function isClosingFenceLine(line, marker, runLength) {
+    var run = tryReadFenceRun(line);
+    if (!run || run.marker !== marker || run.runLength < runLength) {
+      return false;
+    }
+
+    return String(run.suffix || "").trim().length === 0;
+  }
+
+  function appendFenceLines(lines, output, fromIndex, toIndex) {
+    for (var idx = fromIndex; idx <= toIndex; idx++) {
+      output.push(String(lines[idx] || ""));
+    }
+  }
+
+  function findFenceClosingIndex(lines, startIndex, marker, runLength) {
+    for (var i = startIndex; i < lines.length; i++) {
+      if (isClosingFenceLine(lines[i], marker, runLength)) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  function detectLineEnding(text) {
+    if (String(text || "").indexOf("\r\n") >= 0) {
+      return "\r\n";
+    }
+    if (String(text || "").indexOf("\r") >= 0) {
+      return "\r";
+    }
+    return "\n";
+  }
+
+  function withVisualExportBackground(svg, palette) {
+    if (typeof svg !== "string" || !svg) {
+      return "";
+    }
+
+    var viewBoxMatch = /viewBox=["']([^"']+)["']/i.exec(svg);
+    var widthMatch = /width=["']([^"']+)["']/i.exec(svg);
+    var heightMatch = /height=["']([^"']+)["']/i.exec(svg);
+    var width = widthMatch ? String(widthMatch[1]) : "100%";
+    var height = heightMatch ? String(heightMatch[1]) : "100%";
+    var fill = (palette && palette.background) ? palette.background : "#ffffff";
+    var rect = "<rect width='" + width + "' height='" + height + "' fill='" + fill + "'/>";
+    if (viewBoxMatch) {
+      rect = "<rect width='100%' height='100%' fill='" + fill + "'/>";
+    }
+
+    if (svg.indexOf(">") < 0) {
+      return svg;
+    }
+    var insertAt = svg.indexOf(">") + 1;
+    return svg.slice(0, insertAt) + rect + svg.slice(insertAt);
+  }
+
+  function deepMergeForExport(target, source) {
+    if (!isPlainObject(source)) {
+      return target;
+    }
+
+    var keys = Object.keys(source);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var sourceValue = source[key];
+      if (isPlainObject(sourceValue)) {
+        if (!isPlainObject(target[key])) {
+          target[key] = {};
+        }
+        deepMergeForExport(target[key], sourceValue);
+        continue;
+      }
+
+      target[key] = sourceValue;
+    }
+
+    return target;
+  }
+
+  function applyChartPalette(config, palette) {
+    if (!config || !config.data || !Array.isArray(config.data.datasets)) {
+      return;
+    }
+
+    var datasets = config.data.datasets;
+    for (var i = 0; i < datasets.length; i++) {
+      var dataset = datasets[i];
+      if (!dataset || typeof dataset !== "object") {
+        continue;
+      }
+
+      var accent = palette.accents[i % palette.accents.length];
+      if (dataset.borderColor == null || dataset.borderColor === "") {
+        dataset.borderColor = accent;
+      }
+      if (dataset.backgroundColor == null || dataset.backgroundColor === "") {
+        dataset.backgroundColor = accent;
+      }
+    }
+  }
+
+  async function renderMermaidForExport(source, imageId, themeMode) {
+    var ready = await ensureMermaidReady();
+    if (!ready) {
+      return null;
+    }
+
+    if (!source || source.length > ixVisualMermaidState.maxSourceChars) {
+      return null;
+    }
+
+    try {
+      if (typeof window.mermaid.parse === "function") {
+        var parseResult = window.mermaid.parse(source);
+        if (parseResult && typeof parseResult.then === "function") {
+          await withVisualTimeout(parseResult, ixVisualExportState.renderTimeoutMs);
+        }
+      }
+
+      var renderResult = await withVisualTimeout(
+        Promise.resolve(window.mermaid.render("ix-export-mermaid-" + String(imageId), source)),
+        ixVisualExportState.renderTimeoutMs);
+
+      var svg = "";
+      if (typeof renderResult === "string") {
+        svg = renderResult;
+      } else if (renderResult && typeof renderResult === "object") {
+        svg = typeof renderResult.svg === "string" ? renderResult.svg : "";
+      }
+
+      if (!svg) {
+        return null;
+      }
+
+      var palette = resolveVisualExportPalette(themeMode);
+      var themed = withVisualExportBackground(svg, palette);
+      var encoded = utf8ToBase64(themed);
+      if (!encoded) {
+        return null;
+      }
+
+      return {
+        id: String(imageId),
+        alt: "Mermaid diagram",
+        mimeType: "image/svg+xml",
+        dataBase64: encoded
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function renderChartForExport(source, imageId, themeMode) {
+    var ready = await ensureChartReady();
+    if (!ready) {
+      return null;
+    }
+
+    var parsedConfig;
+    try {
+      parsedConfig = JSON.parse(source);
+    } catch (_) {
+      return null;
+    }
+
+    var validation = validateIxChartConfig(parsedConfig);
+    if (!validation.ok) {
+      return null;
+    }
+
+    var palette = resolveVisualExportPalette(themeMode);
+    var chartConfig = {
+      type: validation.config.type,
+      data: validation.config.data,
+      options: validation.config.options || {}
+    };
+    chartConfig.options = deepMergeForExport({}, chartConfig.options || {});
+    var exportDefaults = {
+      responsive: false,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { labels: { color: palette.text } },
+        title: { color: palette.text },
+        tooltip: { enabled: true }
+      },
+      scales: {
+        x: { ticks: { color: palette.muted }, grid: { color: palette.grid } },
+        y: { ticks: { color: palette.muted }, grid: { color: palette.grid } }
+      }
+    };
+    chartConfig.options = deepMergeForExport(exportDefaults, chartConfig.options || {});
+    applyChartPalette(chartConfig, palette);
+
+    var canvas = document.createElement("canvas");
+    canvas.width = ixVisualExportState.chartWidth;
+    canvas.height = ixVisualExportState.chartHeight;
+
+    var context = canvas.getContext("2d");
+    if (!context) {
+      return null;
+    }
+
+    var chart = null;
+    try {
+      chart = new window.Chart(context, chartConfig);
+      if (chart && typeof chart.update === "function") {
+        chart.update("none");
+      }
+      await new Promise(function(resolve) {
+        setTimeout(resolve, 40);
+      });
+
+      var dataUrl = "";
+      if (chart && typeof chart.toBase64Image === "function") {
+        dataUrl = chart.toBase64Image("image/png", 1) || "";
+      } else if (canvas && typeof canvas.toDataURL === "function") {
+        dataUrl = canvas.toDataURL("image/png");
+      }
+      var parsedData = parseDataUrlPayload(dataUrl);
+      if (!parsedData || !parsedData.dataBase64) {
+        return null;
+      }
+
+      return {
+        id: String(imageId),
+        alt: "Chart preview",
+        mimeType: parsedData.mimeType || "image/png",
+        dataBase64: parsedData.dataBase64
+      };
+    } catch (_) {
+      return null;
+    } finally {
+      if (chart && typeof chart.destroy === "function") {
+        chart.destroy();
+      }
+    }
+  }
+
+  async function renderNetworkForExport(source, imageId, themeMode) {
+    var ready = await ensureNetworkReady();
+    if (!ready) {
+      return null;
+    }
+
+    var parsedConfig;
+    try {
+      parsedConfig = JSON.parse(source);
+    } catch (_) {
+      return null;
+    }
+
+    var validation = validateIxNetworkConfig(parsedConfig);
+    if (!validation.ok) {
+      return null;
+    }
+
+    var palette = resolveVisualExportPalette(themeMode);
+    var host = document.createElement("div");
+    host.style.position = "fixed";
+    host.style.left = "-10000px";
+    host.style.top = "-10000px";
+    host.style.width = String(ixVisualExportState.networkWidth) + "px";
+    host.style.height = String(ixVisualExportState.networkHeight) + "px";
+    host.style.background = palette.background;
+    document.body.appendChild(host);
+
+    var options = deepMergeForExport({}, validation.config.options || {});
+    options = deepMergeForExport({
+      autoResize: false,
+      width: String(ixVisualExportState.networkWidth) + "px",
+      height: String(ixVisualExportState.networkHeight) + "px",
+      physics: false,
+      interaction: {
+        dragNodes: false,
+        dragView: false,
+        zoomView: false
+      },
+      nodes: {
+        font: { color: palette.text }
+      },
+      edges: {
+        color: palette.grid,
+        font: { color: palette.muted }
+      }
+    }, options);
+
+    var network = null;
+    try {
+      network = new window.vis.Network(host, {
+        nodes: validation.config.nodes,
+        edges: validation.config.edges
+      }, options);
+
+      await new Promise(function(resolve) {
+        var settled = false;
+        var timeout = setTimeout(function() {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          resolve();
+        }, 300);
+
+        var finish = function() {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timeout);
+          resolve();
+        };
+
+        try {
+          network.once("afterDrawing", finish);
+          network.once("stabilized", finish);
+        } catch (_) {
+          // Fallback to timeout.
+        }
+      });
+
+      var canvas = host.querySelector("canvas");
+      if (!canvas || typeof canvas.toDataURL !== "function") {
+        return null;
+      }
+
+      var dataUrl = canvas.toDataURL("image/png");
+      var parsedData = parseDataUrlPayload(dataUrl);
+      if (!parsedData || !parsedData.dataBase64) {
+        return null;
+      }
+
+      return {
+        id: String(imageId),
+        alt: "Network preview",
+        mimeType: parsedData.mimeType || "image/png",
+        dataBase64: parsedData.dataBase64
+      };
+    } catch (_) {
+      return null;
+    } finally {
+      if (network && typeof network.destroy === "function") {
+        try {
+          network.destroy();
+        } catch (_) {
+          // Ignore.
+        }
+      }
+      host.remove();
+    }
+  }
+
+  async function renderVisualFenceForExport(language, source, imageId, themeMode) {
+    var normalized = String(language || "").trim().toLowerCase();
+    var content = normalizeText(source || "");
+    if (!content) {
+      return null;
+    }
+
+    if (normalized === "mermaid") {
+      return renderMermaidForExport(content, imageId, themeMode);
+    }
+
+    if (normalized === "ix-chart" || normalized === "chart") {
+      if (content.length > ixVisualChartState.maxSourceChars) {
+        return null;
+      }
+      return renderChartForExport(content, imageId, themeMode);
+    }
+
+    if (normalized === "ix-network") {
+      if (content.length > ixVisualNetworkState.maxSourceChars) {
+        return null;
+      }
+      return renderNetworkForExport(content, imageId, themeMode);
+    }
+
+    return null;
+  }
+
+  window.ixMaterializeVisualFencesForDocx = async function(request) {
+    var sourceMarkdown = request && typeof request.markdown === "string"
+      ? request.markdown
+      : "";
+    if (!sourceMarkdown) {
+      return {
+        markdown: "",
+        images: []
+      };
+    }
+
+    var themeMode = normalizeVisualExportThemeMode(request && request.themeMode);
+    var newline = detectLineEnding(sourceMarkdown);
+    var normalized = sourceMarkdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    var lines = normalized.split("\n");
+    var output = [];
+    var images = [];
+    var imageCounter = 0;
+    for (var i = 0; i < lines.length;) {
+      var line = String(lines[i] || "");
+      var fence = tryReadFenceStart(line);
+      if (!fence) {
+        output.push(line);
+        i += 1;
+        continue;
+      }
+
+      var supportedLanguage = fence.language === "mermaid"
+        || fence.language === "ix-chart"
+        || fence.language === "chart"
+        || fence.language === "ix-network";
+      if (!supportedLanguage) {
+        output.push(line);
+        i += 1;
+        continue;
+      }
+
+      var closingIndex = findFenceClosingIndex(lines, i + 1, fence.marker, fence.runLength);
+      if (closingIndex < 0) {
+        output.push(line);
+        i += 1;
+        continue;
+      }
+
+      if (imageCounter >= ixVisualExportState.maxImages) {
+        appendFenceLines(lines, output, i, closingIndex);
+        i = closingIndex + 1;
+        continue;
+      }
+
+      var source = lines.slice(i + 1, closingIndex).join("\n");
+      var rendered = await renderVisualFenceForExport(fence.language, source, imageCounter + 1, themeMode);
+      if (!rendered || !rendered.dataBase64 || !rendered.mimeType) {
+        appendFenceLines(lines, output, i, closingIndex);
+        i = closingIndex + 1;
+        continue;
+      }
+
+      imageCounter += 1;
+      var imageId = "img" + String(imageCounter);
+      images.push({
+        id: imageId,
+        alt: rendered.alt || "Visual preview",
+        mimeType: rendered.mimeType,
+        dataBase64: rendered.dataBase64
+      });
+      output.push("![" + String(rendered.alt || "Visual preview") + "](ix-export-image://" + imageId + ")");
+      i = closingIndex + 1;
+    }
+
+    var rewritten = output.join("\n");
+    if (newline !== "\n") {
+      rewritten = rewritten.replace(/\n/g, newline);
+    }
+
+    return {
+      markdown: rewritten,
+      images: images
+    };
+  };

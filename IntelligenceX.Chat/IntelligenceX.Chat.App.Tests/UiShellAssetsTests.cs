@@ -103,6 +103,18 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures export visual-theme controls and messaging hooks are present in shell assets.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesExportVisualThemeModeBindingsAndControl() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("id=\"optExportVisualThemeMode\"", html, StringComparison.Ordinal);
+        Assert.Contains("post(\"set_export_visual_theme_mode\", { value: e.target.value || \"preserve_ui_theme\" });", html, StringComparison.Ordinal);
+        Assert.Contains("visualThemeMode: \"preserve_ui_theme\"", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures transport switching keeps draft compatible-http credentials in the form,
     /// instead of clearing hidden values when changing to non-compatible transports.
     /// </summary>
@@ -162,6 +174,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("/* IXCHAT_PART:Shell.21.core.visuals.js */", html, StringComparison.Ordinal);
         Assert.Contains("window.ixDisposeTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
         Assert.Contains("window.ixRenderTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixMaterializeVisualFencesForDocx = async function(request) {", html, StringComparison.Ordinal);
         Assert.Contains("function renderIxChartBlock(", html, StringComparison.Ordinal);
         Assert.Contains("function renderIxNetworkBlock(", html, StringComparison.Ordinal);
         Assert.Contains("window.ixRenderTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
