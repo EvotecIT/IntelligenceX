@@ -22,7 +22,7 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex ZeroWidthWhitespaceRegex = new(
-        @"[\u200B\u200C\u200D\u2060\uFEFF]",
+        @"[\u200B\u2060\uFEFF]",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NumberedChoiceJoinRegex = new(

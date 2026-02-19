@@ -23,6 +23,42 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures zero-width joiners required for emoji composition are preserved.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesEmojiJoiners() {
+        var text = "Engineer emoji: 👩‍💻 stays intact.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures zero-width non-joiners used in script text are preserved.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesScriptNonJoiners() {
+        var text = "Persian sample: می‌خواهم this should stay unchanged.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures cleanup still removes zero-width spacing artifacts that break markdown readability.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RemovesZeroWidthSpaceArtifacts() {
+        var text = "Item\u200BOne";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("ItemOne", normalized);
+    }
+
+    /// <summary>
     /// Ensures ordered-list markers in <c>1)</c> form are normalized for markdown engines that require <c>1.</c>.
     /// </summary>
     [Fact]
