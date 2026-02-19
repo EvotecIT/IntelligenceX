@@ -672,5 +672,199 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateRuleIdsFilterCanNarrowScopeWithoutTypes() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-ruleids-only-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX001",
+  "type": "bug",
+  "title": "Rule one",
+  "description": "Rule one.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(rulesDir, "IX002.json"), """
+{
+  "id": "IX002",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX002",
+  "type": "code-smell",
+  "title": "Rule two",
+  "description": "Rule two.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IX001", "IX002"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Rule one finding.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "ruleIds": ["IX002"]
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            var (exit, output) = RunAnalyzeAndCaptureOutput(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            });
+            AssertEqual(0, exit, "analyze gate exit (ruleIds-only filter narrows scope)");
+            AssertContainsText(output, "Gate ruleIds filter: IX002", "analyze gate ruleIds-only filter summary");
+            AssertContainsText(output, "- Violations: 0", "analyze gate ruleIds-only filter violations");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-ruleids-additive-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX001",
+  "type": "bug",
+  "title": "Rule one",
+  "description": "Rule one.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(rulesDir, "IX002.json"), """
+{
+  "id": "IX002",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX002",
+  "type": "code-smell",
+  "title": "Rule two",
+  "description": "Rule two.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IX001", "IX002"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Rule two finding.",
+      "ruleId": "IX002",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "types": ["bug"],
+      "ruleIds": ["IX002"]
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            var (exit, output) = RunAnalyzeAndCaptureOutput(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            });
+            AssertEqual(2, exit, "analyze gate exit (ruleIds add to type filter)");
+            AssertContainsText(output, "Gate type filter: bug", "analyze gate additive type filter summary");
+            AssertContainsText(output, "Gate ruleIds filter: IX002", "analyze gate additive ruleIds filter summary");
+            AssertContainsText(output, "IX002", "analyze gate additive ruleIds violation output");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
 }
 #endif

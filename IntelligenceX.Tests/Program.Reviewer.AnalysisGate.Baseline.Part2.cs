@@ -159,6 +159,13 @@ internal static partial class Program {
         AssertNotNull(baselinePath, "reviewer schema baselinePath property");
         AssertEqual("string", baselinePath!.GetString("type") ?? string.Empty, "reviewer schema baselinePath type");
 
+        var ruleIds = gateProps.GetObject("ruleIds");
+        AssertNotNull(ruleIds, "reviewer schema gate ruleIds property");
+        AssertEqual("array", ruleIds!.GetString("type") ?? string.Empty, "reviewer schema gate ruleIds type");
+        var ruleItems = ruleIds.GetObject("items");
+        AssertNotNull(ruleItems, "reviewer schema gate ruleIds items");
+        AssertEqual("string", ruleItems!.GetString("type") ?? string.Empty, "reviewer schema gate ruleIds item type");
+
         var duplication = gateProps.GetObject("duplication");
         AssertNotNull(duplication, "reviewer schema duplication property");
         var duplicationProps = duplication!.GetObject("properties");

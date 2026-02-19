@@ -66,6 +66,7 @@ Catalog layout:
 - `Analysis/Catalog/rules/csharp/CA2000.json`
 - `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
 - `Analysis/Catalog/rules/internal/IXLOC001.json`
+- `Analysis/Catalog/rules/internal/IXTOOL001.json`
 - `Analysis/Catalog/overrides/csharp/CA5350.json` (optional, IntelligenceX-specific overlay)
 
 Example rule file:
@@ -177,8 +178,9 @@ Current built-in runners in `analyze run`:
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
   - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
+  - `IXTOOL001` checks write-capable `ToolDefinition` registrations under `IntelligenceX.Tools/**` and flags schemas that do not use `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
   - Internal maintainability checks support `include-ext:<extension>` tags to scope analyzed file extensions per rule (default: `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`).
-  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json` and `Analysis/Catalog/rules/internal/IXDUP001.json`).
+  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json`, `Analysis/Catalog/rules/internal/IXDUP001.json`, and `Analysis/Catalog/rules/internal/IXTOOL001.json`).
   - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
   - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.
   - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
@@ -222,6 +224,9 @@ Rule preview lines (`Enabled rules preview`, `Failing rules`, `Clean rules`, `Ou
 show up to `analysis.results.policyRulePreviewItems` items (default `10`, max `500`), appending `(truncated)` when more rules exist.
 Set `policyRulePreviewItems` to `0` to hide per-rule lists and keep counts only.
 If your enabled rule count is less than or equal to the configured limit, the policy effectively shows all enabled rules.
+When `analysis.gate.ruleIds` is configured, the policy also includes:
+- `Gate rule IDs`: explicit gate-targeted rule IDs.
+- `Gate rule outcomes`: per-rule finding counts for those gate-targeted rule IDs.
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
@@ -229,6 +234,8 @@ For JS/TS and Python today, teams can still produce SARIF with their preferred t
 ## Migration Note
 If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
 `IXDUP001` defaults to `info` severity, so it is visible in findings but does not fail warning-level gates unless you raise severity.
+`IXTOOL001` defaults to `warning` severity and is intended to keep new write-capable tools aligned with canonical schema helpers.
+To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001"]`).
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 

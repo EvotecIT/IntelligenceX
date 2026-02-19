@@ -213,6 +213,7 @@
             "enabled": { "type": "boolean" },
             "minSeverity": { "type": "string" },
             "types": { "type": "array", "items": { "type": "string" } },
+            "ruleIds": { "type": "array", "items": { "type": "string" } },
             "includeOutsidePackRules": { "type": "boolean" },
             "failOnUnavailable": { "type": "boolean" },
             "failOnNoEnabledRules": { "type": "boolean" },

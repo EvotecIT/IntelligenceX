@@ -367,6 +367,10 @@ internal static partial class Program {
         failed += Run("Analyze gate passes on clean", TestAnalyzeGatePassesOnClean);
         failed += Run("Analyze gate fails on no enabled rules", TestAnalyzeGateFailsOnNoEnabledRules);
         failed += Run("Analyze gate minSeverity filters", TestAnalyzeGateMinSeverityFilters);
+        failed += Run("Analyze gate ruleIds-only filter narrows scope",
+            TestAnalyzeGateRuleIdsFilterCanNarrowScopeWithoutTypes);
+        failed += Run("Analyze gate ruleIds filter adds to type filtering",
+            TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering);
         failed += Run("Analyze gate new-only suppresses baseline findings", TestAnalyzeGateNewIssuesOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate new-only fails for new findings", TestAnalyzeGateNewIssuesOnlyFailsForNewFindings);
         failed += Run("Analyze gate new-only missing baseline schema logs inference", TestAnalyzeGateNewIssuesOnlyMissingSchemaLogsInference);
@@ -432,6 +436,8 @@ internal static partial class Program {
             TestAnalyzeGateWriteBaselineIncludesDuplicationOverallSnapshot);
         failed += Run("Analysis config reader normalizes duplication ruleIds",
             TestAnalysisConfigReaderNormalizesDuplicationRuleIds);
+        failed += Run("Analysis config reader normalizes gate ruleIds",
+            TestAnalysisConfigReaderNormalizesGateRuleIds);
         failed += Run("Analysis config reader keeps default duplication ruleIds on empty input",
             TestAnalysisConfigReaderKeepsDefaultDuplicationRuleIdsWhenConfiguredListEmpty);
         failed += Run("Analysis config reader reads run strict",
@@ -597,6 +603,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderMarkerSupportsHashComments);
         failed += Run("Analyze run internal maintainability supports multiple rules",
             TestAnalyzeRunInternalMaintainabilitySupportsMultipleRules);
+        failed += Run("Analyze run internal write-tool schema rule flags missing helpers",
+            TestAnalyzeRunInternalWriteToolSchemaRuleFlagsMissingHelpers);
+        failed += Run("Analyze run internal write-tool schema rule accepts canonical helpers",
+            TestAnalyzeRunInternalWriteToolSchemaRuleAcceptsCanonicalHelpers);
+        failed += Run("Analyze run internal write-tool schema rule ignores read-only tools",
+            TestAnalyzeRunInternalWriteToolSchemaRuleIgnoresReadOnlyTools);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",

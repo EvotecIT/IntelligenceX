@@ -63,6 +63,10 @@ public static class AnalysisConfigReader {
             if (types is not null) {
                 settings.Gate.Types = types;
             }
+            var gateRuleIds = AnalysisJsonHelpers.ReadStringList(gate, "ruleIds");
+            if (gateRuleIds is not null) {
+                settings.Gate.RuleIds = NormalizeRuleIds(gateRuleIds);
+            }
             settings.Gate.IncludeOutsidePackRules = ReadBool(gate, "includeOutsidePackRules", settings.Gate.IncludeOutsidePackRules);
             settings.Gate.FailOnUnavailable = ReadBool(gate, "failOnUnavailable", settings.Gate.FailOnUnavailable);
             settings.Gate.FailOnNoEnabledRules = ReadBool(gate, "failOnNoEnabledRules", settings.Gate.FailOnNoEnabledRules);

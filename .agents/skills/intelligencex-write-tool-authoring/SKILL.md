@@ -68,6 +68,15 @@ Use this skill when adding or refactoring write-capable (mutating) tools.
   - response envelope tests for write mode (`dry-run` vs `apply`)
 - Prefer focused unit tests over broad end-to-end tests unless behavior spans components.
 
+## Automated Enforcement
+- Internal maintainability rule `IXTOOL001` validates write-capable tool schemas under `IntelligenceX.Tools/**`.
+- The rule flags `ToolDefinition` entries with non-null `writeGovernance` that do not use:
+  - `WithWriteGovernanceDefaults()`
+  - `WithWriteGovernanceAndAuthenticationProbe()`
+- Local verification command:
+  - `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --workspace . --config .intelligencex/reviewer.json --out artifacts --pack intelligencex-maintainability-default --strict true`
+  - `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --workspace . --config .intelligencex/reviewer.json`
+
 ## Reusable Scaffold Assets
 - Tool template:
   - `templates/write-tool-template.cs.txt`

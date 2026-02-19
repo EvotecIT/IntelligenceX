@@ -15,6 +15,9 @@
         "vulnerability",
         "bug"
       ],
+      "ruleIds": [
+        "IXTOOL001"
+      ],
       "failOnUnavailable": true,
       "failOnNoEnabledRules": true,
       "includeOutsidePackRules": false,

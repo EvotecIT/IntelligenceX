@@ -310,6 +310,13 @@ internal static partial class AnalyzeGateCommand {
         return set;
     }
 
+    private static string FormatFilterSummary(IReadOnlyCollection<string> values, bool includeAllWhenEmpty) {
+        if (values is null || values.Count == 0) {
+            return includeAllWhenEmpty ? "all" : "none";
+        }
+        return string.Join(", ", values.OrderBy(v => v, StringComparer.OrdinalIgnoreCase));
+    }
+
     private static IReadOnlyList<PullRequestFile> LoadChangedFiles(string? path, string workspace, out string? error) {
         error = null;
         if (string.IsNullOrWhiteSpace(path)) {

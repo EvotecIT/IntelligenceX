@@ -2,6 +2,29 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static void TestAnalysisConfigReaderNormalizesGateRuleIds() {
+        var root = JsonLite.Parse("""
+{
+  "analysis": {
+    "enabled": true,
+    "gate": {
+      "ruleIds": [" IXTOOL001 ", "", "ixtool001", " IXABC002 ", "   "]
+    }
+  }
+}
+""")?.AsObject();
+        AssertNotNull(root, "analysis config gate ruleIds parse root");
+
+        var settings = new AnalysisSettings();
+        AnalysisConfigReader.Apply(root!, reviewObj: null, settings);
+
+        var ruleIds = settings.Gate.RuleIds;
+        AssertNotNull(ruleIds, "analysis config gate ruleIds set");
+        AssertEqual(2, ruleIds!.Count, "analysis config gate ruleIds normalized count");
+        AssertEqual("IXTOOL001", ruleIds[0], "analysis config gate ruleIds first normalized");
+        AssertEqual("IXABC002", ruleIds[1], "analysis config gate ruleIds second normalized");
+    }
+
     private static void TestAnalysisConfigReaderNormalizesDuplicationRuleIds() {
         var root = JsonLite.Parse("""
 {

@@ -135,6 +135,10 @@ internal static partial class AnalyzeGateCommand {
         var allFindings = load.Findings ?? Array.Empty<AnalysisFinding>();
         var allowedTypes = NormalizeTypes(analysisSettings.Gate.Types);
         var includeAllTypes = allowedTypes.Count == 0;
+        var gateRuleIds = NormalizeRuleIds(analysisSettings.Gate.RuleIds);
+        var hasTypeFilter = allowedTypes.Count > 0;
+        var hasRuleIdFilter = gateRuleIds.Count > 0;
+        var includeAllFilters = !hasTypeFilter && !hasRuleIdFilter;
 
         var enabledRuleIds = new HashSet<string>(policy.Rules.Keys, StringComparer.OrdinalIgnoreCase);
         var violations = new List<AnalysisFinding>();
@@ -157,7 +161,10 @@ internal static partial class AnalyzeGateCommand {
             }
 
             var type = ResolveRuleType(ruleId, catalog, fallback: "unknown");
-            if (!includeAllTypes && !allowedTypes.Contains(type)) {
+            var matchesType = hasTypeFilter && allowedTypes.Contains(type);
+            var matchesRuleId = hasRuleIdFilter && gateRuleIds.Contains(ruleId);
+            var includedByFilter = includeAllFilters || matchesType || matchesRuleId;
+            if (!includedByFilter) {
                 continue;
             }
             violations.Add(finding);
@@ -427,6 +434,8 @@ internal static partial class AnalyzeGateCommand {
             Console.WriteLine("Static analysis gate: pass");
             Console.WriteLine($"- Findings considered: {allFindings.Count}");
             Console.WriteLine($"- Violations: 0");
+            Console.WriteLine($"- Gate type filter: {FormatFilterSummary(allowedTypes, includeAllWhenEmpty: true)}");
+            Console.WriteLine($"- Gate ruleIds filter: {FormatFilterSummary(gateRuleIds, includeAllWhenEmpty: false)}");
             if (duplicationEnabled) {
                 if (duplicationEvaluation.Available) {
                     Console.WriteLine($"- Duplication rules evaluated: {duplicationEvaluation.RulesEvaluated}");
@@ -460,6 +469,8 @@ internal static partial class AnalyzeGateCommand {
         Console.WriteLine($"- Violations: {violations.Count}" +
                           (duplicationEnabled ? $", duplication: {duplicationViolations.Count}" : string.Empty) +
                           (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
+        Console.WriteLine($"- Gate type filter: {FormatFilterSummary(allowedTypes, includeAllWhenEmpty: true)}");
+        Console.WriteLine($"- Gate ruleIds filter: {FormatFilterSummary(gateRuleIds, includeAllWhenEmpty: false)}");
         if (duplicationEnabled) {
             if (duplicationEvaluation.Available) {
                 Console.WriteLine($"- Duplication rules evaluated: {duplicationEvaluation.RulesEvaluated}");
@@ -501,4 +512,3 @@ internal static partial class AnalyzeGateCommand {
         return Task.FromResult(ExitGateFailed);
     }
 }
-
