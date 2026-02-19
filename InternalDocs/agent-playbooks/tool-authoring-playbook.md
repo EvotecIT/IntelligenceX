@@ -50,9 +50,10 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
 
 ## Package-Specific Rules
 - Active Directory tools:
-  - Parse domains with `TryReadRequiredDomainName(...)`.
+  - For required `domain_name` + `max_results`, use `TryReadRequiredDomainQueryRequest(...)`.
+  - For policy-attribution shapes, use `TryReadPolicyAttributionToolRequest(...)` (or `ExecutePolicyAttributionTool(...)`).
   - For conventional collection contracts, use `TryExecuteCollectionQuery(...)`.
-  - For standard domain table flows, prefer `ExecuteDomainRowsViewTool(...)`.
+  - For standard domain table flows, prefer `ExecuteDomainRowsViewTool(...)` so required-domain parsing stays centralized.
   - For metadata, prefer `AddDomainAndMaxResultsMeta(...)` when applicable.
 - System/EventLog/FileSystem tools:
   - Keep argument limits option-bounded (`ResolveBoundedOptionLimit`/`ResolveMaxResults`).
@@ -69,6 +70,9 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
 - Registration/contract tests for schema + auth/governance metadata.
 - Focused runtime tests for strict gating logic.
 - Response contract tests for dry-run/apply behavior where relevant.
+- Internal maintainability checks:
+  - `IXTOOL001` for write-schema helper contract.
+  - `IXTOOL002` for AD required-domain helper contract.
 
 ## New Tool Checklist
 1. Define `ToolDefinition` with strict schema (`Required(...)`, `NoAdditionalProperties()`).

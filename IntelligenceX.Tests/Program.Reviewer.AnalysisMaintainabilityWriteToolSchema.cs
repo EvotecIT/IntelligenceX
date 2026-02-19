@@ -6,7 +6,7 @@ internal static partial class Program {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-write-tool-schema-missing-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
-            SetupWriteToolSchemaAnalysisWorkspace(temp);
+            SetupToolContractAnalysisWorkspace(temp);
 
             File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample", "SampleBadTool.cs"), """
 using IntelligenceX.Tools;
@@ -53,7 +53,7 @@ public sealed class SampleBadTool {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-write-tool-schema-good-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
-            SetupWriteToolSchemaAnalysisWorkspace(temp);
+            SetupToolContractAnalysisWorkspace(temp);
 
             File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample", "SampleGoodTool.cs"), """
 using IntelligenceX.Tools;
@@ -118,7 +118,7 @@ public sealed class SampleGoodProbeTool {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-write-tool-schema-readonly-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
-            SetupWriteToolSchemaAnalysisWorkspace(temp);
+            SetupToolContractAnalysisWorkspace(temp);
 
             File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample", "SampleReadOnlyTool.cs"), """
 using IntelligenceX.Tools;
@@ -158,7 +158,7 @@ public sealed class SampleReadOnlyTool {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-write-tool-schema-authonly-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
-            SetupWriteToolSchemaAnalysisWorkspace(temp);
+            SetupToolContractAnalysisWorkspace(temp);
 
             File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample", "SampleAuthOnlyTool.cs"), """
 using IntelligenceX.Tools;
@@ -196,7 +196,7 @@ public sealed class SampleAuthOnlyTool {
         }
     }
 
-    private static void SetupWriteToolSchemaAnalysisWorkspace(string workspacePath) {
+    private static void SetupToolContractAnalysisWorkspace(string workspacePath) {
         Directory.CreateDirectory(Path.Combine(workspacePath, ".intelligencex"));
         Directory.CreateDirectory(Path.Combine(workspacePath, "Analysis", "Catalog", "rules", "internal"));
         Directory.CreateDirectory(Path.Combine(workspacePath, "Analysis", "Packs"));
@@ -225,11 +225,25 @@ public sealed class SampleAuthOnlyTool {
 }
 """);
 
+        File.WriteAllText(Path.Combine(workspacePath, "Analysis", "Catalog", "rules", "internal", "IXTOOL002.json"), """
+{
+  "id": "IXTOOL002",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXTOOL002",
+  "title": "AD required-domain tools should use canonical request helpers",
+  "description": "Flags AD tools with required domain_name that do not use canonical helper paths.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["include-ext:cs"]
+}
+""");
+
         File.WriteAllText(Path.Combine(workspacePath, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
 {
   "id": "intelligencex-maintainability-default",
   "label": "IntelligenceX Maintainability",
-  "rules": ["IXTOOL001"]
+  "rules": ["IXTOOL001", "IXTOOL002"]
 }
 """);
     }

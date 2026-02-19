@@ -67,6 +67,7 @@ Catalog layout:
 - `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
 - `Analysis/Catalog/rules/internal/IXLOC001.json`
 - `Analysis/Catalog/rules/internal/IXTOOL001.json`
+- `Analysis/Catalog/rules/internal/IXTOOL002.json`
 - `Analysis/Catalog/overrides/csharp/CA5350.json` (optional, IntelligenceX-specific overlay)
 
 Example rule file:
@@ -179,8 +180,9 @@ Current built-in runners in `analyze run`:
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
   - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
   - `IXTOOL001` checks write-capable `ToolDefinition` registrations under `IntelligenceX.Tools/**` and flags schemas that do not use `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
+  - `IXTOOL002` checks AD `ToolDefinition` registrations with required `domain_name` and flags tools that do not use canonical required-domain helper paths.
   - Internal maintainability checks support `include-ext:<extension>` tags to scope analyzed file extensions per rule (default: `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`).
-  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json`, `Analysis/Catalog/rules/internal/IXDUP001.json`, and `Analysis/Catalog/rules/internal/IXTOOL001.json`).
+  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json`, `Analysis/Catalog/rules/internal/IXDUP001.json`, `Analysis/Catalog/rules/internal/IXTOOL001.json`, and `Analysis/Catalog/rules/internal/IXTOOL002.json`).
   - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
   - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.
   - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
@@ -235,7 +237,8 @@ For JS/TS and Python today, teams can still produce SARIF with their preferred t
 If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
 `IXDUP001` defaults to `info` severity, so it is visible in findings but does not fail warning-level gates unless you raise severity.
 `IXTOOL001` defaults to `warning` severity and is intended to keep new write-capable tools aligned with canonical schema helpers.
-To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001"]`).
+`IXTOOL002` defaults to `warning` severity and is intended to keep required-domain AD tools aligned with canonical request helper paths.
+To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001","IXTOOL002"]`).
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 
