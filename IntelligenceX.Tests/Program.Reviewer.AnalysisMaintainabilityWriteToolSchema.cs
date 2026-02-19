@@ -154,6 +154,48 @@ public sealed class SampleReadOnlyTool {
         }
     }
 
+    private static void TestAnalyzeRunInternalWriteToolSchemaRuleIgnoresAuthenticationOnlyToolDefinitions() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-write-tool-schema-authonly-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupWriteToolSchemaAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample", "SampleAuthOnlyTool.cs"), """
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleAuthOnlyTool {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_auth_only_tool",
+        "Sample auth-only tool.",
+        ToolSchema.Object(
+                ("probe", ToolSchema.Boolean("When true, probes connectivity.")))
+            .NoAdditionalProperties(),
+        authentication: ToolAuthenticationConventions.HostManaged(
+            requiresAuthentication: true));
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run write-tool schema auth-only exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
+                "analyze run write-tool schema auth-only no finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void SetupWriteToolSchemaAnalysisWorkspace(string workspacePath) {
         Directory.CreateDirectory(Path.Combine(workspacePath, ".intelligencex"));
         Directory.CreateDirectory(Path.Combine(workspacePath, "Analysis", "Catalog", "rules", "internal"));

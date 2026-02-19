@@ -609,6 +609,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalWriteToolSchemaRuleAcceptsCanonicalHelpers);
         failed += Run("Analyze run internal write-tool schema rule ignores read-only tools",
             TestAnalyzeRunInternalWriteToolSchemaRuleIgnoresReadOnlyTools);
+        failed += Run("Analyze run internal write-tool schema rule ignores auth-only definitions",
+            TestAnalyzeRunInternalWriteToolSchemaRuleIgnoresAuthenticationOnlyToolDefinitions);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",

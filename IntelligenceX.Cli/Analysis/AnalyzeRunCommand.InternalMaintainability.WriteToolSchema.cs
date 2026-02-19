@@ -15,6 +15,19 @@ internal static partial class AnalyzeRunCommand {
         "WithWriteGovernanceAndAuthenticationProbe"
     };
 
+    private static readonly string[] ToolDefinitionParameterOrder = {
+        "name",
+        "description",
+        "parameters",
+        "displayName",
+        "category",
+        "tags",
+        "writeGovernance",
+        "aliases",
+        "aliasOf",
+        "authentication"
+    };
+
     private static IReadOnlyList<AnalysisFindingItem> RunWriteToolSchemaChecks(IReadOnlyList<AnalysisPolicyRule> rules,
         IReadOnlyList<SourceFileEntry> sourceFiles, string? excludedOutputPath, List<string> warnings) {
         var findings = new List<AnalysisFindingItem>();
@@ -147,25 +160,16 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static bool IsWriteGovernanceConfigured(BaseObjectCreationExpressionSyntax creation) {
-        var arguments = creation.ArgumentList?.Arguments;
-        if (arguments is null || arguments.Value.Count == 0) {
+        if (!TryMapToolDefinitionArguments(creation, out var argumentMap)) {
             return false;
         }
 
-        foreach (var argument in arguments.Value) {
-            var argumentName = argument.NameColon?.Name.Identifier.ValueText;
-            if (!string.Equals(argumentName, "writeGovernance", StringComparison.Ordinal)) {
-                continue;
-            }
-
-            return !IsNullLiteral(argument.Expression);
+        if (!argumentMap.TryGetValue("writeGovernance", out var writeGovernanceExpression) ||
+            writeGovernanceExpression is null) {
+            return false;
         }
 
-        if (arguments.Value.Count >= 4) {
-            return !IsNullLiteral(arguments.Value[3].Expression);
-        }
-
-        return false;
+        return !IsNullLiteral(writeGovernanceExpression);
     }
 
     private static bool IsNullLiteral(ExpressionSyntax expression) {
@@ -175,25 +179,56 @@ internal static partial class AnalyzeRunCommand {
 
     private static bool TryGetParametersExpression(BaseObjectCreationExpressionSyntax creation, out ExpressionSyntax expression) {
         expression = null!;
+        if (!TryMapToolDefinitionArguments(creation, out var argumentMap)) {
+            return false;
+        }
+
+        if (argumentMap.TryGetValue("parameters", out var parametersExpression) && parametersExpression is not null) {
+            expression = parametersExpression;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMapToolDefinitionArguments(
+        BaseObjectCreationExpressionSyntax creation,
+        out Dictionary<string, ExpressionSyntax> argumentMap) {
+        argumentMap = new Dictionary<string, ExpressionSyntax>(StringComparer.Ordinal);
         var arguments = creation.ArgumentList?.Arguments;
         if (arguments is null || arguments.Value.Count == 0) {
             return false;
         }
 
+        var nextPositionalIndex = 0;
         foreach (var argument in arguments.Value) {
-            var argumentName = argument.NameColon?.Name.Identifier.ValueText;
-            if (string.Equals(argumentName, "parameters", StringComparison.Ordinal)) {
-                expression = argument.Expression;
-                return true;
+            var parameterName = argument.NameColon?.Name.Identifier.ValueText;
+            if (string.IsNullOrWhiteSpace(parameterName)) {
+                parameterName = GetNextPositionalParameterName(argumentMap, ref nextPositionalIndex);
+            }
+
+            if (string.IsNullOrWhiteSpace(parameterName)) {
+                continue;
+            }
+
+            argumentMap[parameterName] = argument.Expression;
+        }
+
+        return argumentMap.Count > 0;
+    }
+
+    private static string? GetNextPositionalParameterName(
+        Dictionary<string, ExpressionSyntax> argumentMap,
+        ref int nextPositionalIndex) {
+        while (nextPositionalIndex < ToolDefinitionParameterOrder.Length) {
+            var candidate = ToolDefinitionParameterOrder[nextPositionalIndex];
+            nextPositionalIndex++;
+            if (!argumentMap.ContainsKey(candidate)) {
+                return candidate;
             }
         }
 
-        if (arguments.Value.Count >= 3) {
-            expression = arguments.Value[2].Expression;
-            return true;
-        }
-
-        return false;
+        return null;
     }
 
     private static bool UsesRequiredWriteSchemaHelper(ExpressionSyntax parametersExpression, SyntaxNode root) {
