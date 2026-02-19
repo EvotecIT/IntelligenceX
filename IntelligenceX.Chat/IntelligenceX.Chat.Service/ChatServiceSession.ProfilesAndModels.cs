@@ -478,7 +478,10 @@ internal sealed partial class ChatServiceSession {
         var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
             BuildRuntimePolicyOptions(_options),
             warning => RecordBootstrapWarning(startupWarnings, warning));
-        var bootstrapOptions = BuildToolPackBootstrapOptions(runtimePolicyContext, startupWarnings);
+        var bootstrapOptions = ToolPackBootstrap.CreateRuntimeBootstrapOptions(
+            _options,
+            runtimePolicyContext,
+            warning => RecordBootstrapWarning(startupWarnings, warning));
         var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
         var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
         var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
@@ -499,29 +502,6 @@ internal sealed partial class ChatServiceSession {
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
         }
-    }
-
-    private ToolPackBootstrapOptions BuildToolPackBootstrapOptions(
-        ToolRuntimePolicyContext runtimePolicyContext,
-        ICollection<string> startupWarnings) {
-        return new ToolPackBootstrapOptions {
-            AllowedRoots = _options.AllowedRoots.ToArray(),
-            AdDomainController = _options.AdDomainController,
-            AdDefaultSearchBaseDn = _options.AdDefaultSearchBaseDn,
-            AdMaxResults = _options.AdMaxResults,
-            EnablePowerShellPack = _options.EnablePowerShellPack,
-            PowerShellAllowWrite = _options.PowerShellAllowWrite,
-            EnableTestimoXPack = _options.EnableTestimoXPack,
-            EnableOfficeImoPack = _options.EnableOfficeImoPack,
-            EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
-            PluginPaths = _options.PluginPaths.ToArray(),
-            AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,
-            RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
-            SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
-            RunAsProfilePath = runtimePolicyContext.Options.RunAsProfilePath,
-            AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
-            OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
-        };
     }
 
     private void ClearToolRoutingCaches() {

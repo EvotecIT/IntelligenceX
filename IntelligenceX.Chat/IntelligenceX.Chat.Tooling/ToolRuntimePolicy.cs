@@ -115,6 +115,56 @@ public sealed record ToolRuntimePolicyResolvedOptions {
 }
 
 /// <summary>
+/// Host/service settings contract used to build runtime policy options.
+/// </summary>
+public interface IToolRuntimePolicySettings {
+    /// <summary>
+    /// Write-governance enforcement mode.
+    /// </summary>
+    ToolWriteGovernanceMode WriteGovernanceMode { get; }
+
+    /// <summary>
+    /// When true, writes are blocked if no write-governance runtime is configured.
+    /// </summary>
+    bool RequireWriteGovernanceRuntime { get; }
+
+    /// <summary>
+    /// When true, writes are blocked if no write-audit sink is configured.
+    /// </summary>
+    bool RequireWriteAuditSinkForWriteOperations { get; }
+
+    /// <summary>
+    /// Selected audit sink mode.
+    /// </summary>
+    ToolWriteAuditSinkMode WriteAuditSinkMode { get; }
+
+    /// <summary>
+    /// Optional audit sink path (file/db).
+    /// </summary>
+    string? WriteAuditSinkPath { get; }
+
+    /// <summary>
+    /// Authentication preset used to shape pack-level auth behavior.
+    /// </summary>
+    ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; }
+
+    /// <summary>
+    /// When true, strict auth-runtime behavior is required.
+    /// </summary>
+    bool RequireAuthenticationRuntime { get; }
+
+    /// <summary>
+    /// Optional run-as profile catalog path for tools that support run-as references.
+    /// </summary>
+    string? RunAsProfilePath { get; }
+
+    /// <summary>
+    /// Optional authentication profile catalog path for tools that support explicit auth profile references.
+    /// </summary>
+    string? AuthenticationProfilePath { get; }
+}
+
+/// <summary>
 /// Resolved runtime policy context used during bootstrap.
 /// </summary>
 public sealed record ToolRuntimePolicyContext {
@@ -218,6 +268,29 @@ public sealed record ToolRuntimePolicyDiagnostics {
 public static class ToolRuntimePolicyBootstrap {
     private const string StrictImmutableAuditProviderId = "ix.audit.append_only";
     private const string StrictRollbackProviderId = "ix.rollback.catalog";
+
+    /// <summary>
+    /// Creates runtime policy options from shared host/service settings.
+    /// </summary>
+    /// <param name="settings">Runtime policy settings.</param>
+    /// <returns>Mapped runtime policy options.</returns>
+    public static ToolRuntimePolicyOptions CreateOptions(IToolRuntimePolicySettings settings) {
+        if (settings is null) {
+            throw new ArgumentNullException(nameof(settings));
+        }
+
+        return new ToolRuntimePolicyOptions {
+            WriteGovernanceMode = settings.WriteGovernanceMode,
+            RequireWriteGovernanceRuntime = settings.RequireWriteGovernanceRuntime,
+            RequireWriteAuditSinkForWriteOperations = settings.RequireWriteAuditSinkForWriteOperations,
+            WriteAuditSinkMode = settings.WriteAuditSinkMode,
+            WriteAuditSinkPath = settings.WriteAuditSinkPath,
+            AuthenticationPreset = settings.AuthenticationRuntimePreset,
+            RequireAuthenticationRuntime = settings.RequireAuthenticationRuntime,
+            RunAsProfilePath = settings.RunAsProfilePath,
+            AuthenticationProfilePath = settings.AuthenticationProfilePath
+        };
+    }
 
     /// <summary>
     /// Creates a runtime policy context from options.

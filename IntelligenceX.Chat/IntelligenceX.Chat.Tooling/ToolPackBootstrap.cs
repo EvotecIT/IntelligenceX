@@ -151,6 +151,61 @@ public sealed record ToolPackBootstrapOptions {
 }
 
 /// <summary>
+/// Host/service settings contract used to build runtime pack bootstrap options.
+/// </summary>
+public interface IToolPackRuntimeSettings {
+    /// <summary>
+    /// Allowed filesystem roots (used by filesystem tools and EVTX file access).
+    /// </summary>
+    IReadOnlyList<string> AllowedRoots { get; }
+
+    /// <summary>
+    /// Optional Active Directory domain controller.
+    /// </summary>
+    string? AdDomainController { get; }
+
+    /// <summary>
+    /// Optional default AD search base DN.
+    /// </summary>
+    string? AdDefaultSearchBaseDn { get; }
+
+    /// <summary>
+    /// Max AD results returned by AD tools (0 or less = default).
+    /// </summary>
+    int AdMaxResults { get; }
+
+    /// <summary>
+    /// Enables dangerous IX.PowerShell runtime pack when available.
+    /// </summary>
+    bool EnablePowerShellPack { get; }
+
+    /// <summary>
+    /// Enables read-write intent for IX.PowerShell runtime pack.
+    /// </summary>
+    bool PowerShellAllowWrite { get; }
+
+    /// <summary>
+    /// Enables IX.TestimoX diagnostics pack when available.
+    /// </summary>
+    bool EnableTestimoXPack { get; }
+
+    /// <summary>
+    /// Enables IX.OfficeIMO read-only document ingestion pack when available.
+    /// </summary>
+    bool EnableOfficeImoPack { get; }
+
+    /// <summary>
+    /// Enables default plugin search roots.
+    /// </summary>
+    bool EnableDefaultPluginPaths { get; }
+
+    /// <summary>
+    /// Additional plugin search paths (repeatable).
+    /// </summary>
+    IReadOnlyList<string> PluginPaths { get; }
+}
+
+/// <summary>
 /// Availability metadata for a known tool pack in the current runtime.
 /// </summary>
 public sealed record ToolPackAvailabilityInfo {
@@ -290,6 +345,47 @@ public static class ToolPackBootstrap {
         ToolCapabilityTier.SensitiveRead,
         IsDangerous: false,
         PackSourceBuiltin);
+
+    /// <summary>
+    /// Creates runtime bootstrap options from shared host/service settings and policy context.
+    /// </summary>
+    /// <param name="settings">Host/service tool-pack settings.</param>
+    /// <param name="runtimePolicyContext">Resolved runtime policy context.</param>
+    /// <param name="onBootstrapWarning">Optional warning sink used during pack bootstrap.</param>
+    /// <returns>Mapped bootstrap options.</returns>
+    public static ToolPackBootstrapOptions CreateRuntimeBootstrapOptions(
+        IToolPackRuntimeSettings settings,
+        ToolRuntimePolicyContext runtimePolicyContext,
+        Action<string>? onBootstrapWarning = null) {
+        if (settings is null) {
+            throw new ArgumentNullException(nameof(settings));
+        }
+        if (runtimePolicyContext is null) {
+            throw new ArgumentNullException(nameof(runtimePolicyContext));
+        }
+
+        var allowedRoots = settings.AllowedRoots?.ToArray() ?? Array.Empty<string>();
+        var pluginPaths = settings.PluginPaths?.ToArray() ?? Array.Empty<string>();
+
+        return new ToolPackBootstrapOptions {
+            AllowedRoots = allowedRoots,
+            AdDomainController = settings.AdDomainController,
+            AdDefaultSearchBaseDn = settings.AdDefaultSearchBaseDn,
+            AdMaxResults = settings.AdMaxResults,
+            EnablePowerShellPack = settings.EnablePowerShellPack,
+            PowerShellAllowWrite = settings.PowerShellAllowWrite,
+            EnableTestimoXPack = settings.EnableTestimoXPack,
+            EnableOfficeImoPack = settings.EnableOfficeImoPack,
+            EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
+            PluginPaths = pluginPaths,
+            AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,
+            RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
+            SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
+            RunAsProfilePath = runtimePolicyContext.Options.RunAsProfilePath,
+            AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
+            OnBootstrapWarning = onBootstrapWarning
+        };
+    }
 
     /// <summary>
     /// Builds the default tool packs (public read-only packs plus optional private packs when available).

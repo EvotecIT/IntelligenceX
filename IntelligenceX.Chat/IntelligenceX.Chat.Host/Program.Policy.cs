@@ -34,38 +34,11 @@ internal static partial class Program {
         ReplOptions options,
         ToolRuntimePolicyContext runtimePolicy,
         Action<string>? onBootstrapWarning = null) {
-        return new ToolPackBootstrapOptions {
-            AllowedRoots = options.AllowedRoots.ToArray(),
-            AdDomainController = options.AdDomainController,
-            AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
-            AdMaxResults = options.AdMaxResults,
-            EnablePowerShellPack = options.EnablePowerShellPack,
-            PowerShellAllowWrite = options.PowerShellAllowWrite,
-            EnableTestimoXPack = options.EnableTestimoXPack,
-            EnableOfficeImoPack = options.EnableOfficeImoPack,
-            EnableDefaultPluginPaths = options.EnableDefaultPluginPaths,
-            PluginPaths = options.PluginPaths.ToArray(),
-            AuthenticationProbeStore = runtimePolicy.AuthenticationProbeStore,
-            RequireSuccessfulSmtpProbeForSend = runtimePolicy.RequireSuccessfulSmtpProbeForSend,
-            SmtpProbeMaxAgeSeconds = runtimePolicy.SmtpProbeMaxAgeSeconds,
-            RunAsProfilePath = runtimePolicy.Options.RunAsProfilePath,
-            AuthenticationProfilePath = runtimePolicy.Options.AuthenticationProfilePath,
-            OnBootstrapWarning = onBootstrapWarning
-        };
+        return ToolPackBootstrap.CreateRuntimeBootstrapOptions(options, runtimePolicy, onBootstrapWarning);
     }
 
     private static ToolRuntimePolicyOptions BuildRuntimePolicyOptions(ReplOptions options) {
-        return ToolRuntimePolicyBootstrap.ResolveOptions(new ToolRuntimePolicyOptions {
-            WriteGovernanceMode = options.WriteGovernanceMode,
-            RequireWriteGovernanceRuntime = options.RequireWriteGovernanceRuntime,
-            RequireWriteAuditSinkForWriteOperations = options.RequireWriteAuditSinkForWriteOperations,
-            WriteAuditSinkMode = options.WriteAuditSinkMode,
-            WriteAuditSinkPath = options.WriteAuditSinkPath,
-            AuthenticationPreset = options.AuthenticationRuntimePreset,
-            RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
-            RunAsProfilePath = options.RunAsProfilePath,
-            AuthenticationProfilePath = options.AuthenticationProfilePath
-        }).Options;
+        return ToolRuntimePolicyBootstrap.CreateOptions(options);
     }
 
     private static void WritePolicyBanner(
