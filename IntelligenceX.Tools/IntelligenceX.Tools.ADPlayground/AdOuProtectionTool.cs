@@ -77,7 +77,7 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
         var unprotectedOnly = ToolArgs.GetBoolean(arguments, "unprotected_only", defaultValue: false);
         var includeUnprotectedOus = ToolArgs.GetBoolean(arguments, "include_unprotected_ous", defaultValue: false);
         var maxOuRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_ou_rows_per_domain", 100, 1, 5000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -167,3 +167,4 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

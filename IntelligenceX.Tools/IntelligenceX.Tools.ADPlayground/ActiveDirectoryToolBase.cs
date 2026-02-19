@@ -18,6 +18,20 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     private const int DefaultPolicyAttributionMaxTop = 5000;
 
     /// <summary>
+    /// Controls how non-positive max-results values are normalized.
+    /// </summary>
+    protected enum MaxResultsNonPositiveBehavior {
+        /// <summary>
+        /// Non-positive values fall back to the configured option cap.
+        /// </summary>
+        DefaultToOptionCap,
+        /// <summary>
+        /// Non-positive values are clamped to <c>1</c>.
+        /// </summary>
+        ClampToOne
+    }
+
+    /// <summary>
     /// Standard argument set used by AD policy-attribution tools.
     /// </summary>
     protected readonly record struct PolicyAttributionToolRequest(
@@ -60,30 +74,19 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
-    /// Resolves max-results where non-positive input falls back to the default option cap.
+    /// Resolves max-results with a configurable non-positive normalization strategy.
     /// </summary>
     /// <param name="arguments">Tool arguments.</param>
     /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
+    /// <param name="nonPositiveBehavior">Behavior used when provided value is zero or negative.</param>
     /// <returns>Normalized max-results value.</returns>
-    protected int ResolveMaxResultsDefaultOnNonPositive(JsonObject? arguments, string argumentName = "max_results") {
-        return ToolArgs.GetPositiveOptionBoundedInt32OrDefault(
-            arguments,
-            argumentName,
-            Options.MaxResults,
-            Options.MaxResults);
-    }
-
-    /// <summary>
-    /// Resolves max-results where non-positive input is clamped to 1 (strictly positive).
-    /// </summary>
-    /// <param name="arguments">Tool arguments.</param>
-    /// <param name="argumentName">Argument name (defaults to <c>max_results</c>).</param>
-    /// <returns>Normalized max-results value.</returns>
-    protected int ResolveMaxResultsClampToOne(JsonObject? arguments, string argumentName = "max_results") {
-        return ToolArgs.GetOptionBoundedInt32(
-            arguments,
-            argumentName,
-            Options.MaxResults);
+    protected int ResolveBoundedMaxResults(
+        JsonObject? arguments,
+        string argumentName = "max_results",
+        MaxResultsNonPositiveBehavior nonPositiveBehavior = MaxResultsNonPositiveBehavior.ClampToOne) {
+        return nonPositiveBehavior == MaxResultsNonPositiveBehavior.DefaultToOptionCap
+            ? ToolArgs.GetPositiveOptionBoundedInt32OrDefault(arguments, argumentName, Options.MaxResults, Options.MaxResults)
+            : ToolArgs.GetOptionBoundedInt32(arguments, argumentName, Options.MaxResults);
     }
 
     /// <summary>
@@ -380,7 +383,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             return Task.FromResult(argumentError!);
         }
 
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => query(domainName),
@@ -682,7 +685,7 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
             DomainName: domainName,
             IncludeAttribution: ToolArgs.GetBoolean(arguments, "include_attribution", defaultValue: true),
             ConfiguredAttributionOnly: ToolArgs.GetBoolean(arguments, "configured_attribution_only", defaultValue: false),
-            MaxResults: ResolveMaxResultsClampToOne(arguments));
+            MaxResults: ResolveBoundedMaxResults(arguments));
         errorResponse = null;
         return true;
     }
@@ -781,3 +784,4 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
         }
     }
 }
+

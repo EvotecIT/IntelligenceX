@@ -88,7 +88,7 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         var includeCommunicationIssues = ToolArgs.GetBoolean(arguments, "include_communication_issues", defaultValue: false);
         var summary = ToolArgs.GetBoolean(arguments, "summary", defaultValue: false);
         var summaryMatrix = ToolArgs.GetBoolean(arguments, "summary_matrix", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var status = NormalizeEnumValue(ToolArgs.GetOptionalTrimmed(arguments, "status"), "any");
         var trustType = NormalizeEnumValue(ToolArgs.GetOptionalTrimmed(arguments, "trust_type"), "any");
@@ -419,3 +419,4 @@ public sealed class AdTrustTool : ActiveDirectoryToolBase, ITool {
         };
     }
 }
+

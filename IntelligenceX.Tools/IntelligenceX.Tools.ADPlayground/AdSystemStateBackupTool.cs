@@ -72,7 +72,7 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
         var thresholdDays = ToolArgs.GetCappedInt32(arguments, "threshold_days", 30, 1, 3650);
         var missingOnly = ToolArgs.GetBoolean(arguments, "missing_only", defaultValue: false);
         var staleOnly = ToolArgs.GetBoolean(arguments, "stale_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -155,3 +155,4 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

@@ -76,7 +76,7 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var domainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller");
         var insecureOnly = ToolArgs.GetBoolean(arguments, "insecure_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!string.IsNullOrWhiteSpace(domainController) && string.IsNullOrWhiteSpace(domainName)) {
             return ToolResponse.Error(
@@ -192,3 +192,4 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
             });
     }
 }
+

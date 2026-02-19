@@ -69,7 +69,7 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
         var anonymousSamOnly = ToolArgs.GetBoolean(arguments, "anonymous_sam_only", defaultValue: false);
         var nullSessionOnly = ToolArgs.GetBoolean(arguments, "null_session_only", defaultValue: false);
         var maxDomainControllers = ToolArgs.GetCappedInt32(arguments, "max_domain_controllers", 200, 1, 2000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var dcRows = new List<(string DomainName, string DomainController)>();
         if (explicitDcs.Count > 0) {
@@ -171,3 +171,4 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

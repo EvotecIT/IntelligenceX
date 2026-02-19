@@ -54,7 +54,7 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
         var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
         var includeExamples = ToolArgs.GetBoolean(arguments, "include_examples");
 
-        var maxObjects = ResolveMaxResultsDefaultOnNonPositive(arguments);
+        var maxObjects = ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
         var requestedServiceClasses = arguments?.GetInt64("max_service_classes");
         var maxServiceClasses = requestedServiceClasses.HasValue && requestedServiceClasses.Value > 0
@@ -96,3 +96,4 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
             scanned: stats.ScannedObjects);
     }
 }
+

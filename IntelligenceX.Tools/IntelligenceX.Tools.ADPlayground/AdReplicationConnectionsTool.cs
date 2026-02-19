@@ -64,7 +64,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         var origin = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "origin"), "any");
         var summary = ToolArgs.GetBoolean(arguments, "summary", defaultValue: false);
         var summaryBy = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "summary_by"), "site");
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!IsOneOf(transport, "any", "rpc", "smtp")) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "transport must be one of: any, rpc, smtp."));
@@ -210,3 +210,4 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         };
     }
 }
+

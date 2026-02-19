@@ -72,7 +72,7 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeFindings = ToolArgs.GetBoolean(arguments, "include_findings", defaultValue: true);
         var maxFindingsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_findings_per_domain", 200, 1, Options.MaxResults);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -143,3 +143,4 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
             }));
     }
 }
+

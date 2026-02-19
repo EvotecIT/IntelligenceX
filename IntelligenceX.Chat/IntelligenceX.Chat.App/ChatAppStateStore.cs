@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -147,8 +148,8 @@ internal sealed class ChatAppStateStore : IDisposable {
         cancellationToken.ThrowIfCancellationRequested();
 
         var names = new List<string>();
-        var result = _db.Query(_dbPath, "SELECT profile_name FROM ix_app_profiles ORDER BY profile_name");
-        if (result is System.Data.DataTable dt) {
+        var dt = QueryAsTable(_db.Query(_dbPath, "SELECT profile_name FROM ix_app_profiles ORDER BY profile_name"));
+        if (dt is not null) {
             foreach (System.Data.DataRow row in dt.Rows) {
                 var value = row[0]?.ToString();
                 if (!string.IsNullOrWhiteSpace(value)) {
@@ -172,6 +173,18 @@ internal sealed class ChatAppStateStore : IDisposable {
 
     public void Dispose() {
         _db.Dispose();
+    }
+
+    private static DataTable? QueryAsTable(object? queryResult) {
+        if (queryResult is DataTable table) {
+            return table;
+        }
+
+        if (queryResult is DataSet dataSet && dataSet.Tables.Count > 0) {
+            return dataSet.Tables[0];
+        }
+
+        return null;
     }
 }
 

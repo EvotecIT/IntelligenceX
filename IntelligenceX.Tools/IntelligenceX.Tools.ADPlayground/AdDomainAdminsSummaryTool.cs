@@ -47,7 +47,7 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
 
         var includeMembers = arguments?.GetBoolean("include_members") ?? true;
 
-        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
         try {
             var summary = await DomainAdminsSummaryService
@@ -72,3 +72,4 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
         }
     }
 }
+

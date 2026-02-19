@@ -59,7 +59,7 @@ public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase,
         var includeCompliant = ToolArgs.GetBoolean(arguments, "include_compliant", defaultValue: false);
         var errorsOnly = ToolArgs.GetBoolean(arguments, "errors_only", defaultValue: false);
         var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionAdministrativeService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos),
@@ -105,3 +105,4 @@ public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase,
             }));
     }
 }
+

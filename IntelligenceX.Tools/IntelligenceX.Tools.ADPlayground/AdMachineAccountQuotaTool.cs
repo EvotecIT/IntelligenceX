@@ -67,7 +67,7 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var threshold = ToolArgs.GetCappedInt32(arguments, "threshold", 0, -1, int.MaxValue);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -137,3 +137,4 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
+

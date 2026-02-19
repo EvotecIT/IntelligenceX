@@ -71,7 +71,7 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var dynamicUpdatesOnly = ToolArgs.GetBoolean(arguments, "dynamic_updates_only", defaultValue: false);
         var insecureUpdatesOnly = ToolArgs.GetBoolean(arguments, "insecure_updates_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryExecute(
                 action: () => DnsZoneConfigService.GetZonesResult(dnsServer),
@@ -140,3 +140,4 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
+

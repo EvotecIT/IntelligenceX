@@ -54,7 +54,7 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
             ? (int)Math.Min(requestedMaxValues.Value, MaxValuesPerAttributeCap)
             : 50;
 
-        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
         var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
 
@@ -87,3 +87,4 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
             scanned: result.Results.Count));
     }
 }
+

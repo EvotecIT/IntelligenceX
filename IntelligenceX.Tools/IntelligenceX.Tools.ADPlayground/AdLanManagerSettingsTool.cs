@@ -72,7 +72,7 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
         var allowLmHashOnly = ToolArgs.GetBoolean(arguments, "allow_lm_hash_only", defaultValue: false);
         var legacyNtlmOnly = ToolArgs.GetBoolean(arguments, "legacy_ntlm_only", defaultValue: false);
         var maxDomainControllers = ToolArgs.GetCappedInt32(arguments, "max_domain_controllers", 200, 1, 2000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         var rows = new List<LanManagerSettingsRow>(maxDomainControllers);
         var errors = new List<LanManagerSettingsError>();
@@ -176,3 +176,4 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
             });
     }
 }
+

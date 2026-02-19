@@ -1,0 +1,60 @@
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace __TOOL_NAMESPACE__;
+
+/// <summary>
+/// __TOOL_DESCRIPTION__
+/// </summary>
+public sealed class __TOOL_CLASS_NAME__ : ToolBase, ITool {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "__TOOL_NAME__",
+        "__TOOL_SUMMARY__",
+        ToolSchema.Object(
+                ("apply", ToolSchema.Boolean("When true, executes the write action. When false, returns a dry-run plan."))
+                // Add tool-specific args here.
+            )
+            .WithWriteGovernanceMetadata()
+            .WithAuthenticationProbeReference()
+            .NoAdditionalProperties());
+
+    private static readonly ToolWriteGovernanceContract WriteContract = ToolWriteGovernanceConventions.BooleanFlagTrue(
+        intentArgumentName: "apply",
+        confirmationArgumentName: "apply");
+
+    private static readonly ToolAuthenticationContract AuthenticationContract = ToolAuthenticationConventions.HostManaged(
+        supportsConnectivityProbe: true,
+        probeToolName: "__PROBE_TOOL_NAME__");
+
+    public __TOOL_CLASS_NAME__() { }
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    public override ToolWriteGovernanceContract? GetWriteGovernanceContract() => WriteContract;
+
+    public override ToolAuthenticationContract? GetAuthenticationContract() => AuthenticationContract;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var apply = ToolArgs.GetBoolean(arguments, "apply", defaultValue: false);
+        var executionMode = apply ? "apply" : "dry-run";
+
+        // Add domain-specific validation and execution logic here.
+        var summary = apply
+            ? "__APPLY_SUCCESS_SUMMARY__"
+            : "__DRY_RUN_SUMMARY__";
+
+        return Task.FromResult(ToolResponse.OkWriteActionModel(
+            action: "__WRITE_ACTION_ID__",
+            mode: executionMode,
+            summary: summary,
+            model: new {
+                action = "__WRITE_ACTION_ID__",
+                mode = executionMode
+            }));
+    }
+}

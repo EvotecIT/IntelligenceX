@@ -65,7 +65,7 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var changedOnly = ToolArgs.GetBoolean(arguments, "changed_only", defaultValue: false);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -133,3 +133,4 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             }));
     }
 }
+

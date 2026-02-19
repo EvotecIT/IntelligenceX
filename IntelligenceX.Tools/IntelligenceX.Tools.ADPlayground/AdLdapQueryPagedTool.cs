@@ -61,7 +61,7 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
             ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
             : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
 
-        var maxResults = ResolveMaxResultsDefaultOnNonPositive(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
         var requestedPageSize = arguments?.GetInt64("page_size");
         var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0
@@ -137,3 +137,4 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
     }
 
 }
+

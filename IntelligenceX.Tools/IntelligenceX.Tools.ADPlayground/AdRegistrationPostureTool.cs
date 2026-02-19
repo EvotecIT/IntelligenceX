@@ -89,7 +89,7 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
         var missingSubnetOnly = ToolArgs.GetBoolean(arguments, "missing_subnet_only", defaultValue: false);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 5000);
-        var maxResults = ResolveMaxResultsClampToOne(arguments);
+        var maxResults = ResolveBoundedMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -194,3 +194,4 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
             HasMatchingSubnet: item.HasMatchingSubnet);
     }
 }
+

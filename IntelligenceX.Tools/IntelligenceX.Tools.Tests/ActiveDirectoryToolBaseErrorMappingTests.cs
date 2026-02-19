@@ -428,11 +428,11 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         }
 
         public int ResolveDefaultingMaxResults(JsonObject? arguments) {
-            return ResolveMaxResultsDefaultOnNonPositive(arguments);
+            return ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
         }
 
         public int ResolveStrictlyBoundedMaxResults(JsonObject? arguments) {
-            return ResolveMaxResultsClampToOne(arguments);
+            return ResolveBoundedMaxResults(arguments);
         }
 
         public JsonObject CreateScopeMeta(string? domainName, string? forestName) {
@@ -542,3 +542,5 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             IReadOnlyList<PolicyAttribution> Attribution);
     }
 }
+
+
