@@ -140,6 +140,38 @@ public sealed class LocalExportArtifactWriterTests {
         }
     }
 
+    /// <summary>
+    /// Ensures fence content is not altered by the transcript DOCX pre-pass.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_DoesNotEscapeDefinitionLikeLinesInsideCodeFence() {
+        const string markdown = """
+            # Transcript
+
+            ```markdown
+            Short answer: **no — nothing is failed** ✅
+            ```
+
+            Short answer: **outside fence still bold** ✅
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-definition-fence.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+
+            Assert.Contains("Short answer: **no — nothing is failed** ✅", bodyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Short answer\\:", bodyText, StringComparison.Ordinal);
+            Assert.Contains("outside fence still bold", bodyText, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ixchat-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);

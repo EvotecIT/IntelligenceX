@@ -113,16 +113,28 @@ public static class OfficeImoArtifactWriter {
             return string.Empty;
         }
 
+        var newline = DetectLineEnding(markdown);
         var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         var lines = normalized.Split('\n');
         bool insideFence = false;
+        char fenceMarker = '\0';
+        int fenceLength = 0;
 
         for (int i = 0; i < lines.Length; i++) {
             var line = lines[i] ?? string.Empty;
             var trimmed = line.TrimStart();
 
-            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal)) {
-                insideFence = !insideFence;
+            if (TryGetFenceToken(trimmed, out var marker, out var markerRunLength)) {
+                if (!insideFence) {
+                    insideFence = true;
+                    fenceMarker = marker;
+                    fenceLength = markerRunLength;
+                } else if (marker == fenceMarker && markerRunLength >= fenceLength) {
+                    insideFence = false;
+                    fenceMarker = '\0';
+                    fenceLength = 0;
+                }
+
                 continue;
             }
 
@@ -141,7 +153,7 @@ public static class OfficeImoArtifactWriter {
             lines[i] = line.Insert(separatorIndex, "\\");
         }
 
-        return string.Join("\n", lines);
+        return string.Join(newline, lines);
     }
 
     private static bool LooksLikeSingleLineDefinition(string trimmedLine) {
@@ -177,7 +189,7 @@ public static class OfficeImoArtifactWriter {
                 return false;
             }
 
-            if (separator + 1 < line.Length && line[separator + 1] == ' ') {
+            if (separator + 1 < line.Length && char.IsWhiteSpace(line[separator + 1])) {
                 index = separator;
                 return true;
             }
@@ -186,6 +198,44 @@ public static class OfficeImoArtifactWriter {
         }
 
         return false;
+    }
+
+    private static string DetectLineEnding(string text) {
+        if (text.Contains("\r\n", StringComparison.Ordinal)) {
+            return "\r\n";
+        }
+
+        if (text.Contains('\r')) {
+            return "\r";
+        }
+
+        return "\n";
+    }
+
+    private static bool TryGetFenceToken(string trimmedLine, out char marker, out int runLength) {
+        marker = '\0';
+        runLength = 0;
+        if (string.IsNullOrEmpty(trimmedLine)) {
+            return false;
+        }
+
+        var first = trimmedLine[0];
+        if (first != '`' && first != '~') {
+            return false;
+        }
+
+        var length = 0;
+        while (length < trimmedLine.Length && trimmedLine[length] == first) {
+            length++;
+        }
+
+        if (length < 3) {
+            return false;
+        }
+
+        marker = first;
+        runLength = length;
+        return true;
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
