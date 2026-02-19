@@ -31,6 +31,36 @@
         <div class="ix-article-body">
 {{ content }}
         </div>
+        {{ if items && items.size > 0 }}
+        <section class="ix-editorial-list" aria-label="Blog entries">
+          {{ for item in items }}
+          <article class="ix-editorial-card">
+            <h2 class="ix-editorial-title"><a href="{{ item.output_path }}">{{ item.title }}</a></h2>
+            <p class="ix-editorial-meta">
+              {{ if item.date }}<time datetime="{{ item.date }}">{{ item.date }}</time>{{ end }}
+              {{ if item.collection }}<span>{{ item.collection }}</span>{{ end }}
+            </p>
+            {{ if item.description }}
+            <p class="ix-editorial-summary">{{ item.description }}</p>
+            {{ end }}
+          </article>
+          {{ end }}
+        </section>
+        {{ if pagination && (pagination.prev_url || pagination.next_url) }}
+        <nav class="ix-editorial-pager" aria-label="Pagination">
+          {{ if pagination.prev_url }}
+          <a class="ix-editorial-pager-link" href="{{ pagination.prev_url }}">Newer posts</a>
+          {{ else }}
+          <span class="ix-editorial-pager-link is-disabled">Newer posts</span>
+          {{ end }}
+          {{ if pagination.next_url }}
+          <a class="ix-editorial-pager-link" href="{{ pagination.next_url }}">Older posts</a>
+          {{ else }}
+          <span class="ix-editorial-pager-link is-disabled">Older posts</span>
+          {{ end }}
+        </nav>
+        {{ end }}
+        {{ end }}
       </article>
     </div>
   </main>
@@ -39,4 +69,3 @@
   {{ extra_scripts_html }}
 </body>
 </html>
-
