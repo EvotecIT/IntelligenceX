@@ -14,6 +14,24 @@ public static class OfficeImoArtifactWriter {
     private static readonly Regex OrderedListLineRegex = new(
         @"^\s*\d+[.)]\s",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex OverwrappedStrongSpanRegex = new(
+        @"(?<!\*)\*{4}(?<inner>[^*\r\n]+)\*{4}(?!\*)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex WrappedSignalFlowLineRegex = new(
+        @"^(?<prefix>\s*-\s+[^\r\n]*?)\*\*(?<inner>[^\r\n]*->\s*\*\*[^\r\n]*?)\*\*(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SignalFlowArrowLabelTightRegex = new(
+        @"->\s*\*\*(?=(?:Why it matters|Action|Next action|Fix action):)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex SignalFlowBoldLabelMissingSpaceRegex = new(
+        @"(?<label>\*\*(?:Why it matters|Action|Next action|Fix action):\*\*)(?=\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex SignalFlowPlainLabelMissingSpaceRegex = new(
+        @"(?<label>(?<![\p{L}\p{N}_])(?:Why it matters|Action|Next action|Fix action):)(?=\S)(?!\*)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex TightSignalLabelRegex = new(
+        @"(?:Why it matters|Action|Next action|Fix action):\S",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Writes tabular rows to an Excel workbook using OfficeIMO.Excel.
@@ -75,7 +93,8 @@ public static class OfficeImoArtifactWriter {
         string outputPath,
         IReadOnlyList<string>? additionalAllowedImageDirectories) {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
-        var transcriptMarkdown = BuildTranscriptMarkdown(title, sourceMarkdown);
+        var normalizedMarkdown = NormalizeTranscriptMarkdownForDocx(sourceMarkdown);
+        var transcriptMarkdown = BuildTranscriptMarkdown(title, normalizedMarkdown);
         var wordSafeMarkdown = NeutralizeSingleLineDefinitionLists(transcriptMarkdown);
         using var visualMaterialization = DocxVisualFenceMaterializer.Materialize(wordSafeMarkdown);
         var allowedImageDirectories = BuildAllowedImageDirectories(
@@ -182,6 +201,134 @@ public static class OfficeImoArtifactWriter {
         }
 
         return "# " + title.Trim() + "\n\n" + markdown;
+    }
+
+    internal static string NormalizeTranscriptMarkdownForDocx(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return string.Empty;
+        }
+
+        if (!RequiresTranscriptTypographyNormalization(markdown)) {
+            return markdown;
+        }
+
+        var newline = DetectLineEnding(markdown);
+        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        bool insideFence = false;
+        char fenceMarker = '\0';
+        int fenceLength = 0;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            var trimmed = line.TrimStart();
+            if (TryGetFenceToken(trimmed, out var marker, out var markerRunLength)) {
+                if (!insideFence) {
+                    insideFence = true;
+                    fenceMarker = marker;
+                    fenceLength = markerRunLength;
+                    continue;
+                }
+
+                if (marker == fenceMarker &&
+                    markerRunLength >= fenceLength &&
+                    IsClosingFenceLine(trimmed, markerRunLength)) {
+                    insideFence = false;
+                    fenceMarker = '\0';
+                    fenceLength = 0;
+                    continue;
+                }
+
+                continue;
+            }
+
+            if (insideFence) {
+                continue;
+            }
+
+            lines[i] = NormalizeTranscriptTypographyLine(line);
+        }
+
+        return string.Join(newline, lines);
+    }
+
+    private static bool RequiresTranscriptTypographyNormalization(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return false;
+        }
+
+        return markdown.Contains("****", StringComparison.Ordinal)
+               || markdown.Contains("->**", StringComparison.Ordinal)
+               || markdown.Contains("-> **Why it matters:**", StringComparison.OrdinalIgnoreCase)
+               || markdown.Contains("-> **Action:**", StringComparison.OrdinalIgnoreCase)
+               || markdown.Contains("-> **Next action:**", StringComparison.OrdinalIgnoreCase)
+               || markdown.Contains("-> **Fix action:**", StringComparison.OrdinalIgnoreCase)
+               || TightSignalLabelRegex.IsMatch(markdown);
+    }
+
+    private static string NormalizeTranscriptTypographyLine(string line) {
+        if (string.IsNullOrEmpty(line)) {
+            return string.Empty;
+        }
+
+        var value = OverwrappedStrongSpanRegex.Replace(line, static match => {
+            var inner = match.Groups["inner"].Value.Trim();
+            return inner.Length == 0 ? match.Value : "**" + inner + "**";
+        });
+        value = RepairWrappedSignalFlowLine(value);
+        value = NormalizeSignalFlowLabelSpacing(value);
+        return value;
+    }
+
+    private static string RepairWrappedSignalFlowLine(string line) {
+        if (string.IsNullOrEmpty(line)) {
+            return string.Empty;
+        }
+
+        return WrappedSignalFlowLineRegex.Replace(line, static match => {
+            var inner = match.Groups["inner"].Value;
+            var markerIndex = inner.IndexOf("-> **", StringComparison.Ordinal);
+            if (markerIndex < 0) {
+                markerIndex = inner.IndexOf("->**", StringComparison.Ordinal);
+            }
+            if (markerIndex <= 0) {
+                return match.Value;
+            }
+
+            var headline = inner[..markerIndex].TrimEnd();
+            if (headline.Length == 0) {
+                return match.Value;
+            }
+
+            var flow = inner[markerIndex..].TrimStart();
+            if (flow.StartsWith("->**", StringComparison.Ordinal)) {
+                flow = "-> **" + flow[4..];
+            }
+
+            if (!flow.StartsWith("-> **", StringComparison.Ordinal)) {
+                return match.Value;
+            }
+
+            return match.Groups["prefix"].Value + "**" + headline + "** " + flow + match.Groups["tail"].Value;
+        });
+    }
+
+    private static string NormalizeSignalFlowLabelSpacing(string line) {
+        if (string.IsNullOrEmpty(line)) {
+            return string.Empty;
+        }
+
+        if (line.IndexOf("why it matters:", StringComparison.OrdinalIgnoreCase) < 0
+            && line.IndexOf("action:", StringComparison.OrdinalIgnoreCase) < 0
+            && line.IndexOf("next action:", StringComparison.OrdinalIgnoreCase) < 0
+            && line.IndexOf("fix action:", StringComparison.OrdinalIgnoreCase) < 0) {
+            return line;
+        }
+
+        var value = SignalFlowArrowLabelTightRegex.Replace(line, "-> **");
+        value = SignalFlowBoldLabelMissingSpaceRegex.Replace(value, "${label} ");
+        value = SignalFlowPlainLabelMissingSpaceRegex.Replace(value, "${label} ");
+        return value;
     }
 
     private static string NeutralizeSingleLineDefinitionLists(string markdown) {
