@@ -42,6 +42,7 @@
   <ItemGroup>
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
+    <ProjectReference Include="..\\IntelligenceX.Chat.ExportArtifacts\\IntelligenceX.Chat.ExportArtifacts.csproj" />
     <ProjectReference Include="$(DbaClientXProjectOverride)"
                       Condition="Exists('$(DbaClientXProjectOverride)')" />
     <ProjectReference Include="$(DbaClientXProjectCandidate1)"

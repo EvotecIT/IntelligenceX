@@ -157,24 +157,60 @@
       });
     }
 
-    var pageLength = bodyRows.length > 300 ? 100 : (bodyRows.length > 100 ? 50 : 25);
-    dataViewState.api = new window.DataTable(dataViewTable, {
+    var rowCount = bodyRows.length;
+    var enablePaging = rowCount > 20;
+    var pageLength = rowCount > 1000 ? 100 : (rowCount > 300 ? 50 : (rowCount > 100 ? 25 : 10));
+    var viewportHeight = Math.max(320, Math.floor((window.innerHeight || 900) * 0.52));
+    var useVirtualScroll = rowCount > pageLength;
+    var options = {
       data: bodyRows,
       columns: columns,
-      paging: bodyRows.length > 25,
+      paging: enablePaging,
       pageLength: pageLength,
+      lengthMenu: [10, 25, 50, 100, 250],
+      lengthChange: enablePaging,
       searching: true,
       ordering: true,
-      info: true,
+      info: rowCount > 0,
+      deferRender: rowCount > 200,
       autoWidth: false,
       scrollX: true,
-      scrollY: "100%",
       order: [],
       language: {
         search: "",
-        searchPlaceholder: "Filter data..."
+        searchPlaceholder: "Search rows / values..."
+      },
+      layout: {
+        topStart: "search",
+        topEnd: enablePaging ? "pageLength" : null,
+        bottomStart: rowCount > 0 ? "info" : null,
+        bottomEnd: enablePaging ? "paging" : null
+      },
+      createdRow: function(row) {
+        if (!row || !row.cells) {
+          return;
+        }
+
+        for (var c = 0; c < row.cells.length; c++) {
+          var cell = row.cells[c];
+          if (!cell) {
+            continue;
+          }
+
+          var value = String(cell.textContent || "").trim();
+          if (value.length > 0) {
+            cell.title = value;
+          }
+        }
       }
-    });
+    };
+
+    if (useVirtualScroll) {
+      options.scrollY = String(viewportHeight) + "px";
+      options.scrollCollapse = true;
+    }
+
+    dataViewState.api = new window.DataTable(dataViewTable, options);
   }
 
   function setDataViewMeta(metaText) {
@@ -418,4 +454,3 @@
       path: path
     });
   }
-

@@ -33,6 +33,8 @@ public sealed class ExportPreferencesContractTests {
     [InlineData("csv", true, ExportPreferencesContract.FormatCsv)]
     [InlineData("xlsx", true, ExportPreferencesContract.FormatXlsx)]
     [InlineData("docx", true, ExportPreferencesContract.FormatDocx)]
+    [InlineData("md", true, ExportPreferencesContract.FormatMarkdown)]
+    [InlineData("markdown", true, ExportPreferencesContract.FormatMarkdown)]
     [InlineData("excel", true, ExportPreferencesContract.FormatXlsx)]
     [InlineData("word", true, ExportPreferencesContract.FormatDocx)]
     [InlineData("unknown", false, "")]

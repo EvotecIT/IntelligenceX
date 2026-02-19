@@ -26,26 +26,42 @@ using Microsoft.UI.Xaml.Controls;
 using OfficeIMO.MarkdownRenderer;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
+using Windows.Storage.Pickers;
 
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private void ExportTranscript() {
-        var conversation = GetActiveConversation();
-        var md = BuildTranscriptMarkdown(conversation.Messages, _timestampFormat);
-        if (string.IsNullOrWhiteSpace(md)) {
-            return;
+    private async Task ExportTranscriptAsync() {
+        try {
+            var conversation = GetActiveConversation();
+            var md = BuildTranscriptMarkdown(conversation.Messages, _timestampFormat);
+            if (string.IsNullOrWhiteSpace(md)) {
+                return;
+            }
+
+            var baseName = string.IsNullOrWhiteSpace(conversation.ThreadId) ? conversation.Id : conversation.ThreadId!;
+            var preferredFormat = string.Equals(_exportDefaultFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)
+                ? ExportPreferencesContract.FormatDocx
+                : ExportPreferencesContract.FormatMarkdown;
+            var pickedPath = await ShowTranscriptSavePickerAsync(baseName, preferredFormat).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(pickedPath)) {
+                return;
+            }
+
+            var normalizedPath = Path.GetFullPath(pickedPath);
+            var normalizedExtension = Path.GetExtension(normalizedPath).Trim().ToLowerInvariant();
+            var transcriptFormat = string.Equals(normalizedExtension, ".docx", StringComparison.OrdinalIgnoreCase)
+                ? ExportPreferencesContract.FormatDocx
+                : ExportPreferencesContract.FormatMarkdown;
+            var filePath = LocalExportArtifactWriter.ResolveOutputPath(transcriptFormat, baseName, normalizedPath, defaultPrefix: "transcript");
+
+            LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
+            await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
+            AppendSystem(SystemNotice.TranscriptExported(filePath));
+        } catch (Exception ex) {
+            await SetStatusAsync(SessionStatus.ExportFailed()).ConfigureAwait(false);
+            AppendSystem("Transcript export failed: " + ex.Message);
         }
-
-        var dir = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "exports");
-        Directory.CreateDirectory(dir);
-
-        var ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        var baseName = string.IsNullOrWhiteSpace(conversation.ThreadId) ? conversation.Id : conversation.ThreadId!;
-        var filePath = Path.Combine(dir, $"transcript-{SanitizeFileName(baseName)}-{ts}.md");
-
-        File.WriteAllText(filePath, md, Encoding.UTF8);
-        AppendSystem(SystemNotice.TranscriptExported(filePath));
     }
 
     private void CopyTranscript() {
@@ -68,11 +84,29 @@ public sealed partial class MainWindow : Window {
         return TranscriptHtmlFormatter.Format(messages, timestampFormat, MarkdownOptions);
     }
 
-    private static string SanitizeFileName(string value) {
-        foreach (var c in Path.GetInvalidFileNameChars()) {
-            value = value.Replace(c, '_');
-        }
-        return value;
+    private async Task<string?> ShowTranscriptSavePickerAsync(string? title, string preferredFormat) {
+        string? selectedPath = null;
+        await RunOnUiThreadAsync(async () => {
+            var picker = new FileSavePicker {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = BuildSuggestedExportFileName(title, preferredFormat),
+                DefaultFileExtension = string.Equals(preferredFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)
+                    ? ".docx"
+                    : ".md"
+            };
+
+            picker.FileTypeChoices.Add("Markdown Document", new List<string> { ".md" });
+            picker.FileTypeChoices.Add("Word Document", new List<string> { ".docx" });
+
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (hwnd != IntPtr.Zero) {
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+            }
+
+            var file = await picker.PickSaveFileAsync();
+            selectedPath = file?.Path;
+        }).ConfigureAwait(false);
+        return selectedPath;
     }
 
     private static string BuildShellHtml() {
