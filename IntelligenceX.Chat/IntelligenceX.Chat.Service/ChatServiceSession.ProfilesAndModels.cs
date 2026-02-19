@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -462,11 +463,48 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void RebuildToolingFromOptions() {
+        RebuildToolingCore(clearRoutingCaches: true);
+    }
+
+    [MemberNotNull(
+        nameof(_registry),
+        nameof(_packs),
+        nameof(_packAvailability),
+        nameof(_startupWarnings),
+        nameof(_pluginSearchPaths),
+        nameof(_runtimePolicyDiagnostics))]
+    private void RebuildToolingCore(bool clearRoutingCaches) {
         var startupWarnings = new List<string>();
         var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
             BuildRuntimePolicyOptions(_options),
             warning => RecordBootstrapWarning(startupWarnings, warning));
-        var bootstrapOptions = new ToolPackBootstrapOptions {
+        var bootstrapOptions = BuildToolPackBootstrapOptions(runtimePolicyContext, startupWarnings);
+        var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
+        var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
+        var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
+
+        var registry = new ToolRegistry();
+        _toolPackIdsByToolName.Clear();
+        ToolPackBootstrap.RegisterAll(registry, bootstrapResult.Packs, _toolPackIdsByToolName);
+        _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
+
+        _packs = bootstrapResult.Packs;
+        _packAvailability = bootstrapResult.PackAvailability.ToArray();
+        _pluginSearchPaths = pluginSearchPaths;
+        _startupWarnings = warnings;
+        _registry = registry;
+
+        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
+
+        if (clearRoutingCaches) {
+            ClearToolRoutingCaches();
+        }
+    }
+
+    private ToolPackBootstrapOptions BuildToolPackBootstrapOptions(
+        ToolRuntimePolicyContext runtimePolicyContext,
+        ICollection<string> startupWarnings) {
+        return new ToolPackBootstrapOptions {
             AllowedRoots = _options.AllowedRoots.ToArray(),
             AdDomainController = _options.AdDomainController,
             AdDefaultSearchBaseDn = _options.AdDefaultSearchBaseDn,
@@ -484,23 +522,9 @@ internal sealed partial class ChatServiceSession {
             AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
             OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
         };
+    }
 
-        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(bootstrapOptions);
-        var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
-        var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
-
-        var registry = new ToolRegistry();
-        _toolPackIdsByToolName.Clear();
-        ToolPackBootstrap.RegisterAll(registry, packs, _toolPackIdsByToolName);
-        _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
-
-        _packs = packs;
-        _pluginSearchPaths = pluginSearchPaths;
-        _startupWarnings = warnings;
-        _registry = registry;
-
-        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
-
+    private void ClearToolRoutingCaches() {
         // Tool sets may have changed; clear caches so routing doesn't assume removed tools.
         lock (_toolRoutingStatsLock) {
             _toolRoutingStats.Clear();
