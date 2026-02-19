@@ -201,6 +201,33 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? WriteGovernanceContractId { get; init; }
+
+    /// <summary>
+    /// Indicates whether tool exposes authentication behavior/requirements.
+    /// </summary>
+    public bool IsAuthenticationAware { get; init; }
+
+    /// <summary>
+    /// Indicates whether authentication is required for normal operation.
+    /// </summary>
+    public bool RequiresAuthentication { get; init; }
+
+    /// <summary>
+    /// Optional authentication contract id.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? AuthenticationContractId { get; init; }
+
+    /// <summary>
+    /// Optional authentication mode identifier.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? AuthenticationMode { get; init; }
+
+    /// <summary>
+    /// Authentication-related argument names declared by contract.
+    /// </summary>
+    public IReadOnlyList<string> AuthenticationArguments { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -306,6 +333,16 @@ public sealed class ToolPackToolTraitsModel {
     /// Canonical write-governance metadata argument names present in the tool schema.
     /// </summary>
     public IReadOnlyList<string> WriteGovernanceMetadataArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates support for explicit authentication/profile reference arguments.
+    /// </summary>
+    public bool SupportsAuthentication { get; init; }
+
+    /// <summary>
+    /// Authentication-related argument names present in the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> AuthenticationArguments { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -320,6 +357,10 @@ public static class ToolPackGuidance {
         "domain_controller", "search_base_dn", "path", "folder", "channel", "provider_name", "computer_name", "server"
     };
     private static readonly string[] MutatingActionArgumentNames = { "send", "dry_run", "confirm", "execute", "apply", "force", "enable", "disable", "allow_write" };
+    private static readonly string[] AuthenticationArgumentNames = {
+        ToolAuthenticationArgumentNames.ProfileId,
+        ToolAuthenticationArgumentNames.RunAsProfileId
+    };
 
     /// <summary>
     /// Creates a structured flow step descriptor.
@@ -370,6 +411,8 @@ public static class ToolPackGuidance {
             var requiredArguments = ReadRequiredArguments(def.Parameters);
             var argumentHints = ReadArgumentHints(def.Parameters, requiredArguments);
             var supportsTableView = SupportsTableViewProjection(def.Parameters);
+            ToolAuthenticationContract? authentication = def.Authentication;
+            var authenticationArguments = NormalizeValues(authentication?.GetSchemaArgumentNames());
 
             list.Add(new ToolPackToolCatalogEntryModel {
                 Name = def.Name.Trim(),
@@ -383,7 +426,14 @@ public static class ToolPackGuidance {
                 RequiresWriteGovernance = def.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
                 WriteGovernanceContractId = string.IsNullOrWhiteSpace(def.WriteGovernance?.GovernanceContractId)
                     ? null
-                    : def.WriteGovernance!.GovernanceContractId
+                    : def.WriteGovernance!.GovernanceContractId,
+                IsAuthenticationAware = authentication?.IsAuthenticationAware ?? false,
+                RequiresAuthentication = authentication?.RequiresAuthentication ?? false,
+                AuthenticationContractId = string.IsNullOrWhiteSpace(authentication?.AuthenticationContractId)
+                    ? null
+                    : authentication!.AuthenticationContractId,
+                AuthenticationMode = ToAuthenticationModeId(authentication),
+                AuthenticationArguments = authenticationArguments
             });
         }
 
@@ -539,7 +589,16 @@ public static class ToolPackGuidance {
                 RequiresWriteGovernance = entry.RequiresWriteGovernance,
                 WriteGovernanceContractId = string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId)
                     ? null
-                    : entry.WriteGovernanceContractId.Trim()
+                    : entry.WriteGovernanceContractId.Trim(),
+                IsAuthenticationAware = entry.IsAuthenticationAware,
+                RequiresAuthentication = entry.RequiresAuthentication,
+                AuthenticationContractId = string.IsNullOrWhiteSpace(entry.AuthenticationContractId)
+                    ? null
+                    : entry.AuthenticationContractId.Trim(),
+                AuthenticationMode = string.IsNullOrWhiteSpace(entry.AuthenticationMode)
+                    ? null
+                    : entry.AuthenticationMode.Trim(),
+                AuthenticationArguments = NormalizeValues(entry.AuthenticationArguments)
             });
         }
 
@@ -558,6 +617,7 @@ public static class ToolPackGuidance {
         var writeGovernanceMetadataArguments = IntersectKnownArguments(
             names,
             ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments);
+        var authenticationArguments = IntersectKnownArguments(names, AuthenticationArgumentNames);
 
         return new ToolPackToolTraitsModel {
             SupportsTableViewProjection = supportsTableViewProjection,
@@ -573,7 +633,9 @@ public static class ToolPackGuidance {
             SupportsMutatingActions = mutatingActionArguments.Count > 0,
             MutatingActionArguments = mutatingActionArguments,
             SupportsWriteGovernanceMetadata = writeGovernanceMetadataArguments.Count > 0,
-            WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments
+            WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments,
+            SupportsAuthentication = authenticationArguments.Count > 0,
+            AuthenticationArguments = authenticationArguments
         };
     }
 
@@ -589,6 +651,7 @@ public static class ToolPackGuidance {
         var targetScopeArguments = NormalizeValues(traits.TargetScopeArguments);
         var mutatingActionArguments = NormalizeValues(traits.MutatingActionArguments);
         var writeGovernanceMetadataArguments = NormalizeValues(traits.WriteGovernanceMetadataArguments);
+        var authenticationArguments = NormalizeValues(traits.AuthenticationArguments);
 
         return new ToolPackToolTraitsModel {
             SupportsTableViewProjection = traits.SupportsTableViewProjection || projectionArguments.Count > 0,
@@ -604,7 +667,9 @@ public static class ToolPackGuidance {
             SupportsMutatingActions = traits.SupportsMutatingActions || mutatingActionArguments.Count > 0,
             MutatingActionArguments = mutatingActionArguments,
             SupportsWriteGovernanceMetadata = traits.SupportsWriteGovernanceMetadata || writeGovernanceMetadataArguments.Count > 0,
-            WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments
+            WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments,
+            SupportsAuthentication = traits.SupportsAuthentication || authenticationArguments.Count > 0,
+            AuthenticationArguments = authenticationArguments
         };
     }
 
@@ -759,5 +824,19 @@ public static class ToolPackGuidance {
         }
 
         return result;
+    }
+
+    private static string? ToAuthenticationModeId(ToolAuthenticationContract? contract) {
+        if (contract is null || !contract.IsAuthenticationAware) {
+            return null;
+        }
+
+        return contract.Mode switch {
+            ToolAuthenticationMode.None => "none",
+            ToolAuthenticationMode.HostManaged => "host_managed",
+            ToolAuthenticationMode.ProfileReference => "profile_reference",
+            ToolAuthenticationMode.RunAsReference => "run_as_reference",
+            _ => "none"
+        };
     }
 }

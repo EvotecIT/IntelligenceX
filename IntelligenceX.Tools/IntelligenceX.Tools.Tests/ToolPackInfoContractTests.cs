@@ -135,6 +135,16 @@ public class ToolPackInfoContractTests {
                 Assert.True(requiresWriteGovernance.ValueKind == JsonValueKind.True || requiresWriteGovernance.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("write_governance_contract_id", out var writeGovernanceContractId));
                 Assert.True(writeGovernanceContractId.ValueKind == JsonValueKind.String || writeGovernanceContractId.ValueKind == JsonValueKind.Null);
+                Assert.True(entry.TryGetProperty("is_authentication_aware", out var isAuthenticationAware));
+                Assert.True(isAuthenticationAware.ValueKind == JsonValueKind.True || isAuthenticationAware.ValueKind == JsonValueKind.False);
+                Assert.True(entry.TryGetProperty("requires_authentication", out var requiresAuthentication));
+                Assert.True(requiresAuthentication.ValueKind == JsonValueKind.True || requiresAuthentication.ValueKind == JsonValueKind.False);
+                Assert.True(entry.TryGetProperty("authentication_contract_id", out var authenticationContractId));
+                Assert.True(authenticationContractId.ValueKind == JsonValueKind.String || authenticationContractId.ValueKind == JsonValueKind.Null);
+                Assert.True(entry.TryGetProperty("authentication_mode", out var authenticationMode));
+                Assert.True(authenticationMode.ValueKind == JsonValueKind.String || authenticationMode.ValueKind == JsonValueKind.Null);
+                Assert.True(entry.TryGetProperty("authentication_arguments", out var authenticationArguments));
+                Assert.Equal(JsonValueKind.Array, authenticationArguments.ValueKind);
 
                 Assert.True(expectedCatalogByName.TryGetValue(name, out var expectedCatalogEntry), $"Unexpected catalog entry: {name}");
                 Assert.Equal(expectedCatalogEntry.Description, description);
@@ -151,6 +161,13 @@ public class ToolPackInfoContractTests {
                 Assert.Equal(expectedCatalogEntry.IsWriteCapable, isWriteCapable.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.RequiresWriteGovernance, requiresWriteGovernance.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.WriteGovernanceContractId, writeGovernanceContractId.GetString());
+                Assert.Equal(expectedCatalogEntry.IsAuthenticationAware, isAuthenticationAware.GetBoolean());
+                Assert.Equal(expectedCatalogEntry.RequiresAuthentication, requiresAuthentication.GetBoolean());
+                Assert.Equal(expectedCatalogEntry.AuthenticationContractId, authenticationContractId.GetString());
+                Assert.Equal(expectedCatalogEntry.AuthenticationMode, authenticationMode.GetString());
+                Assert.Equal(
+                    expectedCatalogEntry.AuthenticationArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+                    ReadStringArray(authenticationArguments));
             }
 
             var recommendedFlow = root.GetProperty("recommended_flow");
@@ -241,6 +258,7 @@ public class ToolPackInfoContractTests {
         Assert.Equal(expectedTraits.SupportsTargetScoping, actualTraits.GetProperty("supports_target_scoping").GetBoolean());
         Assert.Equal(expectedTraits.SupportsMutatingActions, actualTraits.GetProperty("supports_mutating_actions").GetBoolean());
         Assert.Equal(expectedTraits.SupportsWriteGovernanceMetadata, actualTraits.GetProperty("supports_write_governance_metadata").GetBoolean());
+        Assert.Equal(expectedTraits.SupportsAuthentication, actualTraits.GetProperty("supports_authentication").GetBoolean());
 
         Assert.Equal(
             expectedTraits.TableViewArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
@@ -263,6 +281,9 @@ public class ToolPackInfoContractTests {
         Assert.Equal(
             expectedTraits.WriteGovernanceMetadataArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("write_governance_metadata_arguments")));
+        Assert.Equal(
+            expectedTraits.AuthenticationArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualTraits.GetProperty("authentication_arguments")));
     }
 
     private sealed record PackCase(

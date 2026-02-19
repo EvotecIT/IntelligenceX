@@ -32,7 +32,9 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             .NoAdditionalProperties(),
         writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
             intentArgumentName: "send",
-            confirmationArgumentName: "send"));
+            confirmationArgumentName: "send"),
+        authentication: ToolAuthenticationConventions.HostManaged(
+            requiresAuthentication: true));
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EmailSmtpSendTool"/> class.

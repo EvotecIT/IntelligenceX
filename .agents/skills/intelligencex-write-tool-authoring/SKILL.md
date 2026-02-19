@@ -1,3 +1,8 @@
+---
+name: intelligencex-write-tool-authoring
+description: Use when adding/refactoring mutating tools with shared write-governance and authentication contracts.
+---
+
 # Skill: intelligencex-write-tool-authoring
 
 Use this skill when adding or refactoring write-capable (mutating) tools.

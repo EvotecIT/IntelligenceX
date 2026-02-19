@@ -200,6 +200,64 @@ public static class ToolSchemaExtensions {
         return schema;
     }
 
+    /// <summary>
+    /// Adds an authentication profile reference argument to an object schema.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Profile-id argument name.</param>
+    /// <param name="description">Optional custom description.</param>
+    public static JsonObject WithAuthenticationProfileReference(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.ProfileId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+        if (string.IsNullOrWhiteSpace(argumentName)) {
+            throw new ArgumentException("Argument name cannot be empty.", nameof(argumentName));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            argumentName.Trim(),
+            description ?? "Authentication profile identifier resolved by host/service configuration.");
+        return schema;
+    }
+
+    /// <summary>
+    /// Adds a run-as profile reference argument to an object schema.
+    /// </summary>
+    /// <param name="schema">Schema to mutate.</param>
+    /// <param name="argumentName">Run-as profile-id argument name.</param>
+    /// <param name="description">Optional custom description.</param>
+    public static JsonObject WithRunAsProfileReference(
+        this JsonObject schema,
+        string argumentName = ToolAuthenticationArgumentNames.RunAsProfileId,
+        string? description = null) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+        if (string.IsNullOrWhiteSpace(argumentName)) {
+            throw new ArgumentException("Argument name cannot be empty.", nameof(argumentName));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            argumentName.Trim(),
+            description ?? "Run-as profile identifier for alternate execution identity.");
+        return schema;
+    }
+
     private static string GetWriteGovernanceDescription(string argumentName) {
         return argumentName switch {
             ToolWriteGovernanceArgumentNames.ExecutionId => "Write execution identifier for audit correlation.",

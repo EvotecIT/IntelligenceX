@@ -118,6 +118,7 @@ public sealed class ToolRegistry {
         }
 
         ValidateWriteGovernanceContract(definition);
+        ValidateAuthenticationContract(definition);
 
         _tools[definition.Name] = tool;
         _definitions[definition.Name] = definition;
@@ -193,6 +194,49 @@ public sealed class ToolRegistry {
         throw new InvalidOperationException(
             $"Tool '{definition.Name}' is write-capable and must expose canonical write governance metadata arguments in schema properties: {string.Join(", ", missingArguments)}. " +
             "Use ToolSchemaExtensions.WithWriteGovernanceMetadata().");
+    }
+
+    private static void ValidateAuthenticationContract(ToolDefinition definition) {
+        ToolAuthenticationContract? contract = definition.Authentication;
+        if (contract is null || !contract.IsAuthenticationAware) {
+            return;
+        }
+
+        contract.Validate();
+        if (string.IsNullOrWhiteSpace(contract.AuthenticationContractId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is authentication-aware and must declare AuthenticationContractId.");
+        }
+
+        IReadOnlyList<string> expectedArgumentNames = contract.GetSchemaArgumentNames();
+        if (expectedArgumentNames.Count == 0) {
+            return;
+        }
+
+        JsonObject? properties = definition.Parameters?.GetObject("properties");
+        if (properties is null) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is authentication-aware and must define an object schema with properties.");
+        }
+
+        List<string> missingArguments = new();
+        for (var i = 0; i < expectedArgumentNames.Count; i++) {
+            string argumentName = expectedArgumentNames[i];
+            if (string.IsNullOrWhiteSpace(argumentName)) {
+                continue;
+            }
+
+            if (properties.GetObject(argumentName) is null) {
+                missingArguments.Add(argumentName.Trim());
+            }
+        }
+
+        if (missingArguments.Count == 0) {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Tool '{definition.Name}' is authentication-aware and must expose authentication argument(s) in schema properties: {string.Join(", ", missingArguments)}.");
     }
 
     private sealed class RegistryToolWrapper : ITool {

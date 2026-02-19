@@ -36,4 +36,28 @@ public class ToolSchemaExtensionsTests {
         Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackProviderId));
         Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.AuditCorrelationId));
     }
+
+    [Fact]
+    public void WithAuthenticationProfileReference_ShouldAddAuthProfileProperty() {
+        var schema = ToolSchema.Object(
+                ("query", ToolSchema.String("query text")))
+            .WithAuthenticationProfileReference()
+            .NoAdditionalProperties();
+
+        var properties = schema.GetObject("properties");
+        Assert.NotNull(properties);
+        Assert.NotNull(properties!.GetObject(ToolAuthenticationArgumentNames.ProfileId));
+    }
+
+    [Fact]
+    public void WithRunAsProfileReference_ShouldAddRunAsProfileProperty() {
+        var schema = ToolSchema.Object(
+                ("query", ToolSchema.String("query text")))
+            .WithRunAsProfileReference()
+            .NoAdditionalProperties();
+
+        var properties = schema.GetObject("properties");
+        Assert.NotNull(properties);
+        Assert.NotNull(properties!.GetObject(ToolAuthenticationArgumentNames.RunAsProfileId));
+    }
 }

@@ -143,6 +143,11 @@ public class ToolDefinitionContractTests {
         Assert.True(smtpSend.WriteGovernance!.IsWriteCapable);
         Assert.True(smtpSend.WriteGovernance.RequiresGovernanceAuthorization);
         Assert.Equal(ToolWriteGovernanceContract.DefaultContractId, smtpSend.WriteGovernance.GovernanceContractId);
+        Assert.NotNull(smtpSend.Authentication);
+        Assert.True(smtpSend.Authentication!.IsAuthenticationAware);
+        Assert.True(smtpSend.Authentication.RequiresAuthentication);
+        Assert.Equal(ToolAuthenticationContract.DefaultContractId, smtpSend.Authentication.AuthenticationContractId);
+        Assert.Equal(ToolAuthenticationMode.HostManaged, smtpSend.Authentication.Mode);
     }
 
     [Fact]
