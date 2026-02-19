@@ -20,7 +20,7 @@ public sealed class App : Application {
     private static readonly IntPtr HwndNoTopMost = new(-2);
     private Window? _window;
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
@@ -31,7 +31,7 @@ public sealed class App : Application {
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -142,6 +142,10 @@ public sealed class App : Application {
             // Windows may reject foreground handoff (focus-stealing protections).
             // Treat this as best-effort and keep activation + z-order nudges in place.
             var foregroundRequestOk = SetForegroundWindow(handle);
+            if (!foregroundRequestOk) {
+                var error = Marshal.GetLastWin32Error();
+                StartupLog.Write("SetForegroundWindow failed attempt=" + attempt + " error=" + error);
+            }
 
             var active = GetForegroundWindow() == handle;
             StartupLog.Write("Window foreground request attempt=" + attempt + " requested=" + foregroundRequestOk + " active=" + active);
