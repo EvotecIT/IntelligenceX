@@ -1168,13 +1168,20 @@
   function normalizeExportVisualThemeMode(value) {
     // Keep alias/default parity with ExportPreferencesContract.NormalizeVisualThemeMode (C# host).
     var normalized = String(value || "").trim().toLowerCase();
-    if (normalized === "print_friendly" || normalized === "print" || normalized === "light") {
-      return "print_friendly";
+    switch (normalized) {
+      case "print_friendly":
+      case "print":
+      case "light":
+        return "print_friendly";
+      case "":
+      case "preserve_ui_theme":
+      case "preserve":
+      case "theme":
+        return "preserve_ui_theme";
+      default:
+        reportUnexpectedExportVisualThemeMode(normalized);
+        return "preserve_ui_theme";
     }
-    if (normalized !== "" && normalized !== "preserve_ui_theme" && normalized !== "preserve" && normalized !== "theme") {
-      reportUnexpectedExportVisualThemeMode(normalized);
-    }
-    return "preserve_ui_theme";
   }
 
   function exportFormatDisplayName(format) {
