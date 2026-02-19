@@ -9,6 +9,9 @@ on:
       - '.github/workflows/analysis-catalog-guardrail.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate Analysis Catalog
