@@ -58,12 +58,8 @@ internal static partial class Program {
             AssertEqual<string?>(null, settings.ResolveTemplate(), "outside template");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previous);
-            if (Directory.Exists(root)) {
-                Directory.Delete(root, true);
-            }
-            if (Directory.Exists(outsideRoot)) {
-                Directory.Delete(outsideRoot, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(root);
+            DeleteDirectoryIfExistsWithRetries(outsideRoot);
         }
     }
 

@@ -63,9 +63,7 @@ internal static partial class Program {
             AssertEqual(false, content.Contains("Generated.generated.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal custom suffix keeps default generated suffixes");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -133,9 +131,7 @@ internal static partial class Program {
             AssertEqual(false, content.Contains("LongHeaderGenerated.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal header depth generated marker beyond default window");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -203,9 +199,7 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("build-cache-extra/Included.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal exclude-dir does not match substrings");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -270,9 +264,7 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("LfTrailing.cs", StringComparison.Ordinal),
                 "analyze run internal newline lf trailing counted");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -335,9 +327,7 @@ internal static partial class Program {
             var content = File.ReadAllText(findingsPath);
             AssertEqual(true, content.Contains("Regular.cs", StringComparison.Ordinal), "analyze run malformed tags fallback still reports file");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -400,9 +390,7 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("Generated.generated.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run unknown tags does not silently apply typoed suffix");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -463,9 +451,7 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("HeaderGenerated.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run header disabled does not exclude file by marker");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -528,9 +514,7 @@ internal static partial class Program {
             AssertEqual(false, content.Contains("Generated.py", StringComparison.OrdinalIgnoreCase),
                 "analyze run hash header marker excludes generated python file");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

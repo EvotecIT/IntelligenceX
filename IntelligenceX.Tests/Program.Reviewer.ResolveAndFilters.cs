@@ -100,7 +100,7 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
             Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", previousRunNumber);
             try {
-                Directory.Delete(tempDir, recursive: true);
+                DeleteDirectoryIfExistsWithRetries(tempDir);
             } catch {
                 // Best-effort cleanup.
             }
@@ -145,7 +145,7 @@ internal static partial class Program {
         } finally {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
             try {
-                Directory.Delete(tempDir, recursive: true);
+                DeleteDirectoryIfExistsWithRetries(tempDir);
             } catch {
                 // Best-effort cleanup.
             }

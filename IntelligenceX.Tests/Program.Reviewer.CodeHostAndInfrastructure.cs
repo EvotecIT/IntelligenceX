@@ -56,9 +56,7 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_B64", previousAuthB64);
             Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
             try {
-                if (Directory.Exists(tempDir)) {
-                    Directory.Delete(tempDir, recursive: true);
-                }
+                DeleteDirectoryIfExistsWithRetries(tempDir);
             } catch {
                 // Best-effort cleanup.
             }

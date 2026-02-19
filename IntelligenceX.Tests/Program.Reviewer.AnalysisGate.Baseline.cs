@@ -67,9 +67,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate baseline suppresses existing findings");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -138,9 +136,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate baseline fails on new findings");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -209,9 +205,7 @@ internal static partial class Program {
             AssertContainsText(output, "schema inferred as 'intelligencex.findings.v1'", "analyze gate baseline schema inference note");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -280,9 +274,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate large legacy line does not wrap and suppress line 0 finding");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -351,9 +343,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate preserves int-max legacy line and suppresses matching finding");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -398,9 +388,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate baseline missing returns unavailable");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -445,9 +433,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate baseline missing can pass when unavailable allowed");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -511,9 +497,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate suppresses legacy baseline key with normalized path");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

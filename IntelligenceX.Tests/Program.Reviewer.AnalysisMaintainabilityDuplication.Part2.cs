@@ -61,9 +61,7 @@ internal static partial class Program {
                               content.Contains("file-b.js", StringComparison.Ordinal),
                 "analyze run duplication tokenized javascript finding path");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -134,9 +132,7 @@ return beta - 2;
             AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
                 "analyze run duplication ignores js imports no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -207,9 +203,7 @@ continue
             AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
                 "analyze run duplication ignores powershell using no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -272,9 +266,7 @@ continue
                               content.Contains("file_b.py", StringComparison.Ordinal),
                 "analyze run duplication tokenized python finding path");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -344,9 +336,7 @@ return x
             AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
                 "analyze run duplication ignores python imports no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -406,9 +396,7 @@ return x
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase)),
                 "analyze run duplication python triple-quote hash does not produce false positive");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -502,9 +490,7 @@ public class Oversized {
                     item.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)),
                 "analyze run include-ext per-rule does not apply python duplication to csharp");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -570,9 +556,7 @@ public class Oversized {
             AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
                 "analyze run duplication language threshold emits per-file configured threshold");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -638,11 +622,8 @@ public class Oversized {
             AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
                 "analyze run duplication language-only tag uses language threshold");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }
 #endif
-

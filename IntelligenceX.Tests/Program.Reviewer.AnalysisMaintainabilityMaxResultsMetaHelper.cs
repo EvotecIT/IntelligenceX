@@ -58,9 +58,7 @@ public sealed class SampleBadMaxResultsMetaTool : ToolBase {
                         StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper missing canonical helper finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -117,9 +115,7 @@ public sealed class SampleGoodMaxResultsMetaTool : ToolBase {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper canonical helper no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -154,9 +150,7 @@ public static class SampleBadMaxResultsMetaHelper {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper ignores non-tool files");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -212,9 +206,7 @@ public sealed class SampleNearMissMaxResultsMetaTool : ToolBase {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper near-miss key no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -270,9 +262,7 @@ public sealed class SampleQualifiedMaxResultsMetaTool : ToolBase {
             AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper qualified canonical helper no finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -331,9 +321,7 @@ public sealed class SampleIndexerMaxResultsMetaTool : ToolBase {
                         StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper indexer assignment finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -392,9 +380,7 @@ public sealed class SampleCaseVariantMaxResultsMetaTool : ToolBase {
                         StringComparison.OrdinalIgnoreCase)),
                 "analyze run max-results metadata helper case-variant key finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -455,9 +441,7 @@ public sealed class SampleMixedMetaAddsTool : ToolBase {
                     StringComparison.OrdinalIgnoreCase));
             AssertEqual(1, matchingFindings, "analyze run max-results metadata helper mixed meta adds only max_results finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -514,9 +498,7 @@ public sealed class SampleSameLineMaxResultsMetaTool : ToolBase {
                     StringComparison.OrdinalIgnoreCase));
             AssertEqual(1, matchingFindings, "analyze run max-results metadata helper same-line dedupe single finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }

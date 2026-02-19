@@ -52,9 +52,7 @@ internal static partial class Program {
             AssertEqual(false, block.Contains("fp-123", StringComparison.Ordinal), "hotspots suggested key does not include raw fingerprint");
         } finally {
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -111,9 +109,7 @@ internal static partial class Program {
                 "hotspots state path not absolute (slash)");
         } finally {
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -177,12 +173,8 @@ internal static partial class Program {
             AssertContainsText(block, "Missing state entries: 1", "hotspots reviewer does not load outside-workspace state file");
         } finally {
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-            if (Directory.Exists(outsideRoot)) {
-                Directory.Delete(outsideRoot, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
+            DeleteDirectoryIfExistsWithRetries(outsideRoot);
         }
     }
 
@@ -245,9 +237,7 @@ internal static partial class Program {
             AssertContainsText(limited, "- Showing first 2 of 11 hotspot(s).", "hotspots maxItems 2 limits items");
         } finally {
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -316,9 +306,7 @@ internal static partial class Program {
                 "hotspots list excludes suppressed key");
         } finally {
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -401,9 +389,7 @@ internal static partial class Program {
             AssertContainsText(block, "Note: `'oops' **bold**`", "hotspots note is rendered as safe inline code");
         } finally {
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -471,9 +457,7 @@ internal static partial class Program {
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             Environment.CurrentDirectory = originalCwd;
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

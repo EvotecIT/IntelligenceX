@@ -59,9 +59,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication overall delta missing baseline unavailable");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -133,9 +131,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication per-file delta blocks");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -169,9 +165,7 @@ internal static partial class Program {
             AssertEqual(true, baselines.ContainsKey("IXDUP001|changed-files|C:/src/test.cs"),
                 "duplication file baseline loads colon path key");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -241,9 +235,7 @@ internal static partial class Program {
                 "analyze gate write baseline file snapshots fingerprint uses encoded file-uri format");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -300,9 +292,7 @@ internal static partial class Program {
             AssertContainsText(content, ".intelligencex/duplication-overall", "analyze gate write baseline includes duplication overall snapshot");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -336,9 +326,7 @@ internal static partial class Program {
             AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication file baseline skips null items error empty");
             AssertEqual(true, baselines.ContainsKey("IXDUP001|all|src/test.cs"), "duplication file baseline skips null items key exists");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -411,9 +399,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication overall delta window mismatch unavailable");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -516,9 +502,7 @@ internal static partial class Program {
             AssertEqual(2, deltaExit, "analyze gate overall delta uses baseline written by write-baseline");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -624,9 +608,7 @@ internal static partial class Program {
             AssertEqual(2, deltaExit, "analyze gate file delta normalizes ./ paths");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -660,9 +642,7 @@ internal static partial class Program {
             AssertEqual(true, baselines.ContainsKey("IXDUP001|changed-files|/tmp/weird:scope:changed-files/test.cs"),
                 "duplication file baseline loads scope tokens in path key");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

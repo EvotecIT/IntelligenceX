@@ -49,9 +49,7 @@ internal static partial class Program {
             AssertNotNull(items, "analyze run disabled findings items");
             AssertEqual(0, items!.Count, "analyze run disabled findings count");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -267,9 +265,7 @@ internal static partial class Program {
 
             return IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(args.ToArray()).GetAwaiter().GetResult();
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -362,9 +358,7 @@ internal static partial class Program {
             AssertEqual(true, hasMappedInternalRule, "analyze run internal rule/tool correlation");
             AssertEqual(true, content.Contains("LargeFile.cs", StringComparison.Ordinal), "analyze run internal file path");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -454,9 +448,7 @@ internal static partial class Program {
             }
             AssertEqual(true, matched, "analyze run internal metadata finding");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -528,9 +520,7 @@ internal static partial class Program {
             var content = File.ReadAllText(findingsPath);
             AssertEqual(false, content.Contains("IXLOC001", StringComparison.Ordinal), "analyze run internal severity none suppresses rule");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -620,9 +610,7 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("obj-model/StillIncluded.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal does not exclude directory substring");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

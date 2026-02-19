@@ -51,9 +51,7 @@ internal static partial class Program {
                 "analysis policy unicode replacement-char absence");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -88,9 +86,7 @@ internal static partial class Program {
                 "analysis policy enabled-outside-only outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -118,9 +114,7 @@ internal static partial class Program {
             AssertPolicyLineEquals(policy, "Outside-pack rules", "none", "analysis policy null-findings outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -158,9 +152,7 @@ internal static partial class Program {
             AssertPolicyLineEquals(policy, "Clean rules", "none", "analysis policy deterministic clean rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

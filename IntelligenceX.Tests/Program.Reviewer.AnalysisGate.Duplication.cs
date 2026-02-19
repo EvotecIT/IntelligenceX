@@ -51,9 +51,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication per-file threshold blocks");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -106,9 +104,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate duplication per-file threshold passes");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -163,9 +159,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication uses per-file configured threshold");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -210,9 +204,7 @@ internal static partial class Program {
             AssertContainsText(output, "duplication gate: unavailable", "analyze gate duplication unavailable output");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -257,9 +249,7 @@ internal static partial class Program {
             AssertContainsText(output, "duplication gate: unavailable", "analyze gate duplication unavailable output");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -313,9 +303,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication overall threshold blocks");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -388,9 +376,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate duplication overall new-only suppresses baseline finding");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -447,9 +433,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate duplication changed-files scope ignores untouched file");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -506,9 +490,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication changed-files scope blocks changed file");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -580,9 +562,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "analyze gate duplication new-only suppresses baseline finding");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -653,9 +633,7 @@ internal static partial class Program {
             AssertEqual(2, exit, "analyze gate duplication overall delta blocks");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 

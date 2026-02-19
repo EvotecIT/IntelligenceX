@@ -32,9 +32,7 @@ internal static partial class Program {
             AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication overall baseline skips null items error empty");
             AssertEqual(true, baselines.ContainsKey("IXDUP001|all"), "duplication overall baseline skips null items key exists");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -75,9 +73,7 @@ internal static partial class Program {
             AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication overall baseline rejects malformed fp error empty");
             AssertEqual(0, baselines.Count, "duplication overall baseline rejects malformed fp no entries");
         } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -180,9 +176,7 @@ internal static partial class Program {
             AssertEqual(2, deltaExit, "analyze gate file delta normalizes ../ paths");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -285,9 +279,7 @@ internal static partial class Program {
             AssertEqual(2, deltaExit, "analyze gate file delta normalizes // paths");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -392,9 +384,7 @@ internal static partial class Program {
             AssertEqual(2, deltaExit, "analyze gate file delta window mismatch unavailable");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
@@ -473,9 +463,7 @@ internal static partial class Program {
             AssertEqual(2, deltaExit, "analyze gate file delta baseline window missing unavailable");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
+            DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 }
