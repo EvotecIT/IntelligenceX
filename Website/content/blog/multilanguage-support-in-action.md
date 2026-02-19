@@ -2,6 +2,10 @@
 title: Multilanguage Support in Action
 description: Speak in any language you want. IntelligenceX follows the conversation, adjusts instantly, and keeps technical context intact.
 slug: multilanguage-support-in-action
+date: 2026-02-09
+categories: ["Walkthrough"]
+tags: ["multilingual", "chat", "localization"]
+image: /assets/screenshots/multilanguage-in-action/multilang-01-french-response.png
 collection: blog
 layout: page
 ---

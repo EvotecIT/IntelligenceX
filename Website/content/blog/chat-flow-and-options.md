@@ -2,6 +2,10 @@
 title: Chat Flow and Options
 description: A visual walkthrough of the IntelligenceX chat flow and the key option groups available in-session.
 slug: chat-flow-and-options
+date: 2026-02-10
+categories: ["Walkthrough"]
+tags: ["chat", "options", "ux"]
+image: /assets/screenshots/chat-flow/ChatAD_1_1.png
 collection: blog
 layout: page
 ---

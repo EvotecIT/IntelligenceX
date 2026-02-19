@@ -2,6 +2,10 @@
 title: Setup Best Practices for Teams
 description: A practical runbook for onboarding IntelligenceX reviewer across repositories without configuration drift.
 slug: setup-best-practices-for-teams
+date: 2026-02-18
+categories: ["Guides"]
+tags: ["setup", "teams", "onboarding"]
+image: /assets/screenshots/product-reviewer.svg
 collection: blog
 layout: page
 ---

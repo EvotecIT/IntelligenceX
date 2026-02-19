@@ -2,6 +2,10 @@
 title: Open-Source Go-Live Security Checklist (GitHub Actions)
 description: A practical checklist to harden CI/CD, secrets, and branch protection before opening a repository to the public.
 slug: open-source-go-live-security-checklist
+date: 2026-02-16
+categories: ["Security"]
+tags: ["open-source", "security", "checklist"]
+image: /assets/screenshots/product-project-ops.svg
 collection: blog
 layout: page
 ---

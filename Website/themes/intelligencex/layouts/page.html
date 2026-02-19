@@ -21,7 +21,12 @@
   {{ include "header" }}
   <main class="ix-main">
     <div class="ix-container">
-      <article class="ix-article">
+      <article class="ix-article" data-collection="{{ page.collection }}" data-kind="{{ page.kind }}" data-route="{{ page.output_path }}">
+        {{ if page.collection == "blog" && page.kind == "Page" }}
+        <nav class="ix-blog-breadcrumbs" aria-label="Blog breadcrumb">
+          <a class="ix-blog-breadcrumb-link" href="/blog/">Back to IntelligenceX Blog</a>
+        </nav>
+        {{ end }}
         <header class="ix-article-header">
           <h1>{{ page.title }}</h1>
           {{ if page.description }}
@@ -32,13 +37,18 @@
 {{ content }}
         </div>
         {{ if items && items.size > 0 }}
-        <section class="ix-editorial-list" aria-label="Blog entries">
+        <section class="ix-editorial-list{{ if page.collection == "blog" && page.kind == "Section" }} ix-editorial-list-blog{{ end }}" aria-label="Blog entries">
           {{ for item in items }}
-          <article class="ix-editorial-card">
+          <article class="ix-editorial-card{{ if page.collection == "blog" && page.kind == "Section" }} ix-editorial-card-blog{{ end }}">
+            {{ if item.meta && item.meta.image }}
+            <a class="ix-editorial-media-link" href="{{ item.output_path }}" aria-label="Read {{ item.title }}">
+              <img class="ix-editorial-media" src="{{ item.meta.image }}" alt="{{ item.title }}" loading="lazy" decoding="async" />
+            </a>
+            {{ end }}
             <h2 class="ix-editorial-title"><a href="{{ item.output_path }}">{{ item.title }}</a></h2>
             <p class="ix-editorial-meta">
               {{ if item.date }}<time datetime="{{ item.date }}">{{ item.date }}</time>{{ end }}
-              {{ if item.collection }}<span>{{ item.collection }}</span>{{ end }}
+              {{ if item.meta && item.meta.categories && item.meta.categories.size > 0 }}<span>{{ item.meta.categories[0] }}</span>{{ else if item.collection }}<span>{{ item.collection }}</span>{{ end }}
             </p>
             {{ if item.description }}
             <p class="ix-editorial-summary">{{ item.description }}</p>
@@ -47,7 +57,7 @@
           {{ end }}
         </section>
         {{ if pagination && (pagination.prev_url || pagination.next_url) }}
-        <nav class="ix-editorial-pager" aria-label="Pagination">
+        <nav class="ix-editorial-pager{{ if page.collection == "blog" }} ix-editorial-pager-blog{{ end }}" aria-label="Pagination">
           {{ if pagination.prev_url }}
           <a class="ix-editorial-pager-link" href="{{ pagination.prev_url }}">Newer posts</a>
           {{ else }}
@@ -60,6 +70,20 @@
           {{ end }}
         </nav>
         {{ end }}
+        {{ end }}
+        {{ if page.collection == "blog" && page.kind == "Page" }}
+        <section class="ix-blog-post-nav" aria-label="More blog posts">
+          <div class="ix-blog-post-nav-actions">
+            <a class="ix-editorial-pager-link" href="/blog/">Back to Blog Index</a>
+            <a class="ix-editorial-pager-link is-disabled" href="#" data-blog-nav="newer" aria-disabled="true">Newer post</a>
+            <a class="ix-editorial-pager-link is-disabled" href="#" data-blog-nav="older" aria-disabled="true">Older post</a>
+          </div>
+          <h2 class="ix-blog-post-nav-title">Continue Reading</h2>
+          <p class="ix-blog-post-nav-desc">More practical walkthroughs, checklists, and release notes from IntelligenceX.</p>
+          <div class="ix-related-posts" data-current-path="{{ page.output_path }}" data-max="4">
+            <p class="ix-related-posts-empty">Loading related posts...</p>
+          </div>
+        </section>
         {{ end }}
       </article>
     </div>

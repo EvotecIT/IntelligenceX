@@ -2,6 +2,10 @@
 title: Event Viewer in Action
 description: A real IntelligenceX triage session that turns noisy AD event logs into a fix-first incident plan.
 slug: event-viewer-in-action
+date: 2026-02-11
+categories: ["Walkthrough"]
+tags: ["event-viewer", "ad", "triage"]
+image: /assets/screenshots/event-viewer-in-action/event_viewer1.png
 collection: blog
 layout: page
 ---
