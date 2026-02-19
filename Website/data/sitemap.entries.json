@@ -43,6 +43,13 @@
       "changefreq": "weekly"
     },
     {
+      "path": "/docs/project-ops/demo-capture-runbook/",
+      "title": "Project Ops Demo Capture Runbook",
+      "section": "Docs",
+      "priority": "0.8",
+      "changefreq": "monthly"
+    },
+    {
       "path": "/docs/cli/overview/",
       "title": "CLI Overview",
       "section": "Docs",

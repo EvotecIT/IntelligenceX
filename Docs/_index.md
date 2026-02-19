@@ -29,6 +29,7 @@ Welcome to the IntelligenceX documentation.
 ## Project Ops
 
 - [Project Ops Overview](/docs/project-ops/overview/)
+- [Project Ops Demo Capture Runbook](/docs/project-ops/demo-capture-runbook/)
 - [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
 - [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
 
