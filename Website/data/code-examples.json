@@ -4,7 +4,7 @@
       "id": "workflow",
       "label": "GitHub Actions",
       "language": "yaml",
-      "code": "# .github/workflows/review-intelligencex.yml\n# Pinned SHA after @ = safer, reproducible workflow version.\njobs:\n  review:\n    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@68fe2c83e1a7d97d5aad6c4c8223c1d7eb8031e7\n    with:\n      reviewer_source: release\n      openai_transport: native\n      output_style: claude\n      style: colorful\n    secrets:\n      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}\n      INTELLIGENCEX_AUTH_KEY: ${{ secrets.INTELLIGENCEX_AUTH_KEY }}\n      INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}\n      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}"
+      "code": "# .github/workflows/review-intelligencex.yml\n# Pinned SHA after @ = safer, reproducible workflow version.\njobs:\n  review:\n    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@68fe2c83e1a7d97d5aad6c4c8223c1d7eb8031e7\n    with:\n      reviewer_source: release\n      openai_transport: native\n      output_style: claude\n      style: colorful\n    secrets:\n      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}\n      INTELLIGENCEX_GITHUB_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}\n      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}"
     },
     {
       "id": "config",
@@ -26,3 +26,4 @@
     }
   ]
 }
+

@@ -821,6 +821,9 @@ jobs:
         AssertContainsText(content, "diagnostics:", "workflow explicit-secrets diagnostics input");
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
+        AssertContainsText(content, "INTELLIGENCEX_AUTH_B64:", "workflow explicit-secrets includes auth bundle mapping");
+        AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_KEY:", StringComparison.Ordinal),
+            "workflow explicit-secrets does not pass undeclared auth key");
     }
 
     private static void TestSetupWorkflowTemplateNonExplicitSecretsUsesInheritMode() {
