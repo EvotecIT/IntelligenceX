@@ -83,8 +83,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var coverageBelowPercent = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("coverage_below_percent"), 100);
         if (coverageBelowPercent.HasValue) {
             coverageBelowPercent = Math.Clamp(coverageBelowPercent.Value, 0, 100);

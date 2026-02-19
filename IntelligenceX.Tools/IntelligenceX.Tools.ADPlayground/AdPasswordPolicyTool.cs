@@ -56,8 +56,7 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var includeFineGrained = ToolArgs.GetBoolean(arguments, "include_fine_grained", defaultValue: false);
         var maxResults = ResolveBoundedMaxResults(arguments);
 

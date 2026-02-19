@@ -63,8 +63,7 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var explicitDcs = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("domain_controllers"));
         var anonymousSamOnly = ToolArgs.GetBoolean(arguments, "anonymous_sam_only", defaultValue: false);
         var nullSessionOnly = ToolArgs.GetBoolean(arguments, "null_session_only", defaultValue: false);

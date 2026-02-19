@@ -82,8 +82,7 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var dnsFailedOnly = ToolArgs.GetBoolean(arguments, "dns_failed_only", defaultValue: false);
         var missingSiteOnly = ToolArgs.GetBoolean(arguments, "missing_site_only", defaultValue: false);
         var missingSubnetOnly = ToolArgs.GetBoolean(arguments, "missing_subnet_only", defaultValue: false);

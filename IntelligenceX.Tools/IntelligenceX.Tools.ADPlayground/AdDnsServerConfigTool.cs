@@ -67,8 +67,7 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var explicitServers = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("dns_servers"));
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var recursionDisabledOnly = ToolArgs.GetBoolean(arguments, "recursion_disabled_only", defaultValue: false);
         var missingForwardersOnly = ToolArgs.GetBoolean(arguments, "missing_forwarders_only", defaultValue: false);
         var maxServers = ToolArgs.GetCappedInt32(arguments, "max_servers", 200, 1, 5000);

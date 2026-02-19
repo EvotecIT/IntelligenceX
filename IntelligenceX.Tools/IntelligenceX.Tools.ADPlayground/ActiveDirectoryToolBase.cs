@@ -138,6 +138,17 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Reads optional domain/forest scope arguments using shared key names and trimming semantics.
+    /// </summary>
+    protected static void ReadDomainAndForestScope(
+        JsonObject? arguments,
+        out string? domainName,
+        out string? forestName) {
+        domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
+        forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+    }
+
+    /// <summary>
     /// Resolves tool-requested AD attribute list via ADPlayground policy helper.
     /// </summary>
     protected static List<string> ResolveAttributes(

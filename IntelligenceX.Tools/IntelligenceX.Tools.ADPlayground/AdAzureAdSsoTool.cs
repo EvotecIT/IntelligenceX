@@ -72,8 +72,7 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var onlyPresent = ToolArgs.GetBoolean(arguments, "only_present", defaultValue: false);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
         var includeSpns = ToolArgs.GetBoolean(arguments, "include_spns", defaultValue: false);

@@ -73,8 +73,7 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var psoMinLength = ToolArgs.GetCappedInt32(arguments, "pso_min_length", 14, 1, 128);
         var psoHistoryMin = ToolArgs.GetCappedInt32(arguments, "pso_history_min", 24, 0, 1024);
         var includePsoDetails = ToolArgs.GetBoolean(arguments, "include_pso_details", defaultValue: true);
