@@ -333,6 +333,12 @@ internal static class TranscriptMarkdownNormalizer {
     }
 
     private static string RepairWrappedSignalFlowLines(string text) {
+        // Guard literal inline-code content if this helper is ever used outside the current
+        // protected-inline-code pipeline.
+        if (string.IsNullOrEmpty(text) || text.IndexOf('`', StringComparison.Ordinal) >= 0) {
+            return text;
+        }
+
         return WrappedSignalFlowLineRegex.Replace(text, static match => {
             var inner = match.Groups["inner"].Value;
             var markerIndex = inner.IndexOf("-> **", StringComparison.Ordinal);
