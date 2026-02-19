@@ -20,26 +20,26 @@ public sealed class App : Application {
     private static readonly IntPtr HwndNoTopMost = new(-2);
     private Window? _window;
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport("user32.dll", SetLastError = true, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport("user32.dll", ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsIconic(IntPtr hWnd);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport("user32.dll", ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(IntPtr hWnd);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport("user32.dll", ExactSpelling = true)]
     private static extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport("user32.dll", SetLastError = true, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport("user32.dll", SetLastError = true, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(
         IntPtr hWnd,
