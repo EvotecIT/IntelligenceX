@@ -14,6 +14,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         });
 
         Assert.NotNull(context.AuthenticationProbeStore);
+        Assert.True(context.Options.RequireAuthenticationRuntime);
         Assert.True(context.RequireSuccessfulSmtpProbeForSend);
         Assert.Equal(600, context.SmtpProbeMaxAgeSeconds);
     }
@@ -35,7 +36,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
     }
 
     [Fact]
-    public void ApplyToRegistry_YoloMode_DisablesStrictRuntimeByDefault() {
+    public void ApplyToRegistry_YoloMode_DisablesRuntimeRequirementAndStrictRuntime() {
         var registry = new ToolRegistry();
         var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
             WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
@@ -45,9 +46,22 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         var diagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, context);
 
         Assert.Equal(ToolWriteGovernanceMode.Yolo, registry.WriteGovernanceMode);
-        Assert.True(registry.RequireWriteGovernanceRuntime);
+        Assert.False(registry.RequireWriteGovernanceRuntime);
         Assert.Null(registry.WriteGovernanceRuntime);
+        Assert.False(diagnostics.RequireWriteGovernanceRuntime);
         Assert.False(diagnostics.WriteGovernanceRuntimeConfigured);
+    }
+
+    [Fact]
+    public void ResolveOptions_StrictPreset_ElevatesRequireAuthenticationRuntime() {
+        var resolved = ToolRuntimePolicyBootstrap.ResolveOptions(new ToolRuntimePolicyOptions {
+            AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict,
+            RequireAuthenticationRuntime = false
+        });
+
+        Assert.True(resolved.Options.RequireAuthenticationRuntime);
+        Assert.True(resolved.RequireSuccessfulSmtpProbeForSend);
+        Assert.Equal(600, resolved.SmtpProbeMaxAgeSeconds);
     }
 
     [Fact]

@@ -90,7 +90,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ToolRuntimePolicyOptions BuildRuntimePolicyOptions(ServiceOptions options) {
-        return new ToolRuntimePolicyOptions {
+        return ToolRuntimePolicyBootstrap.ResolveOptions(new ToolRuntimePolicyOptions {
             WriteGovernanceMode = options.WriteGovernanceMode,
             RequireWriteGovernanceRuntime = options.RequireWriteGovernanceRuntime,
             RequireWriteAuditSinkForWriteOperations = options.RequireWriteAuditSinkForWriteOperations,
@@ -100,7 +100,7 @@ internal sealed partial class ChatServiceSession {
             RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
             RunAsProfilePath = options.RunAsProfilePath,
             AuthenticationProfilePath = options.AuthenticationProfilePath
-        };
+        }).Options;
     }
 
     private static void RecordBootstrapWarning(ICollection<string> sink, string? warning) {
