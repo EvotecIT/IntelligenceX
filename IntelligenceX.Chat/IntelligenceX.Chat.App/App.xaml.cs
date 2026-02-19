@@ -109,6 +109,7 @@ public sealed class App : Application {
 
     private static bool TryBringToForeground(Window window, int attempt) {
         try {
+            window.Activate();
             var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
             if (handle == IntPtr.Zero) {
                 StartupLog.Write("Window foreground request skipped (no hwnd), attempt=" + attempt);
