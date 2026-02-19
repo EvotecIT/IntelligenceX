@@ -62,6 +62,7 @@ jobs:
             - name: Upload test results
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
               if: always()
+              continue-on-error: true
               with:
                   name: test-results-windows
                   path: '**/*.trx'
@@ -69,6 +70,7 @@ jobs:
             - name: Upload coverage reports
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
               if: ${{ always() && hashFiles('**/coverage.cobertura.xml') != '' }}
+              continue-on-error: true
               with:
                   name: coverage-reports-windows
                   path: '**/coverage.cobertura.xml'
@@ -117,6 +119,7 @@ jobs:
             - name: Upload test results
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
               if: always()
+              continue-on-error: true
               with:
                   name: test-results-ubuntu
                   path: '**/*.trx'
@@ -167,6 +170,7 @@ jobs:
             - name: Upload test results
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
               if: always()
+              continue-on-error: true
               with:
                   name: test-results-macos
                   path: '**/*.trx'
