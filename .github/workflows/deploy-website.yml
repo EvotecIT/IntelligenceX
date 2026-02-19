@@ -59,10 +59,24 @@ jobs:
           test -f Website/_site/404.html
           grep -Eqi "<link[^>]+rel=[^>]*stylesheet" Website/_site/404.html
 
+      - name: Archive Pages artifact
+        shell: bash
+        run: |
+          tar \
+            --dereference --hard-dereference \
+            --directory "Website/_site" \
+            -cvf "${RUNNER_TEMP}/artifact.tar" \
+            --exclude=.git \
+            --exclude=.github \
+            .
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: Website/_site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     needs: build
@@ -98,6 +112,10 @@ jobs:
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Checkout
+        if: steps.cloudflare.outputs.enabled == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Checkout PSPublishModule
         if: steps.cloudflare.outputs.enabled == 'true'
