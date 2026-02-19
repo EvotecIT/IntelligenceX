@@ -13,6 +13,8 @@ namespace IntelligenceX.Tools.Email;
 /// Verifies SMTP connectivity/authentication and returns a probe id for strict send gating.
 /// </summary>
 public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
+    private sealed record ProbeRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         SmtpProbePolicy.ProbeToolName,
         "Validate SMTP connectivity/authentication and return auth_probe_id for strict send workflows.",
@@ -32,11 +34,28 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var smtpOptions = Options.Smtp;
-        if (smtpOptions is null) {
-            return ToolResponse.Error("not_configured", "SMTP is not configured.");
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteRequestAsync,
+            middleware: new ToolPipelineMiddleware<ProbeRequest>[] {
+                EnsureSmtpConfiguredAsync
+            }).ConfigureAwait(false);
+    }
+
+    private static ToolRequestBindingResult<ProbeRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBindingResult<ProbeRequest>.Success(new ProbeRequest());
+    }
+
+    private async Task<string> ExecuteRequestAsync(
+        ToolPipelineContext<ProbeRequest> context,
+        CancellationToken cancellationToken) {
+        if (!context.TryGetItem<SmtpAccountOptions>(SmtpOptionsContextKey, out var smtpOptions) ||
+            smtpOptions is null) {
+            return ToolResultV2.Error("not_configured", "SMTP is not configured.");
         }
-        smtpOptions.Validate();
+
         cancellationToken.ThrowIfCancellationRequested();
 
         var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: true);
@@ -44,7 +63,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
         try {
             var connectAuthResult = await SmtpClientFactory.ConnectAndAuthenticateAsync(smtp, smtpOptions).ConfigureAwait(false);
             if (!connectAuthResult.IsSuccess) {
-                return ToolResponse.Error(
+                return ToolResultV2.Error(
                     connectAuthResult.ErrorCode,
                     connectAuthResult.Error,
                     isTransient: connectAuthResult.IsTransient);
@@ -78,7 +97,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
                 .Add("provider", "smtp")
                 .Add("auth_probe_id", probeRecord.ProbeId);
 
-            return ToolResponse.OkFactsModel(
+            return ToolResultV2.OkFactsModel(
                 model: root,
                 title: "SMTP probe",
                 facts: summaryFacts,
@@ -86,7 +105,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 "smtp_probe_failed",
                 $"SMTP probe failed. {ex.Message}",
                 isTransient: true);

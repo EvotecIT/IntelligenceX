@@ -18,10 +18,12 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
 
 ## Shared Reuse Rules
 1. Start from package base classes (`ActiveDirectoryToolBase`, `SystemToolBase`, `EventLogToolBase`, `FileSystemToolBase`, etc.).
-2. Use `ToolBase.BuildAutoTableResponse(...)` for table envelopes instead of inline response shaping.
-3. Use `ToolBase.AddMaxResultsMeta(...)` (directly or via package wrappers) for `max_results` metadata.
-4. Prefer `ToolQueryHelpers` (`CapRows`, projection filters) over handwritten list-cap/filter plumbing.
-5. Add package-local helpers only when behavior is package-specific.
+2. Prefer `ToolBase.RunPipelineAsync(...)` + `ToolPipeline` middleware for bind/precondition/execute orchestration.
+3. Use typed binders (`ToolRequestBinder` + `ToolRequestBindingResult<TRequest>`) instead of ad-hoc `arguments?.Get...` parsing in new/refactored tools.
+4. Use `ToolBase.BuildAutoTableResponse(...)` for table envelopes instead of inline response shaping.
+5. Use `ToolBase.AddMaxResultsMeta(...)` (directly or via package wrappers) for `max_results` metadata.
+6. Prefer `ToolQueryHelpers` (`CapRows`, projection filters) over handwritten list-cap/filter plumbing.
+7. Add package-local helpers only when behavior is package-specific.
 
 ## Schema Rules
 - Start with `ToolSchema.Object(...)`.
@@ -57,9 +59,10 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
   - Keep error mapping centralized in package base helpers.
 
 ## Response Rules
-- Use `ToolResponse.OkModel(...)` for read-style responses.
-- Use `ToolResponse.OkWriteActionModel(...)` for mutating actions.
-- Use `ToolResponse.Error(...)` for failure envelopes.
+- Prefer `ToolResultV2` helpers for new/refactored tools to keep metadata immutable at call boundaries.
+- Use `ToolResultV2.OkModel(...)` for read-style responses.
+- Use `ToolResultV2.OkWriteActionModel(...)` for mutating actions.
+- Use `ToolResultV2.Error(...)` for failure envelopes.
 - Keep error codes stable and machine-readable.
 
 ## Required Tests

@@ -16,11 +16,12 @@ Use this skill when changing files in `IntelligenceX.Tools/**`, especially when 
 
 ## Strict Execution Order
 1. Identify target package and existing base helpers.
-2. Reuse shared helper paths first (`ToolBase`, `ToolQueryHelpers`, package base helpers).
-3. Implement tool/refactor changes with no output contract drift.
-4. Add or update tests for helper behavior and edge cases.
-5. Run targeted build/tests for changed tool packages.
-6. Summarize reusable pattern changes for future tools.
+2. Reuse shared helper paths first (`ToolBase`, `ToolQueryHelpers`, `ToolPipeline`, package base helpers).
+3. Build typed request binder (`ToolRequestBinder` + `ToolRequestBindingResult<TRequest>`).
+4. Implement tool/refactor changes with no output contract drift, using `ToolResultV2` for output envelopes.
+5. Add or update tests for helper behavior and edge cases.
+6. Run targeted build/tests for changed tool packages.
+7. Summarize reusable pattern changes for future tools.
 
 ## Commands
 - Targeted build:
@@ -36,7 +37,9 @@ Use this skill when changing files in `IntelligenceX.Tools/**`, especially when 
 - Do not add package-specific duplicate helpers when a shared helper exists.
 - Do not change `error_code`/metadata/table view contracts without explicit intent.
 - Keep mass normalization (for example line endings) in a dedicated cleanup PR, not mixed with behavior changes.
+- Prefer typed request models over direct `arguments?.Get...` reads in new/refactored tools.
+- Prefer middleware composition over inline precondition blocks when preconditions are reusable.
 
 ## References
 - `InternalDocs/agent-playbooks/tool-authoring-playbook.md`
-
+- `templates/tool-pipeline-template.md`
