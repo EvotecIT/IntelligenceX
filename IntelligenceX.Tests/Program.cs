@@ -637,6 +637,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsCaseVariantMetadataKey);
         failed += Run("Analyze run internal max-results metadata helper rule flags only max_results in mixed adds",
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsOnlyMaxResultsInMixedMetaAdds);
+        failed += Run("Analyze run internal max-results metadata helper rule deduplicates same-line matches",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleDeduplicatesSameLineMatches);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",

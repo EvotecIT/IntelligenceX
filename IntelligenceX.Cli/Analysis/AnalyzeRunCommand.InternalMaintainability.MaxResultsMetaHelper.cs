@@ -70,7 +70,11 @@ internal static partial class AnalyzeRunCommand {
 
         var syntaxTree = CSharpSyntaxTree.ParseText(content ?? string.Empty);
         var root = syntaxTree.GetRoot();
+        var seenLines = new HashSet<int>();
         foreach (var line in EnumerateDirectMaxResultsMetadataWriteLines(root, syntaxTree)) {
+            if (!seenLines.Add(line)) {
+                continue;
+            }
             findings.Add(new AnalysisFindingItem {
                 Path = sourceFile.RelativePath,
                 Line = line,

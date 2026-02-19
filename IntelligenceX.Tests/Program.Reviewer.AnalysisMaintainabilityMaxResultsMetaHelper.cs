@@ -460,5 +460,64 @@ public sealed class SampleMixedMetaAddsTool : ToolBase {
             }
         }
     }
+
+    private static void TestAnalyzeRunInternalMaxResultsMetaHelperRuleDeduplicatesSameLineMatches() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-max-results-meta-sameline-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            File.WriteAllText(Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample",
+                "SampleSameLineMaxResultsMetaTool.cs"), """
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Sample;
+
+public sealed class SampleSameLineMaxResultsMetaTool : ToolBase {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "sample_same_line_max_results_meta_tool",
+        "Sample tool with same-line max_results metadata writes.",
+        ToolSchema.Object(("query", ToolSchema.String("Query value."))).NoAdditionalProperties());
+
+    public override ToolDefinition Definition => DefinitionValue;
+
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        var maxResults = 100;
+        return Task.FromResult(BuildAutoTableResponse(
+            arguments: arguments,
+            model: new { rows = Array.Empty<object>() },
+            sourceRows: Array.Empty<object>(),
+            viewRowsPath: "rows",
+            title: "Sample",
+            baseTruncated: false,
+            scanned: 0,
+            maxTop: 1000,
+            metaMutate: meta => { meta.Add("max_results", maxResults); meta["max_results"] = maxResults; }));
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run max-results metadata helper same-line dedupe exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            var matchingFindings = findings.Count(item =>
+                item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
+                item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleSameLineMaxResultsMetaTool.cs",
+                    StringComparison.OrdinalIgnoreCase));
+            AssertEqual(1, matchingFindings, "analyze run max-results metadata helper same-line dedupe single finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
 }
 #endif
