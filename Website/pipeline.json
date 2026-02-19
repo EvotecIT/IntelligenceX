@@ -132,9 +132,23 @@
       "htmlTitle": "IntelligenceX Sitemap"
     },
     {
+      "task": "indexnow",
+      "id": "submit-indexnow",
+      "dependsOn": "build-sitemap",
+      "modes": ["ci"],
+      "baseUrl": "https://intelligencex.dev",
+      "siteRoot": "./_site",
+      "scopeFromBuildUpdated": true,
+      "keyEnv": "INDEXNOW_KEY",
+      "optionalKey": true,
+      "continueOnError": true,
+      "reportPath": "./_reports/indexnow.json",
+      "summaryPath": "./_reports/indexnow.md"
+    },
+    {
       "task": "optimize",
       "id": "optimize-site",
-      "dependsOn": "build-sitemap",
+      "dependsOn": "submit-indexnow",
       "skipModes": ["dev"],
       "siteRoot": "./_site",
       "config": "./site.json",
