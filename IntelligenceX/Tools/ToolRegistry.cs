@@ -35,6 +35,11 @@ public sealed class ToolRegistry {
     public bool RequireWriteAuditSinkForWriteOperations { get; set; }
 
     /// <summary>
+    /// Runtime mode for write-governance enforcement.
+    /// </summary>
+    public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
+
+    /// <summary>
     /// Registers a tool.
     /// </summary>
     /// <param name="tool">Tool instance.</param>
@@ -257,6 +262,10 @@ public sealed class ToolRegistry {
             if (contract is not null &&
                 contract.IsWriteCapable &&
                 contract.IsWriteRequested(arguments)) {
+                if (_owner.WriteGovernanceMode == ToolWriteGovernanceMode.Yolo) {
+                    return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+                }
+
                 ToolWriteGovernanceRequest request = CreateGovernanceRequest(arguments, contract);
 
                 if (contract.RequireExplicitConfirmation && !contract.HasExplicitConfirmation(arguments)) {

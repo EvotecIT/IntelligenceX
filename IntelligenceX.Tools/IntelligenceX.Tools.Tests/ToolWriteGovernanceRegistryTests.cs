@@ -202,6 +202,24 @@ public sealed class ToolWriteGovernanceRegistryTests {
     }
 
     [Fact]
+    public async Task InvokeAsync_WriteIntentInYoloMode_BypassesGovernanceAndInvokesTool() {
+        var tool = new StubTool(CreateWriteToolDefinition());
+        var registry = new ToolRegistry {
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo
+        };
+        registry.Register(tool);
+
+        Assert.True(registry.TryGet("stub_write", out var registeredTool));
+        string output = await registeredTool.InvokeAsync(
+            new JsonObject().Add("send", true),
+            CancellationToken.None);
+
+        using JsonDocument doc = JsonDocument.Parse(output);
+        Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("invoked", doc.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task InvokeAsync_WriteIntentDenied_AppendsAuditRecord() {
         var tool = new StubTool(CreateWriteToolDefinition());
         var sink = new InMemoryAuditSink();
