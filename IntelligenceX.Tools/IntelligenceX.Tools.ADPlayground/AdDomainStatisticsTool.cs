@@ -70,7 +70,7 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
 
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var includeDomainControllers = ToolArgs.GetBoolean(arguments, "include_domain_controllers", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

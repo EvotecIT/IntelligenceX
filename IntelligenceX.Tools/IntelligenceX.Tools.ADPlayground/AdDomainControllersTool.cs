@@ -33,7 +33,7 @@ public sealed class AdDomainControllersTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var max = ResolveBoundedMaxResults(arguments);
+        var max = ResolveMaxResults(arguments);
 
         var (dc, defaultNc) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
         if (string.IsNullOrWhiteSpace(defaultNc)) {

@@ -67,7 +67,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var identityContains = ToolArgs.GetOptionalTrimmed(arguments, "identity_contains");
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

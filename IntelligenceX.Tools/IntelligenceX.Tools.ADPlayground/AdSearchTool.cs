@@ -53,7 +53,7 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
         var kindArg = ToolArgs.GetOptionalTrimmed(arguments, "kind");
         var kind = string.IsNullOrWhiteSpace(kindArg) ? "any" : kindArg.Trim().ToLowerInvariant();
 
-        var maxResults = ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
         var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
             arguments,

@@ -56,7 +56,7 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
 
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var ageThresholdDays = ToolArgs.GetCappedInt32(arguments, "age_threshold_days", 180, 1, 3650);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

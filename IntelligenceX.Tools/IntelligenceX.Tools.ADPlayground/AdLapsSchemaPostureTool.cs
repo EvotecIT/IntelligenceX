@@ -79,7 +79,7 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var onlyFindings = ToolArgs.GetBoolean(arguments, "only_findings", defaultValue: false);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

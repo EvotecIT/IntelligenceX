@@ -66,7 +66,7 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var threshold = ToolArgs.GetCappedInt32(arguments, "threshold", 0, -1, int.MaxValue);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

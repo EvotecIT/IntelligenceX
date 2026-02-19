@@ -100,7 +100,7 @@ public sealed class AdSearchFacetsTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var maxResults = ResolveBoundedMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
         var requestedPageSize = arguments?.GetInt64("page_size");
         var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0

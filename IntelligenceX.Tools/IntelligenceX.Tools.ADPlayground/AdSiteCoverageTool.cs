@@ -62,7 +62,7 @@ public sealed class AdSiteCoverageTool : ActiveDirectoryToolBase, ITool {
         var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
         var includeRegistry = ToolArgs.GetBoolean(arguments, "include_registry", defaultValue: false);
         var raw = ToolArgs.GetBoolean(arguments, "raw", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!raw) {
             if (!TryExecute(

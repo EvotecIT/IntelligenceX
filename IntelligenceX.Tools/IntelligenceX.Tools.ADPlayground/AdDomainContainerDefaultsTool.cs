@@ -64,7 +64,7 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
 
         ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
         var changedOnly = ToolArgs.GetBoolean(arguments, "changed_only", defaultValue: false);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,

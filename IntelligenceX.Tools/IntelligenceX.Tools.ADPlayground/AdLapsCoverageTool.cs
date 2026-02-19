@@ -91,7 +91,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
         var expiredOnly = ToolArgs.GetBoolean(arguments, "expired_only", defaultValue: false);
         var includeSamples = ToolArgs.GetBoolean(arguments, "include_samples", defaultValue: false);
         var maxSampleRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_sample_rows_per_domain", 50, 1, 1000);
-        var maxResults = ResolveBoundedMaxResults(arguments);
+        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
