@@ -267,6 +267,8 @@ internal sealed partial class ChatServiceSession {
             - Add a short "Potential issues to verify" section (1-3 bullets).
             - Add a short "Recommended next fixes" section (1-3 bullets).
             - For each bullet, include signal -> why it matters -> exact next validation/fix action.
+            - Keep markdown labels readable: use "Why it matters: <text>" and "Next/Fix action: <text>" with a space after each colon.
+            - Do not nest or overlap bold markers across the full signal/action chain.
             - If confidence is uncertain, say what evidence is missing and how to collect it.
             - Prefer proactive checks that can catch hidden regressions, not just obvious follow-ups.
             - Do not invent tool outputs or claim completed actions that were not executed.

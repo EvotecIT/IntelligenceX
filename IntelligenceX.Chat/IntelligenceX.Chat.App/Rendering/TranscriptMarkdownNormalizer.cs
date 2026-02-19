@@ -82,8 +82,20 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex WrappedSignalFlowLineRegex = new(
-        @"(?m)^(?<prefix>\s*-\s+[^\r\n]*?)\*\*(?<inner>[^\r\n]*->\s+\*\*[^\r\n]*?)\*\*(?<tail>\s*)$",
+        @"(?m)^(?<prefix>\s*-\s+[^\r\n]*?)\*\*(?<inner>[^\r\n]*->\s*\*\*[^\r\n]*?)\*\*(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex SignalFlowArrowLabelTightRegex = new(
+        @"->\s*\*\*(?=(?:Why it matters|Action|Next action|Fix action):)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    private static readonly Regex SignalFlowBoldLabelMissingSpaceRegex = new(
+        @"(?<label>\*\*(?:Why it matters|Action|Next action|Fix action):\*\*)(?=\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    private static readonly Regex SignalFlowPlainLabelMissingSpaceRegex = new(
+        @"(?<label>(?<![\p{L}\p{N}_])(?:Why it matters|Action|Next action|Fix action):)(?=\S)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex SentenceCollapsedBulletRegex = new(
         @"(?<=[\.\!\?\)\]])\s*(?=-\s*(?:\*\*[^\r\n]|[A-Z]{2,}\d+\b))",
@@ -194,6 +206,7 @@ internal static class TranscriptMarkdownNormalizer {
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
             value = SentenceCollapsedBulletRegex.Replace(value, "\n");
             value = RepairWrappedSignalFlowLines(value);
+            value = NormalizeSignalFlowLabelSpacing(value);
             value = TightBoldValueRegex.Replace(value, " ");
             value = TightBoldSuffixRegex.Replace(value, "$1 ");
             value = NormalizeOverwrappedStrongSpans(value);
@@ -374,6 +387,24 @@ internal static class TranscriptMarkdownNormalizer {
             var inner = match.Groups["inner"].Value.Trim();
             return inner.Length == 0 ? match.Value : "**" + inner + "**";
         });
+    }
+
+    private static string NormalizeSignalFlowLabelSpacing(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return text;
+        }
+
+        if (text.IndexOf("why it matters:", StringComparison.OrdinalIgnoreCase) < 0
+            && text.IndexOf("action:", StringComparison.OrdinalIgnoreCase) < 0
+            && text.IndexOf("next action:", StringComparison.OrdinalIgnoreCase) < 0
+            && text.IndexOf("fix action:", StringComparison.OrdinalIgnoreCase) < 0) {
+            return text;
+        }
+
+        var value = SignalFlowArrowLabelTightRegex.Replace(text, "-> **");
+        value = SignalFlowBoldLabelMissingSpaceRegex.Replace(value, static match => match.Groups["label"].Value + " ");
+        value = SignalFlowPlainLabelMissingSpaceRegex.Replace(value, static match => match.Groups["label"].Value + " ");
+        return value;
     }
 
     private static string MergeSplitHostLabelBullets(string text) {
