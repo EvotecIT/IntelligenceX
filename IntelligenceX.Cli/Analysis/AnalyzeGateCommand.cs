@@ -145,10 +145,10 @@ internal static partial class AnalyzeGateCommand {
             if (AnalysisSeverity.Rank(finding.Severity) < minRank) {
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(finding.RuleId)) {
+            var ruleId = NormalizeGateRuleId(finding.RuleId);
+            if (string.IsNullOrEmpty(ruleId)) {
                 continue;
             }
-            var ruleId = finding.RuleId!.Trim();
             var isEnabled = enabledRuleIds.Contains(ruleId);
             if (!isEnabled) {
                 outsidePack++;

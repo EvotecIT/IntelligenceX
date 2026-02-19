@@ -866,5 +866,90 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateFiltersNormalizeWhitespaceAndCase() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-filters-normalization-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX002.json"), """
+{
+  "id": "IX002",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX002",
+  "type": "  Code-Smell  ",
+  "title": "Rule two",
+  "description": "Rule two.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IX002"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Rule two finding.",
+      "ruleId": "IX002",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "types": ["  CODE-SMELL  "],
+      "ruleIds": ["  ix002  "]
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            var (exit, output) = RunAnalyzeAndCaptureOutput(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            });
+            AssertEqual(2, exit, "analyze gate exit (normalized filters still match)");
+            AssertContainsText(output, "Gate type filter: code-smell", "analyze gate normalized type filter summary");
+            AssertContainsText(output, "Gate ruleIds filter: ix002", "analyze gate normalized ruleIds filter summary");
+            AssertContainsText(output, "IX002", "analyze gate normalized filters violation output");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
 }
 #endif

@@ -205,12 +205,26 @@ internal static partial class AnalyzeGateCommand {
     private static HashSet<string> NormalizeRuleIds(IReadOnlyList<string>? ruleIds) {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var ruleId in ruleIds ?? Array.Empty<string>()) {
-            if (string.IsNullOrWhiteSpace(ruleId)) {
-                continue;
+            var normalized = NormalizeGateRuleId(ruleId);
+            if (!string.IsNullOrEmpty(normalized)) {
+                set.Add(normalized);
             }
-            set.Add(ruleId.Trim());
         }
         return set;
+    }
+
+    private static string? NormalizeGateRuleId(string? ruleId) {
+        if (string.IsNullOrWhiteSpace(ruleId)) {
+            return null;
+        }
+        return ruleId.Trim();
+    }
+
+    private static string? NormalizeGateRuleType(string? ruleType) {
+        if (string.IsNullOrWhiteSpace(ruleType)) {
+            return null;
+        }
+        return ruleType.Trim().ToLowerInvariant();
     }
 
     private static string NormalizeDuplicationScope(string? scope) {
@@ -290,22 +304,26 @@ internal static partial class AnalyzeGateCommand {
     }
 
     private static string ResolveRuleType(string ruleId, AnalysisCatalog catalog, string fallback) {
+        var normalizedFallback = NormalizeGateRuleType(fallback) ?? string.Empty;
         if (catalog is null || string.IsNullOrWhiteSpace(ruleId)) {
-            return fallback;
+            return normalizedFallback;
         }
-        if (catalog.TryGetRule(ruleId, out var rule) && !string.IsNullOrWhiteSpace(rule.Type)) {
-            return rule.Type.Trim().ToLowerInvariant();
+        if (catalog.TryGetRule(ruleId, out var rule)) {
+            var normalizedType = NormalizeGateRuleType(rule.Type);
+            if (!string.IsNullOrEmpty(normalizedType)) {
+                return normalizedType;
+            }
         }
-        return fallback;
+        return normalizedFallback;
     }
 
     private static HashSet<string> NormalizeTypes(IReadOnlyList<string>? types) {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var type in types ?? Array.Empty<string>()) {
-            if (string.IsNullOrWhiteSpace(type)) {
-                continue;
+            var normalized = NormalizeGateRuleType(type);
+            if (!string.IsNullOrEmpty(normalized)) {
+                set.Add(normalized);
             }
-            set.Add(type.Trim().ToLowerInvariant());
         }
         return set;
     }
@@ -313,11 +331,13 @@ internal static partial class AnalyzeGateCommand {
     private static GateFindingFilters CreateGateFindingFilters(
         IReadOnlySet<string> allowedTypes,
         IReadOnlySet<string> gateRuleIds) {
-        var hasTypeFilter = allowedTypes is { Count: > 0 };
-        var hasRuleIdFilter = gateRuleIds is { Count: > 0 };
+        var normalizedTypes = NormalizeTypes(allowedTypes?.ToArray());
+        var normalizedRuleIds = NormalizeRuleIds(gateRuleIds?.ToArray());
+        var hasTypeFilter = normalizedTypes is { Count: > 0 };
+        var hasRuleIdFilter = normalizedRuleIds is { Count: > 0 };
         return new GateFindingFilters(
-            allowedTypes,
-            gateRuleIds,
+            normalizedTypes,
+            normalizedRuleIds,
             hasTypeFilter,
             hasRuleIdFilter,
             IncludeAllFilters: !hasTypeFilter && !hasRuleIdFilter);
@@ -413,11 +433,10 @@ internal static partial class AnalyzeGateCommand {
             if (AnalysisSeverity.Rank(finding.Severity) < minRank) {
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(finding.RuleId)) {
+            var ruleId = NormalizeGateRuleId(finding.RuleId);
+            if (string.IsNullOrEmpty(ruleId)) {
                 continue;
             }
-
-            var ruleId = finding.RuleId!.Trim();
             var resolvedType = ResolveRuleType(
                 ruleId,
                 catalog,
@@ -687,14 +706,14 @@ internal static partial class AnalyzeGateCommand {
             }
 
             if (HasTypeFilter &&
-                !string.IsNullOrWhiteSpace(ruleType) &&
-                AllowedTypes.Contains(ruleType.Trim())) {
+                !string.IsNullOrEmpty(ruleType) &&
+                AllowedTypes.Contains(ruleType)) {
                 return true;
             }
 
             return HasRuleIdFilter &&
-                   !string.IsNullOrWhiteSpace(ruleId) &&
-                   RuleIds.Contains(ruleId.Trim());
+                   !string.IsNullOrEmpty(ruleId) &&
+                   RuleIds.Contains(ruleId);
         }
     }
 }
