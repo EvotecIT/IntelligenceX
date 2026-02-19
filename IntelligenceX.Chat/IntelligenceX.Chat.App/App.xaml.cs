@@ -8,6 +8,8 @@ namespace IntelligenceX.Chat.App;
 /// WinUI 3 application root (code-only; no XAML).
 /// </summary>
 public sealed class App : Application {
+    private const int ForegroundRetryMaxAttempts = 5;
+    private const int ForegroundRetryIntervalMs = 160;
     private const int SwShow = 5;
     private const int SwRestore = 9;
     private const uint SwpNoMove = 0x0002;
@@ -100,12 +102,12 @@ public sealed class App : Application {
 
         var attempt = 1;
         var timer = dispatcher.CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(160);
+        timer.Interval = TimeSpan.FromMilliseconds(ForegroundRetryIntervalMs);
         timer.IsRepeating = true;
 
         void OnTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object _) {
             attempt++;
-            if (TryBringToForeground(window, attempt) || attempt >= 5) {
+            if (attempt >= ForegroundRetryMaxAttempts || TryBringToForeground(window, attempt)) {
                 sender.Stop();
                 sender.Tick -= OnTick;
             }
@@ -118,9 +120,7 @@ public sealed class App : Application {
     private static bool TryBringToForeground(Window window, int attempt) {
         try {
             window.Activate();
-            var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
-            if (handle == IntPtr.Zero) {
-                StartupLog.Write("Window foreground request skipped (no hwnd), attempt=" + attempt);
+            if (!TryGetWindowHandle(window, attempt, out var handle)) {
                 return false;
             }
 
@@ -138,6 +138,9 @@ public sealed class App : Application {
                 SetWindowPos(handle, HwndNoTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow),
                 "notopmost",
                 attempt);
+
+            // Windows may reject foreground handoff (focus-stealing protections).
+            // Treat this as best-effort and keep activation + z-order nudges in place.
             var foregroundRequestOk = SetForegroundWindow(handle);
 
             var active = GetForegroundWindow() == handle;
@@ -156,5 +159,15 @@ public sealed class App : Application {
 
         var error = Marshal.GetLastWin32Error();
         StartupLog.Write("SetWindowPos failed stage=" + stage + " attempt=" + attempt + " error=" + error);
+    }
+
+    private static bool TryGetWindowHandle(Window window, int attempt, out IntPtr handle) {
+        handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        if (handle != IntPtr.Zero) {
+            return true;
+        }
+
+        StartupLog.Write("Window foreground request skipped (no hwnd), attempt=" + attempt);
+        return false;
     }
 }
