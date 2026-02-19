@@ -2,5 +2,5 @@
   "id": "intelligencex-maintainability-default",
   "label": "IntelligenceX Maintainability",
   "description": "Built-in maintainability checks implemented by IntelligenceX.",
-  "rules": ["IXLOC001", "IXDUP001", "IXTOOL001", "IXTOOL002"]
+  "rules": ["IXLOC001", "IXDUP001", "IXTOOL001", "IXTOOL002", "IXTOOL003"]
 }

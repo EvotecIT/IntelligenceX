@@ -19,7 +19,8 @@ This command:
   (`artifacts/intelligencex.ruff.sarif`).
 - Runs built-in IntelligenceX maintainability checks for selected internal rules (for example `IXLOC001`
   for max file length, `IXDUP001` for duplicated significant-line percentage, `IXTOOL001` for
-  write-tool schema helper contract enforcement, and `IXTOOL002` for AD required-domain helper contract enforcement).
+  write-tool schema helper contract enforcement, `IXTOOL002` for AD required-domain helper contract enforcement,
+  and `IXTOOL003` for max-results metadata helper contract enforcement).
   - Internal maintainability checks can be scoped via `include-ext:<extension>` tags (default extensions:
     `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`) and are applied per rule.
   - `IXDUP001` additionally supports `max-duplication-percent-<language>:<0-100>` tags
@@ -27,6 +28,7 @@ This command:
 - `IXTOOL001` flags write-capable `ToolDefinition` schemas under `IntelligenceX.Tools/**` that do not use
   `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
 - `IXTOOL002` flags AD tool definitions with required `domain_name` that do not use canonical required-domain helper paths.
+- `IXTOOL003` flags direct `meta.Add("max_results", ...)` usage in tool source files and requires `AddMaxResultsMeta(...)`.
 - Emits duplication metrics sidecar JSON (`artifacts/intelligencex.duplication.json`, schema `intelligencex.duplication.v2`) for duplication gate checks.
 - Applies `configMode` during the run without committing analyzer config files.
 

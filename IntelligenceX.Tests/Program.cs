@@ -621,6 +621,16 @@ internal static partial class Program {
             TestAnalyzeRunInternalAdRequiredDomainHelperRuleFlagsMissingCanonicalHelpers);
         failed += Run("Analyze run internal AD required-domain helper rule accepts canonical helpers",
             TestAnalyzeRunInternalAdRequiredDomainHelperRuleAcceptsCanonicalHelpers);
+        failed += Run("Analyze run internal max-results metadata helper rule flags direct meta add",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsDirectMetaAdd);
+        failed += Run("Analyze run internal max-results metadata helper rule accepts canonical helper",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsCanonicalHelper);
+        failed += Run("Analyze run internal max-results metadata helper rule ignores non-tool files",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNonToolFiles);
+        failed += Run("Analyze run internal max-results metadata helper rule ignores near-miss keys",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNearMissMetadataKeys);
+        failed += Run("Analyze run internal max-results metadata helper rule accepts qualified canonical helper call",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsQualifiedCanonicalHelperCall);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",

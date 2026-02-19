@@ -36,6 +36,7 @@ Use this skill when changing files in `IntelligenceX.Tools/**`, especially when 
 ## Fail-Fast Rules
 - Do not add package-specific duplicate helpers when a shared helper exists.
 - Do not change `error_code`/metadata/table view contracts without explicit intent.
+- Do not add `max_results` metadata with direct `meta.Add("max_results", ...)`; use `AddMaxResultsMeta(...)`.
 - Keep mass normalization (for example line endings) in a dedicated cleanup PR, not mixed with behavior changes.
 - Prefer typed request models over direct `arguments?.Get...` reads in new/refactored tools.
 - Prefer middleware composition over inline precondition blocks when preconditions are reusable.

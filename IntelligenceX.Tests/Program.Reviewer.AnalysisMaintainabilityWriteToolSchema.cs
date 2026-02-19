@@ -239,11 +239,25 @@ public sealed class SampleAuthOnlyTool {
 }
 """);
 
+        File.WriteAllText(Path.Combine(workspacePath, "Analysis", "Catalog", "rules", "internal", "IXTOOL003.json"), """
+{
+  "id": "IXTOOL003",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXTOOL003",
+  "title": "Tools should use canonical max_results metadata helper",
+  "description": "Flags tool response metadata that adds max_results directly instead of AddMaxResultsMeta(...).",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["include-ext:cs"]
+}
+""");
+
         File.WriteAllText(Path.Combine(workspacePath, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
 {
   "id": "intelligencex-maintainability-default",
   "label": "IntelligenceX Maintainability",
-  "rules": ["IXTOOL001", "IXTOOL002"]
+  "rules": ["IXTOOL001", "IXTOOL002", "IXTOOL003"]
 }
 """);
     }

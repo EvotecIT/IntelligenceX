@@ -73,6 +73,7 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
 - Internal maintainability checks:
   - `IXTOOL001` for write-schema helper contract.
   - `IXTOOL002` for AD required-domain helper contract.
+  - `IXTOOL003` for max-results metadata helper contract (`AddMaxResultsMeta(...)`).
 
 ## New Tool Checklist
 1. Define `ToolDefinition` with strict schema (`Required(...)`, `NoAdditionalProperties()`).

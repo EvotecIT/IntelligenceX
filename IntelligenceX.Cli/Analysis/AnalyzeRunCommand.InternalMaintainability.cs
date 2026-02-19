@@ -18,6 +18,7 @@ internal static partial class AnalyzeRunCommand {
     private const string InternalDuplicationRuleId = "IXDUP001";
     private const string InternalWriteToolSchemaRuleId = "IXTOOL001";
     private const string InternalAdRequiredDomainHelperRuleId = "IXTOOL002";
+    private const string InternalMaxResultsMetaHelperRuleId = "IXTOOL003";
     private const string DuplicationWindowLinesTagPrefix = "dup-window-lines:";
     private const string MaxDuplicationPercentTagPrefix = "max-duplication-percent:";
     private const string MaxDuplicationPercentByLanguageTagPrefix = "max-duplication-percent-";
@@ -204,14 +205,20 @@ internal static partial class AnalyzeRunCommand {
         var adRequiredDomainHelperRules = rules
             .Where(rule => rule?.Rule is not null && IsAdRequiredDomainHelperRule(rule.Rule))
             .ToList();
+        var maxResultsMetaHelperRules = rules
+            .Where(rule => rule?.Rule is not null && IsMaxResultsMetaHelperRule(rule.Rule))
+            .ToList();
         if (maxLinesRules.Count == 0 && duplicationRules.Count == 0 && writeToolSchemaRules.Count == 0 &&
-            adRequiredDomainHelperRules.Count == 0) {
+            adRequiredDomainHelperRules.Count == 0 && maxResultsMetaHelperRules.Count == 0) {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
         // Build a candidate source set once; each rule applies its own filtering tags on top.
         var includedSourceExtensions = ResolveIncludedSourceExtensionsForRules(
-            maxLinesRules.Concat(duplicationRules).Concat(writeToolSchemaRules).Concat(adRequiredDomainHelperRules)
+            maxLinesRules.Concat(duplicationRules)
+                .Concat(writeToolSchemaRules)
+                .Concat(adRequiredDomainHelperRules)
+                .Concat(maxResultsMetaHelperRules)
                 .Where(static item => item?.Rule is not null)
                 .Select(static item => item.Rule),
             warnings);
@@ -238,6 +245,8 @@ internal static partial class AnalyzeRunCommand {
         findings.AddRange(RunWriteToolSchemaChecks(writeToolSchemaRules, sourceFiles, excludedOutputPath, warnings));
         findings.AddRange(
             RunAdRequiredDomainHelperChecks(adRequiredDomainHelperRules, sourceFiles, excludedOutputPath, warnings));
+        findings.AddRange(
+            RunMaxResultsMetaHelperChecks(maxResultsMetaHelperRules, sourceFiles, excludedOutputPath, warnings));
 
         Console.WriteLine($"Internal maintainability findings: {findings.Count} item(s).");
         return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
@@ -659,6 +668,13 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
         return rule.Id.Equals(InternalAdRequiredDomainHelperRuleId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMaxResultsMetaHelperRule(AnalysisRule rule) {
+        if (rule is null) {
+            return false;
+        }
+        return rule.Id.Equals(InternalMaxResultsMetaHelperRuleId, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class SourceFileEntry {
