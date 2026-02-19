@@ -117,7 +117,8 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             "--write-audit-sink-path", "C:/temp/ix-audit.jsonl",
             "--auth-runtime-preset", "strict",
             "--require-auth-runtime",
-            "--run-as-profile-path", "C:/temp/runas-profiles.json"
+            "--run-as-profile-path", "C:/temp/runas-profiles.json",
+            "--auth-profile-path", "C:/temp/auth-profiles.json"
         }, out var error);
 
         Assert.NotNull(options);
@@ -130,6 +131,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal(ToolAuthenticationRuntimePreset.Strict, options.AuthenticationRuntimePreset);
         Assert.True(options.RequireAuthenticationRuntime);
         Assert.Equal("C:/temp/runas-profiles.json", options.RunAsProfilePath);
+        Assert.Equal("C:/temp/auth-profiles.json", options.AuthenticationProfilePath);
     }
 
     [Fact]

@@ -47,6 +47,7 @@ internal sealed class ServiceProfile {
     public string AuthenticationRuntimePreset { get; set; } = "default";
     public bool RequireAuthenticationRuntime { get; set; }
     public string? RunAsProfilePath { get; set; }
+    public string? AuthenticationProfilePath { get; set; }
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; }

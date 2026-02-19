@@ -57,6 +57,7 @@ internal sealed class ServiceOptions {
     public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
     public bool RequireAuthenticationRuntime { get; set; }
     public string? RunAsProfilePath { get; set; }
+    public string? AuthenticationProfilePath { get; set; }
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; }
@@ -413,6 +414,13 @@ internal sealed class ServiceOptions {
                 options.RunAsProfilePath = value;
                 continue;
             }
+            if (arg is "--auth-profile-path") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.AuthenticationProfilePath = value;
+                continue;
+            }
             if (arg is "--max-table-rows") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -532,6 +540,7 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
         Console.WriteLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
         Console.WriteLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");
+        Console.WriteLine("  --auth-profile-path <PATH>  Authentication profile catalog path for auth-aware packs.");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
@@ -656,6 +665,7 @@ internal sealed class ServiceOptions {
         }
         RequireAuthenticationRuntime = profile.RequireAuthenticationRuntime;
         RunAsProfilePath = profile.RunAsProfilePath;
+        AuthenticationProfilePath = profile.AuthenticationProfilePath;
 
         InstructionsFile = profile.InstructionsFile;
         MaxTableRows = profile.MaxTableRows;
@@ -698,6 +708,7 @@ internal sealed class ServiceOptions {
             AuthenticationRuntimePreset = ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(AuthenticationRuntimePreset),
             RequireAuthenticationRuntime = RequireAuthenticationRuntime,
             RunAsProfilePath = RunAsProfilePath,
+            AuthenticationProfilePath = AuthenticationProfilePath,
             InstructionsFile = InstructionsFile,
             MaxTableRows = MaxTableRows,
             MaxSample = MaxSample,

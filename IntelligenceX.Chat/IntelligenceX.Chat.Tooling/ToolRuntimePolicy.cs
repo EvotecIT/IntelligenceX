@@ -87,6 +87,11 @@ public sealed record ToolRuntimePolicyOptions {
     /// Optional run-as profile catalog path for tools that support run-as references.
     /// </summary>
     public string? RunAsProfilePath { get; init; }
+
+    /// <summary>
+    /// Optional authentication profile catalog path for tools that support explicit auth profile references.
+    /// </summary>
+    public string? AuthenticationProfilePath { get; init; }
 }
 
 /// <summary>
@@ -180,6 +185,11 @@ public sealed record ToolRuntimePolicyDiagnostics {
     /// Optional run-as profile catalog path.
     /// </summary>
     public string? RunAsProfilePath { get; init; }
+
+    /// <summary>
+    /// Optional authentication profile catalog path.
+    /// </summary>
+    public string? AuthenticationProfilePath { get; init; }
 }
 
 /// <summary>
@@ -204,6 +214,7 @@ public static class ToolRuntimePolicyBootstrap {
         var requireStrictProbe = options.RequireAuthenticationRuntime || options.AuthenticationPreset == ToolAuthenticationRuntimePreset.Strict;
         var probeMaxAgeSeconds = ResolveSmtpProbeMaxAgeSeconds(options.AuthenticationPreset);
         var normalizedRunAsPath = NormalizeOptionalPath(options.RunAsProfilePath);
+        var normalizedAuthProfilePath = NormalizeOptionalPath(options.AuthenticationProfilePath);
 
         IToolWriteGovernanceRuntime? writeRuntime = null;
         if (options.WriteGovernanceMode == ToolWriteGovernanceMode.Enforced && options.RequireWriteGovernanceRuntime) {
@@ -222,7 +233,8 @@ public static class ToolRuntimePolicyBootstrap {
         return new ToolRuntimePolicyContext {
             Options = options with {
                 WriteAuditSinkPath = sinkPath,
-                RunAsProfilePath = normalizedRunAsPath
+                RunAsProfilePath = normalizedRunAsPath,
+                AuthenticationProfilePath = normalizedAuthProfilePath
             },
             AuthenticationProbeStore = probeStore,
             WriteAuditSink = writeAuditSink,
@@ -278,7 +290,8 @@ public static class ToolRuntimePolicyBootstrap {
             AuthenticationRuntimeConfigured = context.AuthenticationProbeStore is not null,
             RequireSuccessfulSmtpProbeForSend = context.RequireSuccessfulSmtpProbeForSend,
             SmtpProbeMaxAgeSeconds = context.SmtpProbeMaxAgeSeconds,
-            RunAsProfilePath = context.Options.RunAsProfilePath
+            RunAsProfilePath = context.Options.RunAsProfilePath,
+            AuthenticationProfilePath = context.Options.AuthenticationProfilePath
         };
     }
 

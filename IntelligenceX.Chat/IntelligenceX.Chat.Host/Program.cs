@@ -942,6 +942,7 @@ internal static partial class Program {
         Console.WriteLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
         Console.WriteLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
         Console.WriteLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");
+        Console.WriteLine("  --auth-profile-path <PATH>  Authentication profile catalog path for auth-aware packs.");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");

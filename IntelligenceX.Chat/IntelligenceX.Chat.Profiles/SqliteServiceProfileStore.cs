@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   authentication_runtime_preset TEXT NOT NULL DEFAULT 'default',
   require_authentication_runtime INTEGER NOT NULL DEFAULT 0,
   run_as_profile_path TEXT NULL,
+  authentication_profile_path TEXT NULL,
   updated_utc TEXT NOT NULL
 );
 
@@ -112,6 +113,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         EnsureColumnExists(ProfileTable, "authentication_runtime_preset", "TEXT NOT NULL DEFAULT 'default'");
         EnsureColumnExists(ProfileTable, "require_authentication_runtime", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(ProfileTable, "run_as_profile_path", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, "authentication_profile_path", "TEXT NULL");
     }
 
     private bool HasLegacyJsonSchema() {
@@ -202,7 +204,8 @@ SELECT
   write_audit_sink_path,
   authentication_runtime_preset,
   require_authentication_runtime,
-  run_as_profile_path
+  run_as_profile_path,
+  authentication_profile_path
 FROM {ProfileTable}
 WHERE name = @name
 LIMIT 1;",
@@ -263,7 +266,8 @@ LIMIT 1;",
             WriteAuditSinkPath = ReadString(r, "write_audit_sink_path"),
             AuthenticationRuntimePreset = ReadString(r, "authentication_runtime_preset") ?? "default",
             RequireAuthenticationRuntime = ReadBool(r, "require_authentication_runtime", defaultValue: false),
-            RunAsProfilePath = ReadString(r, "run_as_profile_path")
+            RunAsProfilePath = ReadString(r, "run_as_profile_path"),
+            AuthenticationProfilePath = ReadString(r, "authentication_profile_path")
         };
 
         profile.AllowedRoots = ReadOrderedList(trimmed, AllowedRootsTable);
@@ -299,7 +303,7 @@ INSERT INTO {ProfileTable} (
   enable_default_plugin_paths,
   write_governance_mode, require_write_governance_runtime, require_write_audit_sink,
   write_audit_sink_mode, write_audit_sink_path,
-  authentication_runtime_preset, require_authentication_runtime, run_as_profile_path,
+  authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path,
   updated_utc
 )
 VALUES (
@@ -313,7 +317,7 @@ VALUES (
   @enable_default_plugin_paths,
   @write_governance_mode, @require_write_governance_runtime, @require_write_audit_sink,
   @write_audit_sink_mode, @write_audit_sink_path,
-  @authentication_runtime_preset, @require_authentication_runtime, @run_as_profile_path,
+  @authentication_runtime_preset, @require_authentication_runtime, @run_as_profile_path, @authentication_profile_path,
   @updated_utc
 )
 ON CONFLICT(name) DO UPDATE SET
@@ -352,6 +356,7 @@ ON CONFLICT(name) DO UPDATE SET
   authentication_runtime_preset = excluded.authentication_runtime_preset,
   require_authentication_runtime = excluded.require_authentication_runtime,
   run_as_profile_path = excluded.run_as_profile_path,
+  authentication_profile_path = excluded.authentication_profile_path,
   updated_utc = excluded.updated_utc;",
                 parameters: new Dictionary<string, object?> {
                     ["@name"] = trimmed,
@@ -391,6 +396,7 @@ ON CONFLICT(name) DO UPDATE SET
                     ["@authentication_runtime_preset"] = string.IsNullOrWhiteSpace(profile.AuthenticationRuntimePreset) ? "default" : profile.AuthenticationRuntimePreset.Trim(),
                     ["@require_authentication_runtime"] = profile.RequireAuthenticationRuntime ? 1 : 0,
                     ["@run_as_profile_path"] = string.IsNullOrWhiteSpace(profile.RunAsProfilePath) ? null : profile.RunAsProfilePath.Trim(),
+                    ["@authentication_profile_path"] = string.IsNullOrWhiteSpace(profile.AuthenticationProfilePath) ? null : profile.AuthenticationProfilePath.Trim(),
                     ["@updated_utc"] = now
                 });
 

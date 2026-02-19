@@ -50,6 +50,19 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.False(diagnostics.WriteGovernanceRuntimeConfigured);
     }
 
+    [Fact]
+    public void BuildDiagnostics_IncludesRunAsAndAuthProfilePaths() {
+        var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
+            RunAsProfilePath = " .\\profiles\\run-as.json ",
+            AuthenticationProfilePath = " .\\profiles\\auth.json "
+        });
+
+        var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(context);
+
+        Assert.Equal(context.Options.RunAsProfilePath, diagnostics.RunAsProfilePath);
+        Assert.Equal(context.Options.AuthenticationProfilePath, diagnostics.AuthenticationProfilePath);
+    }
+
     private static void TryDelete(string path) {
         try {
             if (File.Exists(path)) {

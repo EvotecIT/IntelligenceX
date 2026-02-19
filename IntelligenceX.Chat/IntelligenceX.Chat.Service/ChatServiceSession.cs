@@ -91,6 +91,7 @@ internal sealed partial class ChatServiceSession {
             RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
             SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
             RunAsProfilePath = runtimePolicyContext.Options.RunAsProfilePath,
+            AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
             OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
         };
 

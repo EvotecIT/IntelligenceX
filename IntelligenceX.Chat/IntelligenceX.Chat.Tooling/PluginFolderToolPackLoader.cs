@@ -469,7 +469,7 @@ internal static class PluginFolderToolPackLoader {
         SetPropertyIfPresent(options, "RequireSuccessfulSmtpProbeForSend", bootstrapOptions.RequireSuccessfulSmtpProbeForSend);
         SetPropertyIfPresent(options, "SmtpProbeMaxAgeSeconds", bootstrapOptions.SmtpProbeMaxAgeSeconds);
         SetPropertyIfPresent(options, "RunAsProfilePath", bootstrapOptions.RunAsProfilePath);
-        SetPropertyIfPresent(options, "AuthenticationProfilePath", bootstrapOptions.RunAsProfilePath);
+        SetPropertyIfPresent(options, "AuthenticationProfilePath", bootstrapOptions.AuthenticationProfilePath);
     }
 
     private static void SetPropertyIfPresent(object instance, string propertyName, object? value) {

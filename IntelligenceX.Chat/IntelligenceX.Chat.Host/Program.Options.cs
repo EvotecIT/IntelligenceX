@@ -73,6 +73,7 @@ internal static partial class Program {
         public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
         public bool RequireAuthenticationRuntime { get; set; }
         public string? RunAsProfilePath { get; set; }
+        public string? AuthenticationProfilePath { get; set; }
 
         public static ReplOptions Parse(string[] args, out string? error) {
             error = null;
@@ -321,6 +322,12 @@ internal static partial class Program {
                         }
                         options.RunAsProfilePath = runAsProfilePath;
                         break;
+                    case "--auth-profile-path":
+                        if (!TryGetValue(args, ref i, out var authenticationProfilePath, out error)) {
+                            return options;
+                        }
+                        options.AuthenticationProfilePath = authenticationProfilePath;
+                        break;
                     case "--max-table-rows":
                         if (!TryGetValue(args, ref i, out var maxRows, out error)) {
                             return options;
@@ -530,6 +537,7 @@ internal static partial class Program {
             }
             RequireAuthenticationRuntime = profile.RequireAuthenticationRuntime;
             RunAsProfilePath = profile.RunAsProfilePath;
+            AuthenticationProfilePath = profile.AuthenticationProfilePath;
 
             InstructionsFile = profile.InstructionsFile;
             MaxTableRows = profile.MaxTableRows;
@@ -582,7 +590,8 @@ internal static partial class Program {
                 WriteAuditSinkPath = WriteAuditSinkPath,
                 AuthenticationRuntimePreset = AuthenticationRuntimePreset,
                 RequireAuthenticationRuntime = RequireAuthenticationRuntime,
-                RunAsProfilePath = RunAsProfilePath
+                RunAsProfilePath = RunAsProfilePath,
+                AuthenticationProfilePath = AuthenticationProfilePath
             };
 
             if (AllowedRoots.Count > 0) {

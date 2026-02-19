@@ -68,4 +68,9 @@ public sealed record SessionRuntimePolicyDto {
     /// Optional run-as profile catalog path.
     /// </summary>
     public string? RunAsProfilePath { get; init; }
+
+    /// <summary>
+    /// Optional authentication profile catalog path.
+    /// </summary>
+    public string? AuthenticationProfilePath { get; init; }
 }

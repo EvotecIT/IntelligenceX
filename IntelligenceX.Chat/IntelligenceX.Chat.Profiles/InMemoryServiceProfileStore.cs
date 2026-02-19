@@ -68,6 +68,7 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             AuthenticationRuntimePreset = profile.AuthenticationRuntimePreset,
             RequireAuthenticationRuntime = profile.RequireAuthenticationRuntime,
             RunAsProfilePath = profile.RunAsProfilePath,
+            AuthenticationProfilePath = profile.AuthenticationProfilePath,
             InstructionsFile = profile.InstructionsFile,
             MaxTableRows = profile.MaxTableRows,
             MaxSample = profile.MaxSample,

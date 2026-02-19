@@ -124,6 +124,11 @@ public sealed record ToolPackBootstrapOptions {
     public string? RunAsProfilePath { get; init; }
 
     /// <summary>
+    /// Optional authentication profile catalog path for packs supporting explicit auth profile references.
+    /// </summary>
+    public string? AuthenticationProfilePath { get; init; }
+
+    /// <summary>
     /// Optional warning sink used when an optional/private pack cannot be loaded.
     /// </summary>
     public Action<string>? OnBootstrapWarning { get; init; }
@@ -434,7 +439,7 @@ public static class ToolPackBootstrap {
                 SetPropertyIfPresent(emailOptions, "RequireSuccessfulSmtpProbeForSend", options.RequireSuccessfulSmtpProbeForSend);
                 SetPropertyIfPresent(emailOptions, "SmtpProbeMaxAgeSeconds", options.SmtpProbeMaxAgeSeconds);
                 SetPropertyIfPresent(emailOptions, "RunAsProfilePath", options.RunAsProfilePath);
-                SetPropertyIfPresent(emailOptions, "AuthenticationProfilePath", options.RunAsProfilePath);
+                SetPropertyIfPresent(emailOptions, "AuthenticationProfilePath", options.AuthenticationProfilePath);
             },
             onWarning: options.OnBootstrapWarning);
 

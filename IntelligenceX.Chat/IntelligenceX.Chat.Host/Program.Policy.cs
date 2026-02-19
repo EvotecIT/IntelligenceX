@@ -50,6 +50,7 @@ internal static partial class Program {
             RequireSuccessfulSmtpProbeForSend = runtimePolicy.RequireSuccessfulSmtpProbeForSend,
             SmtpProbeMaxAgeSeconds = runtimePolicy.SmtpProbeMaxAgeSeconds,
             RunAsProfilePath = runtimePolicy.Options.RunAsProfilePath,
+            AuthenticationProfilePath = runtimePolicy.Options.AuthenticationProfilePath,
             OnBootstrapWarning = onBootstrapWarning
         };
     }
@@ -63,7 +64,8 @@ internal static partial class Program {
             WriteAuditSinkPath = options.WriteAuditSinkPath,
             AuthenticationPreset = options.AuthenticationRuntimePreset,
             RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
-            RunAsProfilePath = options.RunAsProfilePath
+            RunAsProfilePath = options.RunAsProfilePath,
+            AuthenticationProfilePath = options.AuthenticationProfilePath
         };
     }
 
@@ -94,7 +96,8 @@ internal static partial class Program {
             $"configured={(runtimePolicyDiagnostics.AuthenticationRuntimeConfigured ? "yes" : "no")}, " +
             $"smtp_probe_required={(runtimePolicyDiagnostics.RequireSuccessfulSmtpProbeForSend ? "on" : "off")}, " +
             $"smtp_probe_max_age_seconds={runtimePolicyDiagnostics.SmtpProbeMaxAgeSeconds}, " +
-            $"run_as_profile_path={(string.IsNullOrWhiteSpace(runtimePolicyDiagnostics.RunAsProfilePath) ? "(none)" : runtimePolicyDiagnostics.RunAsProfilePath)}");
+            $"run_as_profile_path={(string.IsNullOrWhiteSpace(runtimePolicyDiagnostics.RunAsProfilePath) ? "(none)" : runtimePolicyDiagnostics.RunAsProfilePath)}, " +
+            $"auth_profile_path={(string.IsNullOrWhiteSpace(runtimePolicyDiagnostics.AuthenticationProfilePath) ? "(none)" : runtimePolicyDiagnostics.AuthenticationProfilePath)}");
         var maxTable = options.MaxTableRows <= 0 ? "(none)" : options.MaxTableRows.ToString();
         var maxSample = options.MaxSample <= 0 ? "(none)" : options.MaxSample.ToString();
         Console.WriteLine($"  Response shaping: max_table_rows={maxTable}, max_sample={maxSample}, redact={(options.Redact ? "on" : "off")}");

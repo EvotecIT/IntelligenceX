@@ -83,7 +83,8 @@ internal sealed partial class ChatServiceSession {
                 AuthenticationRuntimeConfigured = runtimePolicy.AuthenticationRuntimeConfigured,
                 RequireSuccessfulSmtpProbeForSend = runtimePolicy.RequireSuccessfulSmtpProbeForSend,
                 SmtpProbeMaxAgeSeconds = runtimePolicy.SmtpProbeMaxAgeSeconds,
-                RunAsProfilePath = runtimePolicy.RunAsProfilePath
+                RunAsProfilePath = runtimePolicy.RunAsProfilePath,
+                AuthenticationProfilePath = runtimePolicy.AuthenticationProfilePath
             }
         };
     }
@@ -97,7 +98,8 @@ internal sealed partial class ChatServiceSession {
             WriteAuditSinkPath = options.WriteAuditSinkPath,
             AuthenticationPreset = options.AuthenticationRuntimePreset,
             RequireAuthenticationRuntime = options.RequireAuthenticationRuntime,
-            RunAsProfilePath = options.RunAsProfilePath
+            RunAsProfilePath = options.RunAsProfilePath,
+            AuthenticationProfilePath = options.AuthenticationProfilePath
         };
     }
 
