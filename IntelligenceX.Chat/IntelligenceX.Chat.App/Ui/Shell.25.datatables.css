@@ -3,7 +3,7 @@
   border: 1px solid var(--ix-border-subtle);
   border-radius: var(--ix-radius-md);
   background: rgba(7, 32, 57, 0.45);
-  padding: 8px 8px 6px;
+  padding: 8px 8px 7px;
   overflow: hidden;
 }
 
@@ -25,11 +25,14 @@
 
 .ix-dt-wrap .dt-container {
   color: var(--ix-text-primary);
+  min-width: 0;
 }
 
 .ix-dt-wrap .dt-layout-row {
   gap: 8px;
   margin: 0 0 6px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .ix-dt-wrap .dt-layout-cell {
@@ -53,6 +56,10 @@
   min-height: 28px;
   padding: 5px 8px;
   outline: none;
+}
+
+.ix-dt-wrap .dt-search input {
+  min-width: min(360px, 72vw);
 }
 
 .ix-dt-wrap .dt-search input::placeholder {
@@ -105,16 +112,27 @@
   border-bottom: 1px solid rgba(76, 132, 190, 0.58);
   background: rgba(16, 46, 78, 0.74);
   color: var(--ix-text-primary);
+  white-space: nowrap;
+  font-size: 12px;
 }
 
 .ix-dt-wrap table.dataTable tbody th,
 .ix-dt-wrap table.dataTable tbody td {
   border-bottom: 1px solid rgba(63, 103, 148, 0.45);
   color: var(--ix-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: min(460px, 70vw);
 }
 
 .ix-dt-wrap table.dataTable tbody tr:hover {
   background: rgba(76, 195, 255, 0.07);
+}
+
+.ix-dt-wrap table.dataTable tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.016);
 }
 
 .ix-dt-wrap table.dataTable tbody tr > .sorting_1,
@@ -137,4 +155,8 @@
 .ix-dt-wrap .dt-scroll-body::-webkit-scrollbar-thumb:hover,
 .ix-dt-wrap .dt-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--ix-scrollbar-thumb-hover);
+}
+
+.ix-dt-wrap .dt-scroll-body {
+  max-height: 320px;
 }

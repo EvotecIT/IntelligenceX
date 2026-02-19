@@ -7,6 +7,7 @@
 
   // Local assets are mapped via WebView2 virtual host mapping in MainWindow.
   var ixDataTablesAssets = {
+    jqueryUrl: "https://ixchat.local/vendor/jquery/jquery-3.7.1.min.js",
     cssUrl: "https://ixchat.local/vendor/datatables/dataTables.dataTables.min.css",
     jsUrl: "https://ixchat.local/vendor/datatables/dataTables.min.js"
   };
@@ -29,15 +30,25 @@
     ixDataTablesState.cssInjected = true;
   }
 
-  function loadScriptOnce(url, attrName) {
+  function loadScriptOnce(url, attrName, readyCheck) {
+    var isReady = typeof readyCheck === "function"
+      ? readyCheck
+      : function() { return true; };
     var existing = document.querySelector("script[" + attrName + "='1']");
     if (existing) {
-      if (window.DataTable) {
+      var existingState = existing.getAttribute("data-ix-load-state") || "";
+      if (isReady()) {
         return Promise.resolve(true);
+      }
+      if (existingState === "error") {
+        return Promise.resolve(false);
+      }
+      if (existingState === "loaded") {
+        return Promise.resolve(isReady());
       }
 
       return new Promise(function(resolve) {
-        existing.addEventListener("load", function() { resolve(!!window.DataTable); }, { once: true });
+        existing.addEventListener("load", function() { resolve(isReady()); }, { once: true });
         existing.addEventListener("error", function() { resolve(false); }, { once: true });
       });
     }
@@ -47,8 +58,15 @@
       script.src = url;
       script.async = true;
       script.setAttribute(attrName, "1");
-      script.addEventListener("load", function() { resolve(!!window.DataTable); }, { once: true });
-      script.addEventListener("error", function() { resolve(false); }, { once: true });
+      script.setAttribute("data-ix-load-state", "loading");
+      script.addEventListener("load", function() {
+        script.setAttribute("data-ix-load-state", "loaded");
+        resolve(isReady());
+      }, { once: true });
+      script.addEventListener("error", function() {
+        script.setAttribute("data-ix-load-state", "error");
+        resolve(false);
+      }, { once: true });
       document.head.appendChild(script);
     });
   }
@@ -67,7 +85,17 @@
     }
 
     ensureDataTablesCss();
-    ixDataTablesState.loadPromise = loadScriptOnce(ixDataTablesAssets.jsUrl, "data-ix-datatables-js")
+    ixDataTablesState.loadPromise = ensureJQueryReady()
+      .then(function(jqOk) {
+        if (!jqOk) {
+          return false;
+        }
+
+        return loadScriptOnce(
+          ixDataTablesAssets.jsUrl,
+          "data-ix-datatables-js",
+          function() { return typeof window.DataTable === "function"; });
+      })
       .then(function(ok) {
         if (!ok || typeof window.DataTable !== "function") {
           ixDataTablesState.loadFailed = true;
@@ -86,6 +114,27 @@
       });
 
     return ixDataTablesState.loadPromise;
+  }
+
+  function ensureJQueryReady() {
+    if (window.jQuery && window.jQuery.fn) {
+      return Promise.resolve(true);
+    }
+
+    return loadScriptOnce(
+      ixDataTablesAssets.jqueryUrl,
+      "data-ix-jquery-js",
+      function() { return !!(window.jQuery && window.jQuery.fn); })
+      .then(function(ok) {
+        if (!ok || !window.jQuery || !window.jQuery.fn) {
+          return false;
+        }
+
+        return true;
+      })
+      .catch(function() {
+        return false;
+      });
   }
 
   function normalizeInlineText(value) {
@@ -259,15 +308,19 @@
     }
 
     var rowCount = Number(table.dataset.ixRowCount || "0");
-    var enablePaging = rowCount > 20;
+    var enablePaging = rowCount > 16;
     var enableInfo = rowCount > 12;
-    var pageLength = rowCount > 120 ? 50 : (rowCount > 40 ? 25 : 10);
+    var pageLength = rowCount > 1200 ? 100 : (rowCount > 360 ? 50 : (rowCount > 90 ? 25 : 10));
+    var lengthMenu = rowCount > 1200 ? [25, 50, 100, 250] : [10, 25, 50, 100];
+    var useScrollY = rowCount > 180;
 
     try {
       table.classList.add("ix-dt-table");
-      var api = new window.DataTable(table, {
+      var options = {
         paging: enablePaging,
         pageLength: pageLength,
+        lengthMenu: lengthMenu,
+        deferRender: rowCount > 240,
         lengthChange: enablePaging,
         searching: true,
         ordering: true,
@@ -285,7 +338,14 @@
           bottomStart: enableInfo ? "info" : null,
           bottomEnd: enablePaging ? "paging" : null
         }
-      });
+      };
+
+      if (useScrollY) {
+        options.scrollY = "320px";
+        options.scrollCollapse = true;
+      }
+
+      var api = new window.DataTable(table, options);
       table._ixDataTableApi = api;
       table.dataset.ixDtEnhanced = "1";
     } catch (_) {
