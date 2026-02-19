@@ -111,6 +111,127 @@ public sealed class LocalExportArtifactWriterTests {
         }
     }
 
+    /// <summary>
+    /// Ensures transcript DOCX export does not leak literal strong delimiters on definition-like lines.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_EscapesDefinitionLikeLinesBeforeConversion() {
+        const string markdown = """
+            # Transcript
+
+            ### Assistant (10:15:54)
+            Short answer: **no — nothing is failed** ✅
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-definition-line.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var paragraph = docx.Paragraphs.First(p => p.Text.Contains("Short answer", StringComparison.Ordinal));
+            var combinedRuns = string.Concat(paragraph.GetRuns().Select(run => run.Text));
+
+            Assert.DoesNotContain("**", combinedRuns, StringComparison.Ordinal);
+            Assert.Contains("no — nothing is failed", combinedRuns, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures fence content is not altered by the transcript DOCX pre-pass.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_DoesNotEscapeDefinitionLikeLinesInsideCodeFence() {
+        const string markdown = """
+            # Transcript
+
+            ```markdown
+            Short answer: **no — nothing is failed** ✅
+            ```
+
+            Short answer: **outside fence still bold** ✅
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-definition-fence.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+
+            Assert.Contains("Short answer: **no — nothing is failed** ✅", bodyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Short answer\\:", bodyText, StringComparison.Ordinal);
+            Assert.Contains("outside fence still bold", bodyText, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures longer outer fences are not closed by inner shorter fence markers during DOCX pre-pass.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_PreservesContentInsideLongerOuterFence() {
+        const string markdown = """
+            # Transcript
+
+            ````markdown
+            ```powershell
+            key: value
+            ```
+            ````
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-outer-fence.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+
+            Assert.Contains("key", bodyText, StringComparison.Ordinal);
+            Assert.Contains("value", bodyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("key\\: value", bodyText, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures separator detection ignores colon-space sequences inside inline code spans.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_DoesNotEscapeSeparatorInsideInlineCode() {
+        const string markdown = """
+            # Transcript
+
+            Use `key: value` syntax when defining pairs.
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-inline-code.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+
+            Assert.Contains("key", bodyText, StringComparison.Ordinal);
+            Assert.Contains("value", bodyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("key\\: value", bodyText, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ixchat-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
