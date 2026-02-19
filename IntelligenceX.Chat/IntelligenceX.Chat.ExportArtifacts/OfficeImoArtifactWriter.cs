@@ -62,12 +62,25 @@ public static class OfficeImoArtifactWriter {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, sourceMarkdown);
         var wordSafeMarkdown = NeutralizeSingleLineDefinitionLists(transcriptMarkdown);
-        WriteDocxFromMarkdown(wordSafeMarkdown, outputPath);
+        using var visualMaterialization = DocxVisualFenceMaterializer.Materialize(wordSafeMarkdown);
+        WriteDocxFromMarkdown(visualMaterialization.Markdown, outputPath, visualMaterialization);
     }
 
-    private static void WriteDocxFromMarkdown(string markdown, string outputPath) {
+    private static void WriteDocxFromMarkdown(string markdown, string outputPath, DocxVisualFenceMaterialization? visualMaterialization = null) {
         var safeMarkdown = string.IsNullOrWhiteSpace(markdown) ? "# Transcript\n" : markdown;
-        using var document = safeMarkdown.LoadFromMarkdown(new MarkdownToWordOptions { FontFamily = "Calibri" });
+        var options = new MarkdownToWordOptions {
+            FontFamily = "Calibri",
+            AllowLocalImages = visualMaterialization is { HasLocalImages: true }
+        };
+        if (visualMaterialization is { HasLocalImages: true }) {
+            foreach (var directory in visualMaterialization.AllowedImageDirectories) {
+                if (!string.IsNullOrWhiteSpace(directory)) {
+                    options.AllowedImageDirectories.Add(directory);
+                }
+            }
+        }
+
+        using var document = safeMarkdown.LoadFromMarkdown(options);
         document.Save(outputPath);
     }
 
