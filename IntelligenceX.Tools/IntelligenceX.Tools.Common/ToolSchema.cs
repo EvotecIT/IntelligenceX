@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.Json;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tools.Common;
 
@@ -169,5 +170,58 @@ public static class ToolSchemaExtensions {
         }
 
         return schema;
+    }
+
+    /// <summary>
+    /// Adds canonical write-governance metadata arguments to an object schema.
+    /// </summary>
+    /// <remarks>
+    /// All fields are optional by schema because runtime policy decides whether they are required.
+    /// </remarks>
+    /// <param name="schema">Schema to mutate.</param>
+    public static JsonObject WithWriteGovernanceMetadata(this JsonObject schema) {
+        if (schema is null) {
+            throw new ArgumentNullException(nameof(schema));
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null) {
+            return schema;
+        }
+
+        AddStringPropertyIfMissing(
+            properties,
+            ToolWriteGovernanceArgumentNames.ExecutionId,
+            "Write execution identifier for audit correlation.");
+        AddStringPropertyIfMissing(
+            properties,
+            ToolWriteGovernanceArgumentNames.ActorId,
+            "Actor identifier responsible for the write intent.");
+        AddStringPropertyIfMissing(
+            properties,
+            ToolWriteGovernanceArgumentNames.ChangeReason,
+            "Change reason, ticket, or approval reference.");
+        AddStringPropertyIfMissing(
+            properties,
+            ToolWriteGovernanceArgumentNames.RollbackPlanId,
+            "Rollback plan identifier for safe revert operations.");
+        AddStringPropertyIfMissing(
+            properties,
+            ToolWriteGovernanceArgumentNames.RollbackProviderId,
+            "Optional rollback provider identifier.");
+        AddStringPropertyIfMissing(
+            properties,
+            ToolWriteGovernanceArgumentNames.AuditCorrelationId,
+            "Optional immutable audit correlation identifier.");
+
+        return schema;
+    }
+
+    private static void AddStringPropertyIfMissing(JsonObject properties, string name, string description) {
+        if (properties.TryGetValue(name, out _)) {
+            return;
+        }
+
+        properties.Add(name, ToolSchema.String(description));
     }
 }

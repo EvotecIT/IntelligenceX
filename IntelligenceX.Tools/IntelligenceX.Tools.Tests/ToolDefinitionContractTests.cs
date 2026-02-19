@@ -146,6 +146,29 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void WriteCapableTools_ShouldExposeCanonicalGovernanceMetadataArguments() {
+        var registry = new ToolRegistry();
+        registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
+        registry.RegisterEmailPack(new EmailToolOptions());
+
+        var writeCapableDefinitions = registry.GetDefinitions()
+            .Where(static definition => definition.WriteGovernance?.IsWriteCapable == true)
+            .ToArray();
+        Assert.NotEmpty(writeCapableDefinitions);
+
+        foreach (var definition in writeCapableDefinitions) {
+            var properties = definition.Parameters?.GetObject("properties");
+            Assert.NotNull(properties);
+            Assert.NotNull(properties!.GetObject(ToolWriteGovernanceArgumentNames.ExecutionId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ActorId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ChangeReason));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackPlanId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackProviderId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.AuditCorrelationId));
+        }
+    }
+
+    [Fact]
     public void TestimoXPack_ShouldExposeRuleCatalogAndRunTools() {
         var registry = new ToolRegistry();
         registry.RegisterTestimoXPack(new TestimoXToolOptions {
