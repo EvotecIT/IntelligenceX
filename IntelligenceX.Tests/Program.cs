@@ -454,6 +454,8 @@ internal static partial class Program {
             TestAnalyzeGateChangedFilesRejectsRelativeTraversalOutsideWorkspace);
         failed += Run("Analyze gate hotspots to-review blocks when threshold exceeded",
             TestAnalyzeGateHotspotsToReviewBlocksWhenAboveThreshold);
+        failed += Run("Analyze gate hotspots honor ruleIds with baseline suppression",
+            TestAnalyzeGateHotspotsHonorRuleIdFiltersWithBaselineSuppression);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);

@@ -387,7 +387,10 @@ internal static partial class AnalyzeGateCommand {
         HashSet<string> enabledRuleIds,
         int minRank,
         HashSet<string> allowedTypes,
-        bool includeAllTypes) {
+        HashSet<string> gateRuleIds,
+        bool hasTypeFilter,
+        bool hasRuleIdFilter,
+        bool includeAllFilters) {
         var list = new List<string>();
         if (settings?.Gate?.FailOnHotspotsToReview != true) {
             return list;
@@ -414,7 +417,10 @@ internal static partial class AnalyzeGateCommand {
             if (!isHotspot) {
                 continue;
             }
-            if (!includeAllTypes && !allowedTypes.Contains(resolvedType)) {
+
+            var matchesType = hasTypeFilter && allowedTypes.Contains(resolvedType);
+            var matchesRuleId = hasRuleIdFilter && gateRuleIds.Contains(ruleId);
+            if (!includeAllFilters && !matchesType && !matchesRuleId) {
                 continue;
             }
 

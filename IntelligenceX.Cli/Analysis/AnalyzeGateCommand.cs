@@ -134,7 +134,6 @@ internal static partial class AnalyzeGateCommand {
 
         var allFindings = load.Findings ?? Array.Empty<AnalysisFinding>();
         var allowedTypes = NormalizeTypes(analysisSettings.Gate.Types);
-        var includeAllTypes = allowedTypes.Count == 0;
         var gateRuleIds = NormalizeRuleIds(analysisSettings.Gate.RuleIds);
         var hasTypeFilter = allowedTypes.Count > 0;
         var hasRuleIdFilter = gateRuleIds.Count > 0;
@@ -178,7 +177,10 @@ internal static partial class AnalyzeGateCommand {
             enabledRuleIds,
             minRank,
             allowedTypes,
-            includeAllTypes);
+            gateRuleIds,
+            hasTypeFilter,
+            hasRuleIdFilter,
+            includeAllFilters);
         var hasHotspotFailures = hotspotFailures.Count > 0;
         var useNewIssuesOnly = options.NewIssuesOnly || analysisSettings.Gate.NewIssuesOnly;
         var duplicationEnabled = analysisSettings.Gate.Duplication.Enabled;
