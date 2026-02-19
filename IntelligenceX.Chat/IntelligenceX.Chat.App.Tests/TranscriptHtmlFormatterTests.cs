@@ -301,4 +301,21 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("-AD1", html, StringComparison.Ordinal);
         Assert.DoesNotContain("-** AD2**", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures unicode-dash bullets are normalized before markdown render so list HTML is stable.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesUnicodeDashBulletsForDisplayHtml() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 19, 10, 12, 0, DateTimeKind.Local);
+        var text = "—** AD2** eher Secure-Channel/TLS";
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<li><strong>AD2</strong> eher Secure-Channel/TLS</li>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("—** AD2**", html, StringComparison.Ordinal);
+    }
 }

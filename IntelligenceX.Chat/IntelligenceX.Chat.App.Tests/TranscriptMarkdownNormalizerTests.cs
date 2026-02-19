@@ -237,6 +237,18 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures line-start hyphenated prose is not rewritten as a markdown bullet.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotRewriteLeadingHyphenatedProseWord() {
+        var text = "-Windows-only behavior remains valid prose.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
     /// Ensures split host-label bullets are merged with their continuation line so markdown stays list-parseable.
     /// </summary>
     [Fact]
@@ -265,6 +277,36 @@ public sealed class TranscriptMarkdownNormalizerTests {
         var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
 
         Assert.Equal("- **AD2** eher Secure-Channel", normalized);
+    }
+
+    /// <summary>
+    /// Ensures bullet repairs do not run inside fenced code blocks, including host-label and unicode-dash variants.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotApplyLineStartBulletRepairsInsideFencedCode() {
+        var text = """
+                   ```text
+                   -AD1
+                   -** AD2** eher Secure-Channel
+                   —** AD3** eher Policy
+                   ```
+                   """;
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures streaming preview sanitizer performs lightweight line-start repairs without full markdown reshaping.
+    /// </summary>
+    [Fact]
+    public void NormalizeForStreamingPreview_RepairsLineStartBulletsConservatively() {
+        var text = "-AD1\nstarkes Muster\n—** AD2** eher Secure-Channel";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(text);
+
+        Assert.Equal("- AD1 starkes Muster\n- **AD2** eher Secure-Channel", normalized);
     }
 
     /// <summary>

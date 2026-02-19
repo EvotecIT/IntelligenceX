@@ -14,6 +14,8 @@ internal static class TranscriptMarkdownNormalizer {
     // Hard stop for nested-strong flattening; 32 iterations safely handles deeply nested artifacts
     // while guaranteeing convergence on malformed inputs.
     private const int StrongFlattenMaxIterations = 32;
+    // Keeps labeled-bullet prefix capture bounded while still supporting long localized labels.
+    private const int LabeledOuterStrongPrefixMaxChars = 120;
 
     private static readonly Regex EmojiWordJoinRegex = new(
         @"([✅☑✔❌⚠🔥])(?!\s)(?=[\p{L}\p{N}])",
@@ -67,16 +69,12 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?m)^(?<indent>\s*)-(?=[A-Z]{2,}\d+\b)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex LineStartWordBulletRegex = new(
-        @"(?m)^(?<indent>\s*)-(?=[\p{Lu}][\p{L}\p{N}]{1,}\b)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     private static readonly Regex SingleStarMetricRegex = new(
         @"(?<=\s)-\*(?=[A-Za-z])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex LabeledOuterStrongLineRegex = new(
-        @"(?m)^(?<prefix>\s*-\s+[^*\r\n]{2,120}\s+\*\*)(?<body>[^\r\n]*)(?<suffix>\*\*)(?<tail>\s*)$",
+        @"(?m)^(?<prefix>\s*-\s+[^*\r\n]{2," + LabeledOuterStrongPrefixMaxChars.ToString(CultureInfo.InvariantCulture) + @"}\s+\*\*)(?<body>[^\r\n]*)(?<suffix>\*\*)(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex SentenceCollapsedBulletRegex = new(
@@ -198,7 +196,6 @@ internal static class TranscriptMarkdownNormalizer {
             value = LineStartUnicodeDashBulletRegex.Replace(value, "${indent}-");
             value = LineStartMissingSpaceBeforeBoldBulletRegex.Replace(value, "${indent}- ");
             value = LineStartHostLabelBulletRegex.Replace(value, "${indent}- ");
-            value = LineStartWordBulletRegex.Replace(value, "${indent}- ");
             value = SingleStarMetricRegex.Replace(value, "- **");
             value = LabeledOuterStrongLineRegex.Replace(value, static match => {
                 var body = match.Groups["body"].Value;
@@ -245,6 +242,28 @@ internal static class TranscriptMarkdownNormalizer {
             value = ExpandCollapsedMetricLines(value);
             value = ConvertLegacyMetricMarkdown(value);
             return RestoreInlineCodeSpans(value, codeSpans, tokenPrefix);
+        });
+    }
+
+    /// <summary>
+    /// Lightweight sanitizer for partial streaming text before render.
+    /// Keeps edits conservative to avoid reshaping incomplete markdown while still removing
+    /// the most common visually-breaking artifacts seen in deltas.
+    /// </summary>
+    public static string NormalizeForStreamingPreview(string? text) {
+        var normalized = text ?? string.Empty;
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
+            var value = ZeroWidthWhitespaceRegex.Replace(segment, string.Empty);
+            value = LineStartUnicodeDashBulletRegex.Replace(value, "${indent}-");
+            value = LineStartMissingSpaceBeforeBoldBulletRegex.Replace(value, "${indent}- ");
+            value = LineStartHostLabelBulletRegex.Replace(value, "${indent}- ");
+            value = LeadingWhitespaceInsideStrongOpenRegex.Replace(value, "**");
+            value = MergeSplitHostLabelBullets(value);
+            return value;
         });
     }
 
