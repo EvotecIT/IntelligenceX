@@ -23,6 +23,42 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures zero-width joiners required for emoji composition are preserved.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesEmojiJoiners() {
+        var text = "Engineer emoji: 👩‍💻 stays intact.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures zero-width non-joiners used in script text are preserved.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesScriptNonJoiners() {
+        var text = "Persian sample: می‌خواهم this should stay unchanged.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures cleanup still removes zero-width spacing artifacts that break markdown readability.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RemovesZeroWidthSpaceArtifacts() {
+        var text = "Item\u200BOne";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("ItemOne", normalized);
+    }
+
+    /// <summary>
     /// Ensures ordered-list markers in <c>1)</c> form are normalized for markdown engines that require <c>1.</c>.
     /// </summary>
     [Fact]
@@ -165,6 +201,19 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures legacy repair detection catches host-label bullet artifacts without spaces after dashes.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_DetectsHostLabelBulletArtifacts() {
+        var malformed = "-AD1 starkes Muster\n-AD2 eher Secure-Channel";
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Equal("- AD1 starkes Muster\n- AD2 eher Secure-Channel", fixedText);
+    }
+
+    /// <summary>
     /// Ensures normalization does not rewrite markdown artifacts inside fenced code blocks.
     /// </summary>
     [Fact]
@@ -224,6 +273,79 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures line-start hyphenated prose is not rewritten as a markdown bullet.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotRewriteLeadingHyphenatedProseWord() {
+        var text = "-Windows-only behavior remains valid prose.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures split host-label bullets are merged with their continuation line so markdown stays list-parseable.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_MergesSplitHostLabelBulletContinuationLines() {
+        var text =
+            "-AD1\n"
+            + "starkes Muster von Dienstabbrüchen/-fehlern (`7034/7023`).\n"
+            + "-** AD2**\n"
+            + "eher Secure-Channel/TLS/Policy/Power-Signale (`3210/1129/36874/41`).";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "- AD1 starkes Muster von Dienstabbrüchen/-fehlern (`7034/7023`).\n"
+            + "- **AD2** eher Secure-Channel/TLS/Policy/Power-Signale (`3210/1129/36874/41`).",
+            normalized);
+    }
+
+    /// <summary>
+    /// Ensures Unicode dash bullets normalize to ASCII list markers for consistent markdown parsing.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_NormalizesUnicodeDashBulletMarkers() {
+        var text = "–** AD2** eher Secure-Channel";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- **AD2** eher Secure-Channel", normalized);
+    }
+
+    /// <summary>
+    /// Ensures bullet repairs do not run inside fenced code blocks, including host-label and unicode-dash variants.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotApplyLineStartBulletRepairsInsideFencedCode() {
+        var text = """
+                   ```text
+                   -AD1
+                   -** AD2** eher Secure-Channel
+                   —** AD3** eher Policy
+                   ```
+                   """;
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures streaming preview sanitizer performs lightweight line-start repairs without full markdown reshaping.
+    /// </summary>
+    [Fact]
+    public void NormalizeForStreamingPreview_RepairsLineStartBulletsConservatively() {
+        var text = "-AD1\nstarkes Muster\n—** AD2** eher Secure-Channel";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(text);
+
+        Assert.Equal("- AD1 starkes Muster\n- **AD2** eher Secure-Channel", normalized);
+    }
+
+    /// <summary>
     /// Ensures nested strong markers inside signal bullets are flattened into one strong span.
     /// </summary>
     [Fact]
@@ -234,6 +356,73 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         Assert.Equal("- Signal **AD1 has very high `7034/7023` volume, mostly from Service Control Manager.**", normalized);
         Assert.DoesNotContain("from **Service", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures nested strong markers are flattened for labeled bullets that use a full-line outer strong span.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FlattensNestedStrongMarkersInsideLabeledBullets() {
+        var text = "- Why it matters **Current comparison used **System** log only.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- Why it matters **Current comparison used System log only.**", normalized);
+        Assert.DoesNotContain("used **System", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures sentence-collapsed bullets are split into separate list lines.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_SplitsSentenceCollapsedBulletsWithStrongLabels() {
+        var text = "- AD1 starkes Muster von Dienstabbrüchen.-** AD2** eher Secure-Channel/TLS";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- AD1 starkes Muster von Dienstabbrüchen.\n- **AD2** eher Secure-Channel/TLS", normalized);
+    }
+
+    /// <summary>
+    /// Ensures labeled bullets with multiple intentional strong spans are preserved.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotFlattenIndependentStrongSpansInLabeledBullet() {
+        var text = "- Note **One** and **Two**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
+    }
+
+    /// <summary>
+    /// Ensures transcript artifacts observed in real chat exports normalize into stable markdown.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RepairsKnownTranscriptArtifacts() {
+        var text = string.Join('\n', [
+            "- Signal **AD1 has very high `7034/7023` volume, mostly from **Service Control Manager**.**",
+            "- Signal **Current comparison used **System** log only.**",
+            "- **AD1** starkes Muster von Dienstabbrüchen.-** AD2** eher Secure-Channel/TLS"
+        ]);
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("- Signal **AD1 has very high `7034/7023` volume, mostly from Service Control Manager.**", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("- Signal **Current comparison used System log only.**", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("- **AD1** starkes Muster von Dienstabbrüchen.\n- **AD2** eher Secure-Channel/TLS", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures sentence-collapsed bullets after a closing parenthesis are split and normalized.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_SplitsSentenceCollapsedBulletsAfterClosingParenthesis() {
+        var text = "- AD1 Muster (`7034/7023`).-** AD2** eher Secure-Channel";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- AD1 Muster (`7034/7023`).\n- **AD2** eher Secure-Channel", normalized);
     }
 
     /// <summary>

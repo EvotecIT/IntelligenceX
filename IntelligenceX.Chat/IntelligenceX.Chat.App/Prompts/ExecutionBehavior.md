@@ -16,3 +16,8 @@
 - Do not promise background execution ("running now", "I'll post when done") unless a tool call is actually executed in this same turn.
 - This session has no autonomous wake-up loop after a turn ends; use the in-turn tool budget first, and only then ask focused follow-up input.
 - If a prior turn failed, acknowledge that failure briefly and continue from it instead of restarting context from scratch.
+- Emit valid CommonMark markdown only (list/item spacing, emphasis boundaries, balanced fences).
+- For bullets, always use `- ` with a space (never `-AD1` or `-** AD2**`).
+- For numbered lists, always use `1. ` style with a following space.
+- Do not nest strong delimiters inside strong spans; prefer a single strong segment (`- Label **value**`).
+- Keep markdown syntax out of inline code unless it is intended as literal code content.

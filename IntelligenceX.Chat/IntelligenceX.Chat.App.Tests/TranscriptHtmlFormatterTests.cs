@@ -272,4 +272,50 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("from **Service", html, StringComparison.Ordinal);
         Assert.DoesNotContain("**.**", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures split host-label bullets render as proper list items when label and sentence arrive on separate lines.
+    /// </summary>
+    [Fact]
+    public void Format_RepairsSplitHostLabelBulletsIntoRenderableListItems() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 19, 9, 7, 51, DateTimeKind.Local);
+        var text = """
+                   **Bewertung:**
+                   Ja, es gibt auffällige Unterschiede (nicht symmetrisch):
+                   -AD1
+                   starkes Muster von Dienstabbrüchen/-fehlern (`7034/7023`).
+                   -** AD2**
+                   eher Secure-Channel/TLS/Policy/Power-Signale (`3210/1129/36874/41`).
+                   """;
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<li>AD1", html, StringComparison.Ordinal);
+        Assert.Contains("starkes Muster von Dienstabbr", html, StringComparison.Ordinal);
+        Assert.Contains("7034/7023", html, StringComparison.Ordinal);
+        Assert.Contains("<li><strong>AD2</strong>", html, StringComparison.Ordinal);
+        Assert.Contains("3210/1129/36874/41", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("-AD1", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("-** AD2**", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures unicode-dash bullets are normalized before markdown render so list HTML is stable.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesUnicodeDashBulletsForDisplayHtml() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 19, 10, 12, 0, DateTimeKind.Local);
+        var text = "—** AD2** eher Secure-Channel/TLS";
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<li><strong>AD2</strong> eher Secure-Channel/TLS</li>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("—** AD2**", html, StringComparison.Ordinal);
+    }
 }
