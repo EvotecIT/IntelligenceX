@@ -58,60 +58,50 @@ internal static class SmtpProbePolicy {
             throw new ArgumentNullException(nameof(smtpOptions));
         }
 
-        if (!options.RequireSuccessfulSmtpProbeForSend) {
+        var validation = ToolAuthenticationProbeValidator.Validate(new ToolAuthenticationProbeValidationRequest {
+            RequireProbe = options.RequireSuccessfulSmtpProbeForSend,
+            ProbeStore = options.AuthenticationProbeStore,
+            ProbeId = probeId,
+            ExpectedProbeToolName = ProbeToolName,
+            ExpectedAuthenticationContractId = ToolAuthenticationContract.DefaultContractId,
+            ExpectedTargetFingerprint = BuildTargetFingerprint(smtpOptions),
+            MaxAge = TimeSpan.FromSeconds(options.SmtpProbeMaxAgeSeconds),
+            NowUtc = nowUtc
+        });
+        if (validation.IsValid) {
             errorCode = string.Empty;
             error = string.Empty;
             return true;
         }
 
-        if (string.IsNullOrWhiteSpace(probeId)) {
-            errorCode = "smtp_probe_required";
-            error = $"auth_probe_id is required when strict SMTP probe gating is enabled. Run {ProbeToolName} first.";
-            return false;
+        var normalizedProbeId = probeId?.Trim() ?? string.Empty;
+        switch (validation.Failure) {
+            case ToolAuthenticationProbeValidationFailure.ProbeRequired:
+                errorCode = "smtp_probe_required";
+                error = $"auth_probe_id is required when strict SMTP probe gating is enabled. Run {ProbeToolName} first.";
+                break;
+            case ToolAuthenticationProbeValidationFailure.ProbeStoreUnavailable:
+                errorCode = "smtp_probe_unavailable";
+                error = "SMTP probe validation store is not available.";
+                break;
+            case ToolAuthenticationProbeValidationFailure.ProbeNotFound:
+                errorCode = "smtp_probe_not_found";
+                error = $"auth_probe_id '{normalizedProbeId}' was not found. Run {ProbeToolName} first.";
+                break;
+            case ToolAuthenticationProbeValidationFailure.ProbeNotSuccessful:
+                errorCode = "smtp_probe_not_successful";
+                error = $"auth_probe_id '{normalizedProbeId}' does not represent a successful SMTP probe.";
+                break;
+            case ToolAuthenticationProbeValidationFailure.ProbeExpired:
+                errorCode = "smtp_probe_expired";
+                error = $"auth_probe_id '{normalizedProbeId}' expired. Run {ProbeToolName} again.";
+                break;
+            default:
+                errorCode = "smtp_probe_incompatible";
+                error = $"auth_probe_id '{normalizedProbeId}' does not match current SMTP endpoint/auth settings.";
+                break;
         }
 
-        if (!options.AuthenticationProbeStore.TryGet(probeId, out var probeRecord)) {
-            errorCode = "smtp_probe_not_found";
-            error = $"auth_probe_id '{probeId.Trim()}' was not found. Run {ProbeToolName} first.";
-            return false;
-        }
-
-        if (!probeRecord.IsSuccessful) {
-            errorCode = "smtp_probe_not_successful";
-            error = $"auth_probe_id '{probeId.Trim()}' does not represent a successful SMTP probe.";
-            return false;
-        }
-
-        if (!string.Equals(probeRecord.ToolName, ProbeToolName, StringComparison.OrdinalIgnoreCase)) {
-            errorCode = "smtp_probe_incompatible";
-            error = $"auth_probe_id '{probeId.Trim()}' is not an SMTP probe.";
-            return false;
-        }
-        if (!string.Equals(
-                probeRecord.AuthenticationContractId,
-                ToolAuthenticationContract.DefaultContractId,
-                StringComparison.OrdinalIgnoreCase)) {
-            errorCode = "smtp_probe_incompatible";
-            error = $"auth_probe_id '{probeId.Trim()}' does not match expected authentication contract.";
-            return false;
-        }
-
-        var expectedFingerprint = BuildTargetFingerprint(smtpOptions);
-        if (!string.Equals(probeRecord.TargetFingerprint, expectedFingerprint, StringComparison.Ordinal)) {
-            errorCode = "smtp_probe_incompatible";
-            error = $"auth_probe_id '{probeId.Trim()}' does not match current SMTP endpoint/auth settings.";
-            return false;
-        }
-
-        var maxAge = TimeSpan.FromSeconds(options.SmtpProbeMaxAgeSeconds);
-        if (probeRecord.ProbedAtUtc + maxAge < nowUtc) {
-            errorCode = "smtp_probe_expired";
-            error = $"auth_probe_id '{probeId.Trim()}' expired. Run {ProbeToolName} again.";
-            return false;
-        }
-
-        errorCode = string.Empty;
-        error = string.Empty;
-        return true;
+        return false;
     }
 }
