@@ -19,12 +19,7 @@ Issue Ops gives maintainers one triage surface where every recommendation includ
 The project view below is optimized for issue triage at scale.
 You can quickly separate likely-invalid blockers from items that still need active ownership.
 
-<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg"
-     alt="Issue Ops project board view with open infra blocker issues, status, linked pull request columns, and quick filtering for maintainer triage"
-     width="1600"
-     height="900"
-     loading="lazy"
-     decoding="async" />
+<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg" alt="Issue Ops project board view with open infra blocker issues, status, linked pull request columns, and quick filtering for maintainer triage" width="1600" height="900" loading="lazy" decoding="async" />
 
 ## Signals That Matter
 
@@ -35,12 +30,7 @@ Each issue recommendation includes:
 - linked PR context (`Matched Pull Request`, related PRs)
 - supporting confidence signals (stale age, reopen history, activity recency)
 
-<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg"
-     alt="Issue Ops table columns showing Issue Review Action, confidence score, and linked pull request matching used for stale infra blocker triage"
-     width="1600"
-     height="900"
-     loading="lazy"
-     decoding="async" />
+<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg" alt="Issue Ops table columns showing Issue Review Action, confidence score, and linked pull request matching used for stale infra blocker triage" width="1600" height="900" loading="lazy" decoding="async" />
 
 ## Safety First
 
@@ -60,7 +50,4 @@ intelligencex todo project-sync --config artifacts/triage/ix-project-config.json
 
 ## Related Docs
 
-- [Project Ops Overview](/docs/project-ops/overview/)
-- [Project Ops Demo Capture Runbook](/docs/project-ops/demo-capture-runbook/)
-- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
-- [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
+- [Project Ops Related Docs Hub](/docs/project-ops/related-docs/)

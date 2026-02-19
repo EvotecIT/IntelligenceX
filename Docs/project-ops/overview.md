@@ -26,12 +26,7 @@ Project Ops is assistive automation, not autonomous production governance.
 
 Issue Ops creates a maintainer-focused board view for stale/no-longer-applicable blockers:
 
-<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg"
-     alt="Issue Ops project board overview with issue review action and confidence fields visible for infra blocker triage"
-     width="1600"
-     height="900"
-     loading="lazy"
-     decoding="async" />
+<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-01-board-overview.svg" alt="Issue Ops project board overview with issue review action and confidence fields visible for infra blocker triage" width="1600" height="900" loading="lazy" decoding="async" />
 
 Key decision fields are synced directly to project rows:
 
@@ -40,12 +35,7 @@ Key decision fields are synced directly to project rows:
 - `Matched Pull Request`
 - `Signal Quality`
 
-<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg"
-     alt="Issue Ops table detail with action confidence and matched pull request columns used during issue applicability review"
-     width="1600"
-     height="900"
-     loading="lazy"
-     decoding="async" />
+<img src="/assets/screenshots/ix-issue-ops/ix-issue-ops-02-review-columns.svg" alt="Issue Ops table detail with action confidence and matched pull request columns used during issue applicability review" width="1600" height="900" loading="lazy" decoding="async" />
 
 ## Recommended start
 
@@ -57,7 +47,4 @@ intelligencex todo project-sync --config artifacts/triage/ix-project-config.json
 
 ## Related docs
 
-- [Project Ops Demo Capture Runbook](/docs/project-ops/demo-capture-runbook/)
-- [Projects + PR Monitoring](/docs/reviewer/projects-pr-monitoring/)
-- [Project Bootstrap and Sync](/docs/reviewer/project-bootstrap-sync/)
-- [Project Views and Operations](/docs/reviewer/project-views-and-ops/)
+- [Project Ops Related Docs Hub](/docs/project-ops/related-docs/)
