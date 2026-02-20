@@ -66,7 +66,7 @@
   }
 
   function handleTranscriptNavKey(e) {
-    if (document.body.classList.contains("data-view-open")) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_NONE) {
       return false;
     }
 
@@ -74,31 +74,15 @@
       return false;
     }
 
-    var step = Math.max(120, Math.floor(transcript.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        transcript.scrollTop += step;
-        return true;
-      case "PageUp":
-        transcript.scrollTop -= step;
-        return true;
-      case "Home":
-        transcript.scrollTop = 0;
-        return true;
-      case "End":
-        transcript.scrollTop = transcript.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(transcript, e.key, 120);
   }
 
   function handleDataViewNavKey(e) {
-    if (!document.body.classList.contains("data-view-open")) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_DATA_VIEW) {
       return false;
     }
 
-    var target = byId("dataViewBody");
+    var target = getModalPrimaryScrollTarget(IX_MODAL_MODE_DATA_VIEW);
     if (!target) {
       return false;
     }
@@ -107,31 +91,33 @@
       return false;
     }
 
-    var step = Math.max(140, Math.floor(target.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        target.scrollTop += step;
-        return true;
-      case "PageUp":
-        target.scrollTop -= step;
-        return true;
-      case "Home":
-        target.scrollTop = 0;
-        return true;
-      case "End":
-        target.scrollTop = target.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(target, e.key, 140);
   }
 
-  function handleOptionsNavKey(e) {
-    if (!document.body.classList.contains("options-open")) {
+  function handleVisualViewNavKey(e) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_VISUAL_VIEW) {
       return false;
     }
 
-    if (!optionsBody) {
+    var target = getModalPrimaryScrollTarget(IX_MODAL_MODE_VISUAL_VIEW);
+    if (!target) {
+      return false;
+    }
+
+    if (isEditableElement(document.activeElement)) {
+      return false;
+    }
+
+    return applyPagedScrollKey(target, e.key, 140);
+  }
+
+  function handleOptionsNavKey(e) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_OPTIONS) {
+      return false;
+    }
+
+    var target = getModalPrimaryScrollTarget(IX_MODAL_MODE_OPTIONS);
+    if (!target) {
       return false;
     }
 
@@ -139,23 +125,7 @@
       return false;
     }
 
-    var step = Math.max(120, Math.floor(optionsBody.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        optionsBody.scrollTop += step;
-        return true;
-      case "PageUp":
-        optionsBody.scrollTop -= step;
-        return true;
-      case "Home":
-        optionsBody.scrollTop = 0;
-        return true;
-      case "End":
-        optionsBody.scrollTop = optionsBody.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(target, e.key, 120);
   }
 
   window.ixSetTheme = function(vars) {
@@ -328,13 +298,57 @@
     renderOptions();
   };
 
-  function isNearBottom(el) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  var transcriptFollowState = {
+    enabled: true,
+    suppressScrollEvent: false
+  };
+
+  function isNearBottom(el, thresholdPx) {
+    if (!el) {
+      return true;
+    }
+
+    var threshold = Number(thresholdPx);
+    if (!Number.isFinite(threshold)) {
+      threshold = 80;
+    }
+
+    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }
+
+  function setTranscriptScrollTop(top) {
+    transcriptFollowState.suppressScrollEvent = true;
+    transcript.scrollTop = top;
+    transcriptFollowState.suppressScrollEvent = false;
   }
 
   function scrollToBottom(el) {
+    if (!el) {
+      return;
+    }
+
+    if (el === transcript) {
+      transcriptFollowState.suppressScrollEvent = true;
+      el.scrollTop = el.scrollHeight;
+      transcriptFollowState.suppressScrollEvent = false;
+      transcriptFollowState.enabled = true;
+      return;
+    }
+
     el.scrollTop = el.scrollHeight;
   }
+
+  function refreshTranscriptFollowState() {
+    transcriptFollowState.enabled = isNearBottom(transcript, 16);
+  }
+
+  transcript.addEventListener("scroll", function() {
+    if (transcriptFollowState.suppressScrollEvent) {
+      return;
+    }
+    refreshTranscriptFollowState();
+  });
+  refreshTranscriptFollowState();
 
   window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
@@ -347,7 +361,7 @@
       }
       label.textContent = text + timelineSummary;
       el.classList.add("active");
-      if (isNearBottom(transcript)) {
+      if (transcriptFollowState.enabled && isNearBottom(transcript)) {
         scrollToBottom(transcript);
       }
     } else {
@@ -377,8 +391,9 @@
         window.ixWheelDiagRecord("host_forward", { delta: Number(delta) });
       }
 
-      if (document.body.classList.contains("options-open")) {
-        var optionsTarget = optionsBody;
+      var modalMode = getActiveModalMode();
+      if (modalMode === IX_MODAL_MODE_OPTIONS) {
+        var optionsTarget = getModalPrimaryScrollTarget(IX_MODAL_MODE_OPTIONS);
         var selectMenu = openCustomSelect ? openCustomSelect.querySelector(".ix-select-menu") : null;
         if (selectMenu) {
           optionsTarget = selectMenu;
@@ -390,22 +405,37 @@
           if (window.ixWheelDiagRecord) {
             window.ixWheelDiagRecord(optionsTarget.scrollTop !== optionsBefore ? "applied" : "not_applied", {
               deltaY: amount,
-              zone: "options"
+              zone: resolveWheelZoneName(modalMode)
             });
           }
         }
         return;
       }
 
-      if (document.body.classList.contains("data-view-open")) {
-        var dataTarget = dataViewBody;
+      if (modalMode === IX_MODAL_MODE_DATA_VIEW) {
+        var dataTarget = getModalPrimaryScrollTarget(IX_MODAL_MODE_DATA_VIEW);
         if (dataTarget) {
           var dataBefore = dataTarget.scrollTop;
           dataTarget.scrollTop += amount;
           if (window.ixWheelDiagRecord) {
             window.ixWheelDiagRecord(dataTarget.scrollTop !== dataBefore ? "applied" : "not_applied", {
               deltaY: amount,
-              zone: "dataView"
+              zone: resolveWheelZoneName(modalMode)
+            });
+          }
+        }
+        return;
+      }
+
+      if (modalMode === IX_MODAL_MODE_VISUAL_VIEW) {
+        var visualTarget = getModalPrimaryScrollTarget(IX_MODAL_MODE_VISUAL_VIEW);
+        if (visualTarget) {
+          var visualBefore = visualTarget.scrollTop;
+          visualTarget.scrollTop += amount;
+          if (window.ixWheelDiagRecord) {
+            window.ixWheelDiagRecord(visualTarget.scrollTop !== visualBefore ? "applied" : "not_applied", {
+              deltaY: amount,
+              zone: resolveWheelZoneName(modalMode)
             });
           }
         }
@@ -549,15 +579,20 @@
     }
   }
 
+  var transcriptRenderRevision = 0;
+
   window.ixSetTranscript = function(html) {
-    var shouldStickBottom = isNearBottom(transcript);
+    var shouldStickBottom = transcriptFollowState.enabled;
     var previousTop = transcript.scrollTop;
+    var stickAnchorTop = -1;
+    var renderRevision = ++transcriptRenderRevision;
+    var visualRenderTask = null;
     if (window.ixDisposeTranscriptVisuals) {
       window.ixDisposeTranscriptVisuals(transcript);
     }
     transcript.innerHTML = html || "";
     if (window.ixRenderTranscriptVisuals) {
-      window.ixRenderTranscriptVisuals(transcript);
+      visualRenderTask = window.ixRenderTranscriptVisuals(transcript);
     }
     if (window.ixEnhanceTranscriptTables) {
       window.ixEnhanceTranscriptTables(transcript);
@@ -568,8 +603,30 @@
     setupCodeCopyButtons();
     setupTableCopyButtons();
     if (shouldStickBottom) {
-      transcript.scrollTop = transcript.scrollHeight;
+      scrollToBottom(transcript);
+      stickAnchorTop = transcript.scrollTop;
     } else {
-      transcript.scrollTop = previousTop;
+      setTranscriptScrollTop(previousTop);
+    }
+
+    if (shouldStickBottom && visualRenderTask && typeof visualRenderTask.then === "function") {
+      visualRenderTask.then(function() {
+        if (renderRevision !== transcriptRenderRevision) {
+          return;
+        }
+
+        if (!transcriptFollowState.enabled) {
+          return;
+        }
+
+        // If user intentionally scrolled away from the follow position, do not force-pin.
+        if (stickAnchorTop >= 0 && transcript.scrollTop < (stickAnchorTop - 40)) {
+          return;
+        }
+
+        scrollToBottom(transcript);
+      }).catch(function() {
+        // Ignore visual rendering failures; transcript already has raw fallback blocks.
+      });
     }
   };

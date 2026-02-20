@@ -435,6 +435,58 @@ public sealed partial class MainWindow : Window {
                         await HandleDataViewExportActionAsync(action, path).ConfigureAwait(true);
                         break;
                     }
+                case "pick_visual_export_path":
+                    {
+                        var requestId = (TryGetString(root, "requestId") ?? string.Empty).Trim();
+                        var format = (TryGetString(root, "format") ?? string.Empty).Trim();
+                        var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                        if (!TryNormalizeVisualExportFormat(format, out var normalizedVisualFormat)) {
+                            await NotifyVisualExportPathSelectedAsync(
+                                requestId,
+                                ok: false,
+                                path: null,
+                                message: "Unsupported visual export format.",
+                                canceled: false).ConfigureAwait(true);
+                            break;
+                        }
+
+                        await PickVisualExportPathAsync(requestId, normalizedVisualFormat, title).ConfigureAwait(true);
+                        break;
+                    }
+                case "export_visual_artifact":
+                    {
+                        var exportId = (TryGetString(root, "exportId") ?? string.Empty).Trim();
+                        var format = (TryGetString(root, "format") ?? string.Empty).Trim();
+                        var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                        var outputPath = (TryGetString(root, "outputPath") ?? string.Empty).Trim();
+                        var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
+                        var dataBase64 = TryGetString(root, "dataBase64") ?? string.Empty;
+                        if (!TryNormalizeVisualExportFormat(format, out var normalizedVisualFormat)) {
+                            await NotifyVisualExportResultAsync(exportId, format, ok: false, filePath: null, message: "Unsupported visual export format.").ConfigureAwait(true);
+                            break;
+                        }
+
+                        if (dataBase64.Length > MaxVisualExportBase64Chars) {
+                            await NotifyVisualExportResultAsync(exportId, normalizedVisualFormat, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(true);
+                            break;
+                        }
+
+                        if (outputPath.Length > 0
+                            && !TryNormalizeVisualExportPath(outputPath, normalizedVisualFormat, out outputPath, out var outputPathError)) {
+                            await NotifyVisualExportResultAsync(exportId, normalizedVisualFormat, ok: false, filePath: null, message: outputPathError).ConfigureAwait(true);
+                            break;
+                        }
+
+                        await ExportVisualArtifactAsync(normalizedVisualFormat, title, dataBase64, mimeType, exportId, outputPath).ConfigureAwait(true);
+                        break;
+                    }
+                case "visual_export_action":
+                    {
+                        var action = (TryGetString(root, "action") ?? string.Empty).Trim();
+                        var path = (TryGetString(root, "path") ?? string.Empty).Trim();
+                        await HandleVisualExportActionAsync(action, path).ConfigureAwait(true);
+                        break;
+                    }
             }
         } catch (Exception ex) {
             AppendSystem(SystemNotice.UiMessageError(ex.Message));

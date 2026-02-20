@@ -16,6 +16,7 @@
   var optionsPanel = byId("optionsPanel");
   var optionsBody = optionsPanel.querySelector(".options-body");
   var dataViewBody = byId("dataViewBody");
+  var visualViewBody = byId("visualViewBody");
   var optionsBackdrop = byId("optionsBackdrop");
   var openCustomSelect = null;
   var lastHostWheelAt = 0;
@@ -306,6 +307,121 @@
 
   state.options.profileApplyMode = normalizeProfileApplyMode(readStorage("ixchat.profile.applyMode"));
 
+  var IX_MODAL_MODE_NONE = "none";
+  var IX_MODAL_MODE_OPTIONS = "options";
+  var IX_MODAL_MODE_DATA_VIEW = "dataView";
+  var IX_MODAL_MODE_VISUAL_VIEW = "visualView";
+
+  function getActiveModalMode() {
+    if (document.body.classList.contains("visual-view-open")) {
+      return IX_MODAL_MODE_VISUAL_VIEW;
+    }
+    if (document.body.classList.contains("data-view-open")) {
+      return IX_MODAL_MODE_DATA_VIEW;
+    }
+    if (document.body.classList.contains("options-open")) {
+      return IX_MODAL_MODE_OPTIONS;
+    }
+    return IX_MODAL_MODE_NONE;
+  }
+
+  function getModalPrimaryScrollTarget(mode) {
+    if (mode === IX_MODAL_MODE_VISUAL_VIEW) {
+      return visualViewBody || null;
+    }
+    if (mode === IX_MODAL_MODE_DATA_VIEW) {
+      return dataViewBody || null;
+    }
+    if (mode === IX_MODAL_MODE_OPTIONS) {
+      return optionsBody || null;
+    }
+    return null;
+  }
+
+  function resolveModalWheelScrollTarget(mode, eventTarget) {
+    if (mode === IX_MODAL_MODE_VISUAL_VIEW) {
+      if (eventTarget && eventTarget.closest) {
+        var visualViewScrollTarget = eventTarget.closest("#visualViewBody, .visual-view-panel");
+        if (visualViewScrollTarget) {
+          return visualViewScrollTarget;
+        }
+      }
+
+      return getModalPrimaryScrollTarget(mode);
+    }
+
+    if (mode === IX_MODAL_MODE_DATA_VIEW) {
+      if (eventTarget && eventTarget.closest) {
+        var dataViewScrollTarget = eventTarget.closest(".dt-scroll-body, #dataViewBody, .data-view-panel .dt-layout-cell");
+        if (dataViewScrollTarget) {
+          return dataViewScrollTarget;
+        }
+      }
+
+      return getModalPrimaryScrollTarget(mode);
+    }
+
+    if (mode === IX_MODAL_MODE_OPTIONS) {
+      var openSelectMenu = openCustomSelect ? openCustomSelect.querySelector(".ix-select-menu") : null;
+      if (openSelectMenu && eventTarget && openSelectMenu.contains(eventTarget)) {
+        return openSelectMenu;
+      }
+
+      if (eventTarget && eventTarget.closest) {
+        var optionScrollTarget = eventTarget.closest(".options-body, .options-tools, .options-conversations, .ix-select-menu");
+        if (optionScrollTarget) {
+          return optionScrollTarget;
+        }
+      }
+
+      return getModalPrimaryScrollTarget(mode);
+    }
+
+    return null;
+  }
+
+  function resolveWheelZoneName(mode) {
+    if (mode === IX_MODAL_MODE_VISUAL_VIEW) {
+      return "visualView";
+    }
+    if (mode === IX_MODAL_MODE_DATA_VIEW) {
+      return "dataView";
+    }
+    if (mode === IX_MODAL_MODE_OPTIONS) {
+      return "options";
+    }
+    return "transcript";
+  }
+
+  function applyPagedScrollKey(target, key, minStepPx) {
+    if (!target) {
+      return false;
+    }
+
+    var minimum = Number(minStepPx);
+    if (!Number.isFinite(minimum) || minimum <= 0) {
+      minimum = 120;
+    }
+
+    var step = Math.max(minimum, Math.floor(target.clientHeight * 0.9));
+    switch (key) {
+      case "PageDown":
+        target.scrollTop += step;
+        return true;
+      case "PageUp":
+        target.scrollTop -= step;
+        return true;
+      case "Home":
+        target.scrollTop = 0;
+        return true;
+      case "End":
+        target.scrollTop = target.scrollHeight;
+        return true;
+      default:
+        return false;
+    }
+  }
+
   function isEditableElement(el) {
     if (!el || !el.tagName) {
       return false;
@@ -329,35 +445,10 @@
   }
 
   function resolveWheelScrollTarget(eventTarget) {
-    if (document.body.classList.contains("data-view-open")) {
-      if (eventTarget && eventTarget.closest) {
-        var dataViewScrollTarget = eventTarget.closest(".dt-scroll-body, #dataViewBody, .data-view-panel .dt-layout-cell");
-        if (dataViewScrollTarget) {
-          return dataViewScrollTarget;
-        }
-      }
-
-      if (dataViewBody) {
-        return dataViewBody;
-      }
-    }
-
-    if (document.body.classList.contains("options-open")) {
-      var openSelectMenu = openCustomSelect ? openCustomSelect.querySelector(".ix-select-menu") : null;
-      if (openSelectMenu && eventTarget && openSelectMenu.contains(eventTarget)) {
-        return openSelectMenu;
-      }
-
-      if (eventTarget && eventTarget.closest) {
-        var optionScrollTarget = eventTarget.closest(".options-body, .options-tools, .options-conversations, .ix-select-menu");
-        if (optionScrollTarget) {
-          return optionScrollTarget;
-        }
-      }
-
-      if (optionsBody) {
-        return optionsBody;
-      }
+    var mode = getActiveModalMode();
+    var modalTarget = resolveModalWheelScrollTarget(mode, eventTarget || null);
+    if (modalTarget) {
+      return modalTarget;
     }
 
     return transcript;
@@ -380,24 +471,18 @@
       return true;
     }
 
-    // If nested area cannot move further, route to panel-level scroller.
-    if (document.body.classList.contains("data-view-open") && dataViewBody && target !== dataViewBody) {
-      before = dataViewBody.scrollTop;
-      dataViewBody.scrollTop += amount;
-      if (dataViewBody.scrollTop !== before) {
+    var mode = getActiveModalMode();
+    var modalTarget = getModalPrimaryScrollTarget(mode);
+    if (mode !== IX_MODAL_MODE_NONE && modalTarget && target !== modalTarget) {
+      before = modalTarget.scrollTop;
+      modalTarget.scrollTop += amount;
+      if (modalTarget.scrollTop !== before) {
         return true;
       }
+      return false;
     }
 
-    if (document.body.classList.contains("options-open") && optionsBody && target !== optionsBody) {
-      before = optionsBody.scrollTop;
-      optionsBody.scrollTop += amount;
-      if (optionsBody.scrollTop !== before) {
-        return true;
-      }
-    }
-
-    if (!document.body.classList.contains("data-view-open") && target !== transcript) {
+    if (mode === IX_MODAL_MODE_NONE && target !== transcript) {
       before = transcript.scrollTop;
       transcript.scrollTop += amount;
       return transcript.scrollTop !== before;
@@ -407,6 +492,9 @@
   }
 
   function openOptions() {
+    if (document.body.classList.contains("visual-view-open") && window.ixCloseVisualView) {
+      window.ixCloseVisualView();
+    }
     if (document.body.classList.contains("data-view-open") && window.ixCloseDataView) {
       window.ixCloseDataView();
     }

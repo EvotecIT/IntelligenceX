@@ -13,6 +13,9 @@ using Windows.Storage.Pickers;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
+    private const int MaxVisualExportBytes = 12 * 1024 * 1024;
+    private const int MaxVisualExportBase64Chars = ((MaxVisualExportBytes + 2) / 3) * 4;
+
     private async Task ExportTableArtifactAsync(string format, string title, JsonElement rowsElement, string exportId = "", string? outputPath = null) {
         if (!ExportPreferencesContract.TryNormalizeFormat(format, out var normalizedFormat)) {
             await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.InvalidFormat, normalizedFormat)).ConfigureAwait(false);
@@ -152,6 +155,59 @@ public sealed partial class MainWindow {
         }
     }
 
+    private static bool TryNormalizeVisualExportFormat(string? format, out string normalizedFormat) {
+        normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalizedFormat is "png" or "svg") {
+            return true;
+        }
+
+        normalizedFormat = string.Empty;
+        return false;
+    }
+
+    private async Task PickVisualExportPathAsync(string requestId, string format, string title) {
+        if (string.IsNullOrWhiteSpace(requestId)) {
+            return;
+        }
+
+        if (!TryNormalizeVisualExportFormat(format, out var normalizedFormat)) {
+            await NotifyVisualExportPathSelectedAsync(
+                requestId,
+                ok: false,
+                path: null,
+                message: "Unsupported visual export format.",
+                canceled: false).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            var path = await ShowExportSavePickerAsync(normalizedFormat, title).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(path)) {
+                await NotifyVisualExportPathSelectedAsync(
+                    requestId,
+                    ok: false,
+                    path: null,
+                    message: "Export canceled.",
+                    canceled: true).ConfigureAwait(false);
+                return;
+            }
+
+            await NotifyVisualExportPathSelectedAsync(
+                requestId,
+                ok: true,
+                path: path,
+                message: "Save location selected.",
+                canceled: false).ConfigureAwait(false);
+        } catch (Exception ex) {
+            await NotifyVisualExportPathSelectedAsync(
+                requestId,
+                ok: false,
+                path: null,
+                message: "Failed to open save picker: " + ex.Message,
+                canceled: false).ConfigureAwait(false);
+        }
+    }
+
     private async Task<string?> ShowExportSavePickerAsync(string normalizedFormat, string title) {
         string? selectedPath = null;
         await RunOnUiThreadAsync(async () => {
@@ -161,6 +217,8 @@ public sealed partial class MainWindow {
                 "xlsx" => "Excel Workbook",
                 "docx" => "Word Document",
                 "csv" => "CSV File",
+                "png" => "PNG Image",
+                "svg" => "SVG Image",
                 _ => "Export File"
             };
 
@@ -201,6 +259,8 @@ public sealed partial class MainWindow {
         return normalizedFormat switch {
             "xlsx" => ".xlsx",
             "docx" => ".docx",
+            "png" => ".png",
+            "svg" => ".svg",
             ExportPreferencesContract.FormatMarkdown => ".md",
             _ => ".csv"
         };
@@ -304,6 +364,244 @@ public sealed partial class MainWindow {
         } catch {
             // Ignore UI callback failures for action feedback.
         }
+    }
+
+    private async Task NotifyVisualExportPathSelectedAsync(string requestId, bool ok, string? path, string message, bool canceled) {
+        if (!_webViewReady) {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(new {
+            requestId,
+            ok,
+            path,
+            canceled,
+            message = (message ?? string.Empty).Trim()
+        });
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixOnVisualExportPathSelected && window.ixOnVisualExportPathSelected(" + payload + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            // Ignore UI callback failures; client stays responsive.
+        }
+    }
+
+    private async Task NotifyVisualExportResultAsync(string exportId, string format, bool ok, string? filePath, string message) {
+        if (string.IsNullOrWhiteSpace(exportId) || !_webViewReady) {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(new {
+            exportId,
+            format,
+            ok,
+            filePath,
+            message
+        });
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixOnVisualExportResult && window.ixOnVisualExportResult(" + payload + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            // Ignore UI callback failures; system transcript already reports export status.
+        }
+    }
+
+    private async Task ExportVisualArtifactAsync(string format, string title, string dataBase64, string mimeType, string exportId = "", string? outputPath = null) {
+        if (!TryNormalizeVisualExportFormat(format, out var normalizedFormat)) {
+            await NotifyVisualExportResultAsync(exportId, format, ok: false, filePath: null, message: "Unsupported visual export format.").ConfigureAwait(false);
+            return;
+        }
+
+        var normalizedMimeType = (mimeType ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalizedFormat == "svg" && normalizedMimeType.Length > 0 && normalizedMimeType != "image/svg+xml") {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "SVG export payload mime type is invalid.").ConfigureAwait(false);
+            return;
+        }
+        if (normalizedFormat == "png" && normalizedMimeType.Length > 0 && normalizedMimeType != "image/png") {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "PNG export payload mime type is invalid.").ConfigureAwait(false);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(dataBase64)) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Missing visual export data.").ConfigureAwait(false);
+            return;
+        }
+
+        var payload = dataBase64;
+        if (payload.Length > MaxVisualExportBase64Chars) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(false);
+            return;
+        }
+
+        byte[] bytes;
+        try {
+            bytes = Convert.FromBase64String(payload);
+        } catch (Exception ex) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Invalid export payload: " + ex.Message).ConfigureAwait(false);
+            return;
+        }
+
+        if (bytes.Length == 0) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload is empty.").ConfigureAwait(false);
+            return;
+        }
+        if (bytes.Length > MaxVisualExportBytes) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(false);
+            return;
+        }
+
+        var resolvedPath = (outputPath ?? string.Empty).Trim();
+        if (resolvedPath.Length > 0 && !TryNormalizeVisualExportPath(resolvedPath, normalizedFormat, out resolvedPath, out var pathValidationError)) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: pathValidationError).ConfigureAwait(false);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedPath)) {
+            resolvedPath = (await ShowExportSavePickerAsync(normalizedFormat, title).ConfigureAwait(false) ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(resolvedPath)) {
+                await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export canceled.").ConfigureAwait(false);
+                return;
+            }
+
+            if (!TryNormalizeVisualExportPath(resolvedPath, normalizedFormat, out resolvedPath, out pathValidationError)) {
+                await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: pathValidationError).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        try {
+            var dir = Path.GetDirectoryName(resolvedPath);
+            if (!string.IsNullOrWhiteSpace(dir)) {
+                Directory.CreateDirectory(dir);
+            }
+
+            await File.WriteAllBytesAsync(resolvedPath, bytes).ConfigureAwait(false);
+            await UpdateLastExportDirectoryFromFilePathAsync(resolvedPath).ConfigureAwait(false);
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: true, filePath: resolvedPath, message: string.Empty).ConfigureAwait(false);
+        } catch (Exception ex) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Visual export failed: " + ex.Message).ConfigureAwait(false);
+        }
+    }
+
+    private async Task NotifyVisualExportActionResultAsync(bool ok, string message) {
+        if (!_webViewReady) {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(new {
+            ok,
+            message = (message ?? string.Empty).Trim()
+        });
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixOnVisualExportActionResult && window.ixOnVisualExportActionResult(" + payload + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            // Ignore UI callback failures for action feedback.
+        }
+    }
+
+    private async Task OpenVisualExportPathAsync(string path, bool reveal) {
+        try {
+            if (!File.Exists(path)) {
+                await NotifyVisualExportActionResultAsync(ok: false, "Export file no longer exists.").ConfigureAwait(false);
+                return;
+            }
+
+            if (reveal) {
+                var args = "/select,\"" + path.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+                Process.Start(new ProcessStartInfo {
+                    FileName = "explorer.exe",
+                    Arguments = args,
+                    UseShellExecute = true
+                });
+                await NotifyVisualExportActionResultAsync(ok: true, "Opened export location.").ConfigureAwait(false);
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo {
+                FileName = path,
+                UseShellExecute = true
+            });
+            await NotifyVisualExportActionResultAsync(ok: true, "Opened exported file.").ConfigureAwait(false);
+        } catch (Exception ex) {
+            await NotifyVisualExportActionResultAsync(ok: false, "Export action failed: " + ex.Message).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleVisualExportActionAsync(string action, string path) {
+        var normalizedAction = (action ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedPath = (path ?? string.Empty).Trim();
+        if (normalizedAction.Length == 0) {
+            await NotifyVisualExportActionResultAsync(ok: false, "Missing export action.").ConfigureAwait(false);
+            return;
+        }
+
+        if (normalizedPath.Length == 0) {
+            await NotifyVisualExportActionResultAsync(ok: false, "No export path available yet.").ConfigureAwait(false);
+            return;
+        }
+
+        switch (normalizedAction) {
+            case "copy_path":
+                {
+                    var dp = new DataPackage();
+                    dp.SetText(normalizedPath);
+                    Clipboard.SetContent(dp);
+                    Clipboard.Flush();
+                    await NotifyVisualExportActionResultAsync(ok: true, "Export path copied.").ConfigureAwait(false);
+                    return;
+                }
+            case "open":
+                await OpenVisualExportPathAsync(normalizedPath, reveal: false).ConfigureAwait(false);
+                return;
+            case "reveal":
+                await OpenVisualExportPathAsync(normalizedPath, reveal: true).ConfigureAwait(false);
+                return;
+            default:
+                await NotifyVisualExportActionResultAsync(ok: false, "Unknown export action: " + normalizedAction).ConfigureAwait(false);
+                return;
+        }
+    }
+
+    private static bool TryNormalizeVisualExportPath(string path, string normalizedFormat, out string normalizedPath, out string errorMessage) {
+        normalizedPath = string.Empty;
+        errorMessage = "Invalid export path.";
+        var candidate = (path ?? string.Empty).Trim();
+        if (candidate.Length == 0) {
+            errorMessage = "Export path is required.";
+            return false;
+        }
+
+        string fullPath;
+        try {
+            fullPath = Path.GetFullPath(candidate);
+        } catch {
+            errorMessage = "Export path is invalid.";
+            return false;
+        }
+
+        if (!Path.IsPathFullyQualified(fullPath)) {
+            errorMessage = "Export path must be absolute.";
+            return false;
+        }
+
+        var fileName = Path.GetFileName(fullPath);
+        if (string.IsNullOrWhiteSpace(fileName)) {
+            errorMessage = "Export path must include a file name.";
+            return false;
+        }
+
+        var expectedExtension = GetExportFileExtension(normalizedFormat);
+        var currentExtension = Path.GetExtension(fullPath);
+        if (string.IsNullOrWhiteSpace(currentExtension)) {
+            fullPath += expectedExtension;
+        } else if (!string.Equals(currentExtension, expectedExtension, StringComparison.OrdinalIgnoreCase)) {
+            errorMessage = "Export path extension must be " + expectedExtension + ".";
+            return false;
+        }
+
+        normalizedPath = fullPath;
+        return true;
     }
 
     private static string BuildExportArgumentsJson(string format, string title, JsonElement rowsElement, string? outputPath = null) {

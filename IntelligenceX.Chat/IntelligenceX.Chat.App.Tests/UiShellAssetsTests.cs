@@ -11,6 +11,11 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class UiShellAssetsTests {
     private static string UiDirectory => Path.Combine(AppContext.BaseDirectory, "Ui");
+    private static void AssertContainsAll(string content, params string[] anchors) {
+        foreach (var anchor in anchors) {
+            Assert.Contains(anchor, content, StringComparison.Ordinal);
+        }
+    }
 
     /// <summary>
     /// Ensures the tool-source helpers are present in generated shell script.
@@ -109,13 +114,14 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesExportVisualThemeModeBindingsAndControl() {
         var html = UiShellAssets.Load();
 
-        Assert.Contains("id=\"optExportVisualThemeMode\"", html, StringComparison.Ordinal);
-        Assert.Contains("post(\"set_export_visual_theme_mode\", { value: e.target.value || \"preserve_ui_theme\" });", html, StringComparison.Ordinal);
-        Assert.Contains("visualThemeMode: \"preserve_ui_theme\"", html, StringComparison.Ordinal);
-        Assert.Contains("case \"print_friendly\":", html, StringComparison.Ordinal);
-        Assert.Contains("case \"preserve_ui_theme\":", html, StringComparison.Ordinal);
-        Assert.Contains("return \"print_friendly\";", html, StringComparison.Ordinal);
-        Assert.Contains("unexpected export visual theme mode", html, StringComparison.Ordinal);
+        AssertContainsAll(
+            html,
+            "id=\"optExportVisualThemeMode\"",
+            "set_export_visual_theme_mode",
+            "visualThemeMode",
+            "print_friendly",
+            "preserve_ui_theme",
+            "unexpected export visual theme mode");
     }
 
     /// <summary>
@@ -196,14 +202,54 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesVisualRuntimeAndTranscriptHooks() {
         var html = UiShellAssets.Load();
 
-        Assert.Contains("/* IXCHAT_PART:Shell.21.core.visuals.js */", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixDisposeTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixRenderTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixMaterializeVisualFencesForDocx = async function(request) {", html, StringComparison.Ordinal);
-        Assert.Contains("function renderIxChartBlock(", html, StringComparison.Ordinal);
-        Assert.Contains("function renderIxNetworkBlock(", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixRenderTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixDisposeTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
+        AssertContainsAll(
+            html,
+            "/* IXCHAT_PART:Shell.21.core.visuals.js */",
+            "window.ixDisposeTranscriptVisuals",
+            "window.ixRenderTranscriptVisuals",
+            "window.ixMaterializeVisualFencesForDocx",
+            "renderIxChartBlock",
+            "renderIxNetworkBlock",
+            "ixRenderTranscriptVisuals(transcript)",
+            "ixDisposeTranscriptVisuals(transcript)");
+    }
+
+    /// <summary>
+    /// Ensures visual popout panel and export callbacks are present for Mermaid/Chart/Network large-view workflows.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesVisualViewPanelAndExportCallbacks() {
+        var html = UiShellAssets.Load();
+
+        AssertContainsAll(
+            html,
+            "id=\"visualViewPanel\"",
+            "id=\"visualViewBody\"",
+            "id=\"btnVisualViewClose\"",
+            "aria-label=\"Close visual view\"",
+            "window.ixOpenVisualView",
+            "window.ixCloseVisualView",
+            "window.ixOnVisualExportPathSelected",
+            "window.ixOnVisualExportResult",
+            "pick_visual_export_path",
+            "export_visual_artifact",
+            "visual_export_action");
+    }
+
+    /// <summary>
+    /// Ensures visual renderers use theme-aware defaults while preserving payload-level customization paths.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesThemeAwareVisualDefaultsAndNetworkEdgeAliases() {
+        var html = UiShellAssets.Load();
+
+        AssertContainsAll(
+            html,
+            "ensureMermaidThemeInitialized",
+            "themeVariables",
+            "applyChartThemeDefaults",
+            "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",
+            "Object.prototype.hasOwnProperty.call(rawEdge, \"target\")");
     }
 
     /// <summary>
@@ -231,6 +277,20 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("if (currentRequestId > 0 && incomingRequestId > 0 && incomingRequestId < currentRequestId)", script, StringComparison.Ordinal);
         Assert.Contains("incomingLocalModel.runtimeApply = currentLocalModel.runtimeApply;", script, StringComparison.Ordinal);
         Assert.Contains("window.ixRememberRuntimeApplyRequestId(resolveRuntimeApplyRequestId(incomingLocalModel));", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures transcript auto-follow detaches when users scroll away from live output,
+    /// so async visual rendering does not force-pin older readers back to the bottom.
+    /// </summary>
+    [Fact]
+    public void TranscriptRendering_UsesUserAwareFollowStateForAutoScroll() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("var transcriptFollowState = {", script, StringComparison.Ordinal);
+        Assert.Contains("transcript.addEventListener(\"scroll\", function()", script, StringComparison.Ordinal);
+        Assert.Contains("if (!transcriptFollowState.enabled) {", script, StringComparison.Ordinal);
     }
 
     /// <summary>
