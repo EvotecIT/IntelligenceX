@@ -476,6 +476,12 @@ public sealed class ToolPackToolTraitsModel {
 /// Factory for consistent pack guidance models.
 /// </summary>
 public static class ToolPackGuidance {
+    private static readonly HashSet<string> AllowedRoutingRisks = new(StringComparer.Ordinal) {
+        "low",
+        "medium",
+        "high"
+    };
+
     private static readonly string[] TableViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
     private static readonly string[] PagingArgumentNames = { "cursor", "page_size", "offset", "skip", "limit" };
     private static readonly string[] TimeRangeArgumentNames = { "start_time_utc", "end_time_utc", "since_utc", "before_utc", "reference_time_utc" };
@@ -904,6 +910,10 @@ public static class ToolPackGuidance {
         var operation = NormalizeRoutingToken(routing.Operation, "read");
         var entity = NormalizeRoutingToken(routing.Entity, "resource");
         var risk = NormalizeRoutingToken(routing.Risk, "low");
+        if (!AllowedRoutingRisks.Contains(risk)) {
+            risk = "low";
+        }
+
         var source = NormalizeRoutingToken(routing.Source, "inferred");
         if (!string.Equals(source, "explicit", StringComparison.Ordinal) &&
             !string.Equals(source, "inferred", StringComparison.Ordinal)) {

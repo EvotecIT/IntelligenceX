@@ -326,6 +326,34 @@ public class ToolPackGuidanceTests {
         Assert.Equal("inferred", item.Routing.Source);
     }
 
+    [Fact]
+    public void Create_ShouldFallbackInvalidRoutingRiskAndSourceValues() {
+        var model = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: new[] { "system_info" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "system_info",
+                    Description = "System info",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "Host",
+                        Operation = "Read",
+                        Entity = "Host",
+                        Risk = "critical",
+                        Source = "manual"
+                    }
+                }
+            });
+
+        var item = Assert.Single(model.ToolCatalog);
+        Assert.Equal("host", item.Routing.Scope);
+        Assert.Equal("read", item.Routing.Operation);
+        Assert.Equal("host", item.Routing.Entity);
+        Assert.Equal("low", item.Routing.Risk);
+        Assert.Equal("inferred", item.Routing.Source);
+    }
+
     private sealed class StubTool : ITool {
         public StubTool(ToolDefinition definition) {
             Definition = definition;
