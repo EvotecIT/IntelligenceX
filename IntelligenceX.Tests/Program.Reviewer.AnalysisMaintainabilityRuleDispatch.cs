@@ -21,7 +21,7 @@ internal static partial class Program {
                 "analyze run internal dispatch unmapped warning");
 
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL999", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL999",
                 "analyze run internal dispatch unmapped no findings");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -49,7 +49,7 @@ internal static partial class Program {
                 "analyze run internal dispatch ambiguous warning");
 
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item => item.RuleId.Equals("IXLOC001", StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXLOC001",
                 "analyze run internal dispatch ambiguous first handler emits findings");
 
             using var metricsDocument = System.Text.Json.JsonDocument.Parse(
@@ -92,10 +92,8 @@ public sealed class SampleDispatchEventLogTool {
             AssertEqual(false, result.Output.Contains("no registered handler", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal dispatch canonical rule-id registration no unmapped warning");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleDispatchEventLogTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasExactlyOneFinding(findings, "IXTOOL005",
+                "IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleDispatchEventLogTool.cs",
                 "analyze run internal dispatch canonical rule-id registration finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);

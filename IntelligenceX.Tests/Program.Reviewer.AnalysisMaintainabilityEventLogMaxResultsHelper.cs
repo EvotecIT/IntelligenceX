@@ -31,10 +31,8 @@ public sealed class SampleLegacyEventLogBoundedTool {
 
             AssertEqual(0, exit, "analyze run EventLog max helper bounded max_results exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleLegacyEventLogBoundedTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasExactlyOneFinding(findings, "IXTOOL005",
+                "IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleLegacyEventLogBoundedTool.cs",
                 "analyze run EventLog max helper bounded max_results finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -70,11 +68,8 @@ public sealed class SampleLegacyEventLogResolveMaxResultsTool {
 
             AssertEqual(0, exit, "analyze run EventLog max helper legacy ResolveMaxResults exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals(
-                        "IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleLegacyEventLogResolveMaxResultsTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasExactlyOneFinding(findings, "IXTOOL005",
+                "IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleLegacyEventLogResolveMaxResultsTool.cs",
                 "analyze run EventLog max helper legacy ResolveMaxResults finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -114,7 +109,7 @@ public sealed class SampleCanonicalEventLogMaxResultsTool {
 
             AssertEqual(0, exit, "analyze run EventLog max helper explicit helpers exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL005",
                 "analyze run EventLog max helper explicit helpers no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -150,7 +145,7 @@ public sealed class SampleCanonicalEventLogMaxEventsTool {
 
             AssertEqual(0, exit, "analyze run EventLog max helper non-max_results bounded path exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL005",
                 "analyze run EventLog max helper non-max_results bounded path no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -186,10 +181,8 @@ public sealed class SampleNonEventLogBoundedMaxResultsTool {
 
             AssertEqual(0, exit, "analyze run EventLog max helper non-eventlog scope exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleNonEventLogBoundedMaxResultsTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL005",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleNonEventLogBoundedMaxResultsTool.cs",
                 "analyze run EventLog max helper non-eventlog scope no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);

@@ -80,6 +80,65 @@ def {{functionName}}({{inputName}}):
         return list;
     }
 
+    private static int CountFindings(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string? path = null) {
+        if (findings is null || findings.Count == 0 || string.IsNullOrWhiteSpace(ruleId)) {
+            return 0;
+        }
+
+        var hasPath = !string.IsNullOrWhiteSpace(path);
+        return findings.Count(item =>
+            item.RuleId.Equals(ruleId, StringComparison.OrdinalIgnoreCase) &&
+            (!hasPath || item.Path.Equals(path!, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static int CountFindingsByPathSuffix(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string pathSuffix) {
+        if (findings is null || findings.Count == 0 || string.IsNullOrWhiteSpace(ruleId) ||
+            string.IsNullOrWhiteSpace(pathSuffix)) {
+            return 0;
+        }
+
+        return findings.Count(item =>
+            item.RuleId.Equals(ruleId, StringComparison.OrdinalIgnoreCase) &&
+            item.Path.EndsWith(pathSuffix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AssertHasFinding(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string assertionMessage) {
+        AssertEqual(true, CountFindings(findings, ruleId) > 0, assertionMessage);
+    }
+
+    private static void AssertHasFinding(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId, string path,
+        string assertionMessage) {
+        AssertEqual(true, CountFindings(findings, ruleId, path) > 0, assertionMessage);
+    }
+
+    private static void AssertHasExactlyOneFinding(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string path, string assertionMessage) {
+        AssertEqual(1, CountFindings(findings, ruleId, path), assertionMessage);
+    }
+
+    private static void AssertNoFinding(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string assertionMessage) {
+        AssertEqual(0, CountFindings(findings, ruleId), assertionMessage);
+    }
+
+    private static void AssertNoFinding(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId, string path,
+        string assertionMessage) {
+        AssertEqual(0, CountFindings(findings, ruleId, path), assertionMessage);
+    }
+
+    private static void AssertHasFindingWithPathSuffix(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string pathSuffix, string assertionMessage) {
+        AssertEqual(true, CountFindingsByPathSuffix(findings, ruleId, pathSuffix) > 0, assertionMessage);
+    }
+
+    private static void AssertNoFindingWithPathSuffix(IReadOnlyList<(string RuleId, string Path)> findings, string ruleId,
+        string pathSuffix, string assertionMessage) {
+        AssertEqual(0, CountFindingsByPathSuffix(findings, ruleId, pathSuffix), assertionMessage);
+    }
+
     private static (int ExitCode, string Output) RunAnalyzeDuplicationWithConsoleOutput(string workspace, string configPath,
         string outputPath) {
         var originalOut = Console.Out;
@@ -98,4 +157,3 @@ def {{functionName}}({{inputName}}):
     }
 }
 #endif
-

@@ -53,10 +53,8 @@ public sealed class SampleBadAdDomainTool : ActiveDirectoryToolBase, ITool {
 
             AssertEqual(0, exit, "analyze run AD required-domain helper missing canonical path exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL002", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.ADPlayground/SampleBadAdDomainTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXTOOL002",
+                "IntelligenceX.Tools/IntelligenceX.Tools.ADPlayground/SampleBadAdDomainTool.cs",
                 "analyze run AD required-domain helper missing canonical path finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -116,7 +114,7 @@ public sealed class SampleGoodAdDomainTool : ActiveDirectoryToolBase, ITool {
 
             AssertEqual(0, exit, "analyze run AD required-domain helper canonical path exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL002", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL002",
                 "analyze run AD required-domain helper canonical path no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);

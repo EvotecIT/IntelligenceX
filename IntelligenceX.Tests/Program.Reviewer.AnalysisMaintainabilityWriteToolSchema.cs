@@ -37,10 +37,7 @@ public sealed class SampleBadTool {
 
             AssertEqual(0, exit, "analyze run write-tool schema missing helper exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleBadTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXTOOL001", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleBadTool.cs",
                 "analyze run write-tool schema missing helper finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -103,7 +100,7 @@ public sealed class SampleGoodProbeTool {
 
             AssertEqual(0, exit, "analyze run write-tool schema canonical helper exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL001",
                 "analyze run write-tool schema canonical helpers no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -141,7 +138,7 @@ public sealed class SampleReadOnlyTool {
 
             AssertEqual(0, exit, "analyze run write-tool schema read-only exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL001",
                 "analyze run write-tool schema read-only no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -181,7 +178,7 @@ public sealed class SampleAuthOnlyTool {
 
             AssertEqual(0, exit, "analyze run write-tool schema auth-only exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL001", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL001",
                 "analyze run write-tool schema auth-only no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);

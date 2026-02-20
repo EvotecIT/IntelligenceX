@@ -393,7 +393,7 @@ return x
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             AssertEqual(true, File.Exists(findingsPath), "analyze run duplication python triple-quote hash findings exists");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXDUP001",
                 "analyze run duplication python triple-quote hash does not produce false positive");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -473,21 +473,13 @@ public class Oversized {
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
 
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXLOC001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("oversized.cs", StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXLOC001", "oversized.cs",
                 "analyze run include-ext per-rule has csharp max-lines finding");
-            AssertEqual(false, findings.Any(item =>
-                    item.RuleId.Equals("IXLOC001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.EndsWith(".py", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFindingWithPathSuffix(findings, "IXLOC001", ".py",
                 "analyze run include-ext per-rule does not apply csharp max-lines to python");
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.EndsWith(".py", StringComparison.OrdinalIgnoreCase)),
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".py",
                 "analyze run include-ext per-rule applies duplication to python");
-            AssertEqual(false, findings.Any(item =>
-                    item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFindingWithPathSuffix(findings, "IXDUP001", ".cs",
                 "analyze run include-ext per-rule does not apply python duplication to csharp");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -546,9 +538,7 @@ public class Oversized {
             AssertEqual(0, exit, "analyze run duplication language threshold exit");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)),
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".js",
                 "analyze run duplication language threshold uses javascript override");
 
             var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
@@ -612,9 +602,7 @@ public class Oversized {
             AssertEqual(0, exit, "analyze run duplication language-only tag exit");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)),
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".js",
                 "analyze run duplication language-only tag activates duplication rule");
 
             var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
