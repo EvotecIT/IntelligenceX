@@ -639,6 +639,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsOnlyMaxResultsInMixedMetaAdds);
         failed += Run("Analyze run internal max-results metadata helper rule deduplicates same-line matches",
             TestAnalyzeRunInternalMaxResultsMetaHelperRuleDeduplicatesSameLineMatches);
+        failed += Run("Analyze run internal canonical bounded-int helper rule flags legacy helper usage",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleFlagsLegacyHelperUsage);
+        failed += Run("Analyze run internal canonical bounded-int helper rule accepts canonical helper usage",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleAcceptsCanonicalHelperUsage);
+        failed += Run("Analyze run internal canonical bounded-int helper rule ignores ToolArgs implementation file",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolArgsImplementationFile);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",
