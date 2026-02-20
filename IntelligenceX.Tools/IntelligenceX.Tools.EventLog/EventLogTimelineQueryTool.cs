@@ -19,6 +19,8 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
 
     private static readonly string[] CorrelationKeyNames = NamedEventsTimelineQueryExecutor.AllowedCorrelationKeys
         .ToArray();
+    private static readonly string[] CorrelationProfileNames = EventLogTimelineCorrelationProfiles.Names
+        .ToArray();
 
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_timeline_query",
@@ -36,6 +38,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
                 ("max_events_per_named_event", ToolSchema.Integer("Optional per-rule cap to prevent one named event from dominating results.")),
                 ("max_events", ToolSchema.Integer("Maximum events to return (capped).")),
                 ("max_threads", ToolSchema.Integer("Maximum query concurrency (capped).")),
+                ("correlation_profile", ToolSchema.String("Optional correlation profile preset. Cannot be combined with correlation_keys.").Enum(CorrelationProfileNames)),
                 ("correlation_keys", ToolSchema.Array(ToolSchema.String("Correlation field key.").Enum(CorrelationKeyNames), "Optional correlation dimensions. Defaults to who/object_affected/computer.")),
                 ("include_uncorrelated", ToolSchema.Boolean("When false, events missing all correlation key values are excluded from timeline/groups.")),
                 ("max_groups", ToolSchema.Integer("Maximum correlation groups to return (capped).")),
@@ -47,7 +50,8 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
 
     private sealed record TimelineRequest(
         NamedEventsTimelineQueryRequest QueryRequest,
-        IReadOnlyList<string>? Categories);
+        IReadOnlyList<string>? Categories,
+        string? CorrelationProfile);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EventLogTimelineQueryTool"/> class.
@@ -119,8 +123,21 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             }
 
             var rawCorrelationKeys = reader.DistinctStringArray("correlation_keys");
+            var rawCorrelationProfile = reader.OptionalString("correlation_profile");
+            if (rawCorrelationKeys.Count > 0 && !string.IsNullOrWhiteSpace(rawCorrelationProfile)) {
+                return ToolRequestBindingResult<TimelineRequest>.Failure("correlation_profile cannot be combined with correlation_keys.");
+            }
+
+            if (!EventLogTimelineCorrelationProfiles.TryResolve(
+                    rawCorrelationProfile,
+                    out var correlationProfile,
+                    out var profileCorrelationKeys,
+                    out var correlationProfileError)) {
+                return ToolRequestBindingResult<TimelineRequest>.Failure(correlationProfileError ?? "Invalid correlation_profile.");
+            }
+
             IReadOnlyList<string>? correlationKeys = rawCorrelationKeys.Count == 0
-                ? null
+                ? profileCorrelationKeys
                 : rawCorrelationKeys;
 
             var machines = EventLogNamedEventsQueryShared.ResolveMachines(arguments, EventLogNamedEventsQueryShared.MaxMachines);
@@ -145,7 +162,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             };
 
             return ToolRequestBindingResult<TimelineRequest>.Success(
-                new TimelineRequest(queryRequest, categories));
+                new TimelineRequest(queryRequest, categories, correlationProfile));
         });
     }
 
@@ -211,6 +228,9 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
                 }
                 if (request.TimePeriod.HasValue) {
                     meta.Add("time_period", EventLogNamedEventsQueryShared.ToSnakeCase(request.TimePeriod.Value.ToString()));
+                }
+                if (!string.IsNullOrWhiteSpace(context.Request.CorrelationProfile)) {
+                    meta.Add("correlation_profile", context.Request.CorrelationProfile);
                 }
             });
     }
