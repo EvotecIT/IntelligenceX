@@ -471,6 +471,12 @@ public sealed partial class MainWindow : Window {
                             break;
                         }
 
+                        if (outputPath.Length > 0
+                            && !TryNormalizeVisualExportPath(outputPath, normalizedVisualFormat, out outputPath, out var outputPathError)) {
+                            await NotifyVisualExportResultAsync(exportId, normalizedVisualFormat, ok: false, filePath: null, message: outputPathError).ConfigureAwait(true);
+                            break;
+                        }
+
                         await ExportVisualArtifactAsync(normalizedVisualFormat, title, dataBase64, mimeType, exportId, outputPath).ConfigureAwait(true);
                         break;
                     }
