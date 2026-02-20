@@ -613,6 +613,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaintainabilityHelpersPositivePaths);
         failed += Run("Analyze run internal maintainability helper failure includes match count",
             TestAnalyzeRunInternalMaintainabilityHelpersFailureIncludesMatchCount);
+        failed += Run("Analyze run internal maintainability helper path and suffix failure include match count",
+            TestAnalyzeRunInternalMaintainabilityHelpersFailureIncludesMatchCountForPathAndSuffix);
         failed += Run("Analyze run internal maintainability helper rejects empty rule id",
             TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyRuleId);
         failed += Run("Analyze run internal maintainability helper rejects empty path suffix",
