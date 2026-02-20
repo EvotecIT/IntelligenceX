@@ -15,6 +15,8 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow {
     private const int MaxVisualExportBytes = 12 * 1024 * 1024;
     private const int MaxVisualExportBase64Chars = ((MaxVisualExportBytes + 2) / 3) * 4;
+    private const int MaxVisualPopoutBytes = 12 * 1024 * 1024;
+    private const int MaxVisualPopoutBase64Chars = ((MaxVisualPopoutBytes + 2) / 3) * 4;
     private const int MaxVisualPopoutTitleChars = 160;
     private static readonly TimeSpan VisualPopoutRetention = TimeSpan.FromHours(12);
 
@@ -547,7 +549,7 @@ public sealed partial class MainWindow {
             errorMessage = "Missing popout payload.";
             return false;
         }
-        if (payload.Length > MaxVisualExportBase64Chars) {
+        if (payload.Length > MaxVisualPopoutBase64Chars) {
             errorMessage = "Popout payload exceeds maximum allowed size.";
             return false;
         }
@@ -564,7 +566,7 @@ public sealed partial class MainWindow {
             payloadBytes = Array.Empty<byte>();
             return false;
         }
-        if (payloadBytes.Length > MaxVisualExportBytes) {
+        if (payloadBytes.Length > MaxVisualPopoutBytes) {
             errorMessage = "Popout payload exceeds maximum allowed size.";
             payloadBytes = Array.Empty<byte>();
             return false;

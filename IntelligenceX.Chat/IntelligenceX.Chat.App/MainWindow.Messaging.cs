@@ -503,7 +503,7 @@ public sealed partial class MainWindow : Window {
                                 await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Unsupported popout mime type.").ConfigureAwait(true);
                                 break;
                             }
-                            if (dataBase64.Length > MaxVisualExportBase64Chars) {
+                            if (dataBase64.Length > MaxVisualPopoutBase64Chars) {
                                 await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
                                 break;
                             }
