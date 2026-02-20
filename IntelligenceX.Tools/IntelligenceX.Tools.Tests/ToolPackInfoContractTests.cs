@@ -140,6 +140,14 @@ public class ToolPackInfoContractTests {
                 Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("entity").GetString()));
                 Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("risk").GetString()));
                 Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("source").GetString()));
+                Assert.Contains(
+                    routing.GetProperty("risk").GetString() ?? string.Empty,
+                    new[] { "low", "medium", "high" },
+                    StringComparer.Ordinal);
+                Assert.Contains(
+                    routing.GetProperty("source").GetString() ?? string.Empty,
+                    new[] { "explicit", "inferred" },
+                    StringComparer.Ordinal);
                 Assert.True(entry.TryGetProperty("required_arguments", out var requiredArguments));
                 Assert.Equal(JsonValueKind.Array, requiredArguments.ValueKind);
                 Assert.True(entry.TryGetProperty("arguments", out var arguments));
