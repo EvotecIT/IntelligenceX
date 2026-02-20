@@ -225,6 +225,8 @@ public sealed class UiShellAssetsTests {
             html,
             "id=\"visualViewPanel\"",
             "id=\"visualViewBody\"",
+            "id=\"btnVisualViewClose\"",
+            "aria-label=\"Close visual view\"",
             "window.ixOpenVisualView",
             "window.ixCloseVisualView",
             "window.ixOnVisualExportPathSelected",
@@ -232,6 +234,7 @@ public sealed class UiShellAssetsTests {
             "pick_visual_export_path",
             "export_visual_artifact",
             "visual_export_action");
+        Assert.DoesNotContain("id=\"btnVisualViewClose\" class=\"options-close\" aria-label=\"Close visual view\">x</button>", html, StringComparison.Ordinal);
     }
 
     /// <summary>

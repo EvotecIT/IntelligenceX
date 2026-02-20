@@ -427,7 +427,7 @@ public sealed partial class MainWindow {
             return;
         }
 
-        var payload = dataBase64.Trim();
+        var payload = dataBase64;
         if (payload.Length > MaxVisualExportBase64Chars) {
             await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(false);
             return;

@@ -123,14 +123,15 @@
   attachWheelListeners(transcript);
   attachWheelListeners(optionsBody);
   attachWheelListeners(dataViewBody);
-  attachWheelListeners(byId("visualViewBody"));
+  var visualWheelBody = byId("visualViewBody");
+  attachWheelListeners(visualWheelBody);
   recordWheelDiag("wheel_listeners_attached", {
     hasWindow: !!window,
     hasDocument: !!document,
     hasTranscript: !!transcript,
     hasOptionsBody: !!optionsBody,
     hasDataViewBody: !!dataViewBody,
-    hasVisualViewBody: !!byId("visualViewBody")
+    hasVisualViewBody: !!visualWheelBody
   });
 
   transcript.addEventListener("pointerdown", function() {
