@@ -63,6 +63,7 @@ public class ToolDefinitionContractTests {
             "eventlog_pack_info",
             "eventlog_named_events_catalog",
             "eventlog_named_events_query",
+            "eventlog_timeline_explain",
             "eventlog_timeline_query",
             "eventlog_top_events",
             "eventlog_evtx_query",

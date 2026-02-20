@@ -30,6 +30,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "eventlog_timeline_explain",
+            new[] { "investigation_goal", "correlation_keys_present", "timeline_count", "groups_count", "filtered_uncorrelated", "prefer_profile", "include_ad_enrichment", "include_payload" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "eventlog_top_events",
             new[] { "log_name", "machine_name", "max_events", "include_message", "session_timeout_ms", "columns", "sort_by", "sort_direction", "top" },
             new[] { "log_name" }

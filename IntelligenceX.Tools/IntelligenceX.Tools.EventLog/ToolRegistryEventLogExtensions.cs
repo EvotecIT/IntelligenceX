@@ -42,6 +42,7 @@ public static class ToolRegistryEventLogExtensions {
         yield return new EventLogProviderListTool(options);
         yield return new EventLogNamedEventsCatalogTool(options);
         yield return new EventLogNamedEventsQueryTool(options);
+        yield return new EventLogTimelineExplainTool(options);
         yield return new EventLogTimelineQueryTool(options);
         yield return new EventLogTopEventsTool(options);
         yield return new EventLogLiveQueryTool(options);
