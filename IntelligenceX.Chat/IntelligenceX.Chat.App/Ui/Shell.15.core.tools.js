@@ -857,6 +857,34 @@
     return "Compatible HTTP runtime";
   }
 
+  function normalizeBridgeSessionState(value) {
+    var normalized = normalizeModelText(value || "").toLowerCase();
+    if (normalized === "connecting" || normalized === "auth-failed" || normalized === "ready") {
+      return normalized;
+    }
+    return "";
+  }
+
+  function resolveBridgeSessionValue(state) {
+    if (state === "ready") {
+      return "Ready";
+    }
+    if (state === "auth-failed") {
+      return "Authentication failed";
+    }
+    return "Connecting";
+  }
+
+  function resolveBridgeSessionStatus(state) {
+    if (state === "ready") {
+      return "supported";
+    }
+    if (state === "auth-failed") {
+      return "unavailable";
+    }
+    return "limited";
+  }
+
   function appendRuntimeCapabilityRow(listEl, name, status, value, note) {
     if (!listEl) {
       return;
@@ -942,6 +970,14 @@
     var reasoningSupportReason = normalizeModelText(data.reasoningSupportReason || "");
     var openAIAuthMode = normalizeOpenAIAuthModeValue(data.openAIAuthMode || "bearer");
     var basicUsername = normalizeModelText(data.openAIBasicUsername || "");
+    var isBridgePreset = data.isBridgePreset === true;
+    var bridgeAccountIdentity = normalizeModelText(data.bridgeAccountIdentity || "");
+    var bridgeSessionState = normalizeBridgeSessionState(data.bridgeSessionState || "");
+    var bridgeSessionDetail = normalizeModelText(data.bridgeSessionDetail || "");
+    if (!isBridgePreset) {
+      var preset = String(data.compatiblePreset || "").trim().toLowerCase();
+      isBridgePreset = preset === "anthropic-bridge" || preset === "gemini-bridge";
+    }
 
     listEl.innerHTML = "";
 
@@ -1017,6 +1053,29 @@
           : "Subscription bridge endpoints typically expect Basic credentials (login + secret/token).";
       }
       appendRuntimeCapabilityRow(listEl, "Authentication", authStatus, authValue, authNote);
+    }
+
+    if (isBridgePreset) {
+      var bridgeNote = bridgeSessionDetail;
+      if (!bridgeNote) {
+        if (bridgeSessionState === "ready") {
+          bridgeNote = bridgeAccountIdentity
+            ? ("Bridge session ready for " + bridgeAccountIdentity + ".")
+            : "Bridge session ready.";
+        } else if (bridgeSessionState === "auth-failed") {
+          bridgeNote = "Bridge authentication failed. Update login/email + secret/token and apply again.";
+        } else {
+          bridgeNote = bridgeAccountIdentity
+            ? ("Connecting to bridge runtime for " + bridgeAccountIdentity + "...")
+            : "Connecting to bridge runtime...";
+        }
+      }
+      appendRuntimeCapabilityRow(
+        listEl,
+        "Bridge session",
+        resolveBridgeSessionStatus(bridgeSessionState),
+        resolveBridgeSessionValue(bridgeSessionState),
+        bridgeNote);
     }
 
     var nativeAccountSlots = Number(data.nativeAccountSlots);
@@ -1200,6 +1259,12 @@
     if (isCompatible && runtimePreset) {
       compatiblePreset = runtimePreset;
     }
+    var isBridgePreset = runtimeCapabilities.isBridgePreset === true
+      || compatiblePreset === "anthropic-bridge"
+      || compatiblePreset === "gemini-bridge";
+    var bridgeAccountIdentity = normalizeModelText(runtimeCapabilities.bridgeAccountIdentity || "");
+    var bridgeSessionState = normalizeBridgeSessionState(runtimeCapabilities.bridgeSessionState || "");
+    var bridgeSessionDetail = normalizeModelText(runtimeCapabilities.bridgeSessionDetail || "");
     var runtimeProviderLabel = normalizeModelText(runtimeCapabilities.providerLabel || "");
     var modelsEndpoint = normalizeModelText(local.modelsEndpoint || "");
     var model = normalizeModelText(local.model || "");
@@ -1260,6 +1325,21 @@
         runtimeAuthHint.textContent = "Copilot subscription runtime uses GitHub Copilot sign-in. API key is not used in this mode.";
       } else if (copilotConnected) {
         runtimeAuthHint.textContent = "Copilot runtime uses a GitHub token in API key. ChatGPT sign-in remains separate.";
+      } else if (isCompatible && isBridgePreset) {
+        if (bridgeSessionState === "auth-failed") {
+          runtimeAuthHint.textContent = bridgeSessionDetail
+            || "Bridge authentication failed. Update login/email + secret/token and apply runtime again.";
+        } else if (bridgeSessionState === "ready") {
+          runtimeAuthHint.textContent = bridgeSessionDetail
+            || (bridgeAccountIdentity
+              ? ("Bridge session ready for " + bridgeAccountIdentity + ".")
+              : "Bridge session ready.");
+        } else {
+          runtimeAuthHint.textContent = bridgeSessionDetail
+            || (bridgeAccountIdentity
+              ? ("Connecting bridge session for " + bridgeAccountIdentity + "... ChatGPT sign-in remains separate.")
+              : "Connecting bridge session... ChatGPT sign-in remains separate.");
+        }
       } else if (isCompatible) {
         runtimeAuthHint.textContent = "Compatible HTTP auth mode: " + openAIAuthMode + ". You can stay signed in to ChatGPT while running other providers.";
       } else {
@@ -1288,6 +1368,12 @@
       }
       if (transport === "native") {
         runtimeText += " | Slot " + String(activeNativeAccountSlot);
+      } else if (isBridgePreset) {
+        var bridgeText = resolveBridgeSessionValue(bridgeSessionState);
+        if (bridgeAccountIdentity) {
+          bridgeText += " (" + bridgeAccountIdentity + ")";
+        }
+        runtimeText += " | Bridge: " + bridgeText;
       }
       runtimeBadge.textContent = runtimeText;
     }
@@ -1304,6 +1390,12 @@
         simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
       } else if (isCopilotCli) {
         simpleHint.textContent = "Copilot subscription runtime is active. Use Sign In to authenticate your GitHub Copilot account.";
+      } else if (isCompatible && isBridgePreset && bridgeSessionState === "auth-failed") {
+        simpleHint.textContent = bridgeSessionDetail || "Bridge authentication failed. Update login/email + secret/token and click Apply Runtime again.";
+      } else if (isCompatible && isBridgePreset && bridgeSessionState === "ready") {
+        simpleHint.textContent = bridgeSessionDetail || "Bridge runtime is active and ready.";
+      } else if (isCompatible && isBridgePreset) {
+        simpleHint.textContent = bridgeSessionDetail || "Bridge runtime is connecting. Model list will refresh once the handshake completes.";
       } else if (copilotConnected) {
         simpleHint.textContent = "GitHub Copilot runtime is active. Use a GitHub token in API key and refresh models.";
       } else if (lmStudioConnected) {
@@ -1902,6 +1994,10 @@
       nativeAccountSlots: runtimeCapabilities.nativeAccountSlots,
       trackedAccounts: runtimeCapabilities.trackedAccounts,
       accountsWithRetrySignals: runtimeCapabilities.accountsWithRetrySignals,
+      isBridgePreset: isBridgePreset,
+      bridgeAccountIdentity: bridgeAccountIdentity,
+      bridgeSessionState: bridgeSessionState,
+      bridgeSessionDetail: bridgeSessionDetail,
       activeNativeAccountSlot: activeNativeAccountSlot,
       accountUsage: accountUsage
     });

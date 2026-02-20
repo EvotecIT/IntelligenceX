@@ -28,6 +28,18 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private const int MaxRoutingInsightPayloadChars = 4096;
+    private static readonly string[] BridgeAuthFailureWarningTokens = {
+        "401",
+        "403",
+        "unauthorized",
+        "forbidden",
+        "authentication failed",
+        "invalid credentials",
+        "invalid username",
+        "invalid password",
+        "invalid token",
+        "auth required"
+    };
 
     private void ClearConversation() {
         var conversation = GetActiveConversation();
@@ -248,6 +260,21 @@ public sealed partial class MainWindow : Window {
         var supportsReasoningControls = SupportsLocalProviderReasoningControls(transport, baseUrl);
         var reasoningSupport = DescribeLocalProviderReasoningSupport(transport, baseUrl);
         var (trackedAccounts, accountsWithRetrySignals) = GetRuntimeUsageCapabilityCounts();
+        var isBridgePreset = string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                             && IsBridgeCompatiblePreset(preset);
+        var bridgeAccountIdentity = ResolveBridgeAccountIdentity(
+            _localProviderOpenAIAccountId,
+            _localProviderOpenAIAuthMode,
+            _localProviderOpenAIBasicUsername);
+        var bridgeSessionState = isBridgePreset
+            ? ResolveBridgeSessionState(
+                Volatile.Read(ref _localProviderApplyInFlight) != 0 || _runtimeApplyActive,
+                _modelListWarning,
+                _availableModels.Length)
+            : string.Empty;
+        var bridgeSessionDetail = isBridgePreset
+            ? ResolveBridgeSessionDetail(bridgeSessionState, bridgeAccountIdentity, _modelListWarning)
+            : string.Empty;
 
         return new {
             providerLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl),
@@ -260,8 +287,87 @@ public sealed partial class MainWindow : Window {
             supportsLiveApply = true,
             requiresProcessRestart = false,
             trackedAccounts,
-            accountsWithRetrySignals
+            accountsWithRetrySignals,
+            isBridgePreset,
+            bridgeAccountIdentity,
+            bridgeSessionState,
+            bridgeSessionDetail
         };
+    }
+
+    internal static bool IsBridgeCompatiblePreset(string? compatiblePreset) {
+        var normalized = (compatiblePreset ?? string.Empty).Trim();
+        return string.Equals(normalized, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "gemini-bridge", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsBridgeAuthFailureWarning(string? warning) {
+        var normalized = (warning ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < BridgeAuthFailureWarningTokens.Length; i++) {
+            if (normalized.Contains(BridgeAuthFailureWarningTokens[i], StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static string ResolveBridgeSessionState(bool applyInFlight, string? warning, int discoveredModels) {
+        if (applyInFlight) {
+            return "connecting";
+        }
+
+        if (IsBridgeAuthFailureWarning(warning)) {
+            return "auth-failed";
+        }
+
+        return discoveredModels > 0 ? "ready" : "connecting";
+    }
+
+    internal static string ResolveBridgeSessionDetail(
+        string? state,
+        string? bridgeAccountIdentity,
+        string? warning) {
+        var normalizedState = (state ?? string.Empty).Trim();
+        var normalizedIdentity = (bridgeAccountIdentity ?? string.Empty).Trim();
+        var normalizedWarning = (warning ?? string.Empty).Trim();
+
+        if (string.Equals(normalizedState, "ready", StringComparison.OrdinalIgnoreCase)) {
+            return normalizedIdentity.Length == 0
+                ? "Bridge session ready."
+                : "Bridge session ready for " + normalizedIdentity + ".";
+        }
+
+        if (string.Equals(normalizedState, "auth-failed", StringComparison.OrdinalIgnoreCase)) {
+            return normalizedWarning.Length == 0
+                ? "Bridge authentication failed. Update login/email + secret/token and apply again."
+                : normalizedWarning;
+        }
+
+        return normalizedIdentity.Length == 0
+            ? "Connecting to bridge runtime..."
+            : "Connecting to bridge runtime for " + normalizedIdentity + "...";
+    }
+
+    private static string ResolveBridgeAccountIdentity(
+        string? openAIAccountId,
+        string? openAIAuthMode,
+        string? openAIBasicUsername) {
+        var normalizedAccountId = (openAIAccountId ?? string.Empty).Trim();
+        if (normalizedAccountId.Length > 0) {
+            return normalizedAccountId;
+        }
+
+        var normalizedAuthMode = (openAIAuthMode ?? string.Empty).Trim();
+        if (!string.Equals(normalizedAuthMode, "basic", StringComparison.OrdinalIgnoreCase)) {
+            return string.Empty;
+        }
+
+        return (openAIBasicUsername ?? string.Empty).Trim();
     }
 
     private (int TrackedAccounts, int AccountsWithRetrySignals) GetRuntimeUsageCapabilityCounts() {

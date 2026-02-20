@@ -51,13 +51,53 @@ public sealed partial class MainWindow : Window {
         }
 
         var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
-        if (baseUrl.Length == 0) {
-            return new ActiveUsageIdentity("compatible-http:unknown", "Compatible HTTP (unconfigured)");
+        var compatibleIdentity = BuildCompatibleUsageIdentity(
+            baseUrl,
+            _localProviderOpenAIAuthMode,
+            _localProviderOpenAIAccountId,
+            _localProviderOpenAIBasicUsername);
+        return new ActiveUsageIdentity(compatibleIdentity.Key, compatibleIdentity.Label);
+    }
+
+    internal static (string Key, string Label) BuildCompatibleUsageIdentity(
+        string? baseUrl,
+        string? openAIAuthMode,
+        string? openAIAccountId,
+        string? openAIBasicUsername) {
+        var normalizedBaseUrl = (baseUrl ?? string.Empty).Trim();
+        var normalizedAccountId = (openAIAccountId ?? string.Empty).Trim();
+        var normalizedAuthMode = (openAIAuthMode ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedBasicUsername = (openAIBasicUsername ?? string.Empty).Trim();
+
+        string compatibleAccountIdentity;
+        if (normalizedAccountId.Length > 0) {
+            compatibleAccountIdentity = normalizedAccountId;
+        } else if (string.Equals(normalizedAuthMode, "basic", StringComparison.OrdinalIgnoreCase)
+                   && normalizedBasicUsername.Length > 0) {
+            compatibleAccountIdentity = normalizedBasicUsername;
+        } else {
+            compatibleAccountIdentity = string.Empty;
         }
 
-        return new ActiveUsageIdentity(
-            "compatible-http:" + baseUrl.ToLowerInvariant(),
-            "Compatible HTTP (" + baseUrl + ")");
+        if (normalizedBaseUrl.Length == 0) {
+            if (compatibleAccountIdentity.Length == 0) {
+                return ("compatible-http:unknown", "Compatible HTTP (unconfigured)");
+            }
+
+            return (
+                "compatible-http:unknown|acct:" + compatibleAccountIdentity.ToLowerInvariant(),
+                "Compatible HTTP (unconfigured | " + compatibleAccountIdentity + ")");
+        }
+
+        if (compatibleAccountIdentity.Length == 0) {
+            return (
+                "compatible-http:" + normalizedBaseUrl.ToLowerInvariant(),
+                "Compatible HTTP (" + normalizedBaseUrl + ")");
+        }
+
+        return (
+            "compatible-http:" + normalizedBaseUrl.ToLowerInvariant() + "|acct:" + compatibleAccountIdentity.ToLowerInvariant(),
+            "Compatible HTTP (" + normalizedBaseUrl + " | " + compatibleAccountIdentity + ")");
     }
 
     private static ActiveUsageIdentity ResolveNativeUsageIdentity(string? accountId) {
