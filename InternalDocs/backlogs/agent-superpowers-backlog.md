@@ -29,15 +29,18 @@ Conventions:
 - [ ] (P2) Add a background jobs model for long-running probes (queued, progress, result-ready callback). (runtime-parallel)
 
 ## Event Logs (EventViewerX / PSEventViewer)
-Problem statement: the agent can sometimes confirm a remote channel exists (System/Security) but cannot read entries because
-the session doesn't expose live query/stat tools or EVTX query tools.
+Current state: core EventLog tools are shipped (`eventlog_top_events`, `eventlog_live_query`, `eventlog_live_stats`,
+`eventlog_evtx_find`, `eventlog_evtx_query`, `eventlog_evtx_stats`, `eventlog_named_events_catalog`,
+`eventlog_named_events_query`, `eventlog_timeline_explain`, `eventlog_timeline_query`).
+Tracking note: detailed EventLog -> AD handoff execution plan lives in `InternalDocs/backlogs/eventlog-ad-correlation-e2e.md`.
 
-- [ ] (P0) Ensure EventLog tool pack exposes live query and stats tools when enabled (top-N events, filter, time window).
-- [ ] (P0) Add a single "top events" tool (channel, provider, level, since, max events) with compact JSON output.
-- [ ] (P0) Add an EVTX-local query workflow: find EVTX, query, and summarize (no remote assumptions).
+- [x] (P0) Ensure EventLog tool pack exposes live query and stats tools when enabled (top-N events, filter, time window).
+- [x] (P0) Add a single "top events" tool (channel, provider, level, since, max events) with compact JSON output.
+- [x] (P0) Add an EVTX-local query workflow: find EVTX, query, and summarize (no remote assumptions).
 - [ ] (P0) Add explicit "remote vs local" error envelopes with next actions (export EVTX, enable live query, provide creds).
-- [ ] (P1) Add preset reports for common AD/DC troubleshooting (DFSR/FRS, replication failures, Kerberos, DNS, Netlogon).
-- [ ] (P1) Add correlation helpers (lockout -> preceding 4625, replication failure -> last success, etc.). (runtime-parallel)
+- [ ] (P0) Add end-to-end test path: `eventlog_*` `meta.entity_handoff` -> AD helper input -> AD resolution flow.
+- [ ] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
+- [ ] (P1) Add EventLog -> AD correlation examples (local and remote) with reusable correlation profiles/keys.
 - [ ] (P2) Add path allowlist friendly scanning for likely EVTX export locations with user-configurable roots.
 
 ## ADPlayground + TestimoX (Forest-Level Reality)
@@ -72,4 +75,3 @@ about what scope it actually achieved, and offer the correct next step.
 - [ ] (dev-parallel) ComputerX: services/process/network bundles (read-only first).
 - [ ] (dev-parallel) Chat engine: tool receipt enforcement + capability handshake + scheduler.
 - [ ] (dev-parallel) Docs: remote/local event logs playbooks + forest-wide playbooks.
-
