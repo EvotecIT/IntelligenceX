@@ -136,4 +136,30 @@ public static class ToolRoutingTaxonomy {
 
         return false;
     }
+
+    /// <summary>
+    /// Gets the taxonomy tag key and non-empty value for a routing taxonomy tag.
+    /// Returns <c>false</c> for malformed tags such as <c>risk:</c>.
+    /// </summary>
+    public static bool TryGetTagKeyValue(string? tag, out string tagKey, out string tagValue) {
+        tagKey = string.Empty;
+        tagValue = string.Empty;
+        if (!TryGetTagKey(tag, out tagKey)) {
+            return false;
+        }
+
+        var normalized = tag!.Trim();
+        var separator = normalized.IndexOf(':');
+        if (separator < 0 || separator == normalized.Length - 1) {
+            return false;
+        }
+
+        var value = normalized.Substring(separator + 1).Trim();
+        if (value.Length == 0) {
+            return false;
+        }
+
+        tagValue = value;
+        return true;
+    }
 }

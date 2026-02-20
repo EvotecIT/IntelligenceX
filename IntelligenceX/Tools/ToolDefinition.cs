@@ -166,8 +166,11 @@ public sealed class ToolDefinition {
             }
 
             var normalized = tag.Trim();
-            if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey)) {
+            if (ToolRoutingTaxonomy.TryGetTagKeyValue(normalized, out var taxonomyKey, out _)) {
                 taxonomyByKey[taxonomyKey] = normalized;
+                continue;
+            }
+            if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
                 continue;
             }
 
@@ -242,10 +245,13 @@ public sealed class ToolDefinition {
                 return;
             }
 
-            if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey)) {
+            if (ToolRoutingTaxonomy.TryGetTagKeyValue(normalized, out var taxonomyKey, out _)) {
                 if (allowTaxonomyOverride || !taxonomyByKey.ContainsKey(taxonomyKey)) {
                     taxonomyByKey[taxonomyKey] = normalized;
                 }
+                return;
+            }
+            if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
                 return;
             }
 
