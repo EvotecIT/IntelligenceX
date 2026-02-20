@@ -213,6 +213,36 @@ public sealed class ToolPackEntityFieldMappingModel {
 }
 
 /// <summary>
+/// Structured routing taxonomy for model-side tool selection.
+/// </summary>
+public sealed class ToolPackToolRoutingModel {
+    /// <summary>
+    /// Primary scope where the tool operates (for example: host/domain/file/message/pack).
+    /// </summary>
+    public string Scope { get; init; } = "general";
+
+    /// <summary>
+    /// Primary operation kind (for example: query/search/list/read/write/execute/guide).
+    /// </summary>
+    public string Operation { get; init; } = "read";
+
+    /// <summary>
+    /// Primary entity class handled by this tool.
+    /// </summary>
+    public string Entity { get; init; } = "resource";
+
+    /// <summary>
+    /// Relative execution risk profile (for example: low/medium/high).
+    /// </summary>
+    public string Risk { get; init; } = "low";
+
+    /// <summary>
+    /// Routing source marker (<c>explicit</c> when overridden, otherwise <c>inferred</c>).
+    /// </summary>
+    public string Source { get; init; } = "inferred";
+}
+
+/// <summary>
 /// Tool-level catalog entry for pack guidance.
 /// </summary>
 public sealed class ToolPackToolCatalogEntryModel {
@@ -220,6 +250,28 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// Tool name as registered in the runtime tool registry.
     /// </summary>
     public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional display name from tool definition metadata.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Optional category for routing/scoping.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? Category { get; init; }
+
+    /// <summary>
+    /// Selection tags exposed by tool definition metadata.
+    /// </summary>
+    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Structured routing taxonomy for model-side tool selection.
+    /// </summary>
+    public ToolPackToolRoutingModel Routing { get; init; } = new();
 
     /// <summary>
     /// Tool description from definition metadata.
@@ -529,25 +581,41 @@ public static class ToolPackGuidance {
                 continue;
             }
 
-            var requiredArguments = ReadRequiredArguments(def.Parameters);
-            var argumentHints = ReadArgumentHints(def.Parameters, requiredArguments);
-            var supportsTableView = SupportsTableViewProjection(def.Parameters);
-            ToolAuthenticationContract? authentication = def.Authentication;
+            var enrichedDefinition = ToolSelectionMetadata.Enrich(def, tool.GetType());
+            var requiredArguments = ReadRequiredArguments(enrichedDefinition.Parameters);
+            var argumentHints = ReadArgumentHints(enrichedDefinition.Parameters, requiredArguments);
+            var supportsTableView = SupportsTableViewProjection(enrichedDefinition.Parameters);
+            var routing = ToolSelectionMetadata.ResolveRouting(enrichedDefinition, tool.GetType());
+            ToolAuthenticationContract? authentication = enrichedDefinition.Authentication;
             var authenticationArguments = NormalizeValues(authentication?.GetSchemaArgumentNames());
 
             list.Add(new ToolPackToolCatalogEntryModel {
-                Name = def.Name.Trim(),
-                Description = def.Description?.Trim() ?? string.Empty,
+                Name = enrichedDefinition.Name.Trim(),
+                DisplayName = string.IsNullOrWhiteSpace(enrichedDefinition.DisplayName)
+                    ? null
+                    : enrichedDefinition.DisplayName.Trim(),
+                Category = string.IsNullOrWhiteSpace(enrichedDefinition.Category)
+                    ? null
+                    : enrichedDefinition.Category.Trim(),
+                Tags = NormalizeValues(enrichedDefinition.Tags),
+                Routing = new ToolPackToolRoutingModel {
+                    Scope = routing.Scope,
+                    Operation = routing.Operation,
+                    Entity = routing.Entity,
+                    Risk = routing.Risk,
+                    Source = routing.IsExplicit ? "explicit" : "inferred"
+                },
+                Description = enrichedDefinition.Description?.Trim() ?? string.Empty,
                 RequiredArguments = requiredArguments,
                 Arguments = argumentHints,
                 SupportsTableViewProjection = supportsTableView,
-                IsPackInfoTool = def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
+                IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
                 Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
-                IsWriteCapable = def.WriteGovernance?.IsWriteCapable ?? false,
-                RequiresWriteGovernance = def.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
-                WriteGovernanceContractId = string.IsNullOrWhiteSpace(def.WriteGovernance?.GovernanceContractId)
+                IsWriteCapable = enrichedDefinition.WriteGovernance?.IsWriteCapable ?? false,
+                RequiresWriteGovernance = enrichedDefinition.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
+                WriteGovernanceContractId = string.IsNullOrWhiteSpace(enrichedDefinition.WriteGovernance?.GovernanceContractId)
                     ? null
-                    : def.WriteGovernance!.GovernanceContractId,
+                    : enrichedDefinition.WriteGovernance!.GovernanceContractId,
                 IsAuthenticationAware = authentication?.IsAuthenticationAware ?? false,
                 RequiresAuthentication = authentication?.RequiresAuthentication ?? false,
                 AuthenticationContractId = string.IsNullOrWhiteSpace(authentication?.AuthenticationContractId)
@@ -762,6 +830,10 @@ public static class ToolPackGuidance {
 
             list.Add(new ToolPackToolCatalogEntryModel {
                 Name = name,
+                DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? null : entry.DisplayName.Trim(),
+                Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
+                Tags = NormalizeValues(entry.Tags),
+                Routing = NormalizeRouting(entry.Routing),
                 Description = entry.Description?.Trim() ?? string.Empty,
                 RequiredArguments = NormalizeValues(entry.RequiredArguments),
                 Arguments = NormalizeArguments(entry.Arguments),
@@ -823,6 +895,26 @@ public static class ToolPackGuidance {
             WriteGovernanceMetadataArguments = writeGovernanceMetadataArguments,
             SupportsAuthentication = authenticationArguments.Count > 0,
             AuthenticationArguments = authenticationArguments
+        };
+    }
+
+    private static ToolPackToolRoutingModel NormalizeRouting(ToolPackToolRoutingModel? routing) {
+        if (routing is null) {
+            return new ToolPackToolRoutingModel();
+        }
+
+        var scope = string.IsNullOrWhiteSpace(routing.Scope) ? "general" : routing.Scope.Trim();
+        var operation = string.IsNullOrWhiteSpace(routing.Operation) ? "read" : routing.Operation.Trim();
+        var entity = string.IsNullOrWhiteSpace(routing.Entity) ? "resource" : routing.Entity.Trim();
+        var risk = string.IsNullOrWhiteSpace(routing.Risk) ? "low" : routing.Risk.Trim();
+        var source = string.IsNullOrWhiteSpace(routing.Source) ? "inferred" : routing.Source.Trim();
+
+        return new ToolPackToolRoutingModel {
+            Scope = scope,
+            Operation = operation,
+            Entity = entity,
+            Risk = risk,
+            Source = source
         };
     }
 

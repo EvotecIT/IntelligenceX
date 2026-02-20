@@ -177,6 +177,12 @@ public class ToolPackGuidanceTests {
         var a = catalog[0];
         Assert.Equal("stub_a", a.Name);
         Assert.Equal("Tool A", a.Description);
+        Assert.NotNull(a.Routing);
+        Assert.Equal("inferred", a.Routing.Source);
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Scope));
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Operation));
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Entity));
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Risk));
         Assert.Single(a.RequiredArguments);
         Assert.Contains("query", a.RequiredArguments);
         Assert.False(a.SupportsTableViewProjection);
@@ -260,6 +266,35 @@ public class ToolPackGuidanceTests {
         Assert.True(item.RequiresAuthentication);
         Assert.True(item.SupportsConnectivityProbe);
         Assert.Equal("email_smtp_probe", item.ProbeToolName);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldInferCategoryAndSelectionTags() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "eventlog_timeline_query",
+                "Timeline query",
+                ToolSchema.Object(
+                        ("start_time_utc", ToolSchema.String()),
+                        ("end_time_utc", ToolSchema.String()),
+                        ("columns", ToolSchema.Array(ToolSchema.String())),
+                        ("max_results", ToolSchema.Integer()),
+                        ("machine_name", ToolSchema.String()))
+                    .NoAdditionalProperties()))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.Equal("eventlog", item.Category);
+        Assert.Contains("eventlog", item.Tags);
+        Assert.Contains("time_range", item.Tags);
+        Assert.Contains("table_view", item.Tags);
+        Assert.Contains("paging", item.Tags);
+        Assert.Contains("target_scope", item.Tags);
+        Assert.Equal("host", item.Routing.Scope);
+        Assert.Equal("query", item.Routing.Operation);
+        Assert.Equal("event", item.Routing.Entity);
+        Assert.Equal("low", item.Routing.Risk);
+        Assert.Equal("inferred", item.Routing.Source);
     }
 
     private sealed class StubTool : ITool {

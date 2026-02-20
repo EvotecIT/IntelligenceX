@@ -119,6 +119,20 @@ public class ToolPackInfoContractTests {
                 var description = entry.GetProperty("description").GetString() ?? string.Empty;
                 Assert.False(string.IsNullOrWhiteSpace(name));
                 Assert.False(string.IsNullOrWhiteSpace(description));
+                Assert.True(entry.TryGetProperty("display_name", out var displayName));
+                Assert.True(displayName.ValueKind == JsonValueKind.String || displayName.ValueKind == JsonValueKind.Null);
+                Assert.True(entry.TryGetProperty("category", out var category));
+                Assert.Equal(JsonValueKind.String, category.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(category.GetString()));
+                Assert.True(entry.TryGetProperty("tags", out var tags));
+                Assert.Equal(JsonValueKind.Array, tags.ValueKind);
+                Assert.True(entry.TryGetProperty("routing", out var routing));
+                Assert.Equal(JsonValueKind.Object, routing.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("scope").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("operation").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("entity").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("risk").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("source").GetString()));
                 Assert.True(entry.TryGetProperty("required_arguments", out var requiredArguments));
                 Assert.Equal(JsonValueKind.Array, requiredArguments.ValueKind);
                 Assert.True(entry.TryGetProperty("arguments", out var arguments));
@@ -152,6 +166,20 @@ public class ToolPackInfoContractTests {
 
                 Assert.True(expectedCatalogByName.TryGetValue(name, out var expectedCatalogEntry), $"Unexpected catalog entry: {name}");
                 Assert.Equal(expectedCatalogEntry.Description, description);
+                Assert.Equal(expectedCatalogEntry.DisplayName, displayName.GetString());
+                Assert.Equal(expectedCatalogEntry.Category, category.GetString());
+                Assert.Equal(
+                    expectedCatalogEntry.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+                    ReadStringArray(tags));
+                Assert.Contains(
+                    category.GetString() ?? string.Empty,
+                    ReadStringArray(tags),
+                    StringComparer.OrdinalIgnoreCase);
+                Assert.Equal(expectedCatalogEntry.Routing.Scope, routing.GetProperty("scope").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Operation, routing.GetProperty("operation").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Entity, routing.GetProperty("entity").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Risk, routing.GetProperty("risk").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Source, routing.GetProperty("source").GetString());
                 Assert.Equal(
                     expectedCatalogEntry.RequiredArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
                     ReadStringArray(requiredArguments));
