@@ -451,10 +451,20 @@ public sealed partial class MainWindow {
         }
 
         var resolvedPath = (outputPath ?? string.Empty).Trim();
+        if (resolvedPath.Length > 0 && !TryNormalizeVisualExportPath(resolvedPath, normalizedFormat, out resolvedPath, out var pathValidationError)) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: pathValidationError).ConfigureAwait(false);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(resolvedPath)) {
             resolvedPath = (await ShowExportSavePickerAsync(normalizedFormat, title).ConfigureAwait(false) ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(resolvedPath)) {
                 await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export canceled.").ConfigureAwait(false);
+                return;
+            }
+
+            if (!TryNormalizeVisualExportPath(resolvedPath, normalizedFormat, out resolvedPath, out pathValidationError)) {
+                await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: pathValidationError).ConfigureAwait(false);
                 return;
             }
         }
@@ -551,6 +561,47 @@ public sealed partial class MainWindow {
                 await NotifyVisualExportActionResultAsync(ok: false, "Unknown export action: " + normalizedAction).ConfigureAwait(false);
                 return;
         }
+    }
+
+    private static bool TryNormalizeVisualExportPath(string path, string normalizedFormat, out string normalizedPath, out string errorMessage) {
+        normalizedPath = string.Empty;
+        errorMessage = "Invalid export path.";
+        var candidate = (path ?? string.Empty).Trim();
+        if (candidate.Length == 0) {
+            errorMessage = "Export path is required.";
+            return false;
+        }
+
+        string fullPath;
+        try {
+            fullPath = Path.GetFullPath(candidate);
+        } catch {
+            errorMessage = "Export path is invalid.";
+            return false;
+        }
+
+        if (!Path.IsPathFullyQualified(fullPath)) {
+            errorMessage = "Export path must be absolute.";
+            return false;
+        }
+
+        var fileName = Path.GetFileName(fullPath);
+        if (string.IsNullOrWhiteSpace(fileName)) {
+            errorMessage = "Export path must include a file name.";
+            return false;
+        }
+
+        var expectedExtension = GetExportFileExtension(normalizedFormat);
+        var currentExtension = Path.GetExtension(fullPath);
+        if (string.IsNullOrWhiteSpace(currentExtension)) {
+            fullPath += expectedExtension;
+        } else if (!string.Equals(currentExtension, expectedExtension, StringComparison.OrdinalIgnoreCase)) {
+            errorMessage = "Export path extension must be " + expectedExtension + ".";
+            return false;
+        }
+
+        normalizedPath = fullPath;
+        return true;
     }
 
     private static string BuildExportArgumentsJson(string format, string title, JsonElement rowsElement, string? outputPath = null) {
