@@ -343,6 +343,17 @@ public static class ToolSelectionMetadata {
     }
 
     private static string? InferCategory(string? toolName, Type? toolType) {
+        if (!string.IsNullOrWhiteSpace(toolName)) {
+            var normalized = toolName.Trim();
+            var separator = normalized.IndexOf('_');
+            if (separator > 0) {
+                var prefix = normalized.Substring(0, separator);
+                if (CategoryByPrefix.TryGetValue(prefix, out var prefixedCategory)) {
+                    return prefixedCategory;
+                }
+            }
+        }
+
         var ns = toolType?.Namespace ?? string.Empty;
         if (ns.IndexOf(".ADPlayground", StringComparison.OrdinalIgnoreCase) >= 0) {
             return "active_directory";
@@ -372,22 +383,7 @@ public static class ToolSelectionMetadata {
             return "reviewer_setup";
         }
 
-        if (string.IsNullOrWhiteSpace(toolName)) {
-            return null;
-        }
-
-        var normalized = (toolName ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return null;
-        }
-
-        var separator = normalized.IndexOf('_');
-        if (separator <= 0) {
-            return null;
-        }
-
-        var prefix = normalized.Substring(0, separator);
-        return CategoryByPrefix.TryGetValue(prefix, out var category) ? category : null;
+        return null;
     }
 
     private static string InferScope(ToolDefinition definition, string? category, string operation) {
