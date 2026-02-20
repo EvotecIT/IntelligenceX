@@ -64,29 +64,30 @@ internal static partial class AnalyzeRunCommand {
         GeneratedHeaderLinesTagPrefix,
         ExcludedDirectoryTagPrefix
     };
+    // Handler order defines first-match precedence when predicates overlap.
     private static readonly InternalMaintainabilityRuleHandler[] InternalMaintainabilityRuleHandlers = {
         new(IsMaxLinesRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
-            new InternalMaintainabilityRuleExecutionResult(
+            new InternalMaintainabilityResult(
                 RunMaxLinesChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
         new(IsDuplicationRule, static (rules, sourceFiles, excludedOutputPath, warnings) => {
             var result = RunDuplicationChecks(rules, sourceFiles, excludedOutputPath, warnings);
-            return new InternalMaintainabilityRuleExecutionResult(result.Findings, result.RuleMetrics);
+            return new InternalMaintainabilityResult(result.Findings, result.RuleMetrics);
         }),
         new(IsWriteToolSchemaRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
-            new InternalMaintainabilityRuleExecutionResult(
+            new InternalMaintainabilityResult(
                 RunWriteToolSchemaChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
         new(IsAdRequiredDomainHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
-            new InternalMaintainabilityRuleExecutionResult(
+            new InternalMaintainabilityResult(
                 RunAdRequiredDomainHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
         new(IsMaxResultsMetaHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
-            new InternalMaintainabilityRuleExecutionResult(
+            new InternalMaintainabilityResult(
                 RunMaxResultsMetaHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
         new(IsCanonicalBoundedIntHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
-            new InternalMaintainabilityRuleExecutionResult(
+            new InternalMaintainabilityResult(
                 RunCanonicalBoundedIntHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>()))
     };
@@ -220,26 +221,47 @@ internal static partial class AnalyzeRunCommand {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
-        var selectedRuleGroups = new List<(InternalMaintainabilityRuleHandler Handler, List<AnalysisPolicyRule> Rules)>();
-        foreach (var handler in InternalMaintainabilityRuleHandlers) {
-            var matchedRules = rules
-                .Where(rule => rule?.Rule is not null && handler.Matches(rule.Rule))
-                .ToList();
-            if (matchedRules.Count == 0) {
+        var mappedRulesByHandler = new List<AnalysisPolicyRule>[InternalMaintainabilityRuleHandlers.Length];
+        var mappedRuleCount = 0;
+        foreach (var policyRule in rules.Where(static rule => rule?.Rule is not null)) {
+            var firstMatchIndex = -1;
+            var matchCount = 0;
+            for (var i = 0; i < InternalMaintainabilityRuleHandlers.Length; i++) {
+                if (!InternalMaintainabilityRuleHandlers[i].Matches(policyRule.Rule)) {
+                    continue;
+                }
+
+                if (firstMatchIndex < 0) {
+                    firstMatchIndex = i;
+                }
+                matchCount++;
+            }
+
+            if (firstMatchIndex < 0) {
+                warnings.Add(
+                    $"Internal maintainability rule {policyRule.Rule.Id} is configured but has no registered handler and will be skipped.");
                 continue;
             }
 
-            selectedRuleGroups.Add((handler, matchedRules));
+            if (matchCount > 1) {
+                warnings.Add(
+                    $"Internal maintainability rule {policyRule.Rule.Id} matched multiple handlers; using first registered handler. Ensure handler predicates are mutually exclusive.");
+            }
+
+            mappedRulesByHandler[firstMatchIndex] ??= new List<AnalysisPolicyRule>();
+            mappedRulesByHandler[firstMatchIndex]!.Add(policyRule);
+            mappedRuleCount++;
         }
 
-        if (selectedRuleGroups.Count == 0) {
+        if (mappedRuleCount == 0) {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
         // Build a candidate source set once; each rule applies its own filtering tags on top.
         var includedSourceExtensions = ResolveIncludedSourceExtensionsForRules(
-            selectedRuleGroups
-                .SelectMany(static group => group.Rules)
+            mappedRulesByHandler
+                .Where(static group => group is { Count: > 0 })
+                .SelectMany(static group => group!)
                 .Where(static item => item?.Rule is not null)
                 .Select(static item => item.Rule),
             warnings);
@@ -259,8 +281,14 @@ internal static partial class AnalyzeRunCommand {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
-        foreach (var ruleGroup in selectedRuleGroups) {
-            var result = ruleGroup.Handler.Run(ruleGroup.Rules, sourceFiles, excludedOutputPath, warnings);
+        for (var i = 0; i < InternalMaintainabilityRuleHandlers.Length; i++) {
+            var rulesForHandler = mappedRulesByHandler[i];
+            if (rulesForHandler is null || rulesForHandler.Count == 0) {
+                continue;
+            }
+
+            var result = InternalMaintainabilityRuleHandlers[i].Run(rulesForHandler, sourceFiles, excludedOutputPath,
+                warnings);
             findings.AddRange(result.Findings);
             duplicationRuleMetrics.AddRange(result.DuplicationRuleMetrics);
         }
@@ -709,13 +737,9 @@ internal static partial class AnalyzeRunCommand {
     private sealed record InternalMaintainabilityRuleHandler(
         Func<AnalysisRule, bool> Matches,
         Func<IReadOnlyList<AnalysisPolicyRule>, IReadOnlyList<SourceFileEntry>, string?, List<string>,
-            InternalMaintainabilityRuleExecutionResult> Run);
+            InternalMaintainabilityResult> Run);
 
     private sealed record InternalMaintainabilityResult(
-        IReadOnlyList<AnalysisFindingItem> Findings,
-        IReadOnlyList<DuplicationRuleMetrics> DuplicationRuleMetrics);
-
-    private sealed record InternalMaintainabilityRuleExecutionResult(
         IReadOnlyList<AnalysisFindingItem> Findings,
         IReadOnlyList<DuplicationRuleMetrics> DuplicationRuleMetrics);
 
