@@ -59,6 +59,7 @@
     }
 
     if (modalMode === IX_MODAL_MODE_NONE && zone === "transcript" && !inTranscript && transcript) {
+      inTranscript = transcript;
       wheelDiag.counters.fallbackTranscript++;
       recordWheelDiag("fallback_transcript", { deltaY: Number(deltaY) });
     }
