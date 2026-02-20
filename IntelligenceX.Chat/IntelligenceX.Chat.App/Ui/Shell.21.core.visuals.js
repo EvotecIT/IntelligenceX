@@ -1946,6 +1946,22 @@
     scheduleVisualViewRelayout();
   }
 
+  function ensureVisualViewClosedState() {
+    if (document.body.classList.contains("visual-view-open")) {
+      return;
+    }
+
+    if (visualViewState.isMaximized || document.body.classList.contains("visual-view-maximized")) {
+      visualViewState.isMaximized = false;
+      document.body.classList.remove("visual-view-maximized");
+      renderVisualViewSizeToggle();
+    }
+
+    if (visualViewState.popoutInFlight) {
+      setVisualViewPopoutBusy(false);
+    }
+  }
+
   function setVisualViewExportPath(path, format) {
     visualViewState.lastExportPath = String(path || "").trim();
     visualViewState.lastExportFormat = String(format || "").trim().toLowerCase();
@@ -2214,9 +2230,8 @@
   }
 
   function closeVisualView() {
-    setVisualViewMaximized(false);
-    setVisualViewPopoutBusy(false);
     document.body.classList.remove("visual-view-open");
+    ensureVisualViewClosedState();
     if (visualViewPanel) {
       visualViewPanel.setAttribute("aria-hidden", "true");
     }
@@ -2588,6 +2603,21 @@
   window.ixOpenVisualView = function(type, source, title) {
     openVisualView(type, source, title);
   };
+
+  if (typeof MutationObserver === "function" && document.body) {
+    var visualViewBodyClassObserver = new MutationObserver(function() {
+      ensureVisualViewClosedState();
+    });
+    try {
+      visualViewBodyClassObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    } catch (_) {
+      // Ignore observer initialization failures.
+    }
+  }
+  ensureVisualViewClosedState();
 
   if (visualViewBackdrop) {
     visualViewBackdrop.addEventListener("click", closeVisualView);
