@@ -43,10 +43,8 @@ public sealed class SampleLegacyBoundedIntHelperTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run canonical bounded-int helper missing canonical path exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL004", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleLegacyBoundedIntHelperTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXTOOL004",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleLegacyBoundedIntHelperTool.cs",
                 "analyze run canonical bounded-int helper missing canonical path finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -100,7 +98,7 @@ public sealed class SampleCanonicalBoundedIntHelperTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run canonical bounded-int helper canonical path exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL004", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL004",
                 "analyze run canonical bounded-int helper canonical path no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -135,7 +133,7 @@ public static class ToolArgs {
 
             AssertEqual(0, exit, "analyze run canonical bounded-int helper ToolArgs implementation scope exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL004", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL004",
                 "analyze run canonical bounded-int helper ToolArgs implementation scope no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -172,10 +170,8 @@ public sealed class SampleLegacyBoundedIntHelperTests {
 
             AssertEqual(0, exit, "analyze run canonical bounded-int helper tools tests scope exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL004", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Tests/SampleLegacyBoundedIntHelperTests.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL004",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Tests/SampleLegacyBoundedIntHelperTests.cs",
                 "analyze run canonical bounded-int helper tools tests scope no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);

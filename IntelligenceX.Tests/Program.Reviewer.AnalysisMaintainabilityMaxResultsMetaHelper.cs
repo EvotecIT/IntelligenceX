@@ -52,10 +52,8 @@ public sealed class SampleBadMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper missing canonical helper exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleBadMaxResultsMetaTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXTOOL003",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleBadMaxResultsMetaTool.cs",
                 "analyze run max-results metadata helper missing canonical helper finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -112,7 +110,7 @@ public sealed class SampleGoodMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper canonical helper exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL003",
                 "analyze run max-results metadata helper canonical helper no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -147,7 +145,7 @@ public static class SampleBadMaxResultsMetaHelper {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper non-tool file exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL003",
                 "analyze run max-results metadata helper ignores non-tool files");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -203,7 +201,7 @@ public sealed class SampleNearMissMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper near-miss key exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL003",
                 "analyze run max-results metadata helper near-miss key no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -259,7 +257,7 @@ public sealed class SampleQualifiedMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper qualified canonical helper exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase)),
+            AssertNoFinding(findings, "IXTOOL003",
                 "analyze run max-results metadata helper qualified canonical helper no finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -315,10 +313,8 @@ public sealed class SampleIndexerMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper indexer assignment exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleIndexerMaxResultsMetaTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXTOOL003",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleIndexerMaxResultsMetaTool.cs",
                 "analyze run max-results metadata helper indexer assignment finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -374,10 +370,8 @@ public sealed class SampleCaseVariantMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper case-variant key exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            AssertEqual(true, findings.Any(item =>
-                    item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
-                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleCaseVariantMaxResultsMetaTool.cs",
-                        StringComparison.OrdinalIgnoreCase)),
+            AssertHasFinding(findings, "IXTOOL003",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleCaseVariantMaxResultsMetaTool.cs",
                 "analyze run max-results metadata helper case-variant key finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
@@ -435,11 +429,9 @@ public sealed class SampleMixedMetaAddsTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper mixed meta adds exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            var matchingFindings = findings.Count(item =>
-                item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
-                item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleMixedMetaAddsTool.cs",
-                    StringComparison.OrdinalIgnoreCase));
-            AssertEqual(1, matchingFindings, "analyze run max-results metadata helper mixed meta adds only max_results finding");
+            AssertHasExactlyOneFinding(findings, "IXTOOL003",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleMixedMetaAddsTool.cs",
+                "analyze run max-results metadata helper mixed meta adds only max_results finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
@@ -492,11 +484,9 @@ public sealed class SampleSameLineMaxResultsMetaTool : ToolBase {
 
             AssertEqual(0, exit, "analyze run max-results metadata helper same-line dedupe exit");
             var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
-            var matchingFindings = findings.Count(item =>
-                item.RuleId.Equals("IXTOOL003", StringComparison.OrdinalIgnoreCase) &&
-                item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleSameLineMaxResultsMetaTool.cs",
-                    StringComparison.OrdinalIgnoreCase));
-            AssertEqual(1, matchingFindings, "analyze run max-results metadata helper same-line dedupe single finding");
+            AssertHasExactlyOneFinding(findings, "IXTOOL003",
+                "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleSameLineMaxResultsMetaTool.cs",
+                "analyze run max-results metadata helper same-line dedupe single finding");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
