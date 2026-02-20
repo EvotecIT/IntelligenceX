@@ -102,6 +102,26 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Equal(context.Options.AuthenticationProfilePath, diagnostics.AuthenticationProfilePath);
     }
 
+    [Fact]
+    public void WriteRuntimePolicyCliHelp_WritesCanonicalPolicyFlags() {
+        var lines = new System.Collections.Generic.List<string>();
+
+        ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(lines.Add);
+
+        Assert.Contains(lines, static line => line.StartsWith("  --write-governance-mode", StringComparison.Ordinal));
+        Assert.Contains(lines, static line => line.StartsWith("  --write-audit-sink-mode", StringComparison.Ordinal));
+        Assert.Contains(lines, static line => line.StartsWith("  --auth-runtime-preset", StringComparison.Ordinal));
+        Assert.Contains(lines, static line => line.StartsWith("  --run-as-profile-path", StringComparison.Ordinal));
+        Assert.Contains(lines, static line => line.StartsWith("  --auth-profile-path", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ParseErrorConstants_ExposeCanonicalMessages() {
+        Assert.Equal("--write-governance-mode must be one of: enforced, yolo.", ToolRuntimePolicyBootstrap.WriteGovernanceModeParseError);
+        Assert.Equal("--write-audit-sink-mode must be one of: none, file, sqlite.", ToolRuntimePolicyBootstrap.WriteAuditSinkModeParseError);
+        Assert.Equal("--auth-runtime-preset must be one of: default, strict, lab.", ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError);
+    }
+
     private static void TryDelete(string path) {
         try {
             if (File.Exists(path)) {
