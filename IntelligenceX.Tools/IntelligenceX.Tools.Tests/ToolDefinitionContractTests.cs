@@ -67,6 +67,7 @@ public class ToolDefinitionContractTests {
             "eventlog_timeline_explain",
             "eventlog_timeline_query",
             "eventlog_top_events",
+            "eventlog_evtx_security_summary",
             "eventlog_evtx_query",
             "eventlog_evtx_stats"
         };

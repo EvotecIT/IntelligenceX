@@ -48,6 +48,7 @@ public static class ToolRegistryEventLogExtensions {
         yield return new EventLogLiveQueryTool(options);
         yield return new EventLogLiveStatsTool(options);
         yield return new EventLogEvtxFindTool(options);
+        yield return new EventLogEvtxSecuritySummaryTool(options);
         yield return new EventLogEvtxQueryTool(options);
         yield return new EventLogEvtxStatsTool(options);
     }

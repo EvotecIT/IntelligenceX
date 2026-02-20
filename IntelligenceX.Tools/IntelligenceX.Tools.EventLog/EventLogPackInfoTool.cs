@@ -45,6 +45,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_top_events for quick triage (top N most recent events from a live channel, local or remote).",
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
+                "Use eventlog_evtx_security_summary for authentication-focused EVTX summaries (user_logons/failed_logons/account_lockouts).",
                 "Use eventlog_named_events_catalog/eventlog_named_events_query for rule-based, intent-level detections (AD/Kerberos/GPO/etc).",
                 "Use eventlog_timeline_explain to get reusable timeline-query guidance from current investigation shape.",
                 "Use eventlog_timeline_query to build reusable timeline and correlation views from named-event evidence (no fixed report templates).",
@@ -65,6 +66,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Build aggregate signal baselines",
                     suggestedTools: new[] { "eventlog_evtx_stats", "eventlog_live_stats" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Summarize Security authentication signals from EVTX evidence",
+                    suggestedTools: new[] { "eventlog_evtx_security_summary" },
+                    notes: "Start here for authentication-centric triage before moving into timeline correlation or AD enrichment."),
                 ToolPackGuidance.FlowStep(
                     goal: "Run named-event rule detections",
                     suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query" }),
@@ -93,6 +98,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     id: "event_aggregation",
                     summary: "Compute top-level statistics from EVTX files and live event channels.",
                     primaryTools: new[] { "eventlog_evtx_stats", "eventlog_live_stats" }),
+                ToolPackGuidance.Capability(
+                    id: "security_auth_summary",
+                    summary: "Build authentication-centric EVTX summaries for user logons, failed logons, and account lockouts.",
+                    primaryTools: new[] { "eventlog_evtx_security_summary" }),
                 ToolPackGuidance.Capability(
                     id: "named_event_rules",
                     summary: "Run EventViewerX named-event rule detections and return normalized evidence rows.",

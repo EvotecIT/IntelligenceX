@@ -12,6 +12,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "eventlog_evtx_security_summary",
+            new[] { "path", "report_kind", "start_time_utc", "end_time_utc", "max_events_scanned", "top_per_dimension", "include_samples", "sample_size", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "path", "report_kind" }
+        };
+
+        yield return new object[] {
             "eventlog_named_events_catalog",
             new[] { "name_contains", "categories", "available_only", "include_event_ids", "max_event_ids_per_row", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

@@ -37,6 +37,7 @@ Tracking note: detailed EventLog -> AD handoff execution plan lives in `Internal
 - [x] (P0) Ensure EventLog tool pack exposes live query and stats tools when enabled (top-N events, filter, time window).
 - [x] (P0) Add a single "top events" tool (channel, provider, level, since, max events) with compact JSON output.
 - [x] (P0) Add an EVTX-local query workflow: find EVTX, query, and summarize (no remote assumptions).
+- [x] (P1) Add EVTX security summary workflow for authentication-focused parsing (`user_logons`, `failed_logons`, `account_lockouts`) with structured output.
 - [x] (P0) Add explicit "remote vs local" error envelopes with next actions (export EVTX, enable live query, provide creds).
 - [x] (P0) Add end-to-end test path: `eventlog_*` `meta.entity_handoff` -> AD helper input -> AD resolution flow.
 - [x] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
