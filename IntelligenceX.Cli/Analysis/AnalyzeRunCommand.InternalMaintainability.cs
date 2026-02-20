@@ -64,6 +64,32 @@ internal static partial class AnalyzeRunCommand {
         GeneratedHeaderLinesTagPrefix,
         ExcludedDirectoryTagPrefix
     };
+    private static readonly InternalMaintainabilityRuleHandler[] InternalMaintainabilityRuleHandlers = {
+        new(IsMaxLinesRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+            new InternalMaintainabilityRuleExecutionResult(
+                RunMaxLinesChecks(rules, sourceFiles, excludedOutputPath, warnings),
+                Array.Empty<DuplicationRuleMetrics>())),
+        new(IsDuplicationRule, static (rules, sourceFiles, excludedOutputPath, warnings) => {
+            var result = RunDuplicationChecks(rules, sourceFiles, excludedOutputPath, warnings);
+            return new InternalMaintainabilityRuleExecutionResult(result.Findings, result.RuleMetrics);
+        }),
+        new(IsWriteToolSchemaRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+            new InternalMaintainabilityRuleExecutionResult(
+                RunWriteToolSchemaChecks(rules, sourceFiles, excludedOutputPath, warnings),
+                Array.Empty<DuplicationRuleMetrics>())),
+        new(IsAdRequiredDomainHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+            new InternalMaintainabilityRuleExecutionResult(
+                RunAdRequiredDomainHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
+                Array.Empty<DuplicationRuleMetrics>())),
+        new(IsMaxResultsMetaHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+            new InternalMaintainabilityRuleExecutionResult(
+                RunMaxResultsMetaHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
+                Array.Empty<DuplicationRuleMetrics>())),
+        new(IsCanonicalBoundedIntHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+            new InternalMaintainabilityRuleExecutionResult(
+                RunCanonicalBoundedIntHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
+                Array.Empty<DuplicationRuleMetrics>()))
+    };
     private static readonly Regex PowerShellTokenRegex = new(
         "\"(?:`.|[^\"])*\"|'(?:''|[^'])*'|\\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_-]*|\\d+(?:\\.\\d+)?|==|!=|<=|>=|\\+=|-=|\\*=|/=|%=|&&|\\|\\||::|=>|\\+\\+|--|[-+*/%=!<>|&.:?]+|[()\\[\\]{};,]",
         RegexOptions.Compiled);
@@ -194,37 +220,26 @@ internal static partial class AnalyzeRunCommand {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
-        var maxLinesRules = rules
-            .Where(rule => rule?.Rule is not null && IsMaxLinesRule(rule.Rule))
-            .ToList();
-        var duplicationRules = rules
-            .Where(rule => rule?.Rule is not null && IsDuplicationRule(rule.Rule))
-            .ToList();
-        var writeToolSchemaRules = rules
-            .Where(rule => rule?.Rule is not null && IsWriteToolSchemaRule(rule.Rule))
-            .ToList();
-        var adRequiredDomainHelperRules = rules
-            .Where(rule => rule?.Rule is not null && IsAdRequiredDomainHelperRule(rule.Rule))
-            .ToList();
-        var maxResultsMetaHelperRules = rules
-            .Where(rule => rule?.Rule is not null && IsMaxResultsMetaHelperRule(rule.Rule))
-            .ToList();
-        var canonicalBoundedIntHelperRules = rules
-            .Where(rule => rule?.Rule is not null && IsCanonicalBoundedIntHelperRule(rule.Rule))
-            .ToList();
-        if (maxLinesRules.Count == 0 && duplicationRules.Count == 0 && writeToolSchemaRules.Count == 0 &&
-            adRequiredDomainHelperRules.Count == 0 && maxResultsMetaHelperRules.Count == 0 &&
-            canonicalBoundedIntHelperRules.Count == 0) {
+        var selectedRuleGroups = new List<(InternalMaintainabilityRuleHandler Handler, List<AnalysisPolicyRule> Rules)>();
+        foreach (var handler in InternalMaintainabilityRuleHandlers) {
+            var matchedRules = rules
+                .Where(rule => rule?.Rule is not null && handler.Matches(rule.Rule))
+                .ToList();
+            if (matchedRules.Count == 0) {
+                continue;
+            }
+
+            selectedRuleGroups.Add((handler, matchedRules));
+        }
+
+        if (selectedRuleGroups.Count == 0) {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
         // Build a candidate source set once; each rule applies its own filtering tags on top.
         var includedSourceExtensions = ResolveIncludedSourceExtensionsForRules(
-            maxLinesRules.Concat(duplicationRules)
-                .Concat(writeToolSchemaRules)
-                .Concat(adRequiredDomainHelperRules)
-                .Concat(maxResultsMetaHelperRules)
-                .Concat(canonicalBoundedIntHelperRules)
+            selectedRuleGroups
+                .SelectMany(static group => group.Rules)
                 .Where(static item => item?.Rule is not null)
                 .Select(static item => item.Rule),
             warnings);
@@ -244,17 +259,11 @@ internal static partial class AnalyzeRunCommand {
             return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
         }
 
-        findings.AddRange(RunMaxLinesChecks(maxLinesRules, sourceFiles, excludedOutputPath, warnings));
-        var duplicationResult = RunDuplicationChecks(duplicationRules, sourceFiles, excludedOutputPath, warnings);
-        findings.AddRange(duplicationResult.Findings);
-        duplicationRuleMetrics.AddRange(duplicationResult.RuleMetrics);
-        findings.AddRange(RunWriteToolSchemaChecks(writeToolSchemaRules, sourceFiles, excludedOutputPath, warnings));
-        findings.AddRange(
-            RunAdRequiredDomainHelperChecks(adRequiredDomainHelperRules, sourceFiles, excludedOutputPath, warnings));
-        findings.AddRange(
-            RunMaxResultsMetaHelperChecks(maxResultsMetaHelperRules, sourceFiles, excludedOutputPath, warnings));
-        findings.AddRange(
-            RunCanonicalBoundedIntHelperChecks(canonicalBoundedIntHelperRules, sourceFiles, excludedOutputPath, warnings));
+        foreach (var ruleGroup in selectedRuleGroups) {
+            var result = ruleGroup.Handler.Run(ruleGroup.Rules, sourceFiles, excludedOutputPath, warnings);
+            findings.AddRange(result.Findings);
+            duplicationRuleMetrics.AddRange(result.DuplicationRuleMetrics);
+        }
 
         Console.WriteLine($"Internal maintainability findings: {findings.Count} item(s).");
         return new InternalMaintainabilityResult(findings, duplicationRuleMetrics);
@@ -697,7 +706,16 @@ internal static partial class AnalyzeRunCommand {
         public string RelativePath { get; init; } = string.Empty;
     }
 
+    private sealed record InternalMaintainabilityRuleHandler(
+        Func<AnalysisRule, bool> Matches,
+        Func<IReadOnlyList<AnalysisPolicyRule>, IReadOnlyList<SourceFileEntry>, string?, List<string>,
+            InternalMaintainabilityRuleExecutionResult> Run);
+
     private sealed record InternalMaintainabilityResult(
+        IReadOnlyList<AnalysisFindingItem> Findings,
+        IReadOnlyList<DuplicationRuleMetrics> DuplicationRuleMetrics);
+
+    private sealed record InternalMaintainabilityRuleExecutionResult(
         IReadOnlyList<AnalysisFindingItem> Findings,
         IReadOnlyList<DuplicationRuleMetrics> DuplicationRuleMetrics);
 
