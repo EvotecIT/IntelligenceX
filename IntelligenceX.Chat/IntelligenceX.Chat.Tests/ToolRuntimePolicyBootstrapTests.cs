@@ -207,6 +207,92 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Null(error);
     }
 
+    [Fact]
+    public void ApplyProfileRuntimePolicy_ValidTokens_UpdateAllRuntimePolicyFields() {
+        var writeMode = ToolWriteGovernanceMode.Enforced;
+        var requireWriteRuntime = false;
+        var requireWriteAuditSink = false;
+        var writeAuditSinkMode = ToolWriteAuditSinkMode.None;
+        string? writeAuditSinkPath = null;
+        var authPreset = ToolAuthenticationRuntimePreset.Default;
+        var requireAuthRuntime = false;
+        string? runAsProfilePath = null;
+        string? authProfilePath = null;
+
+        ToolRuntimePolicyBootstrap.ApplyProfileRuntimePolicy(
+            writeGovernanceMode: "yolo",
+            requireWriteGovernanceRuntime: true,
+            requireWriteAuditSinkForWriteOperations: true,
+            writeAuditSinkMode: "sqlite",
+            writeAuditSinkPath: "C:/temp/write-audit.db",
+            authenticationRuntimePreset: "strict",
+            requireAuthenticationRuntime: true,
+            runAsProfilePath: "C:/profiles/runas.json",
+            authenticationProfilePath: "C:/profiles/auth.json",
+            setWriteGovernanceMode: mode => writeMode = mode,
+            setRequireWriteGovernanceRuntime: required => requireWriteRuntime = required,
+            setRequireWriteAuditSinkForWriteOperations: required => requireWriteAuditSink = required,
+            setWriteAuditSinkMode: mode => writeAuditSinkMode = mode,
+            setWriteAuditSinkPath: path => writeAuditSinkPath = path,
+            setAuthenticationRuntimePreset: preset => authPreset = preset,
+            setRequireAuthenticationRuntime: required => requireAuthRuntime = required,
+            setRunAsProfilePath: path => runAsProfilePath = path,
+            setAuthenticationProfilePath: path => authProfilePath = path);
+
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, writeMode);
+        Assert.True(requireWriteRuntime);
+        Assert.True(requireWriteAuditSink);
+        Assert.Equal(ToolWriteAuditSinkMode.SqliteAppendOnly, writeAuditSinkMode);
+        Assert.Equal("C:/temp/write-audit.db", writeAuditSinkPath);
+        Assert.Equal(ToolAuthenticationRuntimePreset.Strict, authPreset);
+        Assert.True(requireAuthRuntime);
+        Assert.Equal("C:/profiles/runas.json", runAsProfilePath);
+        Assert.Equal("C:/profiles/auth.json", authProfilePath);
+    }
+
+    [Fact]
+    public void ApplyProfileRuntimePolicy_InvalidTokens_KeepEnumModesButApplyFlagsAndPaths() {
+        var writeMode = ToolWriteGovernanceMode.Yolo;
+        var requireWriteRuntime = false;
+        var requireWriteAuditSink = true;
+        var writeAuditSinkMode = ToolWriteAuditSinkMode.FileAppendOnly;
+        string? writeAuditSinkPath = "before";
+        var authPreset = ToolAuthenticationRuntimePreset.Strict;
+        var requireAuthRuntime = true;
+        string? runAsProfilePath = "before-runas";
+        string? authProfilePath = "before-auth";
+
+        ToolRuntimePolicyBootstrap.ApplyProfileRuntimePolicy(
+            writeGovernanceMode: "invalid",
+            requireWriteGovernanceRuntime: true,
+            requireWriteAuditSinkForWriteOperations: false,
+            writeAuditSinkMode: "invalid",
+            writeAuditSinkPath: "after",
+            authenticationRuntimePreset: "invalid",
+            requireAuthenticationRuntime: false,
+            runAsProfilePath: "after-runas",
+            authenticationProfilePath: "after-auth",
+            setWriteGovernanceMode: mode => writeMode = mode,
+            setRequireWriteGovernanceRuntime: required => requireWriteRuntime = required,
+            setRequireWriteAuditSinkForWriteOperations: required => requireWriteAuditSink = required,
+            setWriteAuditSinkMode: mode => writeAuditSinkMode = mode,
+            setWriteAuditSinkPath: path => writeAuditSinkPath = path,
+            setAuthenticationRuntimePreset: preset => authPreset = preset,
+            setRequireAuthenticationRuntime: required => requireAuthRuntime = required,
+            setRunAsProfilePath: path => runAsProfilePath = path,
+            setAuthenticationProfilePath: path => authProfilePath = path);
+
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, writeMode);
+        Assert.True(requireWriteRuntime);
+        Assert.False(requireWriteAuditSink);
+        Assert.Equal(ToolWriteAuditSinkMode.FileAppendOnly, writeAuditSinkMode);
+        Assert.Equal("after", writeAuditSinkPath);
+        Assert.Equal(ToolAuthenticationRuntimePreset.Strict, authPreset);
+        Assert.False(requireAuthRuntime);
+        Assert.Equal("after-runas", runAsProfilePath);
+        Assert.Equal("after-auth", authProfilePath);
+    }
+
     private static void TryDelete(string path) {
         try {
             if (File.Exists(path)) {

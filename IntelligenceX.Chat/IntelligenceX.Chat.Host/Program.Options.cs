@@ -489,21 +489,25 @@ internal static partial class Program {
             if (profile.PluginPaths is { Count: > 0 }) {
                 PluginPaths.AddRange(profile.PluginPaths);
             }
-            if (ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(profile.WriteGovernanceMode, out var writeMode)) {
-                WriteGovernanceMode = writeMode;
-            }
-            RequireWriteGovernanceRuntime = profile.RequireWriteGovernanceRuntime;
-            RequireWriteAuditSinkForWriteOperations = profile.RequireWriteAuditSinkForWriteOperations;
-            if (ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(profile.WriteAuditSinkMode, out var writeAuditMode)) {
-                WriteAuditSinkMode = writeAuditMode;
-            }
-            WriteAuditSinkPath = profile.WriteAuditSinkPath;
-            if (ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset, out var authPreset)) {
-                AuthenticationRuntimePreset = authPreset;
-            }
-            RequireAuthenticationRuntime = profile.RequireAuthenticationRuntime;
-            RunAsProfilePath = profile.RunAsProfilePath;
-            AuthenticationProfilePath = profile.AuthenticationProfilePath;
+            ToolRuntimePolicyBootstrap.ApplyProfileRuntimePolicy(
+                writeGovernanceMode: profile.WriteGovernanceMode,
+                requireWriteGovernanceRuntime: profile.RequireWriteGovernanceRuntime,
+                requireWriteAuditSinkForWriteOperations: profile.RequireWriteAuditSinkForWriteOperations,
+                writeAuditSinkMode: profile.WriteAuditSinkMode,
+                writeAuditSinkPath: profile.WriteAuditSinkPath,
+                authenticationRuntimePreset: profile.AuthenticationRuntimePreset,
+                requireAuthenticationRuntime: profile.RequireAuthenticationRuntime,
+                runAsProfilePath: profile.RunAsProfilePath,
+                authenticationProfilePath: profile.AuthenticationProfilePath,
+                setWriteGovernanceMode: mode => WriteGovernanceMode = mode,
+                setRequireWriteGovernanceRuntime: required => RequireWriteGovernanceRuntime = required,
+                setRequireWriteAuditSinkForWriteOperations: required => RequireWriteAuditSinkForWriteOperations = required,
+                setWriteAuditSinkMode: mode => WriteAuditSinkMode = mode,
+                setWriteAuditSinkPath: path => WriteAuditSinkPath = path,
+                setAuthenticationRuntimePreset: preset => AuthenticationRuntimePreset = preset,
+                setRequireAuthenticationRuntime: required => RequireAuthenticationRuntime = required,
+                setRunAsProfilePath: path => RunAsProfilePath = path,
+                setAuthenticationProfilePath: path => AuthenticationProfilePath = path);
 
             InstructionsFile = profile.InstructionsFile;
             MaxTableRows = profile.MaxTableRows;

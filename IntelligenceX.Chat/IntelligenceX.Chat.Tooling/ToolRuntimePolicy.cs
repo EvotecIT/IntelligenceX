@@ -626,6 +626,96 @@ public static class ToolRuntimePolicyBootstrap {
     }
 
     /// <summary>
+    /// Applies runtime-policy values loaded from a persisted profile.
+    /// </summary>
+    /// <param name="writeGovernanceMode">Persisted write-governance mode token.</param>
+    /// <param name="requireWriteGovernanceRuntime">Persisted write-runtime requirement.</param>
+    /// <param name="requireWriteAuditSinkForWriteOperations">Persisted write-audit-sink requirement.</param>
+    /// <param name="writeAuditSinkMode">Persisted write-audit-sink mode token.</param>
+    /// <param name="writeAuditSinkPath">Persisted write-audit-sink path.</param>
+    /// <param name="authenticationRuntimePreset">Persisted auth runtime preset token.</param>
+    /// <param name="requireAuthenticationRuntime">Persisted auth runtime requirement.</param>
+    /// <param name="runAsProfilePath">Persisted run-as profile path.</param>
+    /// <param name="authenticationProfilePath">Persisted auth profile path.</param>
+    /// <param name="setWriteGovernanceMode">Setter for parsed write-governance mode.</param>
+    /// <param name="setRequireWriteGovernanceRuntime">Setter for write-runtime requirement.</param>
+    /// <param name="setRequireWriteAuditSinkForWriteOperations">Setter for write-audit-sink requirement.</param>
+    /// <param name="setWriteAuditSinkMode">Setter for parsed write-audit-sink mode.</param>
+    /// <param name="setWriteAuditSinkPath">Setter for write-audit-sink path.</param>
+    /// <param name="setAuthenticationRuntimePreset">Setter for parsed auth runtime preset.</param>
+    /// <param name="setRequireAuthenticationRuntime">Setter for auth runtime requirement.</param>
+    /// <param name="setRunAsProfilePath">Setter for run-as profile path.</param>
+    /// <param name="setAuthenticationProfilePath">Setter for auth profile path.</param>
+    public static void ApplyProfileRuntimePolicy(
+        string? writeGovernanceMode,
+        bool requireWriteGovernanceRuntime,
+        bool requireWriteAuditSinkForWriteOperations,
+        string? writeAuditSinkMode,
+        string? writeAuditSinkPath,
+        string? authenticationRuntimePreset,
+        bool requireAuthenticationRuntime,
+        string? runAsProfilePath,
+        string? authenticationProfilePath,
+        Action<ToolWriteGovernanceMode> setWriteGovernanceMode,
+        Action<bool> setRequireWriteGovernanceRuntime,
+        Action<bool> setRequireWriteAuditSinkForWriteOperations,
+        Action<ToolWriteAuditSinkMode> setWriteAuditSinkMode,
+        Action<string?> setWriteAuditSinkPath,
+        Action<ToolAuthenticationRuntimePreset> setAuthenticationRuntimePreset,
+        Action<bool> setRequireAuthenticationRuntime,
+        Action<string?> setRunAsProfilePath,
+        Action<string?> setAuthenticationProfilePath) {
+        if (setWriteGovernanceMode is null) {
+            throw new ArgumentNullException(nameof(setWriteGovernanceMode));
+        }
+        if (setRequireWriteGovernanceRuntime is null) {
+            throw new ArgumentNullException(nameof(setRequireWriteGovernanceRuntime));
+        }
+        if (setRequireWriteAuditSinkForWriteOperations is null) {
+            throw new ArgumentNullException(nameof(setRequireWriteAuditSinkForWriteOperations));
+        }
+        if (setWriteAuditSinkMode is null) {
+            throw new ArgumentNullException(nameof(setWriteAuditSinkMode));
+        }
+        if (setWriteAuditSinkPath is null) {
+            throw new ArgumentNullException(nameof(setWriteAuditSinkPath));
+        }
+        if (setAuthenticationRuntimePreset is null) {
+            throw new ArgumentNullException(nameof(setAuthenticationRuntimePreset));
+        }
+        if (setRequireAuthenticationRuntime is null) {
+            throw new ArgumentNullException(nameof(setRequireAuthenticationRuntime));
+        }
+        if (setRunAsProfilePath is null) {
+            throw new ArgumentNullException(nameof(setRunAsProfilePath));
+        }
+        if (setAuthenticationProfilePath is null) {
+            throw new ArgumentNullException(nameof(setAuthenticationProfilePath));
+        }
+
+        if (TryParseWriteGovernanceMode(writeGovernanceMode, out var parsedWriteMode)) {
+            setWriteGovernanceMode(parsedWriteMode);
+        }
+
+        setRequireWriteGovernanceRuntime(requireWriteGovernanceRuntime);
+        setRequireWriteAuditSinkForWriteOperations(requireWriteAuditSinkForWriteOperations);
+
+        if (TryParseWriteAuditSinkMode(writeAuditSinkMode, out var parsedWriteAuditMode)) {
+            setWriteAuditSinkMode(parsedWriteAuditMode);
+        }
+
+        setWriteAuditSinkPath(writeAuditSinkPath);
+
+        if (TryParseAuthenticationRuntimePreset(authenticationRuntimePreset, out var parsedAuthPreset)) {
+            setAuthenticationRuntimePreset(parsedAuthPreset);
+        }
+
+        setRequireAuthenticationRuntime(requireAuthenticationRuntime);
+        setRunAsProfilePath(runAsProfilePath);
+        setAuthenticationProfilePath(authenticationProfilePath);
+    }
+
+    /// <summary>
     /// Formats write-governance mode for profile persistence.
     /// </summary>
     public static string FormatWriteGovernanceMode(ToolWriteGovernanceMode mode) {
