@@ -49,8 +49,6 @@ public sealed partial class MainWindow : Window {
             return null;
         }
 
-        await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
-
         _assistantStreaming.Clear();
         _activeTurnReceivedDelta = false;
         var transport = NormalizeLocalProviderTransport(_localProviderTransport);
@@ -79,6 +77,14 @@ public sealed partial class MainWindow : Window {
         }
 
         await PersistAppStateAsync().ConfigureAwait(false);
+        try {
+            await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Profile intent update skipped for this turn: " + ex.Message);
+            }
+        }
+
         return new ChatTurnContext(
             conversation,
             conversationId,
