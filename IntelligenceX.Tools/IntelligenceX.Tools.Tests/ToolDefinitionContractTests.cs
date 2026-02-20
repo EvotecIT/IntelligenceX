@@ -240,6 +240,48 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void CreateAliasDefinition_ShouldProduceStableTaxonomyTagOrderAcrossOverrideInputOrdering() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "zeta", "alpha" }),
+            toolType: null);
+
+        var aliasA = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias_a",
+            tags: new[] {
+                "routing:explicit",
+                "risk:high",
+                "scope:domain",
+                "operation:search"
+            });
+
+        var aliasB = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias_b",
+            tags: new[] {
+                "operation:search",
+                "scope:domain",
+                "risk:high",
+                "routing:explicit"
+            });
+
+        Assert.Equal(aliasA.Tags, aliasB.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(aliasA.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), aliasA.Tags);
+        Assert.Contains("scope:domain", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:search", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:high", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(aliasA.Tags, "scope:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "operation:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "entity:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "risk:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "routing:");
+    }
+
+    [Fact]
     public void Register_WithReplaceExisting_ShouldPreserveSingleTaxonomyTagPerKey() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(

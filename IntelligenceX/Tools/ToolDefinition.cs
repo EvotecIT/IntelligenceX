@@ -176,7 +176,10 @@ public sealed class ToolDefinition {
             }
         }
 
-        foreach (var taxonomyTag in taxonomyByKey.Values) {
+        var taxonomyKeys = taxonomyByKey.Keys.ToList();
+        taxonomyKeys.Sort(StringComparer.OrdinalIgnoreCase);
+        foreach (var taxonomyKey in taxonomyKeys) {
+            var taxonomyTag = taxonomyByKey[taxonomyKey];
             if (seen.Add(taxonomyTag)) {
                 list.Add(taxonomyTag);
             }
@@ -261,7 +264,10 @@ public sealed class ToolDefinition {
             }
         }
 
-        foreach (var taxonomyTag in taxonomyByKey.Values) {
+        var taxonomyKeys = taxonomyByKey.Keys.ToList();
+        taxonomyKeys.Sort(StringComparer.OrdinalIgnoreCase);
+        foreach (var taxonomyKey in taxonomyKeys) {
+            var taxonomyTag = taxonomyByKey[taxonomyKey];
             if (seen.Add(taxonomyTag)) {
                 merged.Add(taxonomyTag);
             }
