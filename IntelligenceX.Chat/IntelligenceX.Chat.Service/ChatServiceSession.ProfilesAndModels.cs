@@ -224,18 +224,29 @@ internal sealed partial class ChatServiceSession {
             var nextClientOptions = BuildClientOptions();
             nextClientOptions.Validate();
 
-            var reconnect = previousClientSettings.Transport != _options.OpenAITransport
-                            || !string.Equals(previousClientSettings.BaseUrl, _options.OpenAIBaseUrl, StringComparison.Ordinal)
-                            || previousClientSettings.AuthMode != _options.OpenAIAuthMode
-                            || !string.Equals(previousClientSettings.ApiKey, _options.OpenAIApiKey, StringComparison.Ordinal)
-                            || !string.Equals(previousClientSettings.BasicUsername, _options.OpenAIBasicUsername, StringComparison.Ordinal)
-                            || !string.Equals(previousClientSettings.BasicPassword, _options.OpenAIBasicPassword, StringComparison.Ordinal)
-                            || !string.Equals(previousClientSettings.AccountId, _options.OpenAIAccountId, StringComparison.Ordinal)
-                            || previousClientSettings.Streaming != _options.OpenAIStreaming
-                            || previousClientSettings.InsecureHttp != _options.OpenAIAllowInsecureHttp
-                            || previousClientSettings.InsecureHttpNonLoopback != _options.OpenAIAllowInsecureHttpNonLoopback;
-
-            var modelChanged = !string.Equals(previousClientSettings.Model, _options.Model, StringComparison.Ordinal);
+            var decision = ResolveRuntimeClientReconfigureDecision(
+                previousClientSettings.Transport,
+                _options.OpenAITransport,
+                previousClientSettings.BaseUrl,
+                _options.OpenAIBaseUrl,
+                previousClientSettings.AuthMode,
+                _options.OpenAIAuthMode,
+                previousClientSettings.ApiKey,
+                _options.OpenAIApiKey,
+                previousClientSettings.BasicUsername,
+                _options.OpenAIBasicUsername,
+                previousClientSettings.BasicPassword,
+                _options.OpenAIBasicPassword,
+                previousClientSettings.AccountId,
+                _options.OpenAIAccountId,
+                previousClientSettings.Streaming,
+                _options.OpenAIStreaming,
+                previousClientSettings.InsecureHttp,
+                _options.OpenAIAllowInsecureHttp,
+                previousClientSettings.InsecureHttpNonLoopback,
+                _options.OpenAIAllowInsecureHttpNonLoopback,
+                previousClientSettings.Model,
+                _options.Model);
 
             await WriteAsync(writer, new AckMessage {
                 Kind = ChatServiceMessageKind.Response,
@@ -244,7 +255,7 @@ internal sealed partial class ChatServiceSession {
                 Message = $"Active profile set to '{name}'."
             }, cancellationToken).ConfigureAwait(false);
 
-            return new SetProfileResult(ReconnectClient: reconnect, ModelChanged: modelChanged);
+            return new SetProfileResult(ReconnectClient: decision.ReconnectClient, ModelChanged: decision.ModelChanged);
         } catch (Exception ex) {
             // Restore previous effective options (best-effort).
             try {
@@ -481,29 +492,40 @@ internal sealed partial class ChatServiceSession {
             var nextClientOptions = BuildClientOptions();
             nextClientOptions.Validate();
 
-            var reconnect = previousClientSettings.Transport != _options.OpenAITransport
-                            || !string.Equals(previousClientSettings.BaseUrl, _options.OpenAIBaseUrl, StringComparison.Ordinal)
-                            || previousClientSettings.AuthMode != _options.OpenAIAuthMode
-                            || !string.Equals(previousClientSettings.ApiKey, _options.OpenAIApiKey, StringComparison.Ordinal)
-                            || !string.Equals(previousClientSettings.BasicUsername, _options.OpenAIBasicUsername, StringComparison.Ordinal)
-                            || !string.Equals(previousClientSettings.BasicPassword, _options.OpenAIBasicPassword, StringComparison.Ordinal)
-                            || !string.Equals(previousClientSettings.AccountId, _options.OpenAIAccountId, StringComparison.Ordinal)
-                            || previousClientSettings.Streaming != _options.OpenAIStreaming
-                            || previousClientSettings.InsecureHttp != _options.OpenAIAllowInsecureHttp
-                            || previousClientSettings.InsecureHttpNonLoopback != _options.OpenAIAllowInsecureHttpNonLoopback;
-
-            var modelChanged = !string.Equals(previousClientSettings.Model, _options.Model, StringComparison.Ordinal);
+            var decision = ResolveRuntimeClientReconfigureDecision(
+                previousClientSettings.Transport,
+                _options.OpenAITransport,
+                previousClientSettings.BaseUrl,
+                _options.OpenAIBaseUrl,
+                previousClientSettings.AuthMode,
+                _options.OpenAIAuthMode,
+                previousClientSettings.ApiKey,
+                _options.OpenAIApiKey,
+                previousClientSettings.BasicUsername,
+                _options.OpenAIBasicUsername,
+                previousClientSettings.BasicPassword,
+                _options.OpenAIBasicPassword,
+                previousClientSettings.AccountId,
+                _options.OpenAIAccountId,
+                previousClientSettings.Streaming,
+                _options.OpenAIStreaming,
+                previousClientSettings.InsecureHttp,
+                _options.OpenAIAllowInsecureHttp,
+                previousClientSettings.InsecureHttpNonLoopback,
+                _options.OpenAIAllowInsecureHttpNonLoopback,
+                previousClientSettings.Model,
+                _options.Model);
 
             await WriteAsync(writer, new AckMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
                 Ok = true,
-                Message = reconnect
+                Message = decision.ReconnectClient
                     ? "Runtime settings applied. Provider client will reconnect."
                     : "Runtime settings applied."
             }, cancellationToken).ConfigureAwait(false);
 
-            return new SetProfileResult(ReconnectClient: reconnect, ModelChanged: modelChanged);
+            return new SetProfileResult(ReconnectClient: decision.ReconnectClient, ModelChanged: decision.ModelChanged);
         } catch (Exception ex) {
             try {
                 _options.ApplyProfile(previous);
@@ -847,5 +869,43 @@ internal sealed partial class ChatServiceSession {
             default:
                 return false;
         }
+    }
+
+    internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(
+        OpenAITransportKind previousTransport,
+        OpenAITransportKind currentTransport,
+        string? previousBaseUrl,
+        string? currentBaseUrl,
+        OpenAICompatibleHttpAuthMode previousAuthMode,
+        OpenAICompatibleHttpAuthMode currentAuthMode,
+        string? previousApiKey,
+        string? currentApiKey,
+        string? previousBasicUsername,
+        string? currentBasicUsername,
+        string? previousBasicPassword,
+        string? currentBasicPassword,
+        string? previousAccountId,
+        string? currentAccountId,
+        bool previousStreaming,
+        bool currentStreaming,
+        bool previousInsecureHttp,
+        bool currentInsecureHttp,
+        bool previousInsecureHttpNonLoopback,
+        bool currentInsecureHttpNonLoopback,
+        string? previousModel,
+        string? currentModel) {
+        var reconnect = previousTransport != currentTransport
+                        || !string.Equals(previousBaseUrl, currentBaseUrl, StringComparison.Ordinal)
+                        || previousAuthMode != currentAuthMode
+                        || !string.Equals(previousApiKey, currentApiKey, StringComparison.Ordinal)
+                        || !string.Equals(previousBasicUsername, currentBasicUsername, StringComparison.Ordinal)
+                        || !string.Equals(previousBasicPassword, currentBasicPassword, StringComparison.Ordinal)
+                        || !string.Equals(previousAccountId, currentAccountId, StringComparison.Ordinal)
+                        || previousStreaming != currentStreaming
+                        || previousInsecureHttp != currentInsecureHttp
+                        || previousInsecureHttpNonLoopback != currentInsecureHttpNonLoopback;
+
+        var modelChanged = !string.Equals(previousModel, currentModel, StringComparison.Ordinal);
+        return (reconnect, modelChanged);
     }
 }

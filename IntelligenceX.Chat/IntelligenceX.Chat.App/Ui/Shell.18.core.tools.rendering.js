@@ -45,6 +45,7 @@
     ensureCustomSelect("optLocalProviderPreset");
     ensureCustomSelect("optLocalAuthMode");
     ensureCustomSelect("optNativeAccountSlot");
+    ensureCustomSelect("optRuntimePanelView");
     ensureCustomSelect("optLocalModelSelect");
     ensureCustomSelect("optReasoningEffort");
     ensureCustomSelect("optReasoningSummary");

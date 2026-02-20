@@ -249,18 +249,24 @@
       maxHeight = Math.max(32, availableHeight);
     }
 
-    menu.style.position = "fixed";
-    menu.style.left = rect.left + "px";
+    // Anchor menu to the select wrapper to avoid detached/floating dropdowns while the
+    // options pane updates or scrolls.
+    menu.style.position = "absolute";
+    menu.style.left = "0";
+    menu.style.width = "100%";
+    menu.style.right = "";
+    menu.style.maxHeight = Math.max(32, maxHeight) + "px";
+
+    var offsetTop = Math.max(4, button.offsetHeight + 4);
     if (openUpwards) {
       menu.classList.add("ix-select-menu-up");
-      menu.style.top = Math.max(edgePadding, rect.top - maxHeight - 4) + "px";
+      menu.style.top = "auto";
+      menu.style.bottom = offsetTop + "px";
     } else {
       menu.classList.remove("ix-select-menu-up");
-      menu.style.top = (rect.bottom + 4) + "px";
+      menu.style.bottom = "auto";
+      menu.style.top = offsetTop + "px";
     }
-    menu.style.width = rect.width + "px";
-    menu.style.right = "auto";
-    menu.style.maxHeight = Math.max(32, maxHeight) + "px";
   }
 
   function clearSelectMenuPosition(wrap) {
@@ -271,6 +277,7 @@
     menu.style.position = "";
     menu.style.left = "";
     menu.style.top = "";
+    menu.style.bottom = "";
     menu.style.width = "";
     menu.style.right = "";
     menu.style.maxHeight = "";

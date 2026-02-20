@@ -243,6 +243,7 @@ public sealed partial class MainWindow : Window {
 
             if (anyAttempted && lastApplySucceeded) {
                 UpdateRuntimeApplyProgress("completed", "Runtime settings applied without restarting the service process.", active: false, current.RequestId);
+                await SetStatusAsync("Runtime settings applied.").ConfigureAwait(false);
             }
         } finally {
             Interlocked.Exchange(ref _localProviderApplyInFlight, 0);

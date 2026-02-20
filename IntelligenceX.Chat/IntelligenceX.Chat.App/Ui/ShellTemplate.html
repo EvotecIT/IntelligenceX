@@ -158,19 +158,30 @@
           <div class="options-note" id="optLocalRuntimeBadge"></div>
           <div class="options-note" id="optRuntimeAuthHint">ChatGPT sign-in and runtime provider are separate. You can stay signed in while using local models.</div>
           <div class="options-actions options-actions-wrap">
-            <button id="btnUseOpenAiRuntime" class="options-btn options-btn-sm">Use ChatGPT Runtime</button>
+            <button id="btnUseOpenAiRuntime" class="options-btn options-btn-sm options-btn-ghost">Use ChatGPT Runtime</button>
             <button id="btnConnectLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio Runtime</button>
             <button id="btnUseCopilotRuntime" class="options-btn options-btn-sm options-btn-ghost">Use Copilot Subscription</button>
             <button id="btnRefreshModels" class="options-btn options-btn-sm options-btn-ghost">Refresh Models</button>
             <button id="btnApplyLocalProvider" class="options-btn options-btn-sm options-btn-ghost">Apply Runtime</button>
             <button id="btnToggleLocalAdvancedRuntime" class="options-btn options-btn-sm options-btn-ghost">Show Advanced Runtime</button>
           </div>
+          <div class="options-note">Quick runtime buttons apply immediately. Use Apply Runtime after manual field edits.</div>
         </section>
 
         <section class="options-group">
           <div class="options-label">Local Model Selection</div>
           <div class="options-note" id="optLocalSimpleHint">ChatGPT runtime is active. Switch to LM Studio to use local models.</div>
           <div class="options-note options-runtime-apply-progress" id="optRuntimeApplyProgress" hidden></div>
+          <div class="options-row" id="optRuntimePanelRow">
+            <label class="options-label-inline" for="optRuntimePanelView">Runtime panel</label>
+            <select id="optRuntimePanelView" class="options-select">
+              <option value="all">All</option>
+              <option value="provider">Provider + auth</option>
+              <option value="model">Model + reasoning</option>
+              <option value="usage">Usage + limits</option>
+            </select>
+          </div>
+          <div class="options-note" id="optRuntimePanelHint">Switch Runtime panel view to focus on provider setup, model tuning, or account usage.</div>
           <div class="options-row" id="optNativeAccountSlotRow">
             <label class="options-label-inline" for="optNativeAccountSlot">Native account slot</label>
             <select id="optNativeAccountSlot" class="options-select">

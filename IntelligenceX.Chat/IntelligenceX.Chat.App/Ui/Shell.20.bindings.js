@@ -1152,6 +1152,7 @@
 
   byId("optLocalTransport").addEventListener("change", function(e) {
     var next = normalizeLocalTransportValue(e.target.value || "native");
+    var previousTransport = normalizeLocalTransportValue((((state.options || {}).localModel || {}).transport || "native"));
     var isCompatible = transportUsesCompatibleHttp(next);
     e.target.value = next;
     syncCustomSelect(e.target);
@@ -1197,6 +1198,10 @@
           baseInput.value = "http://127.0.0.1:11434";
         }
       }
+    }
+    var modelInput = byId("optLocalModelInput");
+    if (modelInput && previousTransport !== next && !isCompatible) {
+      modelInput.value = "";
     }
     if (apiKeyRow) {
       apiKeyRow.hidden = !isCompatible;
@@ -1348,14 +1353,25 @@
     renderLocalModelOptions();
   });
 
+  byId("optRuntimePanelView").addEventListener("change", function(e) {
+    var normalized = setRuntimePanelView(e.target.value || "all");
+    e.target.value = normalized;
+    syncCustomSelect(e.target);
+    renderLocalModelOptions();
+  });
+
   byId("btnToggleLocalAdvancedRuntime").addEventListener("click", function() {
     setRuntimeAdvancedOpen(!isRuntimeAdvancedOpen());
   });
 
   byId("btnUseOpenAiRuntime").addEventListener("click", function() {
     var transport = byId("optLocalTransport");
+    var modelInput = byId("optLocalModelInput");
     transport.value = "native";
     syncCustomSelect(transport);
+    if (modelInput) {
+      modelInput.value = "";
+    }
     applyLocalProviderSettings(true);
   });
 
@@ -1366,10 +1382,14 @@
 
   byId("btnUseCopilotRuntime").addEventListener("click", function() {
     var transport = byId("optLocalTransport");
+    var modelInput = byId("optLocalModelInput");
     if (transport) {
       transport.value = "copilot-cli";
       syncCustomSelect(transport);
       transport.dispatchEvent(new Event("change"));
+    }
+    if (modelInput) {
+      modelInput.value = "";
     }
     applyLocalProviderSettings(true);
   });

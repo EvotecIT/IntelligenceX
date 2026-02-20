@@ -267,16 +267,56 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("var runtimeApplyProgress = byId(\"optRuntimeApplyProgress\")", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeApply = local.runtimeApply", script, StringComparison.Ordinal);
         Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
+        Assert.Contains("Switching runtime updates the active provider profile without forcing a process restart.", script, StringComparison.Ordinal);
         Assert.Contains("bridgeSessionState: bridgeSessionState,", script, StringComparison.Ordinal);
         Assert.Contains("bridgeSessionDetail: bridgeSessionDetail,", script, StringComparison.Ordinal);
         Assert.Contains("\"Bridge session\"", script, StringComparison.Ordinal);
-        Assert.Contains("useOpenAiRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
-        Assert.Contains("connectLmStudioButton.disabled = false;", script, StringComparison.Ordinal);
-        Assert.Contains("useCopilotRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.classList.toggle(\"options-btn-active\", isNative);", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.classList.toggle(\"options-btn-ghost\", !isNative);", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.disabled = turnBusy;", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.classList.toggle(\"options-btn-active\", lmStudioConnected);", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.classList.toggle(\"options-btn-ghost\", !lmStudioConnected);", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.disabled = turnBusy;", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.classList.toggle(\"options-btn-active\", isCopilotCli);", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.classList.toggle(\"options-btn-ghost\", !isCopilotCli);", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.disabled = turnBusy;", script, StringComparison.Ordinal);
         Assert.Contains("applyStage === \"queued\"", script, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability-value-supported", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-apply-progress", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures runtime UI supports focused provider/model/usage panel views so long settings pages stay navigable.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesRuntimePanelViewSelectorAndVisibilityGuards() {
+        var html = UiShellAssets.Load();
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("id=\"optRuntimePanelView\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimePanelHint\"", html, StringComparison.Ordinal);
+        Assert.Contains("function runtimePanelViewStorageKey()", script, StringComparison.Ordinal);
+        Assert.Contains("function setRuntimePanelView(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function mergeRuntimePanelVisibility(id, shouldShow)", script, StringComparison.Ordinal);
+        Assert.Contains("mergeRuntimePanelVisibility(\"optAccountUsageList\", showUsagePanel);", script, StringComparison.Ordinal);
+        Assert.Contains("ensureCustomSelect(\"optRuntimePanelView\");", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures switching away from compatible runtimes clears stale model IDs to avoid native/copilot mismatch confusion.
+    /// </summary>
+    [Fact]
+    public void Load_ClearsStaleModelInputWhenTransportSwitchesAwayFromCompatible() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("var previousTransport = normalizeLocalTransportValue((((state.options || {}).localModel || {}).transport || \"native\"));", script, StringComparison.Ordinal);
+        Assert.Contains("if (modelInput && previousTransport !== next && !isCompatible) {", script, StringComparison.Ordinal);
+        Assert.Contains("modelInput.value = \"\";", script, StringComparison.Ordinal);
     }
 
     /// <summary>

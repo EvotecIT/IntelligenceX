@@ -595,6 +595,28 @@
     return "ixchat.runtime.model.filter";
   }
 
+  function runtimePanelViewStorageKey() {
+    return "ixchat.runtime.panel.view";
+  }
+
+  function normalizeRuntimePanelView(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "provider" || normalized === "model" || normalized === "usage") {
+      return normalized;
+    }
+    return "all";
+  }
+
+  function getRuntimePanelView() {
+    return normalizeRuntimePanelView(readStorage(runtimePanelViewStorageKey()));
+  }
+
+  function setRuntimePanelView(value) {
+    var normalized = normalizeRuntimePanelView(value);
+    writeStorage(runtimePanelViewStorageKey(), normalized);
+    return normalized;
+  }
+
   function isRuntimeAdvancedOpen() {
     return readStorage(runtimeAdvancedStorageKey()) === "1";
   }
@@ -1240,10 +1262,21 @@
 
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
+    var runtimePanelView = getRuntimePanelView();
+    var runtimePanelViewSelect = byId("optRuntimePanelView");
+    if (runtimePanelViewSelect) {
+      runtimePanelView = normalizeRuntimePanelView(runtimePanelViewSelect.value || runtimePanelView);
+      runtimePanelViewSelect.value = runtimePanelView;
+      syncCustomSelect(runtimePanelViewSelect);
+    }
+    var showProviderPanel = runtimePanelView === "all" || runtimePanelView === "provider";
+    var showModelPanel = runtimePanelView === "all" || runtimePanelView === "model";
+    var showUsagePanel = runtimePanelView === "all" || runtimePanelView === "usage";
     var runtimeCapabilities = local.runtimeCapabilities && typeof local.runtimeCapabilities === "object"
       ? local.runtimeCapabilities
       : {};
     var isApplying = local.isApplying === true;
+    var turnBusy = state.sending === true || state.cancelRequested === true;
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
     var isCopilotCli = transport === "copilot-cli";
@@ -1407,6 +1440,19 @@
       }
     }
 
+    var runtimePanelHint = byId("optRuntimePanelHint");
+    if (runtimePanelHint) {
+      if (runtimePanelView === "provider") {
+        runtimePanelHint.textContent = "Showing provider setup and authentication controls.";
+      } else if (runtimePanelView === "model") {
+        runtimePanelHint.textContent = "Showing model selection and reasoning controls.";
+      } else if (runtimePanelView === "usage") {
+        runtimePanelHint.textContent = "Showing account slots and usage/limit tracking.";
+      } else {
+        runtimePanelHint.textContent = "Showing all runtime controls.";
+      }
+    }
+
     var runtimeApplyProgress = byId("optRuntimeApplyProgress");
     if (runtimeApplyProgress) {
       var applyStage = normalizeModelText(runtimeApply.stage || "").toLowerCase();
@@ -1545,50 +1591,64 @@
       var isNative = transport === "native";
       useOpenAiRuntimeButton.textContent = isNative ? "ChatGPT Runtime Active" : "Use ChatGPT Runtime";
       useOpenAiRuntimeButton.classList.toggle("options-btn-active", isNative);
-      useOpenAiRuntimeButton.disabled = false;
-      useOpenAiRuntimeButton.title = isApplying
+      useOpenAiRuntimeButton.classList.toggle("options-btn-ghost", !isNative);
+      useOpenAiRuntimeButton.disabled = turnBusy;
+      useOpenAiRuntimeButton.title = turnBusy
+        ? "Wait for the current turn to finish before switching runtime."
+        : (isApplying
         ? "Apply in progress. Click to queue switch to ChatGPT runtime."
-        : "";
+        : "");
     }
 
     var connectLmStudioButton = byId("btnConnectLmStudio");
     if (connectLmStudioButton) {
       connectLmStudioButton.textContent = lmStudioConnected ? "LM Studio Runtime Active" : "Use LM Studio Runtime";
       connectLmStudioButton.classList.toggle("options-btn-active", lmStudioConnected);
-      connectLmStudioButton.disabled = false;
-      connectLmStudioButton.title = isApplying
+      connectLmStudioButton.classList.toggle("options-btn-ghost", !lmStudioConnected);
+      connectLmStudioButton.disabled = turnBusy;
+      connectLmStudioButton.title = turnBusy
+        ? "Wait for the current turn to finish before switching runtime."
+        : (isApplying
         ? "Apply in progress. Click to queue switch to LM Studio runtime."
         : (runtimeDetectionHasRun && !lmStudioAvailable && !lmStudioConnected
           ? "LM Studio was not detected. Start LM Studio and click Auto Detect Runtime in Advanced Runtime."
-          : "");
+          : ""));
     }
 
     var useCopilotRuntimeButton = byId("btnUseCopilotRuntime");
     if (useCopilotRuntimeButton) {
       useCopilotRuntimeButton.textContent = isCopilotCli ? "Copilot Subscription Active" : "Use Copilot Subscription";
       useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotCli);
-      useCopilotRuntimeButton.disabled = false;
-      useCopilotRuntimeButton.title = isCopilotCli
+      useCopilotRuntimeButton.classList.toggle("options-btn-ghost", !isCopilotCli);
+      useCopilotRuntimeButton.disabled = turnBusy;
+      useCopilotRuntimeButton.title = turnBusy
+        ? "Wait for the current turn to finish before switching runtime."
+        : (isCopilotCli
         ? ""
         : (isApplying
           ? "Apply in progress. Click to queue switch to Copilot subscription runtime."
-          : "Uses GitHub Copilot subscription sign-in (no API key required).");
+          : "Uses GitHub Copilot subscription sign-in (no API key required)."));
     }
 
     var refreshModelsButton = byId("btnRefreshModels");
     if (refreshModelsButton) {
-      refreshModelsButton.disabled = isApplying || transport === "native";
-      refreshModelsButton.title = isApplying
+      refreshModelsButton.disabled = isApplying || turnBusy || transport === "native";
+      refreshModelsButton.title = turnBusy
+        ? "Wait for the current turn to finish before refreshing models."
+        : (isApplying
         ? "Runtime switch in progress."
-        : (transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : "");
+        : (transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : ""));
     }
 
     var applyRuntimeButton = byId("btnApplyLocalProvider");
     if (applyRuntimeButton) {
-      applyRuntimeButton.disabled = isApplying;
+      applyRuntimeButton.disabled = isApplying || turnBusy;
       applyRuntimeButton.textContent = isApplying
         ? (applyStage === "queued" ? "Runtime Queued..." : "Applying Runtime...")
         : "Apply Runtime";
+      applyRuntimeButton.title = turnBusy
+        ? "Wait for the current turn to finish before applying runtime changes."
+        : "Manual field edits require Apply Runtime. Quick runtime buttons apply automatically.";
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();
@@ -2097,6 +2157,37 @@
         }
       }
     }
+
+    function mergeRuntimePanelVisibility(id, shouldShow) {
+      var element = byId(id);
+      if (!element) {
+        return;
+      }
+      element.hidden = element.hidden || !shouldShow;
+    }
+
+    mergeRuntimePanelVisibility("optNativeAccountSlotRow", showUsagePanel);
+    mergeRuntimePanelVisibility("optNativeAccountIdRow", showUsagePanel);
+    mergeRuntimePanelVisibility("optNativeAccountHint", showUsagePanel);
+    mergeRuntimePanelVisibility("optAccountUsageTitle", showUsagePanel);
+    mergeRuntimePanelVisibility("optAccountUsageList", showUsagePanel);
+
+    mergeRuntimePanelVisibility("optLocalModelInputRow", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelSelectRow", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelFilterRow", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelManualHint", showModelPanel);
+    mergeRuntimePanelVisibility("optReasoningEffortRow", showModelPanel);
+    mergeRuntimePanelVisibility("optReasoningSummaryRow", showModelPanel);
+    mergeRuntimePanelVisibility("optTextVerbosityRow", showModelPanel);
+    mergeRuntimePanelVisibility("optTemperatureRow", showModelPanel);
+    mergeRuntimePanelVisibility("optReasoningHint", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeCapabilitiesTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeCapabilities", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelsState", showModelPanel);
+
+    mergeRuntimePanelVisibility("optLocalSimpleHint", showProviderPanel);
+    mergeRuntimePanelVisibility("optLocalAdvancedArea", showProviderPanel);
+
     refreshAccountUsageRetryCountdowns();
 
     var stateNote = byId("optLocalModelsState");

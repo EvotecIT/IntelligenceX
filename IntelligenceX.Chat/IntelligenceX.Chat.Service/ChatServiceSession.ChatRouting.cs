@@ -52,11 +52,17 @@ internal sealed partial class ChatServiceSession {
             }
         }
         toolDefs = SanitizeToolDefinitions(toolDefs);
+
+        var selectedModel = request.Options?.Model ?? _options.Model;
+        if (toolDefs.Count > 0 && ShouldDisableToolsForSelectedModel(client.TransportKind, selectedModel)) {
+            toolDefs = Array.Empty<ToolDefinition>();
+        }
+
         var fullToolDefs = toolDefs.Count == 0 ? Array.Empty<ToolDefinition>() : toolDefs.ToArray();
         var originalToolCount = toolDefs.Count;
         var routingInsights = new List<ToolRoutingInsight>();
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
-        var maxCandidateTools = request.Options?.MaxCandidateTools;
+        var maxCandidateTools = ResolveMaxCandidateToolsSetting(request.Options?.MaxCandidateTools, client.TransportKind);
         var userRequest = ExtractPrimaryUserRequest(request.Text);
         var userIntent = ExtractIntentUserText(request.Text);
         RememberUserIntent(threadId, userIntent);
@@ -564,6 +570,90 @@ internal sealed partial class ChatServiceSession {
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static int? ResolveMaxCandidateToolsSetting(int? requestedLimit, OpenAITransportKind transportKind) {
+        if (requestedLimit.HasValue) {
+            return requestedLimit;
+        }
+
+        // Compatible-http local runtimes (LM Studio/Ollama-style endpoints) often run with smaller loaded
+        // context windows than cloud providers. Keep tool candidate exposure tighter by default so routine
+        // non-tool prompts do not flood the context with large function schemas.
+        if (transportKind == OpenAITransportKind.CompatibleHttp) {
+            return 8;
+        }
+
+        return null;
+    }
+
+    private bool ShouldDisableToolsForSelectedModel(OpenAITransportKind transportKind, string? selectedModel) {
+        if (transportKind != OpenAITransportKind.CompatibleHttp) {
+            return false;
+        }
+
+        if (!IsLikelyLmStudioBaseUrl(_options.OpenAIBaseUrl)) {
+            return false;
+        }
+
+        var requestedModel = (selectedModel ?? string.Empty).Trim();
+        if (requestedModel.Length == 0) {
+            return false;
+        }
+
+        ModelListResult? modelList = null;
+        lock (_modelListCacheLock) {
+            modelList = _modelListCache?.Result;
+        }
+
+        if (modelList is null || modelList.Models.Count == 0) {
+            return false;
+        }
+
+        var modelInfo = FindModelInfo(modelList.Models, requestedModel);
+        if (modelInfo is null) {
+            return false;
+        }
+
+        if (modelInfo.Capabilities.Count == 0) {
+            return true;
+        }
+
+        for (var i = 0; i < modelInfo.Capabilities.Count; i++) {
+            if (string.Equals(modelInfo.Capabilities[i], "tool_use", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static ModelInfo? FindModelInfo(IReadOnlyList<ModelInfo> models, string selectedModel) {
+        for (var i = 0; i < models.Count; i++) {
+            var model = models[i];
+            if (string.Equals(model.Id, selectedModel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(model.Model, selectedModel, StringComparison.OrdinalIgnoreCase)) {
+                return model;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsLikelyLmStudioBaseUrl(string? baseUrl) {
+        if (string.IsNullOrWhiteSpace(baseUrl)) {
+            return false;
+        }
+
+        if (!Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri) || uri is null) {
+            return false;
+        }
+
+        if (uri.Port == 1234) {
+            return true;
+        }
+
+        return uri.Host.IndexOf("lmstudio", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static ReasoningEffort? ResolveReasoningEffort(string? value, ReasoningEffort? fallback) {
