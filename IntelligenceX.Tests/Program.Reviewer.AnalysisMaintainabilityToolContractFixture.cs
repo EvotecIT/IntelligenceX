@@ -35,11 +35,18 @@ internal static partial class Program {
             title: "Tools should use canonical max_results metadata helper",
             description: "Flags tool response metadata that adds max_results directly instead of AddMaxResultsMeta(...).");
 
+        WriteToolContractRule(
+            workspacePath,
+            ruleId: "IXTOOL004",
+            title: "Tools should use canonical option-bounded max-results helper",
+            description:
+            "Flags tool source that still uses ToolArgs.GetPositiveOptionBoundedInt32OrDefault(...) instead of the canonical ToolArgs.GetOptionBoundedInt32(...) overload.");
+
         File.WriteAllText(Path.Combine(workspacePath, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
 {
   "id": "intelligencex-maintainability-default",
   "label": "IntelligenceX Maintainability",
-  "rules": ["IXTOOL001", "IXTOOL002", "IXTOOL003"]
+  "rules": ["IXTOOL001", "IXTOOL002", "IXTOOL003", "IXTOOL004"]
 }
 """);
     }
