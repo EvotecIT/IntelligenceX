@@ -16,6 +16,7 @@
   var optionsPanel = byId("optionsPanel");
   var optionsBody = optionsPanel.querySelector(".options-body");
   var dataViewBody = byId("dataViewBody");
+  var visualViewBody = byId("visualViewBody");
   var optionsBackdrop = byId("optionsBackdrop");
   var openCustomSelect = null;
   var lastHostWheelAt = 0;
@@ -329,6 +330,19 @@
   }
 
   function resolveWheelScrollTarget(eventTarget) {
+    if (document.body.classList.contains("visual-view-open")) {
+      if (eventTarget && eventTarget.closest) {
+        var visualViewScrollTarget = eventTarget.closest("#visualViewBody, .visual-view-panel");
+        if (visualViewScrollTarget) {
+          return visualViewScrollTarget;
+        }
+      }
+
+      if (visualViewBody) {
+        return visualViewBody;
+      }
+    }
+
     if (document.body.classList.contains("data-view-open")) {
       if (eventTarget && eventTarget.closest) {
         var dataViewScrollTarget = eventTarget.closest(".dt-scroll-body, #dataViewBody, .data-view-panel .dt-layout-cell");
@@ -397,7 +411,17 @@
       }
     }
 
-    if (!document.body.classList.contains("data-view-open") && target !== transcript) {
+    if (document.body.classList.contains("visual-view-open") && visualViewBody && target !== visualViewBody) {
+      before = visualViewBody.scrollTop;
+      visualViewBody.scrollTop += amount;
+      if (visualViewBody.scrollTop !== before) {
+        return true;
+      }
+    }
+
+    if (!document.body.classList.contains("data-view-open")
+      && !document.body.classList.contains("visual-view-open")
+      && target !== transcript) {
       before = transcript.scrollTop;
       transcript.scrollTop += amount;
       return transcript.scrollTop !== before;
@@ -407,6 +431,9 @@
   }
 
   function openOptions() {
+    if (document.body.classList.contains("visual-view-open") && window.ixCloseVisualView) {
+      window.ixCloseVisualView();
+    }
     if (document.body.classList.contains("data-view-open") && window.ixCloseDataView) {
       window.ixCloseDataView();
     }

@@ -81,6 +81,97 @@
     }
   }
 
+  function getVisualKindLabel(kind) {
+    var normalized = String(kind || "").toLowerCase();
+    if (normalized === "mermaid") {
+      return "Mermaid Diagram";
+    }
+    if (normalized === "ix-chart" || normalized === "chart") {
+      return "Chart";
+    }
+    if (normalized === "ix-network") {
+      return "Network Diagram";
+    }
+    return "Visual";
+  }
+
+  function markVisualMessageWide(pre) {
+    if (!pre || !pre.closest) {
+      return;
+    }
+
+    var msg = pre.closest(".msg");
+    if (msg && msg.classList) {
+      msg.classList.add("ix-msg-has-visual");
+    }
+  }
+
+  function clearVisualMessageWideWhenEmpty(pre) {
+    if (!pre || !pre.closest) {
+      return;
+    }
+
+    var msg = pre.closest(".msg");
+    if (!msg || !msg.classList || !msg.classList.contains("ix-msg-has-visual")) {
+      return;
+    }
+
+    var hasVisual = msg.querySelector(
+      ".markdown-body pre[data-ix-chart-rendered='1'], " +
+      ".markdown-body pre[data-ix-network-rendered='1'], " +
+      ".markdown-body pre[data-ix-mermaid-rendered='1'], " +
+      ".markdown-body .ix-chart-host, " +
+      ".markdown-body .ix-network-host");
+    if (!hasVisual) {
+      msg.classList.remove("ix-msg-has-visual");
+    }
+  }
+
+  function removeVisualActionBar(pre) {
+    if (!pre) {
+      return;
+    }
+
+    var bar = pre._ixVisualActionBar;
+    if (bar && bar.parentElement) {
+      bar.remove();
+    }
+    pre._ixVisualActionBar = null;
+  }
+
+  function ensureVisualActionBar(pre, kind) {
+    if (!pre || !pre.parentElement) {
+      return;
+    }
+
+    if (pre._ixVisualActionBar && pre._ixVisualActionBar.parentElement) {
+      return;
+    }
+
+    var anchor = pre;
+    var next = pre.nextElementSibling;
+    if (kind === "ix-chart" && next && next.classList && next.classList.contains("ix-chart-host")) {
+      anchor = next;
+    } else if (kind === "ix-network" && next && next.classList && next.classList.contains("ix-network-host")) {
+      anchor = next;
+    }
+
+    var bar = document.createElement("div");
+    bar.className = "ix-visual-actions-bar";
+
+    var btnOpen = document.createElement("button");
+    btnOpen.type = "button";
+    btnOpen.textContent = "Open " + getVisualKindLabel(kind);
+    btnOpen.addEventListener("click", function() {
+      openVisualViewFromBlock(pre, kind);
+    });
+
+    bar.appendChild(btnOpen);
+    anchor.insertAdjacentElement("afterend", bar);
+    pre._ixVisualActionBar = bar;
+    markVisualMessageWide(pre);
+  }
+
   function loadVisualScriptOnce(url, attrName, readyCheck) {
     var isReady = typeof readyCheck === "function"
       ? readyCheck
@@ -231,6 +322,8 @@
       return;
     }
 
+    removeVisualActionBar(pre);
+
     var source = pre.getAttribute("data-ix-mermaid-source");
     if (typeof source === "string" && source.length > 0) {
       pre.textContent = source;
@@ -240,6 +333,7 @@
     pre.setAttribute("data-ix-mermaid-invalid", "1");
     var suffix = reason ? " (" + reason + ")" : "";
     ensureVisualNotice(pre, "invalid visual block: mermaid" + suffix);
+    clearVisualMessageWideWhenEmpty(pre);
   }
 
   async function renderMermaidBlock(pre) {
@@ -300,6 +394,7 @@
       pre.setAttribute("data-ix-mermaid-rendered", "1");
       pre.removeAttribute("data-ix-mermaid-invalid");
       clearVisualNotice(pre);
+      ensureVisualActionBar(pre, "mermaid");
     } catch (_) {
       markMermaidInvalid(pre, "parse/render failed");
     } finally {
@@ -751,6 +846,8 @@
       return;
     }
 
+    removeVisualActionBar(pre);
+
     if (pre._ixChartInstance && typeof pre._ixChartInstance.destroy === "function") {
       try {
         pre._ixChartInstance.destroy();
@@ -767,6 +864,7 @@
     if (host && host.classList && host.classList.contains("ix-chart-host")) {
       host.remove();
     }
+    clearVisualMessageWideWhenEmpty(pre);
   }
 
   function markChartInvalid(pre, reason) {
@@ -842,6 +940,7 @@
       pre.removeAttribute("data-ix-chart-invalid");
       pre.setAttribute("data-ix-chart-rendered", "1");
       clearVisualNotice(pre);
+      ensureVisualActionBar(pre, "ix-chart");
     } catch (_) {
       markChartInvalid(pre, "render failed");
     } finally {
@@ -1076,6 +1175,12 @@
 
     var from = sanitizeNetworkId(rawEdge.from);
     var to = sanitizeNetworkId(rawEdge.to);
+    if (from === null && Object.prototype.hasOwnProperty.call(rawEdge, "source")) {
+      from = sanitizeNetworkId(rawEdge.source);
+    }
+    if (to === null && Object.prototype.hasOwnProperty.call(rawEdge, "target")) {
+      to = sanitizeNetworkId(rawEdge.target);
+    }
     if (from === null || to === null) {
       return null;
     }
@@ -1279,6 +1384,8 @@
       return;
     }
 
+    removeVisualActionBar(pre);
+
     if (pre._ixNetworkInstance && typeof pre._ixNetworkInstance.destroy === "function") {
       try {
         pre._ixNetworkInstance.destroy();
@@ -1295,6 +1402,7 @@
     if (host && host.classList && host.classList.contains("ix-network-host")) {
       host.remove();
     }
+    clearVisualMessageWideWhenEmpty(pre);
   }
 
   function markNetworkInvalid(pre, reason) {
@@ -1359,19 +1467,50 @@
       host.appendChild(canvas);
       pre.insertAdjacentElement("afterend", host);
 
+      var networkOptions = deepMergeForExport({
+        autoResize: true,
+        layout: {
+          improvedLayout: true
+        },
+        physics: {
+          stabilization: {
+            enabled: true,
+            fit: true,
+            iterations: 180
+          }
+        },
+        interaction: {
+          hover: true
+        },
+        nodes: {
+          margin: 10,
+          font: {
+            strokeWidth: 0
+          }
+        },
+        edges: {
+          smooth: {
+            enabled: true,
+            type: "dynamic",
+            roundness: 0.4
+          }
+        }
+      }, validation.config.options || {});
+
       var network = new window.vis.Network(
         canvas,
         {
           nodes: validation.config.nodes,
           edges: validation.config.edges
         },
-        validation.config.options || {});
+        networkOptions);
 
       pre._ixNetworkInstance = network;
       pre.style.display = "none";
       pre.removeAttribute("data-ix-network-invalid");
       pre.setAttribute("data-ix-network-rendered", "1");
       clearVisualNotice(pre);
+      ensureVisualActionBar(pre, "ix-network");
     } catch (_) {
       markNetworkInvalid(pre, "render failed");
     } finally {
@@ -1517,6 +1656,12 @@
       return;
     }
 
+    var mermaidBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-mermaid-rendered='1']");
+    for (var m = 0; m < mermaidBlocks.length; m++) {
+      removeVisualActionBar(mermaidBlocks[m]);
+      clearVisualMessageWideWhenEmpty(mermaidBlocks[m]);
+    }
+
     var chartBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-chart-rendered='1']");
     for (var i = 0; i < chartBlocks.length; i++) {
       disposeChartBlock(chartBlocks[i]);
@@ -1548,6 +1693,759 @@
         // Keep transcript rendering resilient even when visual runtime fails.
       });
   };
+
+  var visualViewPanel = byId("visualViewPanel");
+  var visualViewBackdrop = byId("visualViewBackdrop");
+  var visualViewTitle = byId("visualViewTitle");
+  var visualViewMeta = byId("visualViewMeta");
+  var visualViewFeedback = byId("visualViewFeedback");
+  var visualViewBody = byId("visualViewBody");
+  var visualViewCanvasWrap = byId("visualViewCanvasWrap");
+  var visualViewExportActions = byId("visualViewExportActions");
+  var visualViewExportPath = byId("visualViewExportPath");
+  var btnVisualViewClose = byId("btnVisualViewClose");
+  var btnVisualViewExportPng = byId("btnVisualViewExportPng");
+  var btnVisualViewExportSvg = byId("btnVisualViewExportSvg");
+  var btnVisualViewOpenExport = byId("btnVisualViewOpenExport");
+  var btnVisualViewRevealExport = byId("btnVisualViewRevealExport");
+  var btnVisualViewCopyExportPath = byId("btnVisualViewCopyExportPath");
+
+  var visualViewState = {
+    sessionId: 0,
+    type: "",
+    source: "",
+    title: "",
+    chartInstance: null,
+    networkInstance: null,
+    lastExportPath: "",
+    lastExportFormat: ""
+  };
+  var visualViewFeedbackClearTimer = 0;
+  var pendingVisualExports = Object.create(null);
+
+  function clearVisualViewFeedbackTimer() {
+    if (visualViewFeedbackClearTimer) {
+      window.clearTimeout(visualViewFeedbackClearTimer);
+      visualViewFeedbackClearTimer = 0;
+    }
+  }
+
+  function setVisualViewFeedback(text, tone, autoClearMs) {
+    if (!visualViewFeedback) {
+      return;
+    }
+
+    clearVisualViewFeedbackTimer();
+    visualViewFeedback.classList.remove("show", "ok", "warn", "bad", "info");
+
+    var content = String(text || "").trim();
+    if (!content) {
+      visualViewFeedback.textContent = "";
+      return;
+    }
+
+    visualViewFeedback.textContent = content;
+    visualViewFeedback.classList.add("show");
+
+    var normalizedTone = String(tone || "").toLowerCase();
+    if (normalizedTone === "ok" || normalizedTone === "warn" || normalizedTone === "bad" || normalizedTone === "info") {
+      visualViewFeedback.classList.add(normalizedTone);
+    } else {
+      visualViewFeedback.classList.add("info");
+    }
+
+    var timeout = Number(autoClearMs);
+    if (Number.isFinite(timeout) && timeout > 0) {
+      visualViewFeedbackClearTimer = window.setTimeout(function() {
+        setVisualViewFeedback("", "info", 0);
+      }, timeout);
+    }
+  }
+
+  function normalizeVisualType(type) {
+    var normalized = String(type || "").trim().toLowerCase();
+    if (normalized === "chart") {
+      return "ix-chart";
+    }
+    return normalized;
+  }
+
+  function normalizeVisualExportFormat(value, visualType) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "svg") {
+      return normalizeVisualType(visualType) === "mermaid" ? "svg" : "png";
+    }
+    return "png";
+  }
+
+  function getVisualExportExtension(format) {
+    return String(format || "").toLowerCase() === "svg" ? ".svg" : ".png";
+  }
+
+  function getVisualExportPreferences() {
+    var options = state && state.options ? state.options : {};
+    var exportPrefs = options.export || {};
+    return {
+      saveMode: String(exportPrefs.saveMode || "").toLowerCase() === "remember" ? "remember" : "ask",
+      lastDirectory: String(exportPrefs.lastDirectory || "").trim(),
+      visualThemeMode: normalizeVisualExportThemeMode(exportPrefs.visualThemeMode)
+    };
+  }
+
+  function buildVisualExportPath(format, title) {
+    var prefs = getVisualExportPreferences();
+    if (prefs.saveMode !== "remember" || !prefs.lastDirectory) {
+      return "";
+    }
+
+    var stem = typeof sanitizeExportFileStem === "function"
+      ? sanitizeExportFileStem(title || "visual")
+      : String(title || "visual").replace(/[<>:\"\/\\|?*\u0000-\u001F]/g, "_");
+    var timestamp = typeof buildExportTimestamp === "function"
+      ? buildExportTimestamp()
+      : Date.now().toString(36);
+    var fileName = stem + "-" + timestamp + getVisualExportExtension(format);
+    if (typeof joinExportPath === "function") {
+      return joinExportPath(prefs.lastDirectory, fileName);
+    }
+
+    if (prefs.lastDirectory.endsWith("\\") || prefs.lastDirectory.endsWith("/")) {
+      return prefs.lastDirectory + fileName;
+    }
+
+    return prefs.lastDirectory + "\\" + fileName;
+  }
+
+  function buildVisualExportId(format) {
+    return "vexp-" + String(format || "png") + "-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 100000).toString(36);
+  }
+
+  function visualFileNameFromPath(path) {
+    var raw = String(path || "").trim();
+    if (!raw) {
+      return "";
+    }
+
+    var slash = raw.lastIndexOf("/");
+    var backslash = raw.lastIndexOf("\\");
+    var idx = Math.max(slash, backslash);
+    return idx >= 0 ? raw.substring(idx + 1) : raw;
+  }
+
+  function setVisualViewExportButtonsBusy() {
+    var busy = false;
+    for (var key in pendingVisualExports) {
+      if (Object.prototype.hasOwnProperty.call(pendingVisualExports, key)) {
+        busy = true;
+        break;
+      }
+    }
+
+    if (btnVisualViewExportPng) {
+      btnVisualViewExportPng.disabled = busy;
+      btnVisualViewExportPng.classList.toggle("busy", busy);
+    }
+    if (btnVisualViewExportSvg) {
+      btnVisualViewExportSvg.disabled = busy;
+      btnVisualViewExportSvg.classList.toggle("busy", busy);
+    }
+  }
+
+  function setVisualViewExportPath(path, format) {
+    visualViewState.lastExportPath = String(path || "").trim();
+    visualViewState.lastExportFormat = String(format || "").trim().toLowerCase();
+
+    var hasPath = visualViewState.lastExportPath.length > 0;
+    if (visualViewExportActions) {
+      visualViewExportActions.classList.toggle("show", hasPath);
+    }
+    if (visualViewExportPath) {
+      visualViewExportPath.textContent = hasPath ? visualViewState.lastExportPath : "";
+      visualViewExportPath.title = hasPath ? visualViewState.lastExportPath : "";
+    }
+    if (btnVisualViewOpenExport) {
+      btnVisualViewOpenExport.disabled = !hasPath;
+    }
+    if (btnVisualViewRevealExport) {
+      btnVisualViewRevealExport.disabled = !hasPath;
+    }
+    if (btnVisualViewCopyExportPath) {
+      btnVisualViewCopyExportPath.disabled = !hasPath;
+    }
+  }
+
+  function triggerVisualExportAction(action) {
+    var path = String(visualViewState.lastExportPath || "").trim();
+    if (!path) {
+      setVisualViewFeedback("No export path available yet.", "warn", 2500);
+      return;
+    }
+
+    post("visual_export_action", {
+      action: action,
+      path: path
+    });
+  }
+
+  function disposeVisualViewRuntime() {
+    if (visualViewState.chartInstance && typeof visualViewState.chartInstance.destroy === "function") {
+      try {
+        visualViewState.chartInstance.destroy();
+      } catch (_) {
+        // Ignore chart disposal errors.
+      }
+    }
+    visualViewState.chartInstance = null;
+
+    if (visualViewState.networkInstance && typeof visualViewState.networkInstance.destroy === "function") {
+      try {
+        visualViewState.networkInstance.destroy();
+      } catch (_) {
+        // Ignore network disposal errors.
+      }
+    }
+    visualViewState.networkInstance = null;
+
+    if (visualViewCanvasWrap) {
+      visualViewCanvasWrap.innerHTML = "";
+    }
+  }
+
+  async function renderMermaidInVisualView(source) {
+    var pre = document.createElement("pre");
+    pre.className = "mermaid";
+    pre.textContent = source;
+    visualViewCanvasWrap.appendChild(pre);
+
+    var ready = await ensureMermaidReady();
+    if (!ready) {
+      throw new Error("renderer unavailable");
+    }
+
+    if (typeof window.mermaid.parse === "function") {
+      var parseResult = window.mermaid.parse(source);
+      if (parseResult && typeof parseResult.then === "function") {
+        await withVisualTimeout(parseResult, ixVisualMermaidState.renderTimeoutMs);
+      }
+    }
+
+    var renderId = "ix-visual-view-mermaid-" + String(ixVisualMermaidState.nextRenderId++);
+    var renderResult = await withVisualTimeout(
+      Promise.resolve(window.mermaid.render(renderId, source)),
+      ixVisualMermaidState.renderTimeoutMs);
+
+    var svg = "";
+    if (typeof renderResult === "string") {
+      svg = renderResult;
+    } else if (renderResult && typeof renderResult === "object") {
+      svg = typeof renderResult.svg === "string" ? renderResult.svg : "";
+    }
+    if (!svg) {
+      throw new Error("missing svg");
+    }
+    pre.innerHTML = svg;
+  }
+
+  async function renderChartInVisualView(source) {
+    var ready = await ensureChartReady();
+    if (!ready) {
+      throw new Error("renderer unavailable");
+    }
+
+    var parsedConfig = JSON.parse(source);
+    var validation = validateIxChartConfig(parsedConfig);
+    if (!validation.ok) {
+      throw new Error(validation.reason || "schema validation failed");
+    }
+
+    var host = document.createElement("div");
+    host.className = "ix-chart-host";
+    var canvas = document.createElement("canvas");
+    canvas.className = "ix-chart-canvas";
+    host.appendChild(canvas);
+    visualViewCanvasWrap.appendChild(host);
+
+    var chartConfig = JSON.parse(JSON.stringify(validation.config));
+    chartConfig.options = chartConfig.options || {};
+    chartConfig.options.responsive = true;
+    chartConfig.options.maintainAspectRatio = false;
+    visualViewState.chartInstance = new window.Chart(canvas.getContext("2d"), chartConfig);
+    try {
+      visualViewState.chartInstance.resize();
+    } catch (_) {
+      // Ignore.
+    }
+  }
+
+  async function renderNetworkInVisualView(source) {
+    var ready = await ensureNetworkReady();
+    if (!ready) {
+      throw new Error("renderer unavailable");
+    }
+
+    var parsedConfig = JSON.parse(source);
+    var validation = validateIxNetworkConfig(parsedConfig);
+    if (!validation.ok) {
+      throw new Error(validation.reason || "schema validation failed");
+    }
+
+    var host = document.createElement("div");
+    host.className = "ix-network-host";
+    var canvas = document.createElement("div");
+    canvas.className = "ix-network-canvas";
+    host.appendChild(canvas);
+    visualViewCanvasWrap.appendChild(host);
+
+    var options = deepMergeForExport({
+      autoResize: true,
+      layout: {
+        improvedLayout: true
+      },
+      physics: {
+        stabilization: {
+          enabled: true,
+          fit: true,
+          iterations: 220
+        }
+      },
+      interaction: {
+        hover: true
+      },
+      nodes: {
+        margin: 12,
+        font: {
+          strokeWidth: 0
+        }
+      },
+      edges: {
+        smooth: {
+          enabled: true,
+          type: "dynamic",
+          roundness: 0.4
+        }
+      }
+    }, validation.config.options || {});
+
+    visualViewState.networkInstance = new window.vis.Network(canvas, {
+      nodes: validation.config.nodes,
+      edges: validation.config.edges
+    }, options);
+
+    window.setTimeout(function() {
+      if (!visualViewState.networkInstance || visualViewState.type !== "ix-network") {
+        return;
+      }
+      try {
+        visualViewState.networkInstance.fit({
+          animation: {
+            duration: 180
+          }
+        });
+      } catch (_) {
+        // Ignore.
+      }
+    }, 60);
+  }
+
+  async function renderVisualViewContent() {
+    if (!visualViewCanvasWrap) {
+      return;
+    }
+
+    disposeVisualViewRuntime();
+    if (!visualViewMeta) {
+      return;
+    }
+
+    var type = normalizeVisualType(visualViewState.type);
+    var source = String(visualViewState.source || "").trim();
+    if (!source) {
+      setVisualViewFeedback("Missing visual source.", "bad", 0);
+      return;
+    }
+
+    visualViewMeta.textContent = getVisualKindLabel(type) + " · " + String(source.length) + " chars";
+    if (btnVisualViewExportSvg) {
+      btnVisualViewExportSvg.hidden = type !== "mermaid";
+    }
+
+    try {
+      if (type === "mermaid") {
+        await renderMermaidInVisualView(source);
+      } else if (type === "ix-chart") {
+        await renderChartInVisualView(source);
+      } else if (type === "ix-network") {
+        await renderNetworkInVisualView(source);
+      } else {
+        setVisualViewFeedback("Unsupported visual type.", "bad", 0);
+        return;
+      }
+
+      setVisualViewFeedback("", "info", 0);
+    } catch (err) {
+      var message = err && err.message ? err.message : "render failed";
+      setVisualViewFeedback("Visual render failed: " + message, "bad", 0);
+    }
+  }
+
+  function closeVisualView() {
+    document.body.classList.remove("visual-view-open");
+    if (visualViewPanel) {
+      visualViewPanel.setAttribute("aria-hidden", "true");
+    }
+    disposeVisualViewRuntime();
+    clearVisualViewFeedbackTimer();
+  }
+
+  function openVisualView(type, source, title) {
+    var normalizedType = normalizeVisualType(type);
+    var normalizedSource = normalizeText(source || "");
+    if (!normalizedSource) {
+      return;
+    }
+
+    if (document.body.classList.contains("options-open") && typeof closeOptions === "function") {
+      closeOptions();
+    }
+    if (document.body.classList.contains("data-view-open") && window.ixCloseDataView) {
+      window.ixCloseDataView();
+    }
+
+    visualViewState.sessionId += 1;
+    visualViewState.type = normalizedType;
+    visualViewState.source = normalizedSource;
+    visualViewState.title = String(title || getVisualKindLabel(normalizedType)).trim() || getVisualKindLabel(normalizedType);
+    pendingVisualExports = Object.create(null);
+    setVisualViewExportButtonsBusy();
+    setVisualViewExportPath("", "");
+
+    if (visualViewTitle) {
+      visualViewTitle.textContent = visualViewState.title;
+    }
+
+    document.body.classList.add("visual-view-open");
+    if (visualViewPanel) {
+      visualViewPanel.setAttribute("aria-hidden", "false");
+    }
+
+    renderVisualViewContent();
+  }
+
+  function inferVisualTitleFromBlock(pre, kind) {
+    var label = getVisualKindLabel(kind);
+    if (!pre || !pre.closest) {
+      return label;
+    }
+
+    var msg = pre.closest(".msg");
+    if (!msg) {
+      return label;
+    }
+
+    var meta = msg.querySelector(".meta");
+    var suffix = meta ? String(meta.textContent || "").trim() : "";
+    if (!suffix) {
+      return label;
+    }
+    return label + " · " + suffix;
+  }
+
+  function openVisualViewFromBlock(pre, kind) {
+    if (!pre) {
+      return;
+    }
+
+    var normalizedKind = normalizeVisualType(kind);
+    var source = "";
+    if (normalizedKind === "mermaid") {
+      source = String(pre.getAttribute("data-ix-mermaid-source") || "").trim();
+    } else if (normalizedKind === "ix-chart") {
+      source = String(pre.getAttribute("data-ix-chart-source") || "").trim();
+    } else if (normalizedKind === "ix-network") {
+      source = String(pre.getAttribute("data-ix-network-source") || "").trim();
+    }
+    if (!source) {
+      source = normalizeText(pre.textContent || "");
+    }
+    if (!source) {
+      return;
+    }
+
+    openVisualView(normalizedKind, source, inferVisualTitleFromBlock(pre, normalizedKind));
+  }
+
+  async function convertSvgPayloadToPng(payload, themeMode) {
+    if (!payload || payload.mimeType !== "image/svg+xml" || !payload.dataBase64) {
+      return payload;
+    }
+
+    var dataUrl = "data:image/svg+xml;base64," + payload.dataBase64;
+    return new Promise(function(resolve) {
+      var image = new Image();
+      image.onload = function() {
+        try {
+          var width = Math.max(1, Math.round(image.naturalWidth || 1280));
+          var height = Math.max(1, Math.round(image.naturalHeight || 720));
+          var canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          var context = canvas.getContext("2d");
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          var palette = resolveVisualExportPalette(themeMode);
+          context.fillStyle = palette.background || "#ffffff";
+          context.fillRect(0, 0, width, height);
+          context.drawImage(image, 0, 0, width, height);
+
+          var pngData = parseDataUrlPayload(canvas.toDataURL("image/png"));
+          if (!pngData || !pngData.dataBase64) {
+            resolve(null);
+            return;
+          }
+
+          resolve({
+            id: payload.id,
+            alt: payload.alt,
+            mimeType: pngData.mimeType || "image/png",
+            dataBase64: pngData.dataBase64
+          });
+        } catch (_) {
+          resolve(null);
+        }
+      };
+      image.onerror = function() {
+        resolve(null);
+      };
+      image.src = dataUrl;
+    });
+  }
+
+  async function buildVisualExportPayload(type, source, format) {
+    var visualType = normalizeVisualType(type);
+    var exportFormat = normalizeVisualExportFormat(format, visualType);
+    var themeMode = getVisualExportPreferences().visualThemeMode;
+
+    if (exportFormat === "svg") {
+      if (visualType !== "mermaid") {
+        return null;
+      }
+      return renderMermaidForExport(source, "panel", themeMode);
+    }
+
+    var rendered = await renderVisualFenceForExport(visualType, source, "panel", themeMode);
+    if (!rendered) {
+      return null;
+    }
+
+    if (rendered.mimeType === "image/svg+xml") {
+      return convertSvgPayloadToPng(rendered, themeMode);
+    }
+
+    return rendered;
+  }
+
+  async function executeVisualExport(exportId, outputPath) {
+    var pending = pendingVisualExports[exportId];
+    if (!pending) {
+      return;
+    }
+
+    try {
+      var payload = await buildVisualExportPayload(pending.type, pending.source, pending.format);
+      if (!payload || !payload.dataBase64) {
+        delete pendingVisualExports[exportId];
+        setVisualViewExportButtonsBusy();
+        setVisualViewFeedback("Visual export failed before save.", "bad", 0);
+        return;
+      }
+
+      post("export_visual_artifact", {
+        exportId: exportId,
+        format: pending.format,
+        title: pending.title || "visual",
+        outputPath: outputPath,
+        mimeType: payload.mimeType || "",
+        dataBase64: payload.dataBase64
+      });
+    } catch (_) {
+      delete pendingVisualExports[exportId];
+      setVisualViewExportButtonsBusy();
+      setVisualViewFeedback("Visual export failed before save.", "bad", 0);
+    }
+  }
+
+  function startVisualExport(format) {
+    var source = String(visualViewState.source || "").trim();
+    var type = normalizeVisualType(visualViewState.type);
+    if (!source || !type) {
+      setVisualViewFeedback("No active visual to export.", "warn", 2600);
+      return;
+    }
+
+    var resolvedFormat = normalizeVisualExportFormat(format, type);
+    var exportId = buildVisualExportId(resolvedFormat);
+    pendingVisualExports[exportId] = {
+      format: resolvedFormat,
+      type: type,
+      source: source,
+      title: visualViewState.title || getVisualKindLabel(type),
+      sessionId: visualViewState.sessionId
+    };
+    setVisualViewExportButtonsBusy();
+
+    var autoPath = buildVisualExportPath(resolvedFormat, visualViewState.title || getVisualKindLabel(type));
+    if (autoPath) {
+      pendingVisualExports[exportId].path = autoPath;
+      setVisualViewFeedback("Exporting to last folder...", "info", 0);
+      executeVisualExport(exportId, autoPath);
+      return;
+    }
+
+    setVisualViewFeedback("Choose where to save...", "info", 0);
+    post("pick_visual_export_path", {
+      requestId: exportId,
+      format: resolvedFormat,
+      title: visualViewState.title || getVisualKindLabel(type)
+    });
+  }
+
+  window.ixOnVisualExportPathSelected = function(payload) {
+    payload = payload || {};
+    var requestId = String(payload.requestId || "");
+    if (!requestId) {
+      return;
+    }
+
+    var pending = pendingVisualExports[requestId];
+    if (!pending) {
+      return;
+    }
+
+    var ok = payload.ok === true;
+    var path = String(payload.path || "").trim();
+    var message = String(payload.message || "").trim();
+    var canceled = payload.canceled === true;
+
+    if (!ok || !path) {
+      delete pendingVisualExports[requestId];
+      setVisualViewExportButtonsBusy();
+      if (!message) {
+        message = canceled ? "Export canceled." : "Failed to select save location.";
+      }
+      setVisualViewFeedback(message, canceled ? "warn" : "bad", canceled ? 3200 : 0);
+      return;
+    }
+
+    pending.path = path;
+    var selectedDir = typeof getDirectoryFromPath === "function" ? getDirectoryFromPath(path) : "";
+    if (selectedDir) {
+      state.options.export = state.options.export || {};
+      state.options.export.lastDirectory = selectedDir;
+      if (typeof renderExportPreferences === "function") {
+        renderExportPreferences();
+      }
+    }
+
+    setVisualViewFeedback("Exporting...", "info", 0);
+    executeVisualExport(requestId, path);
+  };
+
+  window.ixOnVisualExportResult = function(payload) {
+    payload = payload || {};
+    var exportId = String(payload.exportId || "");
+    if (!exportId || !Object.prototype.hasOwnProperty.call(pendingVisualExports, exportId)) {
+      return;
+    }
+
+    var pending = pendingVisualExports[exportId];
+    delete pendingVisualExports[exportId];
+    if (pending && pending.sessionId && pending.sessionId !== visualViewState.sessionId) {
+      setVisualViewExportButtonsBusy();
+      return;
+    }
+    setVisualViewExportButtonsBusy();
+
+    var ok = payload.ok === true;
+    var tone = ok ? "ok" : "bad";
+    var message = String(payload.message || "").trim();
+    var path = String(payload.filePath || "").trim();
+    if (ok && !path && pending && pending.path) {
+      path = String(pending.path || "").trim();
+    }
+
+    if (!message) {
+      if (ok) {
+        var fileName = visualFileNameFromPath(path);
+        message = fileName ? ("Exported: " + fileName) : "Export completed.";
+      } else {
+        message = "Export failed.";
+      }
+    }
+
+    if (ok && path) {
+      setVisualViewExportPath(path, payload.format || "");
+      var dir = typeof getDirectoryFromPath === "function" ? getDirectoryFromPath(path) : "";
+      if (dir) {
+        state.options.export = state.options.export || {};
+        state.options.export.lastDirectory = dir;
+        if (typeof renderExportPreferences === "function") {
+          renderExportPreferences();
+        }
+      }
+    }
+
+    setVisualViewFeedback(message, tone, ok ? 6000 : 0);
+  };
+
+  window.ixOnVisualExportActionResult = function(payload) {
+    payload = payload || {};
+    var ok = payload.ok === true;
+    var message = String(payload.message || "").trim();
+    if (!message) {
+      message = ok ? "Done." : "Action failed.";
+    }
+    setVisualViewFeedback(message, ok ? "ok" : "bad", ok ? 3500 : 0);
+  };
+
+  window.ixCloseVisualView = closeVisualView;
+  window.ixOpenVisualView = function(type, source, title) {
+    openVisualView(type, source, title);
+  };
+
+  if (visualViewBackdrop) {
+    visualViewBackdrop.addEventListener("click", closeVisualView);
+  }
+  if (btnVisualViewClose) {
+    btnVisualViewClose.addEventListener("click", closeVisualView);
+  }
+  if (btnVisualViewExportPng) {
+    btnVisualViewExportPng.addEventListener("click", function() {
+      startVisualExport("png");
+    });
+  }
+  if (btnVisualViewExportSvg) {
+    btnVisualViewExportSvg.addEventListener("click", function() {
+      startVisualExport("svg");
+    });
+  }
+  if (btnVisualViewOpenExport) {
+    btnVisualViewOpenExport.addEventListener("click", function() {
+      triggerVisualExportAction("open");
+    });
+  }
+  if (btnVisualViewRevealExport) {
+    btnVisualViewRevealExport.addEventListener("click", function() {
+      triggerVisualExportAction("reveal");
+    });
+  }
+  if (btnVisualViewCopyExportPath) {
+    btnVisualViewCopyExportPath.addEventListener("click", function() {
+      triggerVisualExportAction("copy_path");
+    });
+  }
 
   var ixVisualExportState = {
     maxImages: 24,

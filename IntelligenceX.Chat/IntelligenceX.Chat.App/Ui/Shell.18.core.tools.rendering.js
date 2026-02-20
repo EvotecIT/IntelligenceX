@@ -66,7 +66,7 @@
   }
 
   function handleTranscriptNavKey(e) {
-    if (document.body.classList.contains("data-view-open")) {
+    if (document.body.classList.contains("data-view-open") || document.body.classList.contains("visual-view-open")) {
       return false;
     }
 
@@ -99,6 +99,39 @@
     }
 
     var target = byId("dataViewBody");
+    if (!target) {
+      return false;
+    }
+
+    if (isEditableElement(document.activeElement)) {
+      return false;
+    }
+
+    var step = Math.max(140, Math.floor(target.clientHeight * 0.9));
+    switch (e.key) {
+      case "PageDown":
+        target.scrollTop += step;
+        return true;
+      case "PageUp":
+        target.scrollTop -= step;
+        return true;
+      case "Home":
+        target.scrollTop = 0;
+        return true;
+      case "End":
+        target.scrollTop = target.scrollHeight;
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function handleVisualViewNavKey(e) {
+    if (!document.body.classList.contains("visual-view-open")) {
+      return false;
+    }
+
+    var target = byId("visualViewBody");
     if (!target) {
       return false;
     }
@@ -406,6 +439,21 @@
             window.ixWheelDiagRecord(dataTarget.scrollTop !== dataBefore ? "applied" : "not_applied", {
               deltaY: amount,
               zone: "dataView"
+            });
+          }
+        }
+        return;
+      }
+
+      if (document.body.classList.contains("visual-view-open")) {
+        var visualTarget = byId("visualViewBody");
+        if (visualTarget) {
+          var visualBefore = visualTarget.scrollTop;
+          visualTarget.scrollTop += amount;
+          if (window.ixWheelDiagRecord) {
+            window.ixWheelDiagRecord(visualTarget.scrollTop !== visualBefore ? "applied" : "not_applied", {
+              deltaY: amount,
+              zone: "visualView"
             });
           }
         }

@@ -1541,6 +1541,10 @@
 
   document.addEventListener("keydown", function(e) {
     if (e.key === "Escape") {
+      if (document.body.classList.contains("visual-view-open") && window.ixCloseVisualView) {
+        window.ixCloseVisualView();
+        return;
+      }
       if (document.body.classList.contains("data-view-open") && window.ixCloseDataView) {
         window.ixCloseDataView();
         return;
@@ -1569,6 +1573,11 @@
     }
 
     if (handleDataViewNavKey(e)) {
+      e.preventDefault();
+      return;
+    }
+
+    if (handleVisualViewNavKey(e)) {
       e.preventDefault();
       return;
     }

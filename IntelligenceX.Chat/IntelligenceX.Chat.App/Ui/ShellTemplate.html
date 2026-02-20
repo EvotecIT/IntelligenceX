@@ -533,6 +533,31 @@
       <table id="dataViewTable" class="data-view-table"></table>
     </div>
   </section>
+
+  <div class="visual-view-backdrop" id="visualViewBackdrop"></div>
+  <section class="visual-view-panel" id="visualViewPanel" aria-hidden="true">
+    <header class="visual-view-header">
+      <h2 id="visualViewTitle">Visual View</h2>
+      <div class="visual-view-actions">
+        <button id="btnVisualViewExportPng" class="options-btn options-btn-sm">Export PNG</button>
+        <button id="btnVisualViewExportSvg" class="options-btn options-btn-sm options-btn-ghost" hidden>Export SVG</button>
+      </div>
+      <button id="btnVisualViewClose" class="options-close" aria-label="Close visual view">x</button>
+    </header>
+    <div class="visual-view-meta" id="visualViewMeta"></div>
+    <div class="visual-view-feedback" id="visualViewFeedback" aria-live="polite"></div>
+    <div class="visual-view-export-actions" id="visualViewExportActions" aria-live="polite">
+      <div class="visual-view-export-path" id="visualViewExportPath"></div>
+      <div class="visual-view-export-buttons">
+        <button id="btnVisualViewOpenExport" class="options-btn options-btn-sm options-btn-ghost" disabled>Open</button>
+        <button id="btnVisualViewRevealExport" class="options-btn options-btn-sm options-btn-ghost" disabled>Reveal</button>
+        <button id="btnVisualViewCopyExportPath" class="options-btn options-btn-sm options-btn-ghost" disabled>Copy Path</button>
+      </div>
+    </div>
+    <div class="visual-view-body" id="visualViewBody">
+      <div class="visual-view-canvas-wrap" id="visualViewCanvasWrap"></div>
+    </div>
+  </section>
   <script>
 //{{IXCHAT_JS}}
   </script>

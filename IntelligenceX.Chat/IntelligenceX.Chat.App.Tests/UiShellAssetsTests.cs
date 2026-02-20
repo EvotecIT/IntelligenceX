@@ -207,6 +207,24 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures visual popout panel and export callbacks are present for Mermaid/Chart/Network large-view workflows.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesVisualViewPanelAndExportCallbacks() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("id=\"visualViewPanel\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"visualViewBody\"", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixOpenVisualView = function(type, source, title) {", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixCloseVisualView = closeVisualView;", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixOnVisualExportPathSelected = function(payload) {", html, StringComparison.Ordinal);
+        Assert.Contains("window.ixOnVisualExportResult = function(payload) {", html, StringComparison.Ordinal);
+        Assert.Contains("post(\"pick_visual_export_path\", {", html, StringComparison.Ordinal);
+        Assert.Contains("post(\"export_visual_artifact\", {", html, StringComparison.Ordinal);
+        Assert.Contains("post(\"visual_export_action\", {", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures code-copy adorners skip Mermaid and chart blocks so rendered visuals do not expose large payload copies.
     /// </summary>
     [Fact]

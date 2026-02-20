@@ -435,6 +435,32 @@ public sealed partial class MainWindow : Window {
                         await HandleDataViewExportActionAsync(action, path).ConfigureAwait(true);
                         break;
                     }
+                case "pick_visual_export_path":
+                    {
+                        var requestId = (TryGetString(root, "requestId") ?? string.Empty).Trim();
+                        var format = (TryGetString(root, "format") ?? string.Empty).Trim();
+                        var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                        await PickVisualExportPathAsync(requestId, format, title).ConfigureAwait(true);
+                        break;
+                    }
+                case "export_visual_artifact":
+                    {
+                        var exportId = (TryGetString(root, "exportId") ?? string.Empty).Trim();
+                        var format = (TryGetString(root, "format") ?? string.Empty).Trim();
+                        var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                        var outputPath = (TryGetString(root, "outputPath") ?? string.Empty).Trim();
+                        var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
+                        var dataBase64 = (TryGetString(root, "dataBase64") ?? string.Empty).Trim();
+                        await ExportVisualArtifactAsync(format, title, dataBase64, mimeType, exportId, outputPath).ConfigureAwait(true);
+                        break;
+                    }
+                case "visual_export_action":
+                    {
+                        var action = (TryGetString(root, "action") ?? string.Empty).Trim();
+                        var path = (TryGetString(root, "path") ?? string.Empty).Trim();
+                        await HandleVisualExportActionAsync(action, path).ConfigureAwait(true);
+                        break;
+                    }
             }
         } catch (Exception ex) {
             AppendSystem(SystemNotice.UiMessageError(ex.Message));

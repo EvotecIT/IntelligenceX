@@ -52,6 +52,7 @@
     var inOptions = targetEl && targetEl.closest ? targetEl.closest(".options-panel") : null;
     var inSelect = targetEl && targetEl.closest ? targetEl.closest(".ix-select-menu") : null;
     var inDataView = targetEl && targetEl.closest ? targetEl.closest(".data-view-panel") : null;
+    var inVisualView = targetEl && targetEl.closest ? targetEl.closest(".visual-view-panel") : null;
 
     // WebView2 can sometimes produce non-element or unusual wheel targets.
     // Fall back to composedPath to avoid dropping valid wheel input.
@@ -67,21 +68,24 @@
     if (!inDataView) {
       inDataView = eventPathContainsSelector(e, ".data-view-panel");
     }
+    if (!inVisualView) {
+      inVisualView = eventPathContainsSelector(e, ".visual-view-panel");
+    }
 
     // If no area was detected but we're in the main shell, route to transcript.
-    if (!inTranscript && !inOptions && !inSelect && !inDataView && transcript) {
+    if (!inTranscript && !inOptions && !inSelect && !inDataView && !inVisualView && transcript) {
       inTranscript = transcript;
       wheelDiag.counters.fallbackTranscript++;
       recordWheelDiag("fallback_transcript", { deltaY: Number(deltaY) });
     }
 
-    if (!inTranscript && !inOptions && !inSelect && !inDataView) {
+    if (!inTranscript && !inOptions && !inSelect && !inDataView && !inVisualView) {
       wheelDiag.counters.noZone++;
       recordWheelDiag("no_zone", { deltaY: Number(deltaY) });
       return;
     }
 
-    if (isEditableElement(targetEl) && !inOptions && !inTranscript && !inDataView && !inSelect) {
+    if (isEditableElement(targetEl) && !inOptions && !inTranscript && !inDataView && !inVisualView && !inSelect) {
       wheelDiag.counters.skippedEditable++;
       recordWheelDiag("editable_skip", { deltaY: Number(deltaY) });
       return;
@@ -93,7 +97,7 @@
       wheelDiag.counters.applied++;
       recordWheelDiag("applied", {
         deltaY: Number(deltaY),
-        zone: inDataView ? "dataView" : (inOptions ? "options" : "transcript")
+        zone: inVisualView ? "visualView" : (inDataView ? "dataView" : (inOptions ? "options" : "transcript"))
       });
       e.preventDefault();
       return;
@@ -102,7 +106,7 @@
     wheelDiag.counters.notApplied++;
     recordWheelDiag("not_applied", {
       deltaY: Number(deltaY),
-      zone: inDataView ? "dataView" : (inOptions ? "options" : "transcript")
+      zone: inVisualView ? "visualView" : (inDataView ? "dataView" : (inOptions ? "options" : "transcript"))
     });
   }
 
@@ -135,12 +139,14 @@
   attachWheelListeners(transcript);
   attachWheelListeners(optionsBody);
   attachWheelListeners(dataViewBody);
+  attachWheelListeners(byId("visualViewBody"));
   recordWheelDiag("wheel_listeners_attached", {
     hasWindow: !!window,
     hasDocument: !!document,
     hasTranscript: !!transcript,
     hasOptionsBody: !!optionsBody,
-    hasDataViewBody: !!dataViewBody
+    hasDataViewBody: !!dataViewBody,
+    hasVisualViewBody: !!byId("visualViewBody")
   });
 
   transcript.addEventListener("pointerdown", function() {
