@@ -112,9 +112,16 @@ public sealed partial class MainWindow : Window {
                         _authenticatedAccountId = null;
                         _ = SetStatusAsync(SessionStatus.SignInRequired());
                     } else if (!string.IsNullOrWhiteSpace(err.RequestId)) {
-                        if (VerboseServiceLogs || _debugMode) {
-                            AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
+                        var requestId = err.RequestId.Trim();
+                        var isRelevantRequestError = ShouldProcessLiveRequestMessage(requestId) || IsLatestTurnRequest(requestId);
+                        if (!isRelevantRequestError) {
+                            break;
                         }
+
+                        _ = SetStatusAsync(
+                            "Last turn failed: " + SummarizeErrorForStatus(err.Error),
+                            SessionStatusTone.Warn);
+                        AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
                     } else {
                         _ = SetStatusAsync("Service warning. See System log for details.", SessionStatusTone.Warn);
                         AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
