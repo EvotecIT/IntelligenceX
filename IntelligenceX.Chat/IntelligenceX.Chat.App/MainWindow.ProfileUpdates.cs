@@ -478,23 +478,37 @@ Quick start prompts:
         return parsed;
     }
 
-    private static string NormalizeLocalProviderTransport(string? value) {
+    internal static bool TryNormalizeLocalProviderTransport(string? value, out string transport) {
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized switch {
-            "native" => TransportNative,
-            "compatible-http" => TransportCompatibleHttp,
-            "compatiblehttp" => TransportCompatibleHttp,
-            "http" => TransportCompatibleHttp,
-            "local" => TransportCompatibleHttp,
-            "ollama" => TransportCompatibleHttp,
-            "lmstudio" => TransportCompatibleHttp,
-            "lm-studio" => TransportCompatibleHttp,
-            "copilot" => TransportCopilotCli,
-            "copilot-cli" => TransportCopilotCli,
-            "github-copilot" => TransportCopilotCli,
-            "githubcopilot" => TransportCopilotCli,
-            _ => TransportNative
-        };
+        switch (normalized) {
+            case "native":
+                transport = TransportNative;
+                return true;
+            case "compatible-http":
+            case "compatiblehttp":
+            case "http":
+            case "local":
+            case "ollama":
+            case "lmstudio":
+            case "lm-studio":
+                transport = TransportCompatibleHttp;
+                return true;
+            case "copilot":
+            case "copilot-cli":
+            case "github-copilot":
+            case "githubcopilot":
+                transport = TransportCopilotCli;
+                return true;
+            default:
+                transport = TransportNative;
+                return false;
+        }
+    }
+
+    private static string NormalizeLocalProviderTransport(string? value) {
+        return TryNormalizeLocalProviderTransport(value, out var normalized)
+            ? normalized
+            : TransportNative;
     }
 
     private static string? NormalizeLocalProviderBaseUrl(string? value, string transport, string? transportHint = null) {

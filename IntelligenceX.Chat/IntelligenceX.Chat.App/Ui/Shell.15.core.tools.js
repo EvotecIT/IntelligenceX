@@ -1232,6 +1232,9 @@
     var warning = normalizeModelText(local.warning || "");
     var isStale = local.isStale === true;
     var profileSaved = local.profileSaved === true;
+    var runtimeApply = local.runtimeApply && typeof local.runtimeApply === "object"
+      ? local.runtimeApply
+      : {};
     var profileApplyMode = normalizeProfileApplyMode(state.options.profileApplyMode || "session");
     var runtimeDetection = local.runtimeDetection || {};
     var runtimeDetectionHasRun = runtimeDetection.hasRun === true;
@@ -1311,6 +1314,42 @@
         simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio and click Apply Runtime, or configure Advanced Runtime.";
       } else {
         simpleHint.textContent = "Local runtime is active. Use LM Studio Runtime for the default LM Studio endpoint.";
+      }
+    }
+
+    var runtimeApplyProgress = byId("optRuntimeApplyProgress");
+    if (runtimeApplyProgress) {
+      var applyStage = normalizeModelText(runtimeApply.stage || "").toLowerCase();
+      var applyDetail = normalizeModelText(runtimeApply.detail || "");
+      var applyUpdatedLocal = normalizeModelText(runtimeApply.updatedLocal || "");
+      var applyActive = runtimeApply.isActive === true || isApplying;
+      var showApplyProgress = applyActive
+        || applyStage === "failed"
+        || applyStage === "completed";
+
+      runtimeApplyProgress.hidden = !showApplyProgress;
+      runtimeApplyProgress.classList.toggle("active", applyActive);
+      runtimeApplyProgress.classList.toggle("error", applyStage === "failed");
+
+      if (showApplyProgress) {
+        var label = applyDetail;
+        if (!label) {
+          if (applyActive) {
+            label = "Applying runtime settings...";
+          } else if (applyStage === "completed") {
+            label = "Runtime settings applied.";
+          } else if (applyStage === "failed") {
+            label = "Runtime settings failed to apply.";
+          }
+        }
+
+        if (!applyActive && applyUpdatedLocal) {
+          label += " (" + applyUpdatedLocal + ")";
+        }
+
+        runtimeApplyProgress.textContent = label;
+      } else {
+        runtimeApplyProgress.textContent = "";
       }
     }
 
