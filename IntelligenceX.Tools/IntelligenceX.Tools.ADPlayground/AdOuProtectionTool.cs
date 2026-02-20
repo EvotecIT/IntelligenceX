@@ -160,9 +160,8 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("unprotected_only", unprotectedOnly);
                 meta.Add("include_unprotected_ous", includeUnprotectedOus);
                 meta.Add("max_ou_rows_per_domain", maxOuRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

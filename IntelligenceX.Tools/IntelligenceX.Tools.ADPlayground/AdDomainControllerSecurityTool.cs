@@ -182,9 +182,8 @@ public sealed class AdDomainControllerSecurityTool : ActiveDirectoryToolBase, IT
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("insecure_only", insecureOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
                 if (!string.IsNullOrWhiteSpace(domainController)) {
                     meta.Add("domain_controller", domainController);
                 }

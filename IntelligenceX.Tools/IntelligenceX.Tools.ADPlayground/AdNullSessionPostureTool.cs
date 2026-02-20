@@ -158,12 +158,11 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("max_domain_controllers", maxDomainControllers);
                 meta.Add("anonymous_sam_only", anonymousSamOnly);
                 meta.Add("null_session_only", nullSessionOnly);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
                 if (explicitDcs.Count > 0) {
                     meta.Add("explicit_domain_controllers", explicitDcs.Count);
                 }

@@ -179,9 +179,8 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("expired_only", expiredOnly);
                 meta.Add("include_samples", includeSamples);
                 meta.Add("max_sample_rows_per_domain", maxSampleRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             });
     }
 }

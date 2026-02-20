@@ -150,9 +150,8 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
             metaMutate: meta => {
                 meta.Add("include_details", includeDetails);
                 meta.Add("max_detail_rows_per_domain", maxDetailRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

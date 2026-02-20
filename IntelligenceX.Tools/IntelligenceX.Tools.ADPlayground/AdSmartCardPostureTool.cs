@@ -147,9 +147,8 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("include_details", includeDetails);
                 meta.Add("max_privileged_rows_per_domain", maxPrivilegedRowsPerDomain);
                 meta.Add("max_finding_rows_per_domain", maxFindingRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

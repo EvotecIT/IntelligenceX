@@ -169,9 +169,8 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("max_servers", maxServers);
                 meta.Add("recursion_disabled_only", recursionDisabledOnly);
                 meta.Add("missing_forwarders_only", missingForwardersOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
                 if (explicitServers.Count > 0) {
                     meta.Add("explicit_dns_servers", explicitServers.Count);
                 }

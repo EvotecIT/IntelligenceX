@@ -146,11 +146,10 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("threshold_days", thresholdDays);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("missing_only", missingOnly);
                 meta.Add("stale_only", staleOnly);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

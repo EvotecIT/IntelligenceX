@@ -148,8 +148,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
                 if (!string.IsNullOrWhiteSpace(nameContains)) {
                     meta.Add("name_contains", nameContains);
                 }

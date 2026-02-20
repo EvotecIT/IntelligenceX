@@ -169,11 +169,10 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("top_n", topN);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
                 meta.Add("allowlist_count", allowlist.Count);
                 meta.Add("blocklist_count", blocklist.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

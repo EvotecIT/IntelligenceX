@@ -127,9 +127,8 @@ public sealed class AdDcShadowIndicatorsTool : ActiveDirectoryToolBase, ITool {
             metaMutate: meta => {
                 meta.Add("include_findings", includeFindings);
                 meta.Add("max_findings_per_domain", maxFindingsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

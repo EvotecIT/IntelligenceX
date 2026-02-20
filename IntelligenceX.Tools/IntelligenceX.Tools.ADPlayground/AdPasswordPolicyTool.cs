@@ -130,11 +130,10 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_fine_grained", includeFineGrained);
                 meta.Add("domains_count", domains.Count);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

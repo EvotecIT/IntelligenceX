@@ -159,9 +159,8 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
                 meta.Add("only_global_catalog", onlyGlobalCatalog);
                 meta.Add("only_rodc", onlyRodc);
                 meta.Add("additional_attributes_count", additionalAttributes.Count);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

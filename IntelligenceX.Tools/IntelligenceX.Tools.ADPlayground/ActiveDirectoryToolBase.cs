@@ -566,6 +566,18 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Adds standard <c>max_results</c> plus optional <c>domain_name</c>/<c>forest_name</c> metadata keys.
+    /// </summary>
+    protected static void AddDomainAndForestAndMaxResultsMeta(
+        JsonObject meta,
+        string? domainName,
+        string? forestName,
+        int maxResults) {
+        AddMaxResultsMeta(meta, maxResults);
+        AddDomainAndForestMeta(meta, domainName, forestName);
+    }
+
+    /// <summary>
     /// Adds standard <c>domain_name</c> and <c>max_results</c> metadata keys.
     /// </summary>
     protected static void AddDomainAndMaxResultsMeta(JsonObject meta, string domainName, int maxResults) {

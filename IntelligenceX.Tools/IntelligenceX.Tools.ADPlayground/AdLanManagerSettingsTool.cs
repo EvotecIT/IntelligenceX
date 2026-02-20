@@ -166,9 +166,8 @@ public sealed class AdLanManagerSettingsTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("allow_lm_hash_only", allowLmHashOnly);
                 meta.Add("legacy_ntlm_only", legacyNtlmOnly);
                 meta.Add("max_domain_controllers", maxDomainControllers);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
                 if (explicitDomainControllers.Count > 0) {
                     meta.Add("explicit_domain_controllers", explicitDomainControllers.Count);
                 }

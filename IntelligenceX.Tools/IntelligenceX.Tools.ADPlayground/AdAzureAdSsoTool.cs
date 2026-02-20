@@ -148,9 +148,8 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("only_present", onlyPresent);
                 meta.Add("risky_only", riskyOnly);
                 meta.Add("include_spns", includeSpns);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

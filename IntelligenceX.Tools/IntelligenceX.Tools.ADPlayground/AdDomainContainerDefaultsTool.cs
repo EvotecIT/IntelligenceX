@@ -126,9 +126,8 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("changed_only", changedOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

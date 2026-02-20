@@ -159,10 +159,9 @@ public sealed class AdDomainStatisticsTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_domain_controllers", includeDomainControllers);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

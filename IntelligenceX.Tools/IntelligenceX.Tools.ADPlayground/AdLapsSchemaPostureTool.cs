@@ -166,9 +166,8 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
             metaMutate: meta => {
                 meta.Add("only_findings", onlyFindings);
                 meta.Add("include_details", includeDetails);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

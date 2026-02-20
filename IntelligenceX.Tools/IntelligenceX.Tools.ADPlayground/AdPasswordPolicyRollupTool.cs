@@ -148,9 +148,8 @@ public sealed class AdPasswordPolicyRollupTool : ActiveDirectoryToolBase, ITool 
                 meta.Add("pso_history_min", psoHistoryMin);
                 meta.Add("include_pso_details", includePsoDetails);
                 meta.Add("max_pso_rows_per_domain", maxPsoRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

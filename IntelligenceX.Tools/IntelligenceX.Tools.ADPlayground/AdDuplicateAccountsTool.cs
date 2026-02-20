@@ -178,9 +178,8 @@ public sealed class AdDuplicateAccountsTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("conflicts_only", conflictsOnly);
                 meta.Add("duplicates_only", duplicatesOnly);
                 meta.Add("max_detail_rows_per_domain", maxDetailRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

@@ -114,9 +114,8 @@ public sealed class AdKerberosCryptoPostureTool : ActiveDirectoryToolBase, ITool
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             });
     }
 }

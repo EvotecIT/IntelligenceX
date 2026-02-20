@@ -102,9 +102,8 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("age_threshold_days", ageThresholdDays);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

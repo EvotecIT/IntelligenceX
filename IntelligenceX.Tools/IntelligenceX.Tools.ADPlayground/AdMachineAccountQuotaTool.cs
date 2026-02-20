@@ -130,9 +130,8 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
             metaMutate: meta => {
                 meta.Add("threshold", threshold);
                 meta.Add("risky_only", riskyOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

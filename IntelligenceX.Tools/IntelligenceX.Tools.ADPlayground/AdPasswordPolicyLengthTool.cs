@@ -119,9 +119,8 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
             metaMutate: meta => {
                 meta.Add("recommended_minimum_length", recommendedMinimumLength);
                 meta.Add("below_recommended_only", belowRecommendedOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

@@ -193,9 +193,8 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("broad_write_min", broadWriteMin);
                 meta.Add("include_offending_principals", includeOffendingPrincipals);
                 meta.Add("max_offending_rows", maxOffendingRows);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }

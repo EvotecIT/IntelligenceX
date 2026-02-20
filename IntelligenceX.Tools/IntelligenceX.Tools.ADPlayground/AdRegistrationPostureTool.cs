@@ -174,9 +174,8 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("missing_subnet_only", missingSubnetOnly);
                 meta.Add("include_details", includeDetails);
                 meta.Add("max_detail_rows_per_domain", maxDetailRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 

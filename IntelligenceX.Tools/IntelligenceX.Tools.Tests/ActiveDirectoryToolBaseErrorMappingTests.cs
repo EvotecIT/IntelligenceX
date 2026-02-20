@@ -288,6 +288,21 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
     }
 
     [Fact]
+    public void AddDomainAndForestAndMaxResultsMeta_ShouldAddAllKeys() {
+        var tool = new HarnessTool();
+
+        var withAll = tool.CreateDomainForestAndMaxResultsMeta("contoso.local", "corp.contoso.local", 321);
+        Assert.Equal("contoso.local", withAll.GetString("domain_name"));
+        Assert.Equal("corp.contoso.local", withAll.GetString("forest_name"));
+        Assert.Equal(321, withAll.GetInt64("max_results"));
+
+        var withDomainOnly = tool.CreateDomainForestAndMaxResultsMeta("contoso.local", " ", 22);
+        Assert.Equal("contoso.local", withDomainOnly.GetString("domain_name"));
+        Assert.Null(withDomainOnly.GetString("forest_name"));
+        Assert.Equal(22, withDomainOnly.GetInt64("max_results"));
+    }
+
+    [Fact]
     public void TryMapCollectionFailure_ShouldReturnFalseAndDefaultMessageWhenCollectionFailsWithoutError() {
         var tool = new HarnessTool();
 
@@ -500,6 +515,12 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         public JsonObject CreateDomainAndMaxResultsMeta(string domainName, int maxResults) {
             var meta = new JsonObject();
             AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
+            return meta;
+        }
+
+        public JsonObject CreateDomainForestAndMaxResultsMeta(string? domainName, string? forestName, int maxResults) {
+            var meta = new JsonObject();
+            AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             return meta;
         }
 

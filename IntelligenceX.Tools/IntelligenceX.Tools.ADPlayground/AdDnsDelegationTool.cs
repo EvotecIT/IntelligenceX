@@ -133,7 +133,6 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
                 if (!string.IsNullOrWhiteSpace(zoneNameContains)) {
                     meta.Add("zone_name_contains", zoneNameContains);
@@ -141,7 +140,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(identityContains)) {
                     meta.Add("identity_contains", identityContains);
                 }
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
