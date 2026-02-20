@@ -1426,7 +1426,7 @@
       } else if (hasPendingRuntimeDraft) {
         simpleHint.textContent = "Runtime edits are pending. Click Apply Runtime to commit provider/model changes.";
       } else if (transport === "native") {
-        simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
+        simpleHint.textContent = "ChatGPT runtime is active. Model list below shows ChatGPT catalog; switch to LM Studio runtime for local models.";
       } else if (isCopilotCli) {
         simpleHint.textContent = "Copilot subscription runtime is active. Use Sign In to authenticate your GitHub Copilot account.";
       } else if (isCompatible && isBridgePreset && bridgeSessionState === "auth-failed") {

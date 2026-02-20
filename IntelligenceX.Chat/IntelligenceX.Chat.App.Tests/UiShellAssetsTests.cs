@@ -166,6 +166,36 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures options conversations expose inline model override selection (without prompt dialogs)
+    /// and post explicit set_conversation_model events.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesConversationModelOverrideSelectorAndBinding() {
+        var helpersPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpers = File.ReadAllText(helpersPath);
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindings = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("options-conversation-model-select", helpers, StringComparison.Ordinal);
+        Assert.Contains("Auto (runtime default)", helpers, StringComparison.Ordinal);
+        Assert.Contains("set_conversation_model", bindings, StringComparison.Ordinal);
+        Assert.Contains("optConversations.addEventListener(\"change\"", bindings, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures discovered runtime model dropdown stays provider-catalog focused and avoids
+    /// prefixing list entries with recents/favorites labels.
+    /// </summary>
+    [Fact]
+    public void Load_RuntimeDiscoveredModelDropdown_OmitsRecentAndFavoritePrefixedEntries() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.DoesNotContain("pushModelOption(recents[r], \"Recent:\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("pushModelOption(favorites[f], \"Favorite:\"", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures Data View plain-table fallback preserves falsy scalar values like 0/false.
     /// </summary>
     [Fact]

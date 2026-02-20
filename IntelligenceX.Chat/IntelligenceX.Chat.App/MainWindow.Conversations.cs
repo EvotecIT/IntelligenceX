@@ -52,6 +52,7 @@ public sealed partial class MainWindow : Window {
                 };
                 if (IsSystemConversation(conversation)) {
                     conversation.Title = SystemConversationTitle;
+                    conversation.ModelOverride = null;
                 }
 
                 if (stored.Messages is { Count: > 0 }) {
@@ -83,6 +84,7 @@ public sealed partial class MainWindow : Window {
                 conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
                 if (IsSystemConversation(conversation)) {
                     conversation.Title = SystemConversationTitle;
+                    conversation.ModelOverride = null;
                 }
 
                 _conversations.Add(conversation);
@@ -91,6 +93,7 @@ public sealed partial class MainWindow : Window {
             var legacy = new ConversationRuntime {
                 Id = BuildConversationId(),
                 Title = DefaultConversationTitle,
+                ModelOverride = null,
                 ThreadId = string.IsNullOrWhiteSpace(state.ThreadId) ? null : state.ThreadId
             };
             if (state.Messages is { Count: > 0 }) {
@@ -159,6 +162,7 @@ public sealed partial class MainWindow : Window {
         return new ConversationRuntime {
             Id = BuildConversationId(),
             Title = string.IsNullOrWhiteSpace(title) ? DefaultConversationTitle : title.Trim(),
+            ModelOverride = null,
             ThreadId = null,
             UpdatedUtc = DateTime.UtcNow
         };
@@ -218,6 +222,7 @@ public sealed partial class MainWindow : Window {
         var conversation = new ConversationRuntime {
             Id = SystemConversationId,
             Title = SystemConversationTitle,
+            ModelOverride = null,
             ThreadId = null,
             UpdatedUtc = DateTime.UtcNow
         };
@@ -558,6 +563,11 @@ public sealed partial class MainWindow : Window {
         }
 
         return normalized;
+    }
+
+    private static string? NormalizeConversationModelOverride(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private async Task SwitchProfileAsync(string profileName) {

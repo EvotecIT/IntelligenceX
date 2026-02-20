@@ -203,7 +203,7 @@
 
         var autoOption = document.createElement("option");
         autoOption.value = "";
-        autoOption.textContent = "Auto";
+        autoOption.textContent = "Auto (runtime default)";
         modelSelect.appendChild(autoOption);
 
         for (var m = 0; m < choices.length; m++) {

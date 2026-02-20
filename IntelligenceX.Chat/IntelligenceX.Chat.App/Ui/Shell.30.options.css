@@ -693,6 +693,23 @@ body.options-open .options-panel {
   text-overflow: ellipsis;
 }
 
+.options-conversation-model-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.options-conversation-model-label {
+  font-size: 10.8px;
+  color: var(--ix-text-muted);
+  min-width: 42px;
+}
+
+.options-conversation-model-select {
+  max-width: 260px;
+}
+
 .options-accordion {
   border: 1px solid rgba(58, 96, 144, 0.55);
   border-radius: 8px;
