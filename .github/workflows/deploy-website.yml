@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
   pages: write
   id-token: write
@@ -69,6 +70,81 @@ jobs:
             --exclude=.git \
             --exclude=.github \
             .
+
+      - name: Prune stale github-pages artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ.get("GH_TOKEN", "")
+          repo = os.environ.get("GH_REPO", "")
+          if not token or not repo:
+              print("Skipping artifact prune: missing GH token or repo context.")
+              raise SystemExit(0)
+
+          keep_newest = 3
+          min_age_hours = 6
+          now_utc = dt.datetime.now(dt.timezone.utc)
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "powerforge-pages-artifact-prune",
+          }
+
+          query = urllib.parse.urlencode({"name": "github-pages", "per_page": 100})
+          list_url = f"https://api.github.com/repos/{repo}/actions/artifacts?{query}"
+          list_req = urllib.request.Request(list_url, headers=headers)
+          with urllib.request.urlopen(list_req) as response:
+              payload = json.load(response)
+
+          artifacts = payload.get("artifacts", [])
+          artifacts.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+          deleted = 0
+          skipped_recent = 0
+          delete_failures = 0
+
+          for artifact in artifacts[keep_newest:]:
+              created_raw = artifact.get("created_at", "")
+              try:
+                  created_at = dt.datetime.strptime(created_raw, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+              except ValueError:
+                  created_at = now_utc - dt.timedelta(hours=min_age_hours + 1)
+
+              age_hours = (now_utc - created_at).total_seconds() / 3600.0
+              if age_hours < min_age_hours:
+                  skipped_recent += 1
+                  continue
+
+              artifact_id = artifact.get("id")
+              delete_url = f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}"
+              delete_req = urllib.request.Request(delete_url, method="DELETE", headers=headers)
+              try:
+                  urllib.request.urlopen(delete_req).read()
+                  deleted += 1
+                  print(f"Deleted artifact id={artifact_id} created_at={created_raw}")
+              except urllib.error.HTTPError as ex:
+                  delete_failures += 1
+                  print(f"Warning: failed to delete artifact id={artifact_id} (HTTP {ex.code})")
+              except Exception as ex:  # pragma: no cover - defensive for runner env differences
+                  delete_failures += 1
+                  print(f"Warning: failed to delete artifact id={artifact_id} ({ex})")
+
+          print(
+              "Artifact prune summary: "
+              f"found={len(artifacts)}, kept={min(len(artifacts), keep_newest)}, "
+              f"deleted={deleted}, skipped_recent={skipped_recent}, failures={delete_failures}"
+          )
+          PY
 
       - name: Upload Pages artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
