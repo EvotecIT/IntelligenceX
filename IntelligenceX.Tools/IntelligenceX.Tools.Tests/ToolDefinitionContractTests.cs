@@ -63,9 +63,10 @@ public class ToolDefinitionContractTests {
             "eventlog_pack_info",
             "eventlog_named_events_catalog",
             "eventlog_named_events_query",
-            "eventlog_evtx_report_user_logons",
-            "eventlog_evtx_report_failed_logons",
-            "eventlog_evtx_report_account_lockouts"
+            "eventlog_timeline_query",
+            "eventlog_top_events",
+            "eventlog_evtx_query",
+            "eventlog_evtx_stats"
         };
 
         foreach (var name in expected) {

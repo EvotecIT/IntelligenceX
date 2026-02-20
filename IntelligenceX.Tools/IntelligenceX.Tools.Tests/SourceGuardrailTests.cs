@@ -109,9 +109,6 @@ public class SourceGuardrailTests {
         }
 
         string[] filesToScan = {
-            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxFailedLogonsReportTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxAccountLockoutsReportTool.cs"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxUserLogonsReportTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogPackInfoTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSpnStatsTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdStaleAccountsTool.cs"),

@@ -46,9 +46,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
                 "Use eventlog_named_events_catalog/eventlog_named_events_query for rule-based, intent-level detections (AD/Kerberos/GPO/etc).",
+                "Use eventlog_timeline_query to build reusable timeline and correlation views from named-event evidence (no fixed report templates).",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
-                "Use security report tools for lockouts/logons/failures when investigating authentication incidents.",
-                "For AD identity correlation: call ad_environment_discover, then ad_search using eventlog report ad_correlation candidates."
+                "For authentication investigations and timeline correlation, use eventlog_named_events_catalog first, then eventlog_timeline_query with named_events/categories and either correlation_profile or explicit correlation_keys.",
+                "For AD identity correlation: call ad_environment_discover, then ad_search using identities extracted from eventlog_named_events_query evidence."
             },
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
@@ -65,12 +66,16 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     goal: "Run named-event rule detections",
                     suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query" }),
                 ToolPackGuidance.FlowStep(
+                    goal: "Build generic event timelines and correlation groups",
+                    suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query" },
+                    notes: "Start with correlation_profile presets, then tune correlation_keys (for example who/object_affected/computer/action) when needed."),
+                ToolPackGuidance.FlowStep(
                     goal: "Investigate authentication incidents",
-                    suggestedTools: new[] { "eventlog_evtx_report_failed_logons", "eventlog_evtx_report_account_lockouts", "eventlog_evtx_report_user_logons" }),
+                    suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_evtx_query" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Correlate event identities with AD objects",
-                    suggestedTools: new[] { "ad_environment_discover", "ad_search" },
-                    notes: "Use ad_correlation payload from security report tools to drive AD lookups.")
+                    suggestedTools: new[] { "eventlog_timeline_query", "ad_environment_discover", "ad_search" },
+                    notes: "Drive AD lookups from normalized user/domain identities in named-events query evidence.")
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
@@ -82,23 +87,23 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     summary: "Compute top-level statistics from EVTX files and live event channels.",
                     primaryTools: new[] { "eventlog_evtx_stats", "eventlog_live_stats" }),
                 ToolPackGuidance.Capability(
-                    id: "security_reports",
-                    summary: "Produce focused lockout/logon/failure views for security investigations.",
-                    primaryTools: new[] { "eventlog_evtx_report_failed_logons", "eventlog_evtx_report_account_lockouts", "eventlog_evtx_report_user_logons" }),
-                ToolPackGuidance.Capability(
                     id: "named_event_rules",
                     summary: "Run EventViewerX named-event rule detections and return normalized evidence rows.",
                     primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query" }),
                 ToolPackGuidance.Capability(
-                    id: "ad_correlation_hints",
-                    summary: "Emit AD follow-up hints/candidate identities from security report aggregates.",
-                    primaryTools: new[] { "eventlog_evtx_report_failed_logons", "eventlog_evtx_report_account_lockouts", "eventlog_evtx_report_user_logons" },
+                    id: "timeline_correlation",
+                    summary: "Build reusable timelines and correlation groups from named-event evidence using caller-selected dimensions.",
+                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query" }),
+                ToolPackGuidance.Capability(
+                    id: "correlation_workflow",
+                    summary: "Use named-event detections as reusable correlation building blocks across log, timeline, and AD enrichment workflows.",
+                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_named_events_query", "eventlog_evtx_query" },
                     notes: "Use ad_environment_discover + ad_search in the AD pack for identity enrichment.")
             },
             toolCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw event arrays and report objects for model reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only.",
-            correlationGuidance: "Security report tools include ad_correlation candidates to bootstrap AD lookups and cross-pack reasoning.",
+            correlationGuidance: "Use eventlog_timeline_query with correlation_profile presets or explicit correlation_keys, then bootstrap AD lookups from user/domain payload evidence.",
             setupHints: new {
                 Platform = Environment.OSVersion.Platform.ToString(),
                 MaxResults = Options.MaxResults,
