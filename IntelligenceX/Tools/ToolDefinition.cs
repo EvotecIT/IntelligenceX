@@ -169,7 +169,12 @@ public sealed class ToolDefinition {
             }
         }
 
-        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+        if (list.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list.ToArray();
     }
 
     private static IReadOnlyList<ToolAliasDefinition> NormalizeAliases(
@@ -233,6 +238,11 @@ public sealed class ToolDefinition {
             }
         }
 
-        return merged.Count == 0 ? Array.Empty<string>() : merged.ToArray();
+        if (merged.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        merged.Sort(StringComparer.OrdinalIgnoreCase);
+        return merged.ToArray();
     }
 }
