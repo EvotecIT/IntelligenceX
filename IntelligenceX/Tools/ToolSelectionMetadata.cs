@@ -555,7 +555,12 @@ public static class ToolSelectionMetadata {
         }
 
         for (var i = 0; i < definition.Tags.Count; i++) {
-            AddTag(definition.Tags[i]);
+            var tag = definition.Tags[i];
+            if (ToolRoutingTaxonomy.IsTaxonomyTag(tag)) {
+                continue;
+            }
+
+            AddTag(tag);
         }
 
         AddTag(category);
@@ -569,6 +574,10 @@ public static class ToolSelectionMetadata {
                 : $"routing:{ToolRoutingTaxonomy.SourceInferred}");
 
         foreach (var tag in explicitOverride?.Tags ?? Array.Empty<string>()) {
+            if (ToolRoutingTaxonomy.IsTaxonomyTag(tag)) {
+                continue;
+            }
+
             AddTag(tag);
         }
 

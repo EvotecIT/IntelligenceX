@@ -159,12 +159,18 @@ public sealed class ToolDefinition {
 
         var list = new List<string>(tags.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTaxonomyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tag in tags) {
             if (string.IsNullOrWhiteSpace(tag)) {
                 continue;
             }
 
             var normalized = tag.Trim();
+            if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey) &&
+                !seenTaxonomyKeys.Add(taxonomyKey)) {
+                continue;
+            }
+
             if (seen.Add(normalized)) {
                 list.Add(normalized);
             }
@@ -215,12 +221,18 @@ public sealed class ToolDefinition {
 
         var merged = new List<string>((first?.Count ?? 0) + (second?.Count ?? 0));
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTaxonomyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (first is not null) {
             foreach (var tag in first) {
                 if (string.IsNullOrWhiteSpace(tag)) {
                     continue;
                 }
                 var normalized = tag.Trim();
+                if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey) &&
+                    !seenTaxonomyKeys.Add(taxonomyKey)) {
+                    continue;
+                }
+
                 if (seen.Add(normalized)) {
                     merged.Add(normalized);
                 }
@@ -233,6 +245,11 @@ public sealed class ToolDefinition {
                     continue;
                 }
                 var normalized = tag.Trim();
+                if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey) &&
+                    !seenTaxonomyKeys.Add(taxonomyKey)) {
+                    continue;
+                }
+
                 if (seen.Add(normalized)) {
                     merged.Add(normalized);
                 }

@@ -23,6 +23,16 @@ public static class ToolRoutingTaxonomy {
     public const string SourceInferred = "inferred";
     /// <summary>Routing source for explicit overrides.</summary>
     public const string SourceExplicit = "explicit";
+    /// <summary>Routing tag prefix for scope taxonomy tags.</summary>
+    public const string ScopeTagPrefix = "scope:";
+    /// <summary>Routing tag prefix for operation taxonomy tags.</summary>
+    public const string OperationTagPrefix = "operation:";
+    /// <summary>Routing tag prefix for entity taxonomy tags.</summary>
+    public const string EntityTagPrefix = "entity:";
+    /// <summary>Routing tag prefix for risk taxonomy tags.</summary>
+    public const string RiskTagPrefix = "risk:";
+    /// <summary>Routing tag prefix for routing-source taxonomy tags.</summary>
+    public const string RoutingTagPrefix = "routing:";
 
     /// <summary>Allowed routing risk values.</summary>
     public static readonly IReadOnlyList<string> AllowedRisks = new[] {
@@ -76,6 +86,52 @@ public static class ToolRoutingTaxonomy {
             if (string.Equals(normalized, AllowedSources[i], StringComparison.Ordinal)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true when the tag belongs to the routing taxonomy namespace.
+    /// </summary>
+    public static bool IsTaxonomyTag(string? tag) {
+        return TryGetTagKey(tag, out _);
+    }
+
+    /// <summary>
+    /// Gets the taxonomy tag key (<c>scope</c>, <c>operation</c>, <c>entity</c>, <c>risk</c>, <c>routing</c>)
+    /// for a routing taxonomy tag.
+    /// </summary>
+    public static bool TryGetTagKey(string? tag, out string tagKey) {
+        tagKey = string.Empty;
+        if (tag is null) {
+            return false;
+        }
+
+        var normalized = tag.Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized.StartsWith(ScopeTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+            tagKey = "scope";
+            return true;
+        }
+        if (normalized.StartsWith(OperationTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+            tagKey = "operation";
+            return true;
+        }
+        if (normalized.StartsWith(EntityTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+            tagKey = "entity";
+            return true;
+        }
+        if (normalized.StartsWith(RiskTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+            tagKey = "risk";
+            return true;
+        }
+        if (normalized.StartsWith(RoutingTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+            tagKey = "routing";
+            return true;
         }
 
         return false;

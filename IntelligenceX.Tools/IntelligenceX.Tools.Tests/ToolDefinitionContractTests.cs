@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Email;
@@ -146,6 +149,34 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void Enrich_ShouldIgnoreConflictingInputTaxonomyTags() {
+        var definition = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            tags: new[] {
+                "scope:domain",
+                "operation:search",
+                "entity:user",
+                "risk:high",
+                "routing:explicit"
+            });
+
+        var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+        Assert.Contains("scope:general", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:probe", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:low", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:inferred", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(enriched.Tags, "scope:");
+        AssertSingleTaxonomyTag(enriched.Tags, "operation:");
+        AssertSingleTaxonomyTag(enriched.Tags, "entity:");
+        AssertSingleTaxonomyTag(enriched.Tags, "risk:");
+        AssertSingleTaxonomyTag(enriched.Tags, "routing:");
+    }
+
+    [Fact]
     public void CreateAliasDefinition_ShouldMergeAndSortEnrichedTagsDeterministically() {
         var canonical = ToolSelectionMetadata.Enrich(
             new ToolDefinition(
@@ -165,6 +196,41 @@ public class ToolDefinitionContractTests {
             alias.Tags.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Contains("host", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:explicit", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "scope:");
+        AssertSingleTaxonomyTag(alias.Tags, "operation:");
+        AssertSingleTaxonomyTag(alias.Tags, "entity:");
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "routing:");
+    }
+
+    [Fact]
+    public void Register_WithReplaceExisting_ShouldPreserveSingleTaxonomyTagPerKey() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe v1",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "scope:host", "operation:read", "routing:explicit", "custom" })));
+
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe v2",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "scope:domain", "operation:query", "routing:explicit", "custom2" })),
+            replaceExisting: true);
+
+        Assert.True(registry.TryGetDefinition("custom_probe", out var definition));
+        Assert.NotNull(definition);
+        AssertSingleTaxonomyTag(definition!.Tags, "scope:");
+        AssertSingleTaxonomyTag(definition.Tags, "operation:");
+        AssertSingleTaxonomyTag(definition.Tags, "entity:");
+        AssertSingleTaxonomyTag(definition.Tags, "risk:");
+        AssertSingleTaxonomyTag(definition.Tags, "routing:");
+        Assert.Contains("scope:general", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:probe", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:inferred", definition.Tags, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -329,5 +395,23 @@ public class ToolDefinitionContractTests {
         Assert.Contains("testimox_pack_info", names);
         Assert.Contains("testimox_rules_list", names);
         Assert.Contains("testimox_rules_run", names);
+    }
+
+    private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
+        Assert.Equal(
+            1,
+            tags.Count(tag => tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private sealed class StubTool : ITool {
+        public StubTool(ToolDefinition definition) {
+            Definition = definition ?? throw new ArgumentNullException(nameof(definition));
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            return Task.FromResult("{}");
+        }
     }
 }
