@@ -97,10 +97,6 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?<label>(?<![\p{L}\p{N}_])(?:Why it matters|Action|Next action|Fix action):)(?=\S)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
-    private static readonly Regex SignalFlowPlainLabelStrongBodyRegex = new(
-        @"(?<arrow>->\s*)(?<label>(?:Why it matters|Action|Next action|Fix action):)\*\*(?<body>[^\r\n]*?)\*\*(?=\s*(?:->|$))",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-
     private static readonly Regex SentenceCollapsedBulletRegex = new(
         @"(?<=[\.\!\?\)\]])\s*(?=-\s*(?:\*\*[^\r\n]|[A-Z]{2,}\d+\b))",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -410,14 +406,6 @@ internal static class TranscriptMarkdownNormalizer {
         }
 
         var value = SignalFlowArrowLabelTightRegex.Replace(text, "-> **");
-        value = SignalFlowPlainLabelStrongBodyRegex.Replace(value, static match => {
-            var arrow = match.Groups["arrow"].Value;
-            var label = match.Groups["label"].Value;
-            var body = match.Groups["body"].Value.Trim();
-            return body.Length == 0
-                ? arrow + "**" + label + "**"
-                : arrow + "**" + label + "** " + body;
-        });
         value = SignalFlowBoldLabelMissingSpaceRegex.Replace(value, static match => match.Groups["label"].Value + " ");
         value = SignalFlowPlainLabelMissingSpaceRegex.Replace(value, static match => match.Groups["label"].Value + " ");
         return value;
