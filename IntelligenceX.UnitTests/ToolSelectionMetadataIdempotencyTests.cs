@@ -17,7 +17,6 @@ public sealed class ToolSelectionMetadataIdempotencyTests {
             tags: new[] {
                 "TagB",
                 "tagA",
-                "routing:explicit",
                 "risk:",
                 "scope:   "
             });
