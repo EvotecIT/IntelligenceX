@@ -248,6 +248,11 @@ internal static partial class Program {
         AssertEqual("system_info", aliasDef.AliasOf, "aliasOf");
         AssertEqual("system_info", aliasDef.CanonicalName, "canonical name");
         AssertEqual("Read host details", aliasDef.Description, "alias description");
+        AssertEqual(
+            aliasDef.Tags.Count,
+            aliasDef.Tags.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            "alias merged tags unique");
+        AssertEqual("host", aliasDef.Tags[aliasDef.Tags.Count - 1], "alias-specific tag appended last");
         AssertEqual(true, aliasDef.Tags.Contains("system", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical tag");
         AssertEqual(true, aliasDef.Tags.Contains("inventory", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical custom tag");
         AssertEqual(true, aliasDef.Tags.Contains("host", StringComparer.OrdinalIgnoreCase), "alias merged tags include alias tag");
