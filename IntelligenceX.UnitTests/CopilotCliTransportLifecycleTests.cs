@@ -57,7 +57,14 @@ public sealed class CopilotCliTransportLifecycleTests {
 
         var initializeTask = transport.InitializeAsync(new ClientInfo("ix", "IntelligenceX", "1.0.0"), CancellationToken.None);
         var disposeTask = Task.Run(() => transport.Dispose());
-        var disposeStarted = SpinWait.SpinUntil(() => GetDisposeState(transport) != 0, TimeSpan.FromSeconds(2));
+        var disposeStarted = SpinWait.SpinUntil(() => {
+            try {
+                _ = transport.LogoutAsync(CancellationToken.None);
+                return false;
+            } catch (ObjectDisposedException) {
+                return true;
+            }
+        }, TimeSpan.FromSeconds(2));
         Assert.True(disposeStarted, "Dispose did not transition state before timeout.");
         gate.Release();
 
@@ -119,12 +126,5 @@ public sealed class CopilotCliTransportLifecycleTests {
         Assert.NotNull(field);
         var value = field!.GetValue(transport);
         return Assert.IsType<SemaphoreSlim>(value);
-    }
-
-    private static int GetDisposeState(CopilotCliTransport transport) {
-        var field = typeof(CopilotCliTransport).GetField("_disposeState", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        var value = field!.GetValue(transport);
-        return Assert.IsType<int>(value);
     }
 }
