@@ -36,7 +36,7 @@ public sealed class ToolDefinitionTagOrderingTests {
                 "routing:explicit"
             });
 
-        Assert.Equal(aliasA.Tags, aliasB.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.True(aliasA.Tags.SequenceEqual(aliasB.Tags, StringComparer.OrdinalIgnoreCase));
         Assert.Equal(aliasA.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), aliasA.Tags);
         Assert.Contains("scope:domain", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:search", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
