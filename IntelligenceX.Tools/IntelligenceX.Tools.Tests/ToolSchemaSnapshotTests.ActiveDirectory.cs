@@ -684,6 +684,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_admin_count_report",
+            new[] { "forest_name_contains", "domain_name_contains", "sam_account_name_contains", "stale_days", "reference_time_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_wmi_filters",
             new[] { "domain_name", "display_name_contains", "author_contains", "query_contains", "include_queries", "max_queries_per_filter", "max_query_chars", "max_results", "columns", "sort_by", "sort_direction", "top" },
             new[] { "domain_name" }

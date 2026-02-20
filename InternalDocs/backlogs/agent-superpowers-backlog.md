@@ -55,6 +55,7 @@ about what scope it actually achieved, and offer the correct next step.
 - [x] (P0) Add a "probe receipt" output (which DCs were contacted, which endpoints checked, retries, timeouts).
 - [x] (P1) Add AD service-account usage, dormant-account, and KDS-root-key query wrappers (`ad_service_account_usage`, `ad_never_logged_in_accounts`, `ad_kds_root_keys`) with safe limits and structured output.
 - [x] (P1) Add AD GPO diagnostics wrappers for WMI filters and WSUS posture (`ad_wmi_filters`, `ad_wsus_configuration`) with safe limits and structured output.
+- [x] (P1) Add AD privileged-account hygiene wrapper (`ad_admin_count_report`) with safe limits and structured output.
 - [ ] (P1) Add TestimoX monitoring probe wrappers with consistent output schemas (rows+cols+types) and severity mapping.
 - [ ] (P1) Add "forest-wide bundle" meta-tool: replication + LDAP + SYSVOL/DFSR evidence + event log hints. (runtime-parallel)
 - [ ] (P2) Add a "minimal anchor DC" mode (user provides one DC, tool discovers the rest) with clear fallback reasoning.

@@ -27,6 +27,7 @@ EventLog note: current gaps are no longer "core parser missing", but optional co
 | `KdsRootKeyChecker.GetRootKeys()` | `ad_kds_root_keys` | Added |
 | `Gpo/WmiFilterService.EnumerateFilters(domain)` | `ad_wmi_filters` | Added |
 | `Gpo/WsusConfigurationService.Get(domain)` | `ad_wsus_configuration` | Added |
+| `Admin/AdminCountReporter.GetReport()` | `ad_admin_count_report` | Added |
 | EventLog handoff normalization | `ad_handoff_prepare` | Added |
 | Scope/discovery receipt | `ad_scope_discovery` | Added |
 
@@ -34,7 +35,6 @@ EventLog note: current gaps are no longer "core parser missing", but optional co
 
 | Priority | Candidate tool | Upstream source | Why |
 | --- | --- | --- | --- |
-| P1 | `ad_admin_count_report` | `Admin/AdminCountReporter` | privileged account hygiene signal |
 | P2 | `eventlog_evtx_security_samples` | `Security*QueryResult.Samples` | convenience extraction wrapper for sample rows |
 
 ## Write-Tool Candidates (Require Governance Contracts)
