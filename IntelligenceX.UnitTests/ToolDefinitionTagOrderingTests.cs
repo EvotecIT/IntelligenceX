@@ -127,6 +127,31 @@ public sealed class ToolDefinitionTagOrderingTests {
         AssertSingleTaxonomyTag(alias.Tags, "routing:");
     }
 
+    [Fact]
+    public void CreateAliasDefinition_ShouldEmitDeterministicSortedTags_AcrossMergeSources() {
+        var definition = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: null,
+            tags: new[] { "beta", "alpha", "scope:general", "risk:low" });
+
+        var alias = definition.CreateAliasDefinition(
+            aliasName: "custom_probe_alias",
+            tags: new[] { "zeta", "gamma", "operation:search" });
+
+        Assert.Equal(alias.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), alias.Tags);
+        Assert.Contains("alpha", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("beta", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("gamma", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("zeta", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:search", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "operation:");
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "scope:");
+    }
+
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
         Assert.Equal(
             1,

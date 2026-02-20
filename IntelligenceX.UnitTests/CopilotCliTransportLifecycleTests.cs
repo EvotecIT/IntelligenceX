@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -122,8 +123,8 @@ public sealed class CopilotCliTransportLifecycleTests {
     }
 
     private static async Task<bool> WaitUntilDisposedAsync(CopilotCliTransport transport, TimeSpan timeout) {
-        var startedAt = DateTime.UtcNow;
-        while (DateTime.UtcNow - startedAt < timeout) {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout) {
             var ex = await Record.ExceptionAsync(() => transport.LogoutAsync(CancellationToken.None));
             if (ex is ObjectDisposedException) {
                 return true;
