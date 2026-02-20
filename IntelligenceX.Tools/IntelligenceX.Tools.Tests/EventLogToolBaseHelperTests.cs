@@ -23,13 +23,23 @@ public class EventLogToolBaseHelperTests {
     }
 
     [Fact]
-    public void ResolveMaxResults_ShouldHonorExplicitDefaultAndCap() {
+    public void ResolveCappedMaxResults_ShouldHonorExplicitDefaultAndCap() {
         var tool = new HarnessTool(maxResults: 200);
 
-        Assert.Equal(20, tool.ResolveMax(arguments: null, defaultValue: 20, maxInclusive: 80));
-        Assert.Equal(1, tool.ResolveMax(new JsonObject().Add("max_results", 0), defaultValue: 20, maxInclusive: 80));
-        Assert.Equal(80, tool.ResolveMax(new JsonObject().Add("max_results", 500), defaultValue: 20, maxInclusive: 80));
-        Assert.Equal(35, tool.ResolveMax(new JsonObject().Add("max_results", 35), defaultValue: 20, maxInclusive: 80));
+        Assert.Equal(20, tool.ResolveCappedMax(arguments: null, defaultValue: 20, maxInclusive: 80));
+        Assert.Equal(1, tool.ResolveCappedMax(new JsonObject().Add("max_results", 0), defaultValue: 20, maxInclusive: 80));
+        Assert.Equal(80, tool.ResolveCappedMax(new JsonObject().Add("max_results", 500), defaultValue: 20, maxInclusive: 80));
+        Assert.Equal(35, tool.ResolveCappedMax(new JsonObject().Add("max_results", 35), defaultValue: 20, maxInclusive: 80));
+    }
+
+    [Fact]
+    public void ResolveOptionBoundedMaxResults_ShouldUseSharedOptionBoundedBehavior() {
+        var tool = new HarnessTool(maxResults: 60);
+
+        Assert.Equal(60, tool.ResolveOptionBoundedMax(arguments: null));
+        Assert.Equal(1, tool.ResolveOptionBoundedMax(new JsonObject().Add("max_results", 0)));
+        Assert.Equal(60, tool.ResolveOptionBoundedMax(new JsonObject().Add("max_results", 999)));
+        Assert.Equal(22, tool.ResolveOptionBoundedMax(new JsonObject().Add("max_results", 22)));
     }
 
     [Fact]
@@ -117,8 +127,12 @@ public class EventLogToolBaseHelperTests {
             return ResolveBoundedOptionLimit(arguments, argumentName);
         }
 
-        public int ResolveMax(JsonObject? arguments, int? defaultValue = null, int? maxInclusive = null) {
-            return ResolveMaxResults(arguments, defaultValue, maxInclusive: maxInclusive);
+        public int ResolveCappedMax(JsonObject? arguments, int defaultValue, int? maxInclusive = null) {
+            return ResolveCappedMaxResults(arguments, defaultValue, maxInclusive: maxInclusive);
+        }
+
+        public int ResolveOptionBoundedMax(JsonObject? arguments) {
+            return ResolveOptionBoundedMaxResults(arguments);
         }
 
         public static void AddMax(JsonObject meta, int maxResults) {

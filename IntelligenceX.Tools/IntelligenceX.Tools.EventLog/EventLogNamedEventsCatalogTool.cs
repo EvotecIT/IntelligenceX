@@ -64,7 +64,7 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
         var availableOnly = ToolArgs.GetBoolean(arguments, "available_only");
         var includeEventIds = arguments?.GetBoolean("include_event_ids") ?? true;
         var maxEventIdsPerRow = ToolArgs.GetCappedInt32(arguments, "max_event_ids_per_row", 32, 1, MaxEventIdsPerRowCap);
-        var maxResults = ResolveMaxResults(arguments);
+        var maxResults = ResolveOptionBoundedMaxResults(arguments);
 
         var categoriesFilter = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("categories"));
         List<string>? categories = null;

@@ -131,12 +131,22 @@ public abstract class EventLogToolBase : ToolBase {
     }
 
     /// <summary>
-    /// Resolves max_results with optional explicit defaults/caps.
+    /// Resolves <c>max_results</c> using the standard option-bounded behavior.
     /// </summary>
-    protected int ResolveMaxResults(JsonObject? arguments, int? defaultValue = null, int minInclusive = 1, int? maxInclusive = null) {
-        var normalizedDefault = defaultValue ?? Options.MaxResults;
+    protected int ResolveOptionBoundedMaxResults(JsonObject? arguments, int minInclusive = 1) {
+        return ResolveBoundedOptionLimit(arguments, "max_results", minInclusive);
+    }
+
+    /// <summary>
+    /// Resolves <c>max_results</c> using an explicit default and optional explicit cap.
+    /// </summary>
+    protected int ResolveCappedMaxResults(
+        JsonObject? arguments,
+        int defaultValue,
+        int minInclusive = 1,
+        int? maxInclusive = null) {
         var normalizedMax = maxInclusive ?? Options.MaxResults;
-        return ToolArgs.GetCappedInt32(arguments, "max_results", normalizedDefault, minInclusive, normalizedMax);
+        return ToolArgs.GetCappedInt32(arguments, "max_results", defaultValue, minInclusive, normalizedMax);
     }
 
     /// <summary>
