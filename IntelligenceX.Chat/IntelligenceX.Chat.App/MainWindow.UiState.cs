@@ -315,11 +315,11 @@ public sealed partial class MainWindow : Window {
         }
 
         if (string.Equals(compatiblePreset, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)) {
-            return "Anthropic bridge runtime";
+            return "Anthropic subscription bridge runtime";
         }
 
         if (string.Equals(compatiblePreset, "gemini-bridge", StringComparison.OrdinalIgnoreCase)) {
-            return "Gemini bridge runtime";
+            return "Gemini subscription bridge runtime";
         }
 
         if (copilotConnected) {

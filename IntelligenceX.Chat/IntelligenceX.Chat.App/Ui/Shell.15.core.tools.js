@@ -812,18 +812,10 @@
 
   function resolveReasoningSupport(transport, compatiblePreset) {
     var normalizedTransport = normalizeLocalTransport(transport);
-    var preset = String(compatiblePreset || "manual").trim().toLowerCase();
     if (normalizedTransport === "copilot-cli") {
       return {
         supported: false,
         reason: "GitHub Copilot subscription runtime currently does not expose reasoning controls."
-      };
-    }
-    if (normalizedTransport === "compatible-http"
-      && (preset === "anthropic-bridge" || preset === "gemini-bridge")) {
-      return {
-        supported: false,
-        reason: "Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning."
       };
     }
     return {
@@ -854,10 +846,10 @@
       return "Azure OpenAI runtime";
     }
     if (preset === "anthropic-bridge") {
-      return "Anthropic bridge runtime";
+      return "Anthropic subscription bridge runtime";
     }
     if (preset === "gemini-bridge") {
-      return "Gemini bridge runtime";
+      return "Gemini subscription bridge runtime";
     }
     if (copilotConnected) {
       return "GitHub Copilot runtime";
@@ -1016,11 +1008,13 @@
             ? "No Authorization header will be sent."
             : "Use API key for Bearer authentication.");
       if (compatiblePreset === "anthropic-bridge" || compatiblePreset === "gemini-bridge") {
-        authStatus = "limited";
+        authStatus = openAIAuthMode === "none" ? "limited" : "supported";
         if (openAIAuthMode === "basic") {
           authValue = "Bridge credentials (Basic)";
         }
-        authNote = "Bridge presets use endpoint credentials managed by the bridge service. Browser subscription session reuse is not wired yet.";
+        authNote = openAIAuthMode === "basic"
+          ? "Use bridge login/email and secret/token for your subscription-backed bridge session."
+          : "Subscription bridge endpoints typically expect Basic credentials (login + secret/token).";
       }
       appendRuntimeCapabilityRow(listEl, "Authentication", authStatus, authValue, authNote);
     }
@@ -1555,6 +1549,18 @@
       btnPresetAzureOpenAI.disabled = isApplying;
     }
 
+    var btnPresetAnthropicBridge = byId("btnLocalPresetAnthropicBridge");
+    if (btnPresetAnthropicBridge) {
+      btnPresetAnthropicBridge.hidden = !isCompatible;
+      btnPresetAnthropicBridge.disabled = isApplying;
+    }
+
+    var btnPresetGeminiBridge = byId("btnLocalPresetGeminiBridge");
+    if (btnPresetGeminiBridge) {
+      btnPresetGeminiBridge.hidden = !isCompatible;
+      btnPresetGeminiBridge.disabled = isApplying;
+    }
+
     var baseUrlRow = byId("optLocalBaseUrlRow");
     if (baseUrlRow) {
       baseUrlRow.hidden = !isCompatible;
@@ -1638,7 +1644,7 @@
       if (!isCompatible) {
         authHint.textContent = "";
       } else if (compatiblePreset === "anthropic-bridge" || compatiblePreset === "gemini-bridge") {
-        authHint.textContent = "Subscription bridges are experimental. Configure the bridge endpoint and usually set auth mode to Basic.";
+        authHint.textContent = "Subscription bridge runtime is active. Use bridge login/email + secret/token (usually Basic auth).";
       } else if (compatiblePreset === "azure-openai") {
         authHint.textContent = "Azure OpenAI typically uses Bearer auth and deployment-specific base URLs.";
       } else if (compatiblePreset === "openai") {
