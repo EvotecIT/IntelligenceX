@@ -13,8 +13,8 @@ using Windows.Storage.Pickers;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
-    private const int MaxVisualExportBase64Chars = 16 * 1024 * 1024;
     private const int MaxVisualExportBytes = 12 * 1024 * 1024;
+    private const int MaxVisualExportBase64Chars = (MaxVisualExportBytes / 3) * 4;
 
     private async Task ExportTableArtifactAsync(string format, string title, JsonElement rowsElement, string exportId = "", string? outputPath = null) {
         if (!ExportPreferencesContract.TryNormalizeFormat(format, out var normalizedFormat)) {

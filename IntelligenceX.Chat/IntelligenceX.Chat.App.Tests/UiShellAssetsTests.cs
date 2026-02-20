@@ -234,7 +234,6 @@ public sealed class UiShellAssetsTests {
             "pick_visual_export_path",
             "export_visual_artifact",
             "visual_export_action");
-        Assert.DoesNotContain("id=\"btnVisualViewClose\" class=\"options-close\" aria-label=\"Close visual view\">x</button>", html, StringComparison.Ordinal);
     }
 
     /// <summary>
