@@ -368,6 +368,20 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures streaming preview repairs plain-label signal flow where trailing strong markers wrap the clause body.
+    /// </summary>
+    [Fact]
+    public void NormalizeForStreamingPreview_RepairsPlainSignalLabelsWithStrongWrappedTail() {
+        var text = "- Signal No scoped query yet for your immediate need -> Why it matters:delays targeted diagnostics -> Fix action:** give me one pattern (for example *Privileged*), and I'll return the exact matching rules ready to run.**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(text);
+
+        Assert.Equal(
+            "- Signal No scoped query yet for your immediate need -> Why it matters: delays targeted diagnostics -> **Fix action:** give me one pattern (for example *Privileged*), and I'll return the exact matching rules ready to run.",
+            normalized);
+    }
+
+    /// <summary>
     /// Ensures streaming preview does not rewrite signal-flow artifacts inside fenced code.
     /// </summary>
     [Fact]
@@ -554,6 +568,20 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         Assert.Equal(
             "- Signal **Point-in-time snapshot only** -> Why it matters: trend coverage is missing -> Action: collect data every 15 minutes for 24h.",
+            normalized);
+    }
+
+    /// <summary>
+    /// Ensures rendering repairs mixed plain-label and strong-tail signal flow clauses without leaking literal strong markers.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_RepairsSignalFlowStrongTailAndPlainLabelSpacingTogether() {
+        var text = "- Signal Confidence on long-term stability is medium (single snapshot) -> Why it matters:missing evidence is historical variance -> Fix action:** gather a 24h trend set (same tools) before declaring sustained health.** -> Next action:break down origin by host.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "- Signal Confidence on long-term stability is medium (single snapshot) -> Why it matters: missing evidence is historical variance -> **Fix action:** gather a 24h trend set (same tools) before declaring sustained health. -> Next action: break down origin by host.",
             normalized);
     }
 

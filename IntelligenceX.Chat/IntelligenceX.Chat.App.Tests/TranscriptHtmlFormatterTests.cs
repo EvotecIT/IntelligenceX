@@ -415,4 +415,31 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("</strong>external/custom", html, StringComparison.Ordinal);
         Assert.DoesNotContain("</strong>break down", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures live streaming preview + formatter render plain-label signal clauses without leaking literal strong markers.
+    /// </summary>
+    [Fact]
+    public void Format_StreamingPreviewPipelineRepairsPlainLabelStrongTailArtifacts() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 20, 11, 19, 0, DateTimeKind.Local);
+        var raw = "- Signal Confidence on long-term stability is medium (single snapshot) -> Why it matters:missing evidence is historical variance -> Fix action:** gather a 24h trend set (same tools) before declaring sustained health.** -> Next action:break down origin by host.";
+
+        var preview = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(raw);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", preview, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("-> Why it matters: missing evidence is historical variance", preview, StringComparison.Ordinal);
+        Assert.Contains("-> **Fix action:** gather a 24h trend set (same tools) before declaring sustained health.", preview, StringComparison.Ordinal);
+        Assert.Contains("-> Next action: break down origin by host.", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("-> Fix action:** ", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("sustained health.**", preview, StringComparison.Ordinal);
+
+        Assert.Contains("Why it matters: missing evidence is historical variance", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Fix action:</strong> gather a 24h trend set (same tools) before declaring sustained health.", html, StringComparison.Ordinal);
+        Assert.Contains("Next action: break down origin by host.", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("-> Fix action:** ", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("sustained health.**", html, StringComparison.Ordinal);
+    }
 }
