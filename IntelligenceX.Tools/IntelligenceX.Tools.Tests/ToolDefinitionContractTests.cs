@@ -146,6 +146,28 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void CreateAliasDefinition_ShouldMergeAndSortEnrichedTagsDeterministically() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "system_info",
+                description: "System info",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "system", "inventory" }),
+            toolType: null);
+
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "host_info_alias",
+            tags: new[] { "host", "HOST" });
+
+        Assert.Equal(alias.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), alias.Tags);
+        Assert.Equal(
+            alias.Tags.Count,
+            alias.Tags.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Contains("host", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", alias.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CorePackToolNames_ShouldRemainStable() {
         var registry = new ToolRegistry();
         registry.RegisterEventLogPack(new EventLogToolOptions());

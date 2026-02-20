@@ -199,7 +199,7 @@ internal static partial class Program {
         AssertEqual("ad_find", alias.Name, "alias name");
         AssertEqual("ad_search", alias.AliasOf, "alias canonical");
         AssertEqual("Search Active Directory", alias.Description, "alias description");
-        AssertSequenceEqual(new[] { "ad", "ldap", "discovery" }, alias.Tags.ToArray(), "alias tags");
+        AssertSequenceEqual(new[] { "ad", "discovery", "ldap" }, alias.Tags.ToArray(), "alias tags");
     }
 
     private static void TestToolRegistryRegistersAliasesFromDefinition() {
@@ -252,7 +252,10 @@ internal static partial class Program {
             aliasDef.Tags.Count,
             aliasDef.Tags.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             "alias merged tags unique");
-        AssertEqual("host", aliasDef.Tags[aliasDef.Tags.Count - 1], "alias-specific tag appended last");
+        AssertSequenceEqual(
+            aliasDef.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            aliasDef.Tags.ToArray(),
+            "alias merged tags deterministic order");
         AssertEqual(true, aliasDef.Tags.Contains("system", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical tag");
         AssertEqual(true, aliasDef.Tags.Contains("inventory", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical custom tag");
         AssertEqual(true, aliasDef.Tags.Contains("host", StringComparer.OrdinalIgnoreCase), "alias merged tags include alias tag");
