@@ -113,13 +113,17 @@ public sealed partial class MainWindow : Window {
                 if (!_queueAutoDispatchEnabled && queuedTotal > 0) {
                     await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
                 } else {
-                    await RestoreHeaderStatusAfterTurnIfNeededAsync().ConfigureAwait(false);
+                    await RestoreHeaderStatusAfterTurnIfNeededAsync(requestId).ConfigureAwait(false);
                 }
             }
         }
     }
 
-    private async Task RestoreHeaderStatusAfterTurnIfNeededAsync() {
+    private async Task RestoreHeaderStatusAfterTurnIfNeededAsync(string completedRequestId) {
+        if (string.IsNullOrWhiteSpace(completedRequestId) || !IsLatestTurnRequest(completedRequestId)) {
+            return;
+        }
+
         var status = (_statusText ?? string.Empty).Trim();
         if (status.Length == 0) {
             return;
