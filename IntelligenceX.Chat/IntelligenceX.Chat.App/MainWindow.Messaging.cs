@@ -325,6 +325,7 @@ public sealed partial class MainWindow : Window {
                         var clearBasicAuth = TryGetBoolean(root, "clearBasicAuth");
                         var clearApiKey = TryGetBoolean(root, "clearApiKey");
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
+                        var requestId = TryGetInt64(root, "requestId");
                         await ApplyLocalProviderAsync(
                                 transport,
                                 baseUrl,
@@ -342,7 +343,8 @@ public sealed partial class MainWindow : Window {
                                 apiKey,
                                 clearBasicAuth ?? false,
                                 clearApiKey ?? false,
-                                forceRefresh ?? true)
+                                forceRefresh ?? true,
+                                requestId)
                             .ConfigureAwait(true);
                         break;
                     }

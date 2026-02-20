@@ -142,8 +142,11 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function scheduleLocalProviderApply(forceRefresh, clearApiKey, clearBasicAuth)", script, StringComparison.Ordinal);
         Assert.Contains("pendingLocalProviderApply.clearApiKey = pendingLocalProviderApply.clearApiKey || nextClearApiKey;", script, StringComparison.Ordinal);
         Assert.Contains("pendingLocalProviderApply.clearBasicAuth = pendingLocalProviderApply.clearBasicAuth || nextClearBasicAuth;", script, StringComparison.Ordinal);
+        Assert.Contains("var requestId = nextLocalProviderApplyRequestId();", script, StringComparison.Ordinal);
         Assert.Contains("runtimeApply.stage = wasApplying ? \"queued\" : \"applying\";", script, StringComparison.Ordinal);
         Assert.Contains("runtimeApply.detail = wasApplying", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeApply.requestId = requestId;", script, StringComparison.Ordinal);
+        Assert.Contains("requestId: requestId,", script, StringComparison.Ordinal);
         Assert.Contains("state.options.localModel.isApplying = true;", script, StringComparison.Ordinal);
         Assert.Contains("renderLocalModelOptions();", script, StringComparison.Ordinal);
     }
@@ -214,6 +217,20 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
         Assert.Contains("pre.querySelector(\"code.language-ix-chart, code.language-chart\")", script, StringComparison.Ordinal);
         Assert.Contains("pre.querySelector(\"code.language-ix-network\")", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures runtime apply updates remain monotonic when options payloads arrive out of order.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesRuntimeApplyRequestOrderingGuardForOptionsSync() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("function resolveRuntimeApplyRequestId(localModel)", script, StringComparison.Ordinal);
+        Assert.Contains("if (currentRequestId > 0 && incomingRequestId > 0 && incomingRequestId < currentRequestId)", script, StringComparison.Ordinal);
+        Assert.Contains("incomingLocalModel.runtimeApply = currentLocalModel.runtimeApply;", script, StringComparison.Ordinal);
+        Assert.Contains("window.ixRememberRuntimeApplyRequestId(resolveRuntimeApplyRequestId(incomingLocalModel));", script, StringComparison.Ordinal);
     }
 
     /// <summary>

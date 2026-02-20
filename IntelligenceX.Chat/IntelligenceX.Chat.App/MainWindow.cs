@@ -379,6 +379,8 @@ public sealed partial class MainWindow : Window {
     private string _runtimeApplyDetail = string.Empty;
     private bool _runtimeApplyActive;
     private DateTime? _runtimeApplyUpdatedUtc;
+    private long _runtimeApplyRequestId;
+    private long _runtimeApplyRequestCounter;
 
     private sealed class ConversationRuntime {
         public required string Id { get; init; }
@@ -406,7 +408,8 @@ public sealed partial class MainWindow : Window {
         string? ApiKey,
         bool ClearBasicAuth,
         bool ClearApiKey,
-        bool ForceModelRefresh);
+        bool ForceModelRefresh,
+        long RequestId);
 
     private sealed record TurnMetricsSnapshot(
         DateTime CompletedUtc,

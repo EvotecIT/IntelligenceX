@@ -429,6 +429,7 @@ public sealed partial class MainWindow : Window {
                     stage = _runtimeApplyStage,
                     detail = _runtimeApplyDetail,
                     isActive = _runtimeApplyActive,
+                    requestId = _runtimeApplyRequestId,
                     updatedLocal = _runtimeApplyUpdatedUtc.HasValue
                         ? _runtimeApplyUpdatedUtc.Value.ToLocalTime().ToString(_timestampFormat, CultureInfo.InvariantCulture)
                         : string.Empty

@@ -896,6 +896,28 @@
   var scheduledLocalProviderApplyTimer = 0;
   var localProviderAutoApplyDelayMs = 220;
   var pendingLocalProviderApply = null;
+  var localProviderApplyRequestId = 0;
+
+  function normalizeRuntimeApplyRequestId(value) {
+    var parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+    parsed = Math.floor(parsed);
+    return parsed > 0 ? parsed : 0;
+  }
+
+  function nextLocalProviderApplyRequestId() {
+    localProviderApplyRequestId = localProviderApplyRequestId + 1;
+    return localProviderApplyRequestId;
+  }
+
+  window.ixRememberRuntimeApplyRequestId = function(value) {
+    var normalized = normalizeRuntimeApplyRequestId(value);
+    if (normalized > localProviderApplyRequestId) {
+      localProviderApplyRequestId = normalized;
+    }
+  };
 
   function clearScheduledLocalProviderApply() {
     if (scheduledLocalProviderApplyTimer) {
@@ -940,6 +962,7 @@
     clearScheduledLocalProviderApply();
     var local = ((state.options || {}).localModel || {});
     var wasApplying = local.isApplying === true;
+    var requestId = nextLocalProviderApplyRequestId();
     var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
     var baseUrl = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalBaseUrl").value || "").trim()
@@ -1039,9 +1062,11 @@
         : "Applying runtime settings...";
       runtimeApply.isActive = true;
       runtimeApply.updatedLocal = "";
+      runtimeApply.requestId = requestId;
       renderLocalModelOptions();
     }
     post("apply_local_provider", {
+      requestId: requestId,
       transport: transport,
       baseUrl: baseUrl,
       model: model,
