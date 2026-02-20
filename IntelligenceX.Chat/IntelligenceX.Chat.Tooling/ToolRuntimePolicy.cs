@@ -477,6 +477,155 @@ public static class ToolRuntimePolicyBootstrap {
     }
 
     /// <summary>
+    /// Applies one runtime-policy CLI argument using shared parsing and validation semantics.
+    /// </summary>
+    /// <param name="argument">Current CLI argument token.</param>
+    /// <param name="consumeValue">Callback that consumes the next CLI value token when required.</param>
+    /// <param name="setWriteGovernanceMode">Setter for write-governance mode.</param>
+    /// <param name="setRequireWriteGovernanceRuntime">Setter for write-runtime requirement.</param>
+    /// <param name="setRequireWriteAuditSinkForWriteOperations">Setter for write-audit-sink requirement.</param>
+    /// <param name="setWriteAuditSinkMode">Setter for write-audit-sink mode.</param>
+    /// <param name="setWriteAuditSinkPath">Setter for write-audit-sink path.</param>
+    /// <param name="setAuthenticationRuntimePreset">Setter for auth runtime preset.</param>
+    /// <param name="setRequireAuthenticationRuntime">Setter for auth runtime requirement.</param>
+    /// <param name="setRunAsProfilePath">Setter for run-as profile path.</param>
+    /// <param name="setAuthenticationProfilePath">Setter for auth profile path.</param>
+    /// <param name="handled">True when <paramref name="argument" /> is a runtime-policy argument.</param>
+    /// <param name="error">Validation error when parsing fails; otherwise null.</param>
+    /// <returns>True when parsing succeeded (or argument was not handled), false when handled parse failed.</returns>
+    public static bool TryApplyRuntimePolicyCliArgument(
+        string? argument,
+        Func<(bool Success, string? Value, string? Error)> consumeValue,
+        Action<ToolWriteGovernanceMode> setWriteGovernanceMode,
+        Action<bool> setRequireWriteGovernanceRuntime,
+        Action<bool> setRequireWriteAuditSinkForWriteOperations,
+        Action<ToolWriteAuditSinkMode> setWriteAuditSinkMode,
+        Action<string?> setWriteAuditSinkPath,
+        Action<ToolAuthenticationRuntimePreset> setAuthenticationRuntimePreset,
+        Action<bool> setRequireAuthenticationRuntime,
+        Action<string?> setRunAsProfilePath,
+        Action<string?> setAuthenticationProfilePath,
+        out bool handled,
+        out string? error) {
+        if (consumeValue is null) {
+            throw new ArgumentNullException(nameof(consumeValue));
+        }
+        if (setWriteGovernanceMode is null) {
+            throw new ArgumentNullException(nameof(setWriteGovernanceMode));
+        }
+        if (setRequireWriteGovernanceRuntime is null) {
+            throw new ArgumentNullException(nameof(setRequireWriteGovernanceRuntime));
+        }
+        if (setRequireWriteAuditSinkForWriteOperations is null) {
+            throw new ArgumentNullException(nameof(setRequireWriteAuditSinkForWriteOperations));
+        }
+        if (setWriteAuditSinkMode is null) {
+            throw new ArgumentNullException(nameof(setWriteAuditSinkMode));
+        }
+        if (setWriteAuditSinkPath is null) {
+            throw new ArgumentNullException(nameof(setWriteAuditSinkPath));
+        }
+        if (setAuthenticationRuntimePreset is null) {
+            throw new ArgumentNullException(nameof(setAuthenticationRuntimePreset));
+        }
+        if (setRequireAuthenticationRuntime is null) {
+            throw new ArgumentNullException(nameof(setRequireAuthenticationRuntime));
+        }
+        if (setRunAsProfilePath is null) {
+            throw new ArgumentNullException(nameof(setRunAsProfilePath));
+        }
+        if (setAuthenticationProfilePath is null) {
+            throw new ArgumentNullException(nameof(setAuthenticationProfilePath));
+        }
+
+        handled = true;
+        error = null;
+        switch (argument) {
+            case "--write-governance-mode":
+                var writeModeValue = consumeValue();
+                if (!writeModeValue.Success) {
+                    error = writeModeValue.Error;
+                    return false;
+                }
+                if (!TryParseWriteGovernanceMode(writeModeValue.Value, out var writeMode)) {
+                    error = WriteGovernanceModeParseError;
+                    return false;
+                }
+                setWriteGovernanceMode(writeMode);
+                return true;
+            case "--require-write-governance-runtime":
+                setRequireWriteGovernanceRuntime(true);
+                return true;
+            case "--no-require-write-governance-runtime":
+                setRequireWriteGovernanceRuntime(false);
+                return true;
+            case "--require-write-audit-sink":
+                setRequireWriteAuditSinkForWriteOperations(true);
+                return true;
+            case "--no-require-write-audit-sink":
+                setRequireWriteAuditSinkForWriteOperations(false);
+                return true;
+            case "--write-audit-sink-mode":
+                var writeAuditSinkModeValue = consumeValue();
+                if (!writeAuditSinkModeValue.Success) {
+                    error = writeAuditSinkModeValue.Error;
+                    return false;
+                }
+                if (!TryParseWriteAuditSinkMode(writeAuditSinkModeValue.Value, out var writeAuditSinkMode)) {
+                    error = WriteAuditSinkModeParseError;
+                    return false;
+                }
+                setWriteAuditSinkMode(writeAuditSinkMode);
+                return true;
+            case "--write-audit-sink-path":
+                var writeAuditSinkPathValue = consumeValue();
+                if (!writeAuditSinkPathValue.Success) {
+                    error = writeAuditSinkPathValue.Error;
+                    return false;
+                }
+                setWriteAuditSinkPath(writeAuditSinkPathValue.Value);
+                return true;
+            case "--auth-runtime-preset":
+                var authPresetValue = consumeValue();
+                if (!authPresetValue.Success) {
+                    error = authPresetValue.Error;
+                    return false;
+                }
+                if (!TryParseAuthenticationRuntimePreset(authPresetValue.Value, out var authPreset)) {
+                    error = AuthenticationRuntimePresetParseError;
+                    return false;
+                }
+                setAuthenticationRuntimePreset(authPreset);
+                return true;
+            case "--require-auth-runtime":
+                setRequireAuthenticationRuntime(true);
+                return true;
+            case "--no-require-auth-runtime":
+                setRequireAuthenticationRuntime(false);
+                return true;
+            case "--run-as-profile-path":
+                var runAsProfilePath = consumeValue();
+                if (!runAsProfilePath.Success) {
+                    error = runAsProfilePath.Error;
+                    return false;
+                }
+                setRunAsProfilePath(runAsProfilePath.Value);
+                return true;
+            case "--auth-profile-path":
+                var authProfilePath = consumeValue();
+                if (!authProfilePath.Success) {
+                    error = authProfilePath.Error;
+                    return false;
+                }
+                setAuthenticationProfilePath(authProfilePath.Value);
+                return true;
+            default:
+                handled = false;
+                return true;
+        }
+    }
+
+    /// <summary>
     /// Formats write-governance mode for profile persistence.
     /// </summary>
     public static string FormatWriteGovernanceMode(ToolWriteGovernanceMode mode) {
