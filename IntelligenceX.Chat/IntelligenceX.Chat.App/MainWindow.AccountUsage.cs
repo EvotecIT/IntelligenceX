@@ -84,20 +84,28 @@ public sealed partial class MainWindow : Window {
                 return ("compatible-http:unknown", "Compatible HTTP (unconfigured)");
             }
 
+            var encodedAccountIdentity = EncodeCompatibleUsageKeyComponent(compatibleAccountIdentity);
             return (
-                "compatible-http:unknown|acct:" + compatibleAccountIdentity.ToLowerInvariant(),
+                "compatible-http:unknown|acct:" + encodedAccountIdentity,
                 "Compatible HTTP (unconfigured | " + compatibleAccountIdentity + ")");
         }
 
+        var encodedBaseUrl = EncodeCompatibleUsageKeyComponent(normalizedBaseUrl);
         if (compatibleAccountIdentity.Length == 0) {
             return (
-                "compatible-http:" + normalizedBaseUrl.ToLowerInvariant(),
+                "compatible-http:" + encodedBaseUrl,
                 "Compatible HTTP (" + normalizedBaseUrl + ")");
         }
 
+        var encodedAccount = EncodeCompatibleUsageKeyComponent(compatibleAccountIdentity);
         return (
-            "compatible-http:" + normalizedBaseUrl.ToLowerInvariant() + "|acct:" + compatibleAccountIdentity.ToLowerInvariant(),
+            "compatible-http:" + encodedBaseUrl + "|acct:" + encodedAccount,
             "Compatible HTTP (" + normalizedBaseUrl + " | " + compatibleAccountIdentity + ")");
+    }
+
+    private static string EncodeCompatibleUsageKeyComponent(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? string.Empty : Uri.EscapeDataString(normalized);
     }
 
     private static ActiveUsageIdentity ResolveNativeUsageIdentity(string? accountId) {

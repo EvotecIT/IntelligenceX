@@ -102,7 +102,7 @@ public sealed class MainWindowBridgeRuntimeStateTests {
             "Account-One",
             "");
 
-        Assert.Equal("compatible-http:https://api.example/v1|acct:account-one", identity.Key);
+        Assert.Equal("compatible-http:https%3A%2F%2Fapi.example%2Fv1|acct:Account-One", identity.Key);
         Assert.Equal("Compatible HTTP (https://api.example/v1 | Account-One)", identity.Label);
     }
 
@@ -117,7 +117,61 @@ public sealed class MainWindowBridgeRuntimeStateTests {
             "",
             "bridge-user@example.com");
 
-        Assert.Equal("compatible-http:https://bridge.local/v1|acct:bridge-user@example.com", identity.Key);
+        Assert.Equal("compatible-http:https%3A%2F%2Fbridge.local%2Fv1|acct:bridge-user%40example.com", identity.Key);
         Assert.Equal("Compatible HTTP (https://bridge.local/v1 | bridge-user@example.com)", identity.Label);
+    }
+
+    /// <summary>
+    /// Ensures base/account components are encoded so reserved separators cannot collide across identities.
+    /// </summary>
+    [Fact]
+    public void BuildCompatibleUsageIdentity_EncodesReservedCharactersInUsageKey() {
+        var identity = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local/v1|acct:in-base",
+            "bearer",
+            "user:one|two",
+            "");
+
+        Assert.Equal(
+            "compatible-http:https%3A%2F%2Fbridge.local%2Fv1%7Cacct%3Ain-base|acct:user%3Aone%7Ctwo",
+            identity.Key);
+    }
+
+    /// <summary>
+    /// Ensures encoded key structure prevents collisions between base URL text and explicit account suffix.
+    /// </summary>
+    [Fact]
+    public void BuildCompatibleUsageIdentity_DoesNotCollideBaseDelimiterTextWithAccountSuffix() {
+        var embeddedAccountInBase = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local/v1|acct:user",
+            "bearer",
+            "",
+            "");
+        var explicitAccount = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local/v1",
+            "bearer",
+            "user",
+            "");
+
+        Assert.NotEqual(embeddedAccountInBase.Key, explicitAccount.Key);
+    }
+
+    /// <summary>
+    /// Ensures account IDs preserve case in usage keys to avoid case-folding attribution collisions.
+    /// </summary>
+    [Fact]
+    public void BuildCompatibleUsageIdentity_PreservesAccountCaseInUsageKey() {
+        var upper = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local/v1",
+            "bearer",
+            "AccountA",
+            "");
+        var lower = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local/v1",
+            "bearer",
+            "accounta",
+            "");
+
+        Assert.NotEqual(upper.Key, lower.Key);
     }
 }
