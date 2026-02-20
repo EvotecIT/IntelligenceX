@@ -204,6 +204,42 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void CreateAliasDefinition_ShouldPreferAliasTaxonomyTagOverrides() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: ToolSchema.Object().NoAdditionalProperties()),
+            toolType: null);
+
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias",
+            tags: new[] {
+                "scope:domain",
+                "operation:search",
+                "entity:user",
+                "risk:high",
+                "routing:explicit"
+            });
+
+        Assert.Contains("scope:domain", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:search", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:user", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:high", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("operation:probe", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "scope:");
+        AssertSingleTaxonomyTag(alias.Tags, "operation:");
+        AssertSingleTaxonomyTag(alias.Tags, "entity:");
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "routing:");
+    }
+
+    [Fact]
     public void Register_WithReplaceExisting_ShouldPreserveSingleTaxonomyTagPerKey() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(

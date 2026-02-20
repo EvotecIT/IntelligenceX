@@ -159,20 +159,26 @@ public sealed class ToolDefinition {
 
         var list = new List<string>(tags.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenTaxonomyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var taxonomyByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tag in tags) {
             if (string.IsNullOrWhiteSpace(tag)) {
                 continue;
             }
 
             var normalized = tag.Trim();
-            if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey) &&
-                !seenTaxonomyKeys.Add(taxonomyKey)) {
+            if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey)) {
+                taxonomyByKey[taxonomyKey] = normalized;
                 continue;
             }
 
             if (seen.Add(normalized)) {
                 list.Add(normalized);
+            }
+        }
+
+        foreach (var taxonomyTag in taxonomyByKey.Values) {
+            if (seen.Add(taxonomyTag)) {
+                list.Add(taxonomyTag);
             }
         }
 
@@ -221,38 +227,43 @@ public sealed class ToolDefinition {
 
         var merged = new List<string>((first?.Count ?? 0) + (second?.Count ?? 0));
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenTaxonomyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var taxonomyByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddTag(string? tag) {
+            if (tag is null) {
+                return;
+            }
+
+            var normalized = tag.Trim();
+            if (normalized.Length == 0) {
+                return;
+            }
+
+            if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey)) {
+                taxonomyByKey[taxonomyKey] = normalized;
+                return;
+            }
+
+            if (seen.Add(normalized)) {
+                merged.Add(normalized);
+            }
+        }
+
         if (first is not null) {
             foreach (var tag in first) {
-                if (string.IsNullOrWhiteSpace(tag)) {
-                    continue;
-                }
-                var normalized = tag.Trim();
-                if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey) &&
-                    !seenTaxonomyKeys.Add(taxonomyKey)) {
-                    continue;
-                }
-
-                if (seen.Add(normalized)) {
-                    merged.Add(normalized);
-                }
+                AddTag(tag);
             }
         }
 
         if (second is not null) {
             foreach (var tag in second) {
-                if (string.IsNullOrWhiteSpace(tag)) {
-                    continue;
-                }
-                var normalized = tag.Trim();
-                if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey) &&
-                    !seenTaxonomyKeys.Add(taxonomyKey)) {
-                    continue;
-                }
+                AddTag(tag);
+            }
+        }
 
-                if (seen.Add(normalized)) {
-                    merged.Add(normalized);
-                }
+        foreach (var taxonomyTag in taxonomyByKey.Values) {
+            if (seen.Add(taxonomyTag)) {
+                merged.Add(taxonomyTag);
             }
         }
 
