@@ -53,9 +53,9 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
             var summary = await DomainAdminsSummaryService
                 .QueryAsync(
                     new DomainAdminsSummaryQueryOptions {
-                        DomainControllerHint = arguments?.GetString("domain_controller") ?? Options.DomainController,
-                        SearchBaseDnHint = arguments?.GetString("search_base_dn") ?? Options.DefaultSearchBaseDn,
-                        DomainName = arguments?.GetString("domain_name"),
+                        DomainControllerHint = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller") ?? Options.DomainController,
+                        SearchBaseDnHint = ToolArgs.GetOptionalTrimmed(arguments, "search_base_dn") ?? Options.DefaultSearchBaseDn,
+                        DomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
                         IncludeNested = includeNested,
                         UsersOnly = usersOnly,
                         ComputersOnly = computersOnly,
@@ -72,4 +72,3 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
         }
     }
 }
-

@@ -50,9 +50,9 @@ public sealed class AdPrivilegedGroupsSummaryTool : ActiveDirectoryToolBase, ITo
         var summary = await PrivilegedGroupsSummaryService
             .QueryAsync(
                 new PrivilegedGroupsSummaryQueryOptions {
-                    DomainControllerHint = arguments?.GetString("domain_controller") ?? Options.DomainController,
-                    SearchBaseDnHint = arguments?.GetString("search_base_dn") ?? Options.DefaultSearchBaseDn,
-                    DomainName = arguments?.GetString("domain_name"),
+                    DomainControllerHint = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller") ?? Options.DomainController,
+                    SearchBaseDnHint = ToolArgs.GetOptionalTrimmed(arguments, "search_base_dn") ?? Options.DefaultSearchBaseDn,
+                    DomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
                     IncludeMemberCount = includeMemberCount,
                     IncludeMemberSample = includeMemberSample,
                     MemberSampleSize = memberSampleSize
