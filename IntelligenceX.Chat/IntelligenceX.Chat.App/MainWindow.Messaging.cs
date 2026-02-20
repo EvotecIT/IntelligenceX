@@ -511,6 +511,10 @@ public sealed partial class MainWindow : Window {
                                 await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: payloadErrorMessage).ConfigureAwait(true);
                                 break;
                             }
+                            if (payloadBytes.Length > MaxVisualPopoutBytes) {
+                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
+                                break;
+                            }
 
                             await OpenVisualPopoutAsync(title, normalizedFormat, payloadBytes).ConfigureAwait(true);
                         } catch (Exception ex) {
