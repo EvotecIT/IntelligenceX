@@ -48,14 +48,15 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
         var includeMembers = arguments?.GetBoolean("include_members") ?? true;
 
         var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var scopeHints = ResolveOptionalDomainQueryHints(arguments);
 
         try {
             var summary = await DomainAdminsSummaryService
                 .QueryAsync(
                     new DomainAdminsSummaryQueryOptions {
-                        DomainControllerHint = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller") ?? Options.DomainController,
-                        SearchBaseDnHint = ToolArgs.GetOptionalTrimmed(arguments, "search_base_dn") ?? Options.DefaultSearchBaseDn,
-                        DomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
+                        DomainControllerHint = scopeHints.DomainControllerHint,
+                        SearchBaseDnHint = scopeHints.SearchBaseDnHint,
+                        DomainName = scopeHints.DomainName,
                         IncludeNested = includeNested,
                         UsersOnly = usersOnly,
                         ComputersOnly = computersOnly,
