@@ -1453,6 +1453,15 @@
 
     removeVisualActionBar(pre);
 
+    if (typeof pre._ixNetworkResizeCleanup === "function") {
+      try {
+        pre._ixNetworkResizeCleanup();
+      } catch (_) {
+        // Ignore observer cleanup errors.
+      }
+    }
+    pre._ixNetworkResizeCleanup = null;
+
     if (pre._ixNetworkInstance && typeof pre._ixNetworkInstance.destroy === "function") {
       try {
         pre._ixNetworkInstance.destroy();
@@ -1534,45 +1543,10 @@
       host.appendChild(canvas);
       pre.insertAdjacentElement("afterend", host);
 
-      var runtimePalette = resolveVisualExportPalette("preserve_ui_theme");
-      var networkOptions = deepMergeForExport({
-        autoResize: true,
-        layout: {
-          improvedLayout: true
-        },
-        physics: {
-          stabilization: {
-            enabled: true,
-            fit: true,
-            iterations: 180
-          }
-        },
-        interaction: {
-          hover: true
-        },
-        nodes: {
-          margin: 10,
-          font: {
-            color: runtimePalette.text,
-            strokeWidth: 0
-          },
-          color: {
-            background: runtimePalette.surface,
-            border: runtimePalette.grid
-          }
-        },
-        edges: {
-          color: runtimePalette.grid,
-          font: {
-            color: runtimePalette.muted
-          },
-          smooth: {
-            enabled: true,
-            type: "dynamic",
-            roundness: 0.4
-          }
-        }
-      }, validation.config.options || {});
+      var networkOptions = buildRuntimeNetworkOptions(
+        "preserve_ui_theme",
+        validation.config.options || {},
+        "inline");
 
       var network = new window.vis.Network(
         canvas,
@@ -1582,7 +1556,18 @@
         },
         networkOptions);
 
+      stabilizeNetwork(network, 280);
+      safeNetworkFit(network, 120);
+      try {
+        network.once("stabilized", function() {
+          safeNetworkFit(network, 0);
+        });
+      } catch (_) {
+        // Ignore listener setup failures.
+      }
+
       pre._ixNetworkInstance = network;
+      pre._ixNetworkResizeCleanup = attachNetworkAutoFitObserver(network, canvas);
       pre.style.display = "none";
       pre.removeAttribute("data-ix-network-invalid");
       pre.setAttribute("data-ix-network-rendered", "1");
@@ -1794,10 +1779,12 @@
     title: "",
     chartInstance: null,
     networkInstance: null,
+    networkResizeCleanup: null,
     lastExportPath: "",
     lastExportFormat: ""
   };
   var visualViewFeedbackClearTimer = 0;
+  var visualViewRelayoutTimer = 0;
   var pendingVisualExports = Object.create(null);
 
   function clearVisualViewFeedbackTimer() {
@@ -1965,6 +1952,11 @@
   }
 
   function disposeVisualViewRuntime() {
+    if (visualViewRelayoutTimer) {
+      window.clearTimeout(visualViewRelayoutTimer);
+      visualViewRelayoutTimer = 0;
+    }
+
     if (visualViewState.chartInstance && typeof visualViewState.chartInstance.destroy === "function") {
       try {
         visualViewState.chartInstance.destroy();
@@ -1983,10 +1975,51 @@
     }
     visualViewState.networkInstance = null;
 
+    if (typeof visualViewState.networkResizeCleanup === "function") {
+      try {
+        visualViewState.networkResizeCleanup();
+      } catch (_) {
+        // Ignore cleanup errors.
+      }
+    }
+    visualViewState.networkResizeCleanup = null;
+
     if (visualViewCanvasWrap) {
       visualViewCanvasWrap.innerHTML = "";
     }
   }
+
+  function scheduleVisualViewRelayout() {
+    if (!document.body.classList.contains("visual-view-open")) {
+      return;
+    }
+    if (visualViewRelayoutTimer) {
+      return;
+    }
+
+    visualViewRelayoutTimer = window.setTimeout(function() {
+      visualViewRelayoutTimer = 0;
+      if (!document.body.classList.contains("visual-view-open")) {
+        return;
+      }
+
+      if (visualViewState.chartInstance && typeof visualViewState.chartInstance.resize === "function") {
+        try {
+          visualViewState.chartInstance.resize();
+        } catch (_) {
+          // Ignore chart resize errors.
+        }
+      }
+
+      if (visualViewState.networkInstance) {
+        safeNetworkFit(visualViewState.networkInstance, 0);
+      }
+    }, 130);
+  }
+
+  window.addEventListener("resize", function() {
+    scheduleVisualViewRelayout();
+  });
 
   async function renderMermaidInVisualView(source) {
     var pre = document.createElement("pre");
@@ -2075,61 +2108,33 @@
     host.appendChild(canvas);
     visualViewCanvasWrap.appendChild(host);
 
-    var runtimePalette = resolveVisualExportPalette("preserve_ui_theme");
-    var options = deepMergeForExport({
-      autoResize: true,
-      layout: {
-        improvedLayout: true
-      },
-      physics: {
-        stabilization: {
-          enabled: true,
-          fit: true,
-          iterations: 220
-        }
-      },
-      interaction: {
-        hover: true
-      },
-      nodes: {
-        margin: 12,
-        font: {
-          color: runtimePalette.text,
-          strokeWidth: 0
-        },
-        color: {
-          background: runtimePalette.surface,
-          border: runtimePalette.grid
-        }
-      },
-      edges: {
-        color: runtimePalette.grid,
-        font: {
-          color: runtimePalette.muted
-        },
-        smooth: {
-          enabled: true,
-          type: "dynamic",
-          roundness: 0.4
-        }
-      }
-    }, validation.config.options || {});
+    var options = buildRuntimeNetworkOptions(
+      "preserve_ui_theme",
+      validation.config.options || {},
+      "panel");
 
     visualViewState.networkInstance = new window.vis.Network(canvas, {
       nodes: validation.config.nodes,
       edges: validation.config.edges
     }, options);
+    visualViewState.networkResizeCleanup = attachNetworkAutoFitObserver(visualViewState.networkInstance, canvas);
+
+    stabilizeNetwork(visualViewState.networkInstance, 360);
+    safeNetworkFit(visualViewState.networkInstance, 160);
+    try {
+      visualViewState.networkInstance.once("stabilized", function() {
+        safeNetworkFit(visualViewState.networkInstance, 0);
+      });
+    } catch (_) {
+      // Ignore listener setup failures.
+    }
 
     window.setTimeout(function() {
       if (!visualViewState.networkInstance || visualViewState.type !== "ix-network") {
         return;
       }
       try {
-        visualViewState.networkInstance.fit({
-          animation: {
-            duration: 180
-          }
-        });
+        safeNetworkFit(visualViewState.networkInstance, 180);
       } catch (_) {
         // Ignore.
       }
@@ -2218,6 +2223,7 @@
     }
 
     renderVisualViewContent();
+    scheduleVisualViewRelayout();
   }
 
   function inferVisualTitleFromBlock(pre, kind) {
@@ -2810,6 +2816,197 @@
     }
   }
 
+  function safeNetworkFit(network, durationMs) {
+    if (!network || typeof network.fit !== "function") {
+      return;
+    }
+
+    var duration = Number(durationMs);
+    if (!Number.isFinite(duration) || duration < 0) {
+      duration = 0;
+    }
+
+    try {
+      if (duration > 0) {
+        network.fit({
+          animation: {
+            duration: duration
+          }
+        });
+      } else {
+        network.fit({
+          animation: false
+        });
+      }
+    } catch (_) {
+      // Ignore fit failures.
+    }
+  }
+
+  function stabilizeNetwork(network, iterations) {
+    if (!network || typeof network.stabilize !== "function") {
+      return;
+    }
+
+    var count = Number(iterations);
+    if (!Number.isFinite(count) || count <= 0) {
+      count = 260;
+    }
+
+    try {
+      network.stabilize(Math.round(count));
+    } catch (_) {
+      // Ignore stabilization failures.
+    }
+  }
+
+  function attachNetworkAutoFitObserver(network, element) {
+    if (!network || !element || typeof ResizeObserver !== "function") {
+      return null;
+    }
+
+    var timer = 0;
+    var lastWidth = 0;
+    var lastHeight = 0;
+    var observer = null;
+
+    function scheduleFit() {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+      timer = window.setTimeout(function() {
+        timer = 0;
+        safeNetworkFit(network, 0);
+      }, 120);
+    }
+
+    try {
+      observer = new ResizeObserver(function(entries) {
+        if (!entries || entries.length === 0) {
+          return;
+        }
+
+        var rect = entries[0].contentRect;
+        if (!rect) {
+          return;
+        }
+
+        var width = Number(rect.width);
+        var height = Number(rect.height);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+          return;
+        }
+
+        if (Math.abs(width - lastWidth) < 6 && Math.abs(height - lastHeight) < 6) {
+          return;
+        }
+
+        lastWidth = width;
+        lastHeight = height;
+        scheduleFit();
+      });
+      observer.observe(element);
+    } catch (_) {
+      if (observer && typeof observer.disconnect === "function") {
+        observer.disconnect();
+      }
+      return null;
+    }
+
+    return function() {
+      if (timer) {
+        window.clearTimeout(timer);
+        timer = 0;
+      }
+      if (observer && typeof observer.disconnect === "function") {
+        observer.disconnect();
+      }
+    };
+  }
+
+  function buildRuntimeNetworkOptions(themeMode, userOptions, context) {
+    var palette = resolveVisualExportPalette(themeMode);
+    var profile = String(context || "").trim().toLowerCase();
+    var stabilizationIterations = 280;
+    if (profile === "panel") {
+      stabilizationIterations = 360;
+    } else if (profile === "export") {
+      stabilizationIterations = 320;
+    }
+
+    var normalizedThemeMode = normalizeVisualExportThemeMode(themeMode);
+    var labelBackground = normalizedThemeMode === "print_friendly"
+      ? "rgba(255, 255, 255, 0.88)"
+      : "rgba(7, 25, 44, 0.72)";
+
+    var defaults = {
+      autoResize: true,
+      layout: {
+        improvedLayout: true,
+        randomSeed: 42
+      },
+      physics: {
+        enabled: true,
+        solver: "forceAtlas2Based",
+        forceAtlas2Based: {
+          gravitationalConstant: -62,
+          centralGravity: 0.015,
+          springLength: 220,
+          springConstant: 0.035,
+          damping: 0.62,
+          avoidOverlap: 0.9
+        },
+        stabilization: {
+          enabled: true,
+          fit: true,
+          iterations: stabilizationIterations,
+          updateInterval: 25
+        },
+        minVelocity: 0.75,
+        adaptiveTimestep: true
+      },
+      interaction: {
+        hover: true
+      },
+      nodes: {
+        shape: "box",
+        margin: 12,
+        widthConstraint: {
+          maximum: 320
+        },
+        font: {
+          size: 14,
+          color: palette.text,
+          strokeWidth: 0,
+          multi: true
+        },
+        color: {
+          background: palette.surface,
+          border: palette.grid
+        }
+      },
+      edges: {
+        color: palette.grid,
+        width: 1.2,
+        labelHighlightBold: false,
+        font: {
+          size: 12,
+          color: palette.muted,
+          strokeWidth: 0,
+          background: labelBackground,
+          align: "top"
+        },
+        smooth: {
+          enabled: true,
+          type: "continuous",
+          roundness: 0.28
+        }
+      }
+    };
+
+    return deepMergeForExport(defaults, userOptions || {});
+  }
+
   function applyChartPalette(config, palette) {
     if (!config || !config.data || !Array.isArray(config.data.datasets)) {
       return;
@@ -3023,31 +3220,53 @@
     host.style.background = palette.background;
     document.body.appendChild(host);
 
-    var options = deepMergeForExport({}, validation.config.options || {});
-    options = deepMergeForExport({
+    var userDisabledPhysics = isPlainObject(validation.config.options) && validation.config.options.physics === false;
+    var options = buildRuntimeNetworkOptions(themeMode, validation.config.options || {}, "export");
+    options = deepMergeForExport(options, {
       autoResize: false,
       width: String(ixVisualExportState.networkWidth) + "px",
       height: String(ixVisualExportState.networkHeight) + "px",
-      physics: false,
       interaction: {
         dragNodes: false,
         dragView: false,
         zoomView: false
       },
-      nodes: {
-        font: { color: palette.text },
-        color: {
-          background: palette.surface,
-          border: palette.grid
-        }
-      },
-      edges: {
-        color: {
-          color: palette.grid
-        },
-        font: { color: palette.muted }
+      layout: {
+        improvedLayout: true,
+        randomSeed: 42
       }
-    }, options);
+    });
+    if (userDisabledPhysics) {
+      options.physics = false;
+    } else {
+      options = deepMergeForExport(options, {
+        physics: {
+          stabilization: {
+            enabled: true,
+            fit: true,
+            iterations: 360
+          },
+          adaptiveTimestep: false
+        },
+        nodes: {
+          font: {
+            color: palette.text
+          },
+          color: {
+            background: palette.surface,
+            border: palette.grid
+          }
+        },
+        edges: {
+          color: {
+            color: palette.grid
+          },
+          font: {
+            color: palette.muted
+          }
+        }
+      });
+    }
 
     var network = null;
     try {
@@ -3055,6 +3274,9 @@
         nodes: validation.config.nodes,
         edges: validation.config.edges
       }, options);
+      if (!userDisabledPhysics) {
+        stabilizeNetwork(network, 360);
+      }
 
       await new Promise(function(resolve) {
         var settled = false;
@@ -3064,7 +3286,7 @@
           }
           settled = true;
           resolve();
-        }, 300);
+        }, userDisabledPhysics ? 280 : 1100);
 
         var finish = function() {
           if (settled) {
@@ -3077,11 +3299,20 @@
 
         try {
           network.once("afterDrawing", finish);
-          network.once("stabilized", finish);
+          if (!userDisabledPhysics) {
+            network.once("stabilized", finish);
+          }
         } catch (_) {
           // Fallback to timeout.
         }
       });
+
+      safeNetworkFit(network, 0);
+      try {
+        network.redraw();
+      } catch (_) {
+        // Ignore redraw errors.
+      }
 
       var canvas = host.querySelector("canvas");
       if (!canvas || typeof canvas.toDataURL !== "function") {

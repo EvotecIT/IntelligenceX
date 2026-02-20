@@ -340,8 +340,8 @@ body.data-view-open .data-view-panel {
   position: fixed;
   left: 50%;
   top: 50%;
-  width: min(1540px, 97vw);
-  height: min(94vh, 1040px);
+  width: min(2300px, 98vw);
+  height: min(96vh, 1320px);
   transform: translate(-50%, -48%);
   border: 1px solid var(--ix-border-subtle);
   border-radius: 12px;
