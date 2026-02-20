@@ -127,9 +127,12 @@ public class ToolPackInfoContractTests {
                 Assert.True(entry.TryGetProperty("tags", out var tags));
                 Assert.Equal(JsonValueKind.Array, tags.ValueKind);
                 var serializedTags = ReadStringArrayPreserveOrder(tags);
-                Assert.Equal(
-                    serializedTags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-                    serializedTags);
+                var sortedTags = serializedTags
+                    .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                Assert.True(
+                    sortedTags.SequenceEqual(serializedTags, StringComparer.OrdinalIgnoreCase),
+                    "Serialized tags should be emitted in deterministic ordinal-ignore-case order.");
                 Assert.True(entry.TryGetProperty("routing", out var routing));
                 Assert.Equal(JsonValueKind.Object, routing.ValueKind);
                 Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("scope").GetString()));
