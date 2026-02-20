@@ -607,7 +607,12 @@ public static class ToolSelectionMetadata {
             }
         }
 
-        return tags.Count == 0 ? Array.Empty<string>() : tags.ToArray();
+        if (tags.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        tags.Sort(StringComparer.Ordinal);
+        return tags.ToArray();
     }
 
     private static string NormalizeCategory(string? value) {

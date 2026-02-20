@@ -947,7 +947,12 @@ public static class ToolPackGuidance {
             }
         }
 
-        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+        if (list.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        list.Sort(StringComparer.Ordinal);
+        return list.ToArray();
     }
 
     private static string NormalizeRoutingToken(string? value, string fallback) {

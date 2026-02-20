@@ -126,6 +126,10 @@ public class ToolPackInfoContractTests {
                 Assert.False(string.IsNullOrWhiteSpace(category.GetString()));
                 Assert.True(entry.TryGetProperty("tags", out var tags));
                 Assert.Equal(JsonValueKind.Array, tags.ValueKind);
+                var serializedTags = ReadStringArrayPreserveOrder(tags);
+                Assert.Equal(
+                    serializedTags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+                    serializedTags);
                 Assert.True(entry.TryGetProperty("routing", out var routing));
                 Assert.Equal(JsonValueKind.Object, routing.ValueKind);
                 Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("scope").GetString()));
@@ -270,6 +274,15 @@ public class ToolPackInfoContractTests {
             .Where(static x => !string.IsNullOrWhiteSpace(x))
             .Select(static x => x!.Trim())
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadStringArrayPreserveOrder(JsonElement element) {
+        return element
+            .EnumerateArray()
+            .Select(static x => x.GetString())
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x!.Trim())
             .ToArray();
     }
 

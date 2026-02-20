@@ -130,6 +130,22 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void Enrich_ShouldBeIdempotentAfterNormalization() {
+        var definition = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String())).NoAdditionalProperties(),
+            category: "General",
+            tags: new[] { "TagB", "tagA", "TAGA" });
+
+        var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+        var enrichedAgain = ToolSelectionMetadata.Enrich(enriched, toolType: null);
+
+        Assert.Same(enriched, enrichedAgain);
+        Assert.Equal(enriched.Tags.OrderBy(static x => x, StringComparer.Ordinal), enriched.Tags);
+    }
+
+    [Fact]
     public void CorePackToolNames_ShouldRemainStable() {
         var registry = new ToolRegistry();
         registry.RegisterEventLogPack(new EventLogToolOptions());
