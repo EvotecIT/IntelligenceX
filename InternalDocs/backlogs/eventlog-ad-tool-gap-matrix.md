@@ -35,8 +35,11 @@ EventLog note: report-surface coverage is complete; remaining gaps are feature-p
 
 | Priority | Candidate tool | Upstream source | Why |
 | --- | --- | --- | --- |
-| P1 | Extend `eventlog_live_query` and `eventlog_evtx_query` with first-class advanced filters | `SearchEvents.QueryLog` / `SearchEvents.QueryLogFile` | expose structured filters (`keywords`, `level`, `user_id`, `event_record_id`, `named_data_filter`, `named_data_exclude_filter`) without forcing XPath-only workflows |
 | P2 | Evaluate `eventlog_watcher_*` read-only wrappers | `WatcherManager` / `WatchEvents` | optional long-running watch capability for operations workflows; requires lifecycle/governance contract |
+
+## Completed In This Batch
+
+- Extended `eventlog_live_query` and `eventlog_evtx_query` with first-class structured advanced filters (`keywords`, `level`, `user_id`, `event_record_ids`, `named_data_filter`, `named_data_exclude_filter`) plus validation/caps and schema coverage.
 
 ## Write-Tool Candidates (Require Governance Contracts)
 
