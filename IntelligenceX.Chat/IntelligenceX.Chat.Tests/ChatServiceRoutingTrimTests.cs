@@ -125,6 +125,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ExpandContinuationUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExpandContinuationUserRequest", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ExpandContinuationUserRequest not found.");
+    private static readonly MethodInfo TryValidateChatRequestOptionsMethod =
+        typeof(ChatServiceSession).GetMethod("TryValidateChatRequestOptions", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryValidateChatRequestOptions not found.");
     private static readonly MethodInfo ParsePlannerSelectedDefinitionsMethod =
         typeof(ChatServiceSession).GetMethod("ParsePlannerSelectedDefinitions", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ParsePlannerSelectedDefinitions not found.");

@@ -167,10 +167,10 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
-    /// Ensures compatible-http auth mode + basic credentials are emitted when configured.
+    /// Ensures compatible-http auth mode + basic username are emitted, while password is not passed on CLI args.
     /// </summary>
     [Fact]
-    public void Build_IncludesCompatibleHttpAuthModeAndBasicCredentials_WhenConfigured() {
+    public void Build_IncludesCompatibleHttpAuthModeAndBasicUsername_ButOmitsBasicPasswordArg_WhenConfigured() {
         var args = ServiceLaunchArguments.Build(
             "intelligencex.chat",
             detachedServiceMode: true,
@@ -187,8 +187,8 @@ public sealed class ServiceLaunchArgumentsTests {
         Assert.Contains("basic", args);
         Assert.Contains("--openai-basic-username", args);
         Assert.Contains("user", args);
-        Assert.Contains("--openai-basic-password", args);
-        Assert.Contains("secret", args);
+        Assert.DoesNotContain("--openai-basic-password", args);
+        Assert.DoesNotContain("secret", args);
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using Xunit;
 
@@ -186,5 +187,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.DoesNotContain("ix:action-selection:v1", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("/act act_001", expanded);
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_RejectsOutOfRangeTemperature() {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions { Temperature = 2.01d },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal("temperature must be between 0 and 2.", Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_AcceptsValidTemperature() {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions { Temperature = 1.5d },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.True(result);
+        Assert.Null(invokeArgs[1]);
     }
 }
