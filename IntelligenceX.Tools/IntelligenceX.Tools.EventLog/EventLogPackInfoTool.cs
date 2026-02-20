@@ -46,6 +46,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
                 "Use eventlog_named_events_catalog/eventlog_named_events_query for rule-based, intent-level detections (AD/Kerberos/GPO/etc).",
+                "Use eventlog_timeline_explain to get reusable timeline-query guidance from current investigation shape.",
                 "Use eventlog_timeline_query to build reusable timeline and correlation views from named-event evidence (no fixed report templates).",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
                 "For authentication investigations and timeline correlation, use eventlog_named_events_catalog first, then eventlog_timeline_query with named_events/categories and either correlation_profile or explicit correlation_keys.",
@@ -66,8 +67,12 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     goal: "Run named-event rule detections",
                     suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query" }),
                 ToolPackGuidance.FlowStep(
+                    goal: "Get timeline tuning guidance before reruns",
+                    suggestedTools: new[] { "eventlog_timeline_explain" },
+                    notes: "Use investigation_goal plus current timeline shape to choose correlation_profile/keys, bucket_minutes, and follow-ups."),
+                ToolPackGuidance.FlowStep(
                     goal: "Build generic event timelines and correlation groups",
-                    suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query" },
+                    suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_explain", "eventlog_timeline_query" },
                     notes: "Start with correlation_profile presets, then tune correlation_keys (for example who/object_affected/computer/action) when needed."),
                 ToolPackGuidance.FlowStep(
                     goal: "Investigate authentication incidents",
@@ -93,7 +98,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 ToolPackGuidance.Capability(
                     id: "timeline_correlation",
                     summary: "Build reusable timelines and correlation groups from named-event evidence using caller-selected dimensions.",
-                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query" }),
+                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_explain", "eventlog_timeline_query" }),
                 ToolPackGuidance.Capability(
                     id: "correlation_workflow",
                     summary: "Use named-event detections as reusable correlation building blocks across log, timeline, and AD enrichment workflows.",
