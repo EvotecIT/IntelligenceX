@@ -76,8 +76,8 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
 
         var result = ReplicationSummaryQueryService.Query(
             new ReplicationSummaryQueryOptions {
-                DomainController = arguments?.GetString("domain_controller"),
-                DomainName = arguments?.GetString("domain_name"),
+                DomainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller"),
+                DomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
                 Outbound = outbound,
                 BySource = bySource,
                 StaleThresholdHours = staleThresholdHours,
