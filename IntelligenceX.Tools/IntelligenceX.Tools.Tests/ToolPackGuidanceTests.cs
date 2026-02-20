@@ -327,7 +327,7 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
-    public void Create_ShouldFallbackInvalidRoutingRiskAndSourceValues() {
+    public void Create_ShouldFallbackInvalidInferredRoutingRiskToLow() {
         var model = ToolPackGuidance.Create(
             pack: "system",
             engine: "ComputerX",
@@ -341,7 +341,7 @@ public class ToolPackGuidanceTests {
                         Operation = "Read",
                         Entity = "Host",
                         Risk = "critical",
-                        Source = "manual"
+                        Source = "inferred"
                     }
                 }
             });
@@ -352,6 +352,48 @@ public class ToolPackGuidanceTests {
         Assert.Equal("host", item.Routing.Entity);
         Assert.Equal("low", item.Routing.Risk);
         Assert.Equal("inferred", item.Routing.Source);
+    }
+
+    [Fact]
+    public void Create_ShouldRejectInvalidRoutingSourceValue() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ToolPackGuidance.Create(
+                pack: "system",
+                engine: "ComputerX",
+                tools: new[] { "system_info" },
+                toolCatalog: new[] {
+                    new ToolPackToolCatalogEntryModel {
+                        Name = "system_info",
+                        Description = "System info",
+                        Routing = new ToolPackToolRoutingModel {
+                            Risk = "low",
+                            Source = "manual"
+                        }
+                    }
+                }));
+
+        Assert.Contains("Routing source", ex.Message);
+    }
+
+    [Fact]
+    public void Create_ShouldRejectInvalidExplicitRoutingRiskValue() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ToolPackGuidance.Create(
+                pack: "system",
+                engine: "ComputerX",
+                tools: new[] { "system_info" },
+                toolCatalog: new[] {
+                    new ToolPackToolCatalogEntryModel {
+                        Name = "system_info",
+                        Description = "System info",
+                        Routing = new ToolPackToolRoutingModel {
+                            Risk = "critical",
+                            Source = "explicit"
+                        }
+                    }
+                }));
+
+        Assert.Contains("Explicit routing risk", ex.Message);
     }
 
     private sealed class StubTool : ITool {
