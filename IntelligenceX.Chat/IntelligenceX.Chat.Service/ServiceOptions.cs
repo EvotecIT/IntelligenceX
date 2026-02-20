@@ -98,6 +98,34 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
 
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i] ?? string.Empty;
+
+            (bool Success, string? Value, string? Error) ConsumeRuntimePolicyValue() {
+                return TryConsume(args, ref i, out var value, out var valueError)
+                    ? (true, value, null)
+                    : (false, null, valueError);
+            }
+
+            if (!ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+                    argument: arg,
+                    consumeValue: ConsumeRuntimePolicyValue,
+                    setWriteGovernanceMode: mode => options.WriteGovernanceMode = mode,
+                    setRequireWriteGovernanceRuntime: required => options.RequireWriteGovernanceRuntime = required,
+                    setRequireWriteAuditSinkForWriteOperations: required => options.RequireWriteAuditSinkForWriteOperations = required,
+                    setWriteAuditSinkMode: mode => options.WriteAuditSinkMode = mode,
+                    setWriteAuditSinkPath: path => options.WriteAuditSinkPath = path,
+                    setAuthenticationRuntimePreset: preset => options.AuthenticationRuntimePreset = preset,
+                    setRequireAuthenticationRuntime: required => options.RequireAuthenticationRuntime = required,
+                    setRunAsProfilePath: path => options.RunAsProfilePath = path,
+                    setAuthenticationProfilePath: path => options.AuthenticationProfilePath = path,
+                    handled: out var runtimePolicyHandled,
+                    error: out error)) {
+                return options;
+            }
+
+            if (runtimePolicyHandled) {
+                continue;
+            }
+
             if (arg is "-h" or "--help") {
                 options.ShowHelp = true;
                 continue;
@@ -389,84 +417,6 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
             }
             if (arg is "--no-default-plugin-paths") {
                 options.EnableDefaultPluginPaths = false;
-                continue;
-            }
-            if (arg is "--write-governance-mode") {
-                if (!TryConsume(args, ref i, out var value, out error)) {
-                    return options;
-                }
-                if (!ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(value, out var mode)) {
-                    error = ToolRuntimePolicyBootstrap.WriteGovernanceModeParseError;
-                    return options;
-                }
-                options.WriteGovernanceMode = mode;
-                continue;
-            }
-            if (arg is "--require-write-governance-runtime") {
-                options.RequireWriteGovernanceRuntime = true;
-                continue;
-            }
-            if (arg is "--no-require-write-governance-runtime") {
-                options.RequireWriteGovernanceRuntime = false;
-                continue;
-            }
-            if (arg is "--require-write-audit-sink") {
-                options.RequireWriteAuditSinkForWriteOperations = true;
-                continue;
-            }
-            if (arg is "--no-require-write-audit-sink") {
-                options.RequireWriteAuditSinkForWriteOperations = false;
-                continue;
-            }
-            if (arg is "--write-audit-sink-mode") {
-                if (!TryConsume(args, ref i, out var value, out error)) {
-                    return options;
-                }
-                if (!ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(value, out var sinkMode)) {
-                    error = ToolRuntimePolicyBootstrap.WriteAuditSinkModeParseError;
-                    return options;
-                }
-                options.WriteAuditSinkMode = sinkMode;
-                continue;
-            }
-            if (arg is "--write-audit-sink-path") {
-                if (!TryConsume(args, ref i, out var value, out error)) {
-                    return options;
-                }
-                options.WriteAuditSinkPath = value;
-                continue;
-            }
-            if (arg is "--auth-runtime-preset") {
-                if (!TryConsume(args, ref i, out var value, out error)) {
-                    return options;
-                }
-                if (!ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(value, out var preset)) {
-                    error = ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError;
-                    return options;
-                }
-                options.AuthenticationRuntimePreset = preset;
-                continue;
-            }
-            if (arg is "--require-auth-runtime") {
-                options.RequireAuthenticationRuntime = true;
-                continue;
-            }
-            if (arg is "--no-require-auth-runtime") {
-                options.RequireAuthenticationRuntime = false;
-                continue;
-            }
-            if (arg is "--run-as-profile-path") {
-                if (!TryConsume(args, ref i, out var value, out error)) {
-                    return options;
-                }
-                options.RunAsProfilePath = value;
-                continue;
-            }
-            if (arg is "--auth-profile-path") {
-                if (!TryConsume(args, ref i, out var value, out error)) {
-                    return options;
-                }
-                options.AuthenticationProfilePath = value;
                 continue;
             }
             if (arg is "--max-table-rows") {
