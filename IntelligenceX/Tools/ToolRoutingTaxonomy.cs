@@ -144,7 +144,7 @@ public static class ToolRoutingTaxonomy {
     public static bool TryGetTagKeyValue(string? tag, out string tagKey, out string tagValue) {
         tagKey = string.Empty;
         tagValue = string.Empty;
-        if (!TryGetTagKey(tag, out tagKey)) {
+        if (!TryGetTagKey(tag, out var detectedTagKey)) {
             return false;
         }
 
@@ -159,6 +159,7 @@ public static class ToolRoutingTaxonomy {
             return false;
         }
 
+        tagKey = detectedTagKey;
         tagValue = value;
         return true;
     }
