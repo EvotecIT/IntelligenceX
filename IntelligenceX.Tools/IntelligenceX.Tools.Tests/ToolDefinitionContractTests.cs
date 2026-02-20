@@ -57,6 +57,8 @@ public class ToolDefinitionContractTests {
         var expected = new[] {
             "ad_pack_info",
             "ad_environment_discover",
+            "ad_scope_discovery",
+            "ad_handoff_prepare",
             "ad_object_resolve",
             "ad_stale_accounts",
             "ad_spn_stats",
@@ -66,6 +68,7 @@ public class ToolDefinitionContractTests {
             "eventlog_timeline_explain",
             "eventlog_timeline_query",
             "eventlog_top_events",
+            "eventlog_evtx_security_summary",
             "eventlog_evtx_query",
             "eventlog_evtx_stats"
         };

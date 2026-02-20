@@ -108,6 +108,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_scope_discovery",
+            new[] { "forest_name", "domain_name", "domain_controller", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "discovery_fallback", "max_domains", "max_domain_controllers_total", "max_domain_controllers_per_domain", "rootdse_timeout_ms", "domain_enumeration_timeout_ms", "dc_source_timeout_ms" },
+            new[] { "discovery_fallback" }
+        };
+
+        yield return new object[] {
             "ad_forest_discover",
             new[] { "forest_name", "domain_name", "domain_controller", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "discovery_fallback", "max_domains", "max_domain_controllers_total", "max_domain_controllers_per_domain", "include_trust_relationships", "include_domain_trust_relationships", "trust_timeout_ms", "max_trusts" },
             new[] { "discovery_fallback" }
@@ -510,6 +516,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_handoff_prepare",
+            new[] { "entity_handoff", "include_computers", "max_identities", "min_candidate_count" },
+            new[] { "entity_handoff" }
+        };
+
+        yield return new object[] {
             "ad_object_get",
             new[] { "identity", "kind", "search_base_dn", "domain_controller", "attributes", "max_values_per_attribute" },
             new[] { "identity" }
@@ -651,6 +663,42 @@ public partial class ToolSchemaSnapshotTests {
             "ad_stale_accounts",
             new[] { "kind", "enabled_only", "exclude_critical", "days_since_logon", "days_since_password_set", "match", "search_base_dn", "domain_controller", "max_results" },
             Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_never_logged_in_accounts",
+            new[] { "domain_name", "grace_period_days", "reference_time_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
+            "ad_service_account_usage",
+            new[] { "domain_name", "account_type", "used_only", "some_computers_stale_only", "all_computers_stale_only", "include_principals", "include_principal_infos", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
+            "ad_kds_root_keys",
+            new[] { "effective_only", "not_effective_only", "reference_time_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_admin_count_report",
+            new[] { "forest_name_contains", "domain_name_contains", "sam_account_name_contains", "stale_days", "reference_time_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_wmi_filters",
+            new[] { "domain_name", "display_name_contains", "author_contains", "query_contains", "include_queries", "max_queries_per_filter", "max_query_chars", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
+            "ad_wsus_configuration",
+            new[] { "domain_name", "include_attribution", "configured_attribution_only", "include_diagnostics", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
         };
 
         yield return new object[] {

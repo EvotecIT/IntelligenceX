@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using EventViewerX.Reports.Inventory;
 using EventViewerX.Reports.Evtx;
@@ -74,36 +75,181 @@ public abstract class EventLogToolBase : ToolBase {
     /// Maps EventViewerX inventory query failures to tool error envelopes.
     /// </summary>
     protected static string ErrorFromCatalogFailure(EventCatalogFailure? failure) {
-        return ToolFailureMapper.ErrorFromFailure(
-            failure,
-            static x => x.Kind,
-            static x => x.Message,
-            defaultMessage: "Catalog query failed.",
-            fallbackErrorCode: "exception");
+        return ErrorFromCatalogFailure(
+            failure: failure,
+            machineName: null,
+            listingKind: "event log catalog");
+    }
+
+    /// <summary>
+    /// Maps EventViewerX inventory query failures to remote/local-aware tool error envelopes.
+    /// </summary>
+    protected static string ErrorFromCatalogFailure(
+        EventCatalogFailure? failure,
+        string? machineName,
+        string listingKind) {
+        var errorCode = ToolFailureMapper.MapCode(failure?.Kind.ToString(), fallbackErrorCode: "query_failed");
+        var normalizedMachine = NormalizeOptionalMachineName(machineName);
+        var remote = normalizedMachine is not null;
+        var normalizedListingKind = string.IsNullOrWhiteSpace(listingKind) ? "event log catalog" : listingKind.Trim();
+
+        var messagePrefix = remote
+            ? $"Remote {normalizedListingKind} query failed on machine '{normalizedMachine}'."
+            : $"Local {normalizedListingKind} query failed.";
+        var safeReason = ToolExceptionMapper.SanitizeErrorMessage(failure?.Message, "Event log catalog query failed.");
+        var error = string.IsNullOrWhiteSpace(safeReason)
+            ? messagePrefix
+            : $"{messagePrefix} Reason: {safeReason}";
+
+        var hints = BuildRemoteLocalLiveHints(
+            errorCode: errorCode,
+            remote: remote,
+            machineName: normalizedMachine,
+            includeChannelCatalogHint: false,
+            includeLiveScopeHint: false,
+            includeEvtxFallbackHint: true);
+        return ToolResponse.Error(
+            errorCode,
+            error,
+            hints: hints,
+            isTransient: string.Equals(errorCode, "timeout", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
     /// Maps EventViewerX live query failures to tool error envelopes.
     /// </summary>
     protected static string ErrorFromLiveQueryFailure(LiveEventQueryFailure? failure) {
-        return ToolFailureMapper.ErrorFromFailure(
-            failure,
-            static x => x.Kind,
-            static x => x.Message,
-            defaultMessage: "Live query failed.",
-            fallbackErrorCode: "exception");
+        return ErrorFromLiveQueryFailure(
+            failure: failure,
+            machineName: null,
+            logName: null);
+    }
+
+    /// <summary>
+    /// Maps EventViewerX live query failures to remote/local-aware tool error envelopes.
+    /// </summary>
+    protected static string ErrorFromLiveQueryFailure(
+        LiveEventQueryFailure? failure,
+        string? machineName,
+        string? logName) {
+        return ErrorFromLiveOperationFailure(
+            operationName: "query",
+            failureKindName: failure?.Kind.ToString(),
+            failureMessage: failure?.Message,
+            machineName: machineName,
+            logName: logName);
     }
 
     /// <summary>
     /// Maps EventViewerX live stats failures to tool error envelopes.
     /// </summary>
     protected static string ErrorFromLiveStatsFailure(LiveStatsQueryFailure? failure) {
-        return ToolFailureMapper.ErrorFromFailure(
-            failure,
-            static x => x.Kind,
-            static x => x.Message,
-            defaultMessage: "Live stats query failed.",
-            fallbackErrorCode: "exception");
+        return ErrorFromLiveStatsFailure(
+            failure: failure,
+            machineName: null,
+            logName: null);
+    }
+
+    /// <summary>
+    /// Maps EventViewerX live stats failures to remote/local-aware tool error envelopes.
+    /// </summary>
+    protected static string ErrorFromLiveStatsFailure(
+        LiveStatsQueryFailure? failure,
+        string? machineName,
+        string? logName) {
+        return ErrorFromLiveOperationFailure(
+            operationName: "stats query",
+            failureKindName: failure?.Kind.ToString(),
+            failureMessage: failure?.Message,
+            machineName: machineName,
+            logName: logName);
+    }
+
+    private static string ErrorFromLiveOperationFailure(
+        string operationName,
+        string? failureKindName,
+        string? failureMessage,
+        string? machineName,
+        string? logName) {
+        var errorCode = ToolFailureMapper.MapCode(failureKindName, fallbackErrorCode: "query_failed");
+        var normalizedMachine = NormalizeOptionalMachineName(machineName);
+        var normalizedLogName = string.IsNullOrWhiteSpace(logName) ? "requested event log channel" : logName.Trim();
+        var remote = normalizedMachine is not null;
+
+        var messagePrefix = remote
+            ? $"Remote event log {operationName} failed for log '{normalizedLogName}' on machine '{normalizedMachine}'."
+            : $"Local event log {operationName} failed for log '{normalizedLogName}'.";
+        var safeReason = ToolExceptionMapper.SanitizeErrorMessage(failureMessage, "Event log query failed.");
+        var error = string.IsNullOrWhiteSpace(safeReason)
+            ? messagePrefix
+            : $"{messagePrefix} Reason: {safeReason}";
+
+        var hints = BuildRemoteLocalLiveHints(
+            errorCode: errorCode,
+            remote: remote,
+            machineName: normalizedMachine,
+            includeChannelCatalogHint: true,
+            includeLiveScopeHint: true,
+            includeEvtxFallbackHint: true);
+        return ToolResponse.Error(
+            errorCode,
+            error,
+            hints: hints,
+            isTransient: string.Equals(errorCode, "timeout", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? NormalizeOptionalMachineName(string? machineName) {
+        if (string.IsNullOrWhiteSpace(machineName)) {
+            return null;
+        }
+
+        return machineName.Trim();
+    }
+
+    private static IReadOnlyList<string> BuildRemoteLocalLiveHints(
+        string errorCode,
+        bool remote,
+        string? machineName,
+        bool includeChannelCatalogHint,
+        bool includeLiveScopeHint,
+        bool includeEvtxFallbackHint) {
+        var hints = new List<string>(6);
+        if (remote) {
+            if (!string.IsNullOrWhiteSpace(machineName)) {
+                hints.Add($"Verify machine_name '{machineName}' resolves and is reachable from this host.");
+            } else {
+                hints.Add("Verify machine_name resolves and is reachable from this host.");
+            }
+            hints.Add("Ensure Remote Event Log Management / RPC access is enabled on the target host.");
+            hints.Add("Use a runtime identity with permission to read target event logs.");
+        } else {
+            hints.Add("Verify this runtime identity can read the requested local event log channel.");
+        }
+
+        if (includeChannelCatalogHint) {
+            hints.Add(remote
+                ? "Call eventlog_channels_list with the same machine_name to confirm channel visibility."
+                : "Call eventlog_channels_list to confirm the channel exists locally.");
+        }
+
+        if (string.Equals(errorCode, "timeout", StringComparison.OrdinalIgnoreCase)) {
+            hints.Add("Increase session_timeout_ms and retry.");
+        } else if (string.Equals(errorCode, "access_denied", StringComparison.OrdinalIgnoreCase)) {
+            hints.Add("If access is denied, switch to an account/profile with Event Log read rights.");
+        }
+
+        if (includeLiveScopeHint) {
+            hints.Add("Reduce query scope (for example smaller time window or lower max_events/max_events_scanned) and retry.");
+        }
+
+        if (includeEvtxFallbackHint) {
+            hints.Add("If live remote access remains blocked, export .evtx from the target and analyze locally with eventlog_evtx_query/eventlog_evtx_stats/eventlog_timeline_query.");
+        }
+
+        return hints
+            .Where(static hint => !string.IsNullOrWhiteSpace(hint))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     /// <summary>
@@ -221,7 +367,10 @@ public abstract class EventLogToolBase : ToolBase {
                     result: out var providersRoot,
                     failure: out var providersFailure,
                     cancellationToken: cancellationToken)) {
-                return ErrorFromCatalogFailure(providersFailure);
+                return ErrorFromCatalogFailure(
+                    failure: providersFailure,
+                    machineName: machineName,
+                    listingKind: "event log provider listing");
             }
 
             var preview = ToolPreview.Table(maxRows: 20, maxCellChars: null);
@@ -245,7 +394,10 @@ public abstract class EventLogToolBase : ToolBase {
                 result: out var channelsRoot,
                 failure: out var channelsFailure,
                 cancellationToken: cancellationToken)) {
-            return ErrorFromCatalogFailure(channelsFailure);
+            return ErrorFromCatalogFailure(
+                failure: channelsFailure,
+                machineName: machineName,
+                listingKind: "event log channel listing");
         }
 
         var channelPreview = ToolPreview.Table(maxRows: 20, maxCellChars: null);

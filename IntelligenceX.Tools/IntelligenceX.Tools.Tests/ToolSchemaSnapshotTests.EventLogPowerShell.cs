@@ -12,6 +12,24 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "eventlog_evtx_security_summary",
+            new[] { "path", "report_kind", "start_time_utc", "end_time_utc", "max_events_scanned", "top_per_dimension", "include_samples", "sample_size", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "path", "report_kind" }
+        };
+
+        yield return new object[] {
+            "eventlog_evtx_query",
+            new[] { "path", "event_ids", "provider_name", "start_time_utc", "end_time_utc", "level", "keywords", "user_id", "event_record_ids", "named_data_filter", "named_data_exclude_filter", "max_events", "oldest_first", "include_message", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "path" }
+        };
+
+        yield return new object[] {
+            "eventlog_live_query",
+            new[] { "log_name", "machine_name", "xpath", "event_ids", "provider_name", "start_time_utc", "end_time_utc", "level", "keywords", "user_id", "event_record_ids", "named_data_filter", "named_data_exclude_filter", "max_events", "oldest_first", "include_message", "session_timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "log_name" }
+        };
+
+        yield return new object[] {
             "eventlog_named_events_catalog",
             new[] { "name_contains", "categories", "available_only", "include_event_ids", "max_event_ids_per_row", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

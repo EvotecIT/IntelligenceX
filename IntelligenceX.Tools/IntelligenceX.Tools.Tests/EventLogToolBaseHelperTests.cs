@@ -2,6 +2,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
+using EventViewerX.Reports.Inventory;
+using EventViewerX.Reports.Live;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -107,6 +109,79 @@ public class EventLogToolBaseHelperTests {
         Assert.Equal("access_denied", root.GetProperty("error_code").GetString());
     }
 
+    [Fact]
+    public void ErrorFromLiveQueryFailure_RemoteTimeout_ShouldIncludeRemoteHintsAndBeTransient() {
+        var response = HarnessTool.MapLiveQueryFailure(
+            failure: new LiveEventQueryFailure {
+                Kind = LiveEventQueryFailureKind.Timeout,
+                Message = "The operation timed out."
+            },
+            machineName: "dc01.contoso.local",
+            logName: "Security");
+
+        using var doc = JsonDocument.Parse(response);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("timeout", root.GetProperty("error_code").GetString());
+        Assert.True(root.GetProperty("is_transient").GetBoolean());
+        Assert.Contains("Remote event log query failed", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+
+        var hints = root.GetProperty("hints");
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("session_timeout_ms", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("export .evtx", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ErrorFromLiveStatsFailure_LocalAccessDenied_ShouldIncludeLocalHints() {
+        var response = HarnessTool.MapLiveStatsFailure(
+            failure: new LiveStatsQueryFailure {
+                Kind = LiveStatsQueryFailureKind.AccessDenied,
+                Message = "Access denied."
+            },
+            machineName: null,
+            logName: "System");
+
+        using var doc = JsonDocument.Parse(response);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("access_denied", root.GetProperty("error_code").GetString());
+        Assert.Contains("Local event log stats query failed", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+
+        var hints = root.GetProperty("hints");
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("Event Log read rights", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ErrorFromCatalogFailure_Remote_ShouldIncludeRemoteCatalogHints() {
+        var response = HarnessTool.MapCatalogFailure(
+            failure: new EventCatalogFailure {
+                Kind = EventCatalogFailureKind.Exception,
+                Message = "Failed to open event log session."
+            },
+            machineName: "dc02.contoso.local",
+            listingKind: "event log channel listing");
+
+        using var doc = JsonDocument.Parse(response);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("query_failed", root.GetProperty("error_code").GetString());
+        Assert.Contains("Remote event log channel listing query failed", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+
+        var hints = root.GetProperty("hints");
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("Remote Event Log Management / RPC", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("export .evtx", StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed record AutoRow(int Id, string DisplayName);
 
     private sealed class AutoModel {
@@ -171,6 +246,27 @@ public class EventLogToolBaseHelperTests {
 
         public static string MapException(Exception ex) {
             return ErrorFromException(ex);
+        }
+
+        public static string MapLiveQueryFailure(
+            LiveEventQueryFailure? failure,
+            string? machineName,
+            string? logName) {
+            return ErrorFromLiveQueryFailure(failure, machineName, logName);
+        }
+
+        public static string MapLiveStatsFailure(
+            LiveStatsQueryFailure? failure,
+            string? machineName,
+            string? logName) {
+            return ErrorFromLiveStatsFailure(failure, machineName, logName);
+        }
+
+        public static string MapCatalogFailure(
+            EventCatalogFailure? failure,
+            string? machineName,
+            string listingKind) {
+            return ErrorFromCatalogFailure(failure, machineName, listingKind);
         }
 
         protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {

@@ -39,6 +39,7 @@ public static class ToolRegistryActiveDirectoryExtensions {
     private static IEnumerable<ITool> CreateTools(ActiveDirectoryToolOptions options) {
         yield return new AdPackInfoTool(options);
         yield return new AdEnvironmentDiscoverTool(options);
+        yield return new AdScopeDiscoveryTool(options);
         yield return new AdForestDiscoverTool(options);
         yield return new AdGpoListTool(options);
         yield return new AdGpoChangesTool(options);
@@ -55,6 +56,8 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdGpoOuLinkSummaryTool(options);
         yield return new AdGpoRedirectTool(options);
         yield return new AdGpoIntegrityTool(options);
+        yield return new AdWmiFiltersTool(options);
+        yield return new AdWsusConfigurationTool(options);
         yield return new AdDomainInfoTool(options);
         yield return new AdForestFunctionalTool(options);
         yield return new AdDsHeuristicsTool(options);
@@ -110,10 +113,15 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdRecycleBinLifetimeTool(options);
         yield return new AdObjectGetTool(options);
         yield return new AdObjectResolveTool(options);
+        yield return new AdHandoffPrepareTool(options);
         yield return new AdDelegationAuditTool(options);
         yield return new AdPrivilegedGroupsSummaryTool(options);
         yield return new AdDomainAdminsSummaryTool(options);
         yield return new AdStaleAccountsTool(options);
+        yield return new AdNeverLoggedInAccountsTool(options);
+        yield return new AdServiceAccountUsageTool(options);
+        yield return new AdKdsRootKeysTool(options);
+        yield return new AdAdminCountReportTool(options);
         yield return new AdKrbtgtHealthTool(options);
         yield return new AdLdapQueryTool(options);
         yield return new AdLdapQueryPagedTool(options);
