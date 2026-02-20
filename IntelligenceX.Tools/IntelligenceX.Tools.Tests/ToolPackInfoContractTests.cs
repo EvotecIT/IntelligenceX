@@ -202,6 +202,36 @@ public class ToolPackInfoContractTests {
                 var primaryTools = ReadStringArray(capability.GetProperty("primary_tools"));
                 Assert.True(primaryTools.Length > 0);
             }
+
+            var entityHandoffs = root.GetProperty("entity_handoffs");
+            Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+            foreach (var handoff in entityHandoffs.EnumerateArray()) {
+                var handoffId = handoff.GetProperty("id").GetString() ?? string.Empty;
+                var summary = handoff.GetProperty("summary").GetString() ?? string.Empty;
+                Assert.False(string.IsNullOrWhiteSpace(handoffId));
+                Assert.False(string.IsNullOrWhiteSpace(summary));
+
+                var sourceTools = ReadStringArray(handoff.GetProperty("source_tools"));
+                var targetTools = ReadStringArray(handoff.GetProperty("target_tools"));
+                Assert.True(sourceTools.Length > 0);
+                Assert.True(targetTools.Length > 0);
+
+                var fieldMappings = handoff.GetProperty("field_mappings");
+                Assert.Equal(JsonValueKind.Array, fieldMappings.ValueKind);
+                foreach (var mapping in fieldMappings.EnumerateArray()) {
+                    var sourceField = mapping.GetProperty("source_field").GetString() ?? string.Empty;
+                    var targetArgument = mapping.GetProperty("target_argument").GetString() ?? string.Empty;
+                    Assert.False(string.IsNullOrWhiteSpace(sourceField));
+                    Assert.False(string.IsNullOrWhiteSpace(targetArgument));
+                    Assert.True(mapping.TryGetProperty("normalization", out var normalizationNode));
+                    Assert.True(normalizationNode.ValueKind == JsonValueKind.String || normalizationNode.ValueKind == JsonValueKind.Null);
+                }
+            }
+
+            if (string.Equals(@case.Pack, "active_directory", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(@case.Pack, "eventlog", StringComparison.OrdinalIgnoreCase)) {
+                Assert.True(entityHandoffs.GetArrayLength() > 0);
+            }
         }
     }
 

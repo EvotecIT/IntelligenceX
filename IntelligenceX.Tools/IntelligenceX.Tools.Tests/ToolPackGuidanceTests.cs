@@ -83,6 +83,58 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void EntityHandoff_ShouldNormalizeFieldsAndTools() {
+        var handoff = ToolPackGuidance.EntityHandoff(
+            id: " identity_bridge ",
+            summary: " bridge summary ",
+            entityKinds: new[] { "user", "USER", " computer " },
+            sourceTools: new[] { " eventlog_named_events_query ", "EVENTLOG_NAMED_EVENTS_QUERY", "eventlog_timeline_query" },
+            targetTools: new[] { "ad_search", "AD_SEARCH", " ad_object_resolve " },
+            fieldMappings: new[] {
+                ToolPackGuidance.EntityFieldMapping(" events[].who ", " identity ", " trim "),
+                ToolPackGuidance.EntityFieldMapping("events[].who", "identity"),
+                ToolPackGuidance.EntityFieldMapping("timeline[].computer", "identities")
+            },
+            notes: " note ");
+
+        Assert.Equal("identity_bridge", handoff.Id);
+        Assert.Equal("bridge summary", handoff.Summary);
+        Assert.Equal(new[] { "user", "computer" }, handoff.EntityKinds);
+        Assert.Equal(new[] { "eventlog_named_events_query", "eventlog_timeline_query" }, handoff.SourceTools);
+        Assert.Equal(new[] { "ad_search", "ad_object_resolve" }, handoff.TargetTools);
+        Assert.Equal(2, handoff.FieldMappings.Count);
+        Assert.Equal("events[].who", handoff.FieldMappings[0].SourceField);
+        Assert.Equal("identity", handoff.FieldMappings[0].TargetArgument);
+        Assert.Equal("trim", handoff.FieldMappings[0].Normalization);
+        Assert.Equal("note", handoff.Notes);
+    }
+
+    [Fact]
+    public void Create_ShouldExposeEntityHandoffs() {
+        var model = ToolPackGuidance.Create(
+            pack: "eventlog",
+            engine: "EventViewerX",
+            tools: new[] { "eventlog_pack_info" },
+            entityHandoffs: new[] {
+                ToolPackGuidance.EntityHandoff(
+                    id: "identity_to_ad",
+                    summary: "Forward identities to AD tools.",
+                    sourceTools: new[] { "eventlog_named_events_query" },
+                    targetTools: new[] { "ad_object_resolve" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("events[].who", "identities")
+                    })
+            });
+
+        var handoff = Assert.Single(model.EntityHandoffs);
+        Assert.Equal("identity_to_ad", handoff.Id);
+        Assert.Equal("Forward identities to AD tools.", handoff.Summary);
+        Assert.Equal(new[] { "eventlog_named_events_query" }, handoff.SourceTools);
+        Assert.Equal(new[] { "ad_object_resolve" }, handoff.TargetTools);
+        Assert.Single(handoff.FieldMappings);
+    }
+
+    [Fact]
     public void CatalogFromTools_ShouldExposeRequiredArgsAndProjectionSupport() {
         var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
             new StubTool(new ToolDefinition(

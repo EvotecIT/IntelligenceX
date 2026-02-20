@@ -143,6 +143,22 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) for server/domain/forest scope.",
                     primaryTools: new[] { "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" })
             },
+            entityHandoffs: new[] {
+                ToolPackGuidance.EntityHandoff(
+                    id: "external_identity_to_ad_resolution",
+                    summary: "Consume identity/host indicators from other packs and normalize them for AD object resolution.",
+                    entityKinds: new[] { "identity", "user", "group", "computer", "host" },
+                    sourceTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query", "system_whoami", "powershell_run" },
+                    targetTools: new[] { "ad_object_resolve", "ad_search", "ad_object_get", "ad_group_members_resolved" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("*.who", "identities", "Batch and deduplicate values for ad_object_resolve."),
+                        ToolPackGuidance.EntityFieldMapping("*.object_affected", "identities", "Batch and deduplicate values for ad_object_resolve."),
+                        ToolPackGuidance.EntityFieldMapping("*.computer", "identity", "Use hostname/FQDN as identity for ad_search/ad_object_get."),
+                        ToolPackGuidance.EntityFieldMapping("identity.account_name", "identity", "Use as direct identity input for ad_search/ad_object_get."),
+                        ToolPackGuidance.EntityFieldMapping("resolved[].distinguished_name", "identity", "Use direct DN for follow-up detail lookups.")
+                    },
+                    notes: "Prefer ad_object_resolve for bulk correlation to avoid N+1 lookups.")
+            },
             toolCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw engine payloads (including dynamic LDAP attribute bags and nested objects).",
             viewProjectionPolicy: "Projection arguments are optional and view-only; they must not replace raw payload.",

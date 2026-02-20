@@ -114,6 +114,7 @@ Each pack should expose a `*_pack_info` tool with:
 - setup expectations and limits
 - recommended tool-call sequences (`recommended_flow`, `recommended_flow_steps`)
 - capability catalog (`capabilities`)
+- structured cross-tool entity handoff guidance (`entity_handoffs`)
 - runtime-derived tool catalog (`tool_catalog`) with descriptions, required args, argument hints, and structured `traits` (projection/paging/time-range/dynamic-attributes/scoping/action flags)
 - output-contract guidance (raw payload vs view projection)
 
