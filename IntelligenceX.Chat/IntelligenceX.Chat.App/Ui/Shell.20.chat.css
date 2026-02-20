@@ -63,13 +63,13 @@
 }
 
 .msg {
-  max-width: min(86%, 980px);
+  max-width: min(92%, clamp(980px, 82vw, 1560px));
   min-width: 0;
   position: relative;
 }
 
 .msg.ix-msg-has-visual {
-  max-width: min(96%, 1680px);
+  max-width: min(99%, clamp(1400px, 94vw, 2800px));
 }
 
 .meta {
