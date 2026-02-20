@@ -105,6 +105,23 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_named_events_query", "eventlog_evtx_query" },
                     notes: "Use ad_environment_discover + ad_search in the AD pack for identity enrichment.")
             },
+            entityHandoffs: new[] {
+                ToolPackGuidance.EntityHandoff(
+                    id: "event_identity_to_ad_lookup",
+                    summary: "Promote normalized identity and host fields from EventLog evidence into AD lookup workflows.",
+                    entityKinds: new[] { "identity", "user", "host", "computer" },
+                    sourceTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query" },
+                    targetTools: new[] { "ad_environment_discover", "ad_search", "ad_object_resolve" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("events[].who", "identity", "Trim and preserve UPN/DOMAIN\\\\user forms."),
+                        ToolPackGuidance.EntityFieldMapping("events[].object_affected", "identity", "Use when object_affected represents a user/computer identity."),
+                        ToolPackGuidance.EntityFieldMapping("events[].computer", "identity", "Prefer hostname/FQDN values for AD computer lookups."),
+                        ToolPackGuidance.EntityFieldMapping("timeline[].who", "identities", "Batch values into identities for ad_object_resolve."),
+                        ToolPackGuidance.EntityFieldMapping("timeline[].object_affected", "identities", "Batch values into identities for ad_object_resolve."),
+                        ToolPackGuidance.EntityFieldMapping("timeline[].computer", "identities", "Batch host identities into ad_object_resolve inputs.")
+                    },
+                    notes: "Use structured field correlation (not incident-specific templates) and de-duplicate identities before AD calls.")
+            },
             toolCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw event arrays and report objects for model reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only.",

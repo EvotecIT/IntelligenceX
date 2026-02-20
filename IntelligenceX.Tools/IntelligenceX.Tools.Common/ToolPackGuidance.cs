@@ -62,6 +62,11 @@ public sealed class ToolPackInfoModel {
     public IReadOnlyList<ToolPackCapabilityModel> Capabilities { get; init; } = Array.Empty<ToolPackCapabilityModel>();
 
     /// <summary>
+    /// Structured entity handoff guidance for cross-tool and cross-pack correlation.
+    /// </summary>
+    public IReadOnlyList<ToolPackEntityHandoffModel> EntityHandoffs { get; init; } = Array.Empty<ToolPackEntityHandoffModel>();
+
+    /// <summary>
     /// Tool-level catalog derived from runtime registrations and schemas.
     /// </summary>
     public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog { get; init; } = Array.Empty<ToolPackToolCatalogEntryModel>();
@@ -145,6 +150,66 @@ public sealed class ToolPackCapabilityModel {
     /// Optional notes for this capability.
     /// </summary>
     public string? Notes { get; init; }
+}
+
+/// <summary>
+/// Structured descriptor for handing entity evidence from source tools to follow-up tools.
+/// </summary>
+public sealed class ToolPackEntityHandoffModel {
+    /// <summary>
+    /// Stable handoff identifier.
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Human-readable handoff summary.
+    /// </summary>
+    public string Summary { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Entity kinds promoted by this handoff (for example user/computer/domain).
+    /// </summary>
+    public IReadOnlyList<string> EntityKinds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Source tools that emit the handoff entities.
+    /// </summary>
+    public IReadOnlyList<string> SourceTools { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Follow-up tools that should consume the handoff entities.
+    /// </summary>
+    public IReadOnlyList<string> TargetTools { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Optional field-level mapping hints between source payload fields and target arguments.
+    /// </summary>
+    public IReadOnlyList<ToolPackEntityFieldMappingModel> FieldMappings { get; init; } = Array.Empty<ToolPackEntityFieldMappingModel>();
+
+    /// <summary>
+    /// Optional notes for this handoff.
+    /// </summary>
+    public string? Notes { get; init; }
+}
+
+/// <summary>
+/// Field mapping hint for entity handoffs.
+/// </summary>
+public sealed class ToolPackEntityFieldMappingModel {
+    /// <summary>
+    /// Source payload field path or symbolic field name.
+    /// </summary>
+    public string SourceField { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Target tool argument name.
+    /// </summary>
+    public string TargetArgument { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional normalization hint for model/tool routing.
+    /// </summary>
+    public string? Normalization { get; init; }
 }
 
 /// <summary>
@@ -406,6 +471,53 @@ public static class ToolPackGuidance {
     }
 
     /// <summary>
+    /// Creates a structured entity handoff descriptor.
+    /// </summary>
+    public static ToolPackEntityHandoffModel EntityHandoff(
+        string id,
+        string summary,
+        IEnumerable<string>? entityKinds = null,
+        IEnumerable<string>? sourceTools = null,
+        IEnumerable<string>? targetTools = null,
+        IEnumerable<ToolPackEntityFieldMappingModel>? fieldMappings = null,
+        string? notes = null) {
+        if (string.IsNullOrWhiteSpace(id)) {
+            throw new ArgumentException("Entity handoff id is required.", nameof(id));
+        }
+        if (string.IsNullOrWhiteSpace(summary)) {
+            throw new ArgumentException("Entity handoff summary is required.", nameof(summary));
+        }
+
+        return new ToolPackEntityHandoffModel {
+            Id = id.Trim(),
+            Summary = summary.Trim(),
+            EntityKinds = NormalizeValues(entityKinds),
+            SourceTools = NormalizeValues(sourceTools),
+            TargetTools = NormalizeValues(targetTools),
+            FieldMappings = NormalizeEntityFieldMappings(fieldMappings),
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()
+        };
+    }
+
+    /// <summary>
+    /// Creates a source-field to target-argument mapping descriptor for entity handoffs.
+    /// </summary>
+    public static ToolPackEntityFieldMappingModel EntityFieldMapping(string sourceField, string targetArgument, string? normalization = null) {
+        if (string.IsNullOrWhiteSpace(sourceField)) {
+            throw new ArgumentException("Source field is required.", nameof(sourceField));
+        }
+        if (string.IsNullOrWhiteSpace(targetArgument)) {
+            throw new ArgumentException("Target argument is required.", nameof(targetArgument));
+        }
+
+        return new ToolPackEntityFieldMappingModel {
+            SourceField = sourceField.Trim(),
+            TargetArgument = targetArgument.Trim(),
+            Normalization = string.IsNullOrWhiteSpace(normalization) ? null : normalization.Trim()
+        };
+    }
+
+    /// <summary>
     /// Builds a tool catalog from runtime tool instances.
     /// </summary>
     /// <param name="tools">Tool instances used for registration.</param>
@@ -462,6 +574,7 @@ public static class ToolPackGuidance {
     /// <param name="recommendedFlow">Optional flow guidance.</param>
     /// <param name="flowSteps">Optional structured flow steps.</param>
     /// <param name="capabilities">Optional structured capability descriptors.</param>
+    /// <param name="entityHandoffs">Optional structured entity handoff descriptors.</param>
     /// <param name="toolCatalog">Optional tool catalog derived from runtime registrations and schemas.</param>
     /// <param name="rawPayloadPolicy">Optional raw payload policy override.</param>
     /// <param name="viewProjectionPolicy">Optional projection policy override.</param>
@@ -479,6 +592,7 @@ public static class ToolPackGuidance {
         IEnumerable<string>? recommendedFlow = null,
         IEnumerable<ToolPackFlowStepModel>? flowSteps = null,
         IEnumerable<ToolPackCapabilityModel>? capabilities = null,
+        IEnumerable<ToolPackEntityHandoffModel>? entityHandoffs = null,
         IEnumerable<ToolPackToolCatalogEntryModel>? toolCatalog = null,
         string? rawPayloadPolicy = null,
         string? viewProjectionPolicy = null,
@@ -499,6 +613,7 @@ public static class ToolPackGuidance {
         var flow = NormalizeValues(recommendedFlow, distinct: false);
         var resolvedFlowSteps = NormalizeFlowSteps(flowSteps);
         var resolvedCapabilities = NormalizeCapabilities(capabilities);
+        var resolvedEntityHandoffs = NormalizeEntityHandoffs(entityHandoffs);
         var resolvedToolCatalog = NormalizeToolCatalog(toolCatalog);
 
         return new ToolPackInfoModel {
@@ -521,6 +636,7 @@ public static class ToolPackGuidance {
             RecommendedFlow = flow,
             RecommendedFlowSteps = resolvedFlowSteps,
             Capabilities = resolvedCapabilities,
+            EntityHandoffs = resolvedEntityHandoffs,
             ToolCatalog = resolvedToolCatalog,
             Tools = resolvedTools,
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
@@ -570,6 +686,60 @@ public static class ToolPackGuidance {
                 Summary = capability.Summary.Trim(),
                 PrimaryTools = NormalizeValues(capability.PrimaryTools),
                 Notes = string.IsNullOrWhiteSpace(capability.Notes) ? null : capability.Notes.Trim()
+            });
+        }
+
+        return list;
+    }
+
+    private static IReadOnlyList<ToolPackEntityHandoffModel> NormalizeEntityHandoffs(IEnumerable<ToolPackEntityHandoffModel>? handoffs) {
+        var list = new List<ToolPackEntityHandoffModel>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var handoff in handoffs ?? Array.Empty<ToolPackEntityHandoffModel>()) {
+            if (handoff is null || string.IsNullOrWhiteSpace(handoff.Id) || string.IsNullOrWhiteSpace(handoff.Summary)) {
+                continue;
+            }
+
+            var id = handoff.Id.Trim();
+            if (!seen.Add(id)) {
+                continue;
+            }
+
+            list.Add(new ToolPackEntityHandoffModel {
+                Id = id,
+                Summary = handoff.Summary.Trim(),
+                EntityKinds = NormalizeValues(handoff.EntityKinds),
+                SourceTools = NormalizeValues(handoff.SourceTools),
+                TargetTools = NormalizeValues(handoff.TargetTools),
+                FieldMappings = NormalizeEntityFieldMappings(handoff.FieldMappings),
+                Notes = string.IsNullOrWhiteSpace(handoff.Notes) ? null : handoff.Notes.Trim()
+            });
+        }
+
+        return list;
+    }
+
+    private static IReadOnlyList<ToolPackEntityFieldMappingModel> NormalizeEntityFieldMappings(IEnumerable<ToolPackEntityFieldMappingModel>? mappings) {
+        var list = new List<ToolPackEntityFieldMappingModel>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var mapping in mappings ?? Array.Empty<ToolPackEntityFieldMappingModel>()) {
+            if (mapping is null || string.IsNullOrWhiteSpace(mapping.SourceField) || string.IsNullOrWhiteSpace(mapping.TargetArgument)) {
+                continue;
+            }
+
+            var source = mapping.SourceField.Trim();
+            var target = mapping.TargetArgument.Trim();
+            var key = $"{source}|{target}";
+            if (!seen.Add(key)) {
+                continue;
+            }
+
+            list.Add(new ToolPackEntityFieldMappingModel {
+                SourceField = source,
+                TargetArgument = target,
+                Normalization = string.IsNullOrWhiteSpace(mapping.Normalization) ? null : mapping.Normalization.Trim()
             });
         }
 
