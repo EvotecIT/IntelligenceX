@@ -15,6 +15,7 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow {
     private const int MaxVisualExportBytes = 12 * 1024 * 1024;
     private const int MaxVisualExportBase64Chars = ((MaxVisualExportBytes + 2) / 3) * 4;
+    private const int MaxVisualPopoutTitleChars = 160;
     private static readonly TimeSpan VisualPopoutRetention = TimeSpan.FromHours(12);
 
     private async Task ExportTableArtifactAsync(string format, string title, JsonElement rowsElement, string exportId = "", string? outputPath = null) {

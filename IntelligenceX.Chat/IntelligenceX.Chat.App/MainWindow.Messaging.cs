@@ -494,6 +494,9 @@ public sealed partial class MainWindow : Window {
                             CleanupStaleVisualPopoutFiles(popoutDirectory);
 
                             var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                            if (title.Length > MaxVisualPopoutTitleChars) {
+                                title = title[..MaxVisualPopoutTitleChars].TrimEnd();
+                            }
                             var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
                             var dataBase64 = TryGetString(root, "dataBase64") ?? string.Empty;
                             if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out var normalizedFormat)) {
