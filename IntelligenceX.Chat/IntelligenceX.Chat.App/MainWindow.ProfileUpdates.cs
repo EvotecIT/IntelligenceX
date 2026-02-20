@@ -351,9 +351,14 @@ Quick start prompts:
         var effectiveToolTimeoutSeconds = _autonomyToolTimeoutSeconds
             ?? NormalizePositiveTimeout(_sessionPolicy?.ToolTimeoutSeconds)
             ?? SafeDefaultToolTimeoutSeconds;
+        var resolvedModel = ResolveChatRequestModelOverride(
+            _localProviderTransport,
+            _localProviderBaseUrl,
+            _localProviderModel,
+            _availableModels);
 
         return new ChatRequestOptions {
-            Model = string.IsNullOrWhiteSpace(_localProviderModel) ? null : _localProviderModel,
+            Model = string.IsNullOrWhiteSpace(resolvedModel) ? null : resolvedModel,
             ReasoningEffort = _localProviderReasoningEffort,
             ReasoningSummary = _localProviderReasoningSummary,
             TextVerbosity = _localProviderTextVerbosity,
@@ -563,6 +568,103 @@ Quick start prompts:
         }
 
         return "manual";
+    }
+
+    internal static string? ResolveChatRequestModelOverride(string? transport, string? baseUrl, string? configuredModel,
+        IReadOnlyList<ModelInfoDto>? availableModels) {
+        var normalizedTransport = NormalizeLocalProviderTransport(transport);
+        var normalizedConfiguredModel = (configuredModel ?? string.Empty).Trim();
+        var supportsCatalogFallback =
+            string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
+        if (!supportsCatalogFallback) {
+            return normalizedConfiguredModel.Length == 0 ? null : normalizedConfiguredModel;
+        }
+
+        var preferredModel = ResolvePreferredCatalogModel(availableModels);
+        if (normalizedConfiguredModel.Length == 0) {
+            return preferredModel.Length == 0 ? null : preferredModel;
+        }
+
+        if (CatalogContainsModel(availableModels, normalizedConfiguredModel)) {
+            return normalizedConfiguredModel;
+        }
+
+        if (preferredModel.Length == 0) {
+            return normalizedConfiguredModel;
+        }
+
+        var localCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            && IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl));
+        if (localCompatibleRuntime || IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
+            return preferredModel;
+        }
+
+        return normalizedConfiguredModel;
+    }
+
+    private static bool IsLocalCompatibleRuntimePreset(string preset) {
+        return string.Equals(preset, "lmstudio", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(preset, "ollama", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyCloudHostedModelName(string? modelName) {
+        var normalized = (modelName ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.StartsWith("gpt-", StringComparison.Ordinal)
+               || string.Equals(normalized, "gpt5", StringComparison.Ordinal)
+               || normalized.StartsWith("chatgpt", StringComparison.Ordinal)
+               || normalized.StartsWith("o1", StringComparison.Ordinal)
+               || normalized.StartsWith("o3", StringComparison.Ordinal)
+               || normalized.StartsWith("o4", StringComparison.Ordinal);
+    }
+
+    private static bool CatalogContainsModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {
+        if (availableModels is null || availableModels.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < availableModels.Count; i++) {
+            var entry = availableModels[i];
+            var candidate = (entry.Model ?? string.Empty).Trim();
+            if (candidate.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(candidate, model, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ResolvePreferredCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels) {
+        if (availableModels is null || availableModels.Count == 0) {
+            return string.Empty;
+        }
+
+        var first = string.Empty;
+        for (var i = 0; i < availableModels.Count; i++) {
+            var entry = availableModels[i];
+            var model = (entry.Model ?? string.Empty).Trim();
+            if (model.Length == 0) {
+                continue;
+            }
+
+            if (first.Length == 0) {
+                first = model;
+            }
+
+            if (entry.IsDefault == true) {
+                return model;
+            }
+        }
+
+        return first;
     }
 
     private static bool SupportsLocalProviderReasoningControls(string? transport, string? baseUrl) {

@@ -155,6 +155,13 @@ public sealed partial class MainWindow : Window {
             _recentModels = NormalizeModelNames(modelList.RecentModels);
             _modelListIsStale = modelList.IsStale;
             _modelListWarning = string.IsNullOrWhiteSpace(modelList.Warning) ? null : modelList.Warning.Trim();
+            var resolvedModel = ResolveChatRequestModelOverride(
+                _localProviderTransport,
+                _localProviderBaseUrl,
+                _localProviderModel,
+                _availableModels);
+            _localProviderModel = (resolvedModel ?? string.Empty).Trim();
+            _appState.LocalProviderModel = _localProviderModel;
 
             CaptureModelCatalogCacheIntoAppState();
             QueuePersistAppState();
