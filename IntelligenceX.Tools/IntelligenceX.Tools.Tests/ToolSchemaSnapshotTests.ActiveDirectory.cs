@@ -684,6 +684,18 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_wmi_filters",
+            new[] { "domain_name", "display_name_contains", "author_contains", "query_contains", "include_queries", "max_queries_per_filter", "max_query_chars", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
+            "ad_wsus_configuration",
+            new[] { "domain_name", "include_attribution", "configured_attribution_only", "include_diagnostics", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
             "ad_spn_stats",
             new[] { "spn_contains", "spn_exact", "kind", "enabled_only", "search_base_dn", "domain_controller", "max_results", "max_service_classes", "max_hosts", "include_examples", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

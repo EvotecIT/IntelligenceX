@@ -56,6 +56,8 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdGpoOuLinkSummaryTool(options);
         yield return new AdGpoRedirectTool(options);
         yield return new AdGpoIntegrityTool(options);
+        yield return new AdWmiFiltersTool(options);
+        yield return new AdWsusConfigurationTool(options);
         yield return new AdDomainInfoTool(options);
         yield return new AdForestFunctionalTool(options);
         yield return new AdDsHeuristicsTool(options);

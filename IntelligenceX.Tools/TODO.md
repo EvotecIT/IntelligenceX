@@ -20,6 +20,7 @@
 ## Remaining Platform Tasks
 
 - [x] Add AD query wrappers for service-account and dormant-account hygiene (`ad_service_account_usage`, `ad_never_logged_in_accounts`) plus gMSA readiness (`ad_kds_root_keys`) with safe caps and structured JSON.
+- [x] Add AD GPO diagnostics wrappers for WMI filters and WSUS posture (`ad_wmi_filters`, `ad_wsus_configuration`) with safe caps and structured JSON.
 - [ ] Implement remaining `IntelligenceX.Tools.EventLog` EVTX parsing tools (EventViewerX) with safe-by-default limits and structured JSON output.
-- [ ] Implement remaining `IntelligenceX.Tools.ADPlayground` query tools (ADPlayground) with safe-by-default limits and structured JSON output.
+- [ ] Implement remaining `IntelligenceX.Tools.ADPlayground` query tools (ADPlayground) with safe-by-default limits and structured JSON output (see `InternalDocs/backlogs/eventlog-ad-tool-gap-matrix.md` for current shortlist).
 - [ ] Decide packaging split for Windows-only capabilities (separate `net*-windows` pack vs runtime OS checks).

@@ -48,7 +48,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_sites/ad_subnets/ad_site_links for AD topology inventory and schedule diagnostics.",
                 "Use ad_site_coverage for per-site subnet/DC coverage and orphaned subnet visibility.",
                 "Use ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_dns_scavenging for DNS server/zone/delegation posture diagnostics.",
-                "Use ad_gpo_list/ad_gpo_changes/ad_gpo_health/ad_gpo_inventory_health/ad_gpo_duplicates/ad_gpo_blocked_inheritance/ad_gpo_ou_link_summary/ad_gpo_integrity/ad_gpo_redirect/ad_gpo_permission_read/ad_gpo_permission_administrative/ad_gpo_permission_consistency/ad_gpo_permission_unknown/ad_gpo_permission_root/ad_gpo_permission_report for GPO inventory, timeline, topology, and permission hygiene diagnostics.",
+                "Use ad_gpo_list/ad_gpo_changes/ad_gpo_health/ad_gpo_inventory_health/ad_gpo_duplicates/ad_gpo_blocked_inheritance/ad_gpo_ou_link_summary/ad_gpo_integrity/ad_gpo_redirect/ad_gpo_permission_read/ad_gpo_permission_administrative/ad_gpo_permission_consistency/ad_gpo_permission_unknown/ad_gpo_permission_root/ad_gpo_permission_report/ad_wmi_filters/ad_wsus_configuration for GPO inventory, timeline, topology, permission hygiene, and WSUS/WMI filter diagnostics.",
                 "Use ad_handoff_prepare to normalize cross-pack entity_handoff payloads before AD queries.",
                 "Example EventLog handoff flow: ad_handoff_prepare -> ad_scope_discovery -> ad_object_resolve -> ad_search/ad_object_get for focused follow-up.",
                 "Use ad_object_resolve to avoid N+1 object lookups when correlating identities.",
@@ -62,7 +62,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     suggestedTools: new[] { "ad_search", "ad_groups_list", "ad_spn_search" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Assess GPO inventory, changes, and health",
-                    suggestedTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report" }),
+                    suggestedTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report", "ad_wmi_filters", "ad_wsus_configuration" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Discover forest scope and enumerate domains/DCs/trusts",
                     suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_forest_functional" }),
@@ -145,7 +145,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 ToolPackGuidance.Capability(
                     id: "gpo_hygiene",
                     summary: "Inspect Group Policy inventory, modification history, AD/SYSVOL health state, and permission baselines.",
-                    primaryTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report" }),
+                    primaryTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report", "ad_wmi_filters", "ad_wsus_configuration" }),
                 ToolPackGuidance.Capability(
                     id: "ad_runtime_monitoring",
                     summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) for server/domain/forest scope.",
