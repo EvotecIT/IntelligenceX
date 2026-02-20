@@ -132,14 +132,18 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures runtime apply guards duplicate submits and flips runtime UI state immediately.
+    /// Ensures runtime apply supports queued submits while preserving optimistic UI updates.
     /// </summary>
     [Fact]
-    public void Load_IncludesRuntimeApplyInFlightGuardAndOptimisticUiUpdate() {
+    public void Load_IncludesRuntimeApplyQueueStateAndOptimisticUiUpdate() {
         var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
         var script = File.ReadAllText(bindingsPath);
 
-        Assert.Contains("if (local.isApplying === true) {", script, StringComparison.Ordinal);
+        Assert.Contains("function scheduleLocalProviderApply(forceRefresh, clearApiKey, clearBasicAuth)", script, StringComparison.Ordinal);
+        Assert.Contains("pendingLocalProviderApply.clearApiKey = pendingLocalProviderApply.clearApiKey || nextClearApiKey;", script, StringComparison.Ordinal);
+        Assert.Contains("pendingLocalProviderApply.clearBasicAuth = pendingLocalProviderApply.clearBasicAuth || nextClearBasicAuth;", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeApply.stage = wasApplying ? \"queued\" : \"applying\";", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeApply.detail = wasApplying", script, StringComparison.Ordinal);
         Assert.Contains("state.options.localModel.isApplying = true;", script, StringComparison.Ordinal);
         Assert.Contains("renderLocalModelOptions();", script, StringComparison.Ordinal);
     }
@@ -243,6 +247,10 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("var runtimeApplyProgress = byId(\"optRuntimeApplyProgress\")", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeApply = local.runtimeApply", script, StringComparison.Ordinal);
         Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.disabled = false;", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
+        Assert.Contains("applyStage === \"queued\"", script, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability-value-supported", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-apply-progress", css, StringComparison.Ordinal);

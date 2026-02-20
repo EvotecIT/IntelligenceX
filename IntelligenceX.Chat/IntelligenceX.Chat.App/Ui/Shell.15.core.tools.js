@@ -1335,7 +1335,11 @@
         var label = applyDetail;
         if (!label) {
           if (applyActive) {
-            label = "Applying runtime settings...";
+            if (applyStage === "queued") {
+              label = "Runtime switch queued. Latest settings will apply next.";
+            } else {
+              label = "Applying runtime settings...";
+            }
           } else if (applyStage === "completed") {
             label = "Runtime settings applied.";
           } else if (applyStage === "failed") {
@@ -1451,27 +1455,34 @@
       var isNative = transport === "native";
       useOpenAiRuntimeButton.textContent = isNative ? "ChatGPT Runtime Active" : "Use ChatGPT Runtime";
       useOpenAiRuntimeButton.classList.toggle("options-btn-active", isNative);
-      useOpenAiRuntimeButton.disabled = isApplying;
+      useOpenAiRuntimeButton.disabled = false;
+      useOpenAiRuntimeButton.title = isApplying
+        ? "Apply in progress. Click to queue switch to ChatGPT runtime."
+        : "";
     }
 
     var connectLmStudioButton = byId("btnConnectLmStudio");
     if (connectLmStudioButton) {
       connectLmStudioButton.textContent = lmStudioConnected ? "LM Studio Runtime Active" : "Use LM Studio Runtime";
       connectLmStudioButton.classList.toggle("options-btn-active", lmStudioConnected);
-      connectLmStudioButton.disabled = isApplying;
-      connectLmStudioButton.title = runtimeDetectionHasRun && !lmStudioAvailable && !lmStudioConnected
-        ? "LM Studio was not detected. Start LM Studio and click Auto Detect Runtime in Advanced Runtime."
-        : "";
+      connectLmStudioButton.disabled = false;
+      connectLmStudioButton.title = isApplying
+        ? "Apply in progress. Click to queue switch to LM Studio runtime."
+        : (runtimeDetectionHasRun && !lmStudioAvailable && !lmStudioConnected
+          ? "LM Studio was not detected. Start LM Studio and click Auto Detect Runtime in Advanced Runtime."
+          : "");
     }
 
     var useCopilotRuntimeButton = byId("btnUseCopilotRuntime");
     if (useCopilotRuntimeButton) {
       useCopilotRuntimeButton.textContent = isCopilotCli ? "Copilot Subscription Active" : "Use Copilot Subscription";
       useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotCli);
-      useCopilotRuntimeButton.disabled = isApplying;
+      useCopilotRuntimeButton.disabled = false;
       useCopilotRuntimeButton.title = isCopilotCli
         ? ""
-        : "Uses GitHub Copilot subscription sign-in (no API key required).";
+        : (isApplying
+          ? "Apply in progress. Click to queue switch to Copilot subscription runtime."
+          : "Uses GitHub Copilot subscription sign-in (no API key required).");
     }
 
     var refreshModelsButton = byId("btnRefreshModels");
@@ -1485,7 +1496,9 @@
     var applyRuntimeButton = byId("btnApplyLocalProvider");
     if (applyRuntimeButton) {
       applyRuntimeButton.disabled = isApplying;
-      applyRuntimeButton.textContent = isApplying ? "Applying Runtime..." : "Apply Runtime";
+      applyRuntimeButton.textContent = isApplying
+        ? (applyStage === "queued" ? "Runtime Queued..." : "Applying Runtime...")
+        : "Apply Runtime";
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();
