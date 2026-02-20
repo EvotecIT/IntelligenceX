@@ -35,7 +35,7 @@ public sealed class SampleBadAdDomainTool : ActiveDirectoryToolBase, ITool {
 
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         var domainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
-        var maxResults = ToolArgs.GetOptionBoundedInt32(arguments, "max_results", 1000);
+        var maxResults = ResolveMaxResults(arguments);
         return Task.FromResult(ToolResponse.Ok(new {
             domainName,
             maxResults
