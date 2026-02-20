@@ -252,6 +252,43 @@ public class ToolPackInfoContractTests {
         }
     }
 
+    [Fact]
+    public async Task PackInfoTools_ShouldExposeRoutingContractFieldsAcrossCatalogEntries() {
+        var cases = BuildPackCases();
+
+        foreach (var @case in cases) {
+            var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+            using var document = JsonDocument.Parse(json);
+            var toolCatalog = document.RootElement.GetProperty("tool_catalog");
+            Assert.Equal(JsonValueKind.Array, toolCatalog.ValueKind);
+
+            foreach (var entry in toolCatalog.EnumerateArray()) {
+                Assert.True(entry.TryGetProperty("routing", out var routing));
+                Assert.Equal(JsonValueKind.Object, routing.ValueKind);
+
+                Assert.True(routing.TryGetProperty("scope", out var scope));
+                Assert.Equal(JsonValueKind.String, scope.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(scope.GetString()));
+
+                Assert.True(routing.TryGetProperty("operation", out var operation));
+                Assert.Equal(JsonValueKind.String, operation.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(operation.GetString()));
+
+                Assert.True(routing.TryGetProperty("entity", out var entity));
+                Assert.Equal(JsonValueKind.String, entity.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(entity.GetString()));
+
+                Assert.True(routing.TryGetProperty("risk", out var risk));
+                Assert.Equal(JsonValueKind.String, risk.ValueKind);
+                Assert.Contains(risk.GetString() ?? string.Empty, ToolRoutingTaxonomy.AllowedRisks, StringComparer.Ordinal);
+
+                Assert.True(routing.TryGetProperty("source", out var source));
+                Assert.Equal(JsonValueKind.String, source.ValueKind);
+                Assert.Contains(source.GetString() ?? string.Empty, ToolRoutingTaxonomy.AllowedSources, StringComparer.Ordinal);
+            }
+        }
+    }
+
     private static PackCase[] BuildPackCases() {
         var adOptions = new ActiveDirectoryToolOptions();
         var eventLogOptions = new EventLogToolOptions();
