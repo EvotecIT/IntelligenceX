@@ -72,6 +72,7 @@ jobs:
             .
 
       - name: Prune stale github-pages artifacts
+        continue-on-error: true
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           script: |
@@ -79,14 +80,11 @@ jobs:
             const minAgeHours = 6;
             const now = Date.now();
             const { owner, repo } = context.repo;
-            const artifacts = [];
-
-            for await (const page of github.paginate.iterator(
+            const artifacts = await github.paginate(
               github.rest.actions.listArtifactsForRepo,
-              { owner, repo, name: "github-pages", per_page: 100 }
-            )) {
-              artifacts.push(...page.data.artifacts);
-            }
+              { owner, repo, name: "github-pages", per_page: 100 },
+              (response) => response?.data?.artifacts ?? []
+            );
 
             artifacts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
