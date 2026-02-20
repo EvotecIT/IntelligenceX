@@ -123,7 +123,7 @@ public sealed class ToolDefinition {
             throw new ArgumentException("Alias name cannot match canonical tool name.", nameof(aliasName));
         }
 
-        var mergedTags = MergeTags(Tags, tags);
+        var mergedTags = MergeTags(baseTags: Tags, overrideTags: tags);
         return new ToolDefinition(
             name: normalizedAliasName,
             description: string.IsNullOrWhiteSpace(description) ? Description : description,
@@ -223,16 +223,16 @@ public sealed class ToolDefinition {
         return normalized.Length == 0 ? null : normalized;
     }
 
-    private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> first, IReadOnlyList<string>? second) {
-        if ((first is null || first.Count == 0) && (second is null || second.Count == 0)) {
+    private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> baseTags, IReadOnlyList<string>? overrideTags) {
+        if ((baseTags is null || baseTags.Count == 0) && (overrideTags is null || overrideTags.Count == 0)) {
             return Array.Empty<string>();
         }
 
-        var merged = new List<string>((first?.Count ?? 0) + (second?.Count ?? 0));
+        var merged = new List<string>((baseTags?.Count ?? 0) + (overrideTags?.Count ?? 0));
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var taxonomyByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        void AddTag(string? tag) {
+        void AddTag(string? tag, bool allowTaxonomyOverride) {
             if (tag is null) {
                 return;
             }
@@ -243,7 +243,9 @@ public sealed class ToolDefinition {
             }
 
             if (ToolRoutingTaxonomy.TryGetTagKey(normalized, out var taxonomyKey)) {
-                taxonomyByKey[taxonomyKey] = normalized;
+                if (allowTaxonomyOverride || !taxonomyByKey.ContainsKey(taxonomyKey)) {
+                    taxonomyByKey[taxonomyKey] = normalized;
+                }
                 return;
             }
 
@@ -252,15 +254,15 @@ public sealed class ToolDefinition {
             }
         }
 
-        if (first is not null) {
-            foreach (var tag in first) {
-                AddTag(tag);
+        if (baseTags is not null) {
+            foreach (var tag in baseTags) {
+                AddTag(tag, allowTaxonomyOverride: false);
             }
         }
 
-        if (second is not null) {
-            foreach (var tag in second) {
-                AddTag(tag);
+        if (overrideTags is not null) {
+            foreach (var tag in overrideTags) {
+                AddTag(tag, allowTaxonomyOverride: true);
             }
         }
 

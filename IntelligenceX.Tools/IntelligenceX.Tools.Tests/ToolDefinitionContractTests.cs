@@ -282,6 +282,32 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void CreateAliasDefinition_ShouldRetainCanonicalTaxonomy_WhenAliasDoesNotOverrideKeys() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "zeta", "alpha" }),
+            toolType: null);
+
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias",
+            tags: new[] { "host", "HOST", "inventory" });
+
+        Assert.Contains("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:probe", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "scope:");
+        AssertSingleTaxonomyTag(alias.Tags, "operation:");
+        AssertSingleTaxonomyTag(alias.Tags, "entity:");
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "routing:");
+    }
+
+    [Fact]
     public void Register_WithReplaceExisting_ShouldPreserveSingleTaxonomyTagPerKey() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
