@@ -266,6 +266,21 @@ public sealed record ToolRuntimePolicyDiagnostics {
 /// Shared runtime-policy bootstrap helpers for Host and Service.
 /// </summary>
 public static class ToolRuntimePolicyBootstrap {
+    /// <summary>
+    /// Canonical parse error for invalid <c>--write-governance-mode</c> values.
+    /// </summary>
+    public const string WriteGovernanceModeParseError = "--write-governance-mode must be one of: enforced, yolo.";
+
+    /// <summary>
+    /// Canonical parse error for invalid <c>--write-audit-sink-mode</c> values.
+    /// </summary>
+    public const string WriteAuditSinkModeParseError = "--write-audit-sink-mode must be one of: none, file, sqlite.";
+
+    /// <summary>
+    /// Canonical parse error for invalid <c>--auth-runtime-preset</c> values.
+    /// </summary>
+    public const string AuthenticationRuntimePresetParseError = "--auth-runtime-preset must be one of: default, strict, lab.";
+
     private const string StrictImmutableAuditProviderId = "ix.audit.append_only";
     private const string StrictRollbackProviderId = "ix.rollback.catalog";
 
@@ -488,6 +503,29 @@ public static class ToolRuntimePolicyBootstrap {
             ToolAuthenticationRuntimePreset.Lab => "lab",
             _ => "default"
         };
+    }
+
+    /// <summary>
+    /// Writes shared CLI help lines for runtime policy options.
+    /// </summary>
+    /// <param name="writeLine">Line writer callback.</param>
+    public static void WriteRuntimePolicyCliHelp(Action<string> writeLine) {
+        if (writeLine is null) {
+            throw new ArgumentNullException(nameof(writeLine));
+        }
+
+        writeLine("  --write-governance-mode <MODE>  Write governance mode: enforced|yolo (default: enforced).");
+        writeLine("  --require-write-governance-runtime  Require configured write runtime for write-intent calls (default: on).");
+        writeLine("  --no-require-write-governance-runtime Disable runtime requirement for write-intent calls.");
+        writeLine("  --require-write-audit-sink  Require write audit sink for write-intent calls.");
+        writeLine("  --no-require-write-audit-sink Disable write audit sink requirement.");
+        writeLine("  --write-audit-sink-mode <MODE>  Write audit sink mode: none|file|sqlite (default: none).");
+        writeLine("  --write-audit-sink-path <PATH>  Write audit sink path (JSONL file or SQLite db).");
+        writeLine("  --auth-runtime-preset <MODE>  Auth runtime preset: default|strict|lab (default: default).");
+        writeLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
+        writeLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
+        writeLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");
+        writeLine("  --auth-profile-path <PATH>  Authentication profile catalog path for auth-aware packs.");
     }
 
     private static IToolWriteAuditSink? TryCreateWriteAuditSink(
