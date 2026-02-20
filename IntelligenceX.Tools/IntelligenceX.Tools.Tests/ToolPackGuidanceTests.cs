@@ -396,6 +396,47 @@ public class ToolPackGuidanceTests {
         Assert.Contains("Explicit routing risk", ex.Message);
     }
 
+    [Fact]
+    public void Create_ShouldNormalizeAndSerializeDefaultRoutingValues_WhenCatalogRoutingIsBlank() {
+        var model = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: new[] { "system_info" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "system_info",
+                    Description = "System info",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "   ",
+                        Operation = " ",
+                        Entity = "\t",
+                        Risk = string.Empty,
+                        Source = " "
+                    }
+                }
+            });
+
+        var entry = Assert.Single(model.ToolCatalog);
+        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, entry.Routing.Scope);
+        Assert.Equal(ToolRoutingTaxonomy.OperationRead, entry.Routing.Operation);
+        Assert.Equal(ToolRoutingTaxonomy.EntityResource, entry.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+
+        var root = ToolJson.ToJsonObjectSnakeCase(model);
+        var toolCatalog = root.GetArray("tool_catalog");
+        Assert.NotNull(toolCatalog);
+
+        var serializedEntry = Assert.Single(toolCatalog!);
+        var routing = serializedEntry.AsObject()?.GetObject("routing");
+        Assert.NotNull(routing);
+        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, routing!.GetString("scope"));
+        Assert.Equal(ToolRoutingTaxonomy.OperationRead, routing.GetString("operation"));
+        Assert.Equal(ToolRoutingTaxonomy.EntityResource, routing.GetString("entity"));
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, routing.GetString("risk"));
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, routing.GetString("source"));
+    }
+
     private sealed class StubTool : ITool {
         public StubTool(ToolDefinition definition) {
             Definition = definition;
