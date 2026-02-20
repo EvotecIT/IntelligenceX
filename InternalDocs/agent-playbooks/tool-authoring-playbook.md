@@ -56,7 +56,10 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
   - For standard domain table flows, prefer `ExecuteDomainRowsViewTool(...)` so required-domain parsing stays centralized.
   - For metadata, prefer `AddDomainAndMaxResultsMeta(...)` when applicable.
 - System/EventLog/FileSystem tools:
-  - Keep argument limits option-bounded (`ResolveBoundedOptionLimit`/`ResolveMaxResults`).
+  - Keep argument limits option-bounded by default (`ResolveBoundedOptionLimit` / package `ResolveMaxResults`).
+  - In EventLog tools, use explicit helpers to avoid semantic drift:
+    - `ResolveOptionBoundedMaxResults(...)` for option-bounded `max_results`.
+    - `ResolveCappedMaxResults(...)` only when you need an explicit default/cap different from package options.
   - For non-positive semantics, use canonical `ToolArgs.GetOptionBoundedInt32(..., nonPositiveBehavior, defaultValue)` instead of mixing ad-hoc helper variants.
   - Keep error mapping centralized in package base helpers.
 
