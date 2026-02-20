@@ -79,6 +79,7 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
   - `IXTOOL002` for AD required-domain helper contract.
   - `IXTOOL003` for max-results metadata helper contract (`AddMaxResultsMeta(...)`).
   - `IXTOOL004` for canonical option-bounded max-results helper usage (`ToolArgs.GetOptionBoundedInt32(...)` with explicit non-positive behavior).
+  - `IXTOOL005` for explicit EventLog max-results helper semantics (`ResolveOptionBoundedMaxResults(...)` / `ResolveCappedMaxResults(...)`).
 
 ## New Tool Checklist
 1. Define `ToolDefinition` with strict schema (`Required(...)`, `NoAdditionalProperties()`).

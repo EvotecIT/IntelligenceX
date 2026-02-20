@@ -20,6 +20,7 @@ internal static partial class AnalyzeRunCommand {
     private const string InternalAdRequiredDomainHelperRuleId = "IXTOOL002";
     private const string InternalMaxResultsMetaHelperRuleId = "IXTOOL003";
     private const string InternalCanonicalBoundedIntHelperRuleId = "IXTOOL004";
+    private const string InternalEventLogMaxResultsHelperRuleId = "IXTOOL005";
     private const string DuplicationWindowLinesTagPrefix = "dup-window-lines:";
     private const string MaxDuplicationPercentTagPrefix = "max-duplication-percent:";
     private const string MaxDuplicationPercentByLanguageTagPrefix = "max-duplication-percent-";
@@ -89,6 +90,10 @@ internal static partial class AnalyzeRunCommand {
         new(IsCanonicalBoundedIntHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunCanonicalBoundedIntHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
+                Array.Empty<DuplicationRuleMetrics>())),
+        new(IsEventLogMaxResultsHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+            new InternalMaintainabilityResult(
+                RunEventLogMaxResultsHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>()))
     };
     private static readonly Regex PowerShellTokenRegex = new(
@@ -727,6 +732,13 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
         return rule.Id.Equals(InternalCanonicalBoundedIntHelperRuleId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEventLogMaxResultsHelperRule(AnalysisRule rule) {
+        if (rule is null) {
+            return false;
+        }
+        return rule.Id.Equals(InternalEventLogMaxResultsHelperRuleId, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class SourceFileEntry {

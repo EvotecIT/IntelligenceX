@@ -7,6 +7,7 @@ internal static partial class Program {
         Directory.CreateDirectory(Path.Combine(workspacePath, "Analysis", "Catalog", "rules", "internal"));
         Directory.CreateDirectory(Path.Combine(workspacePath, "Analysis", "Packs"));
         Directory.CreateDirectory(Path.Combine(workspacePath, "IntelligenceX.Tools", "IntelligenceX.Tools.Sample"));
+        Directory.CreateDirectory(Path.Combine(workspacePath, "IntelligenceX.Tools", "IntelligenceX.Tools.EventLog"));
 
         File.WriteAllText(Path.Combine(workspacePath, ".intelligencex", "reviewer.json"), """
 {
@@ -42,11 +43,18 @@ internal static partial class Program {
             description:
             "Flags tool source that still uses ToolArgs.GetPositiveOptionBoundedInt32OrDefault(...) instead of the canonical ToolArgs.GetOptionBoundedInt32(...) overload.");
 
+        WriteToolContractRule(
+            workspacePath,
+            ruleId: "IXTOOL005",
+            title: "EventLog tools should use explicit max-results helper semantics",
+            description:
+            "Flags EventLog tool source that uses ambiguous max_results helper paths instead of explicit ResolveOptionBoundedMaxResults(...) or ResolveCappedMaxResults(...).");
+
         File.WriteAllText(Path.Combine(workspacePath, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
 {
   "id": "intelligencex-maintainability-default",
   "label": "IntelligenceX Maintainability",
-  "rules": ["IXTOOL001", "IXTOOL002", "IXTOOL003", "IXTOOL004"]
+  "rules": ["IXTOOL001", "IXTOOL002", "IXTOOL003", "IXTOOL004", "IXTOOL005"]
 }
 """);
     }

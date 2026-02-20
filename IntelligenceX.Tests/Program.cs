@@ -647,6 +647,16 @@ internal static partial class Program {
             TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolArgsImplementationFile);
         failed += Run("Analyze run internal canonical bounded-int helper rule ignores IntelligenceX.Tools.Tests project",
             TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolsTestsProject);
+        failed += Run("Analyze run internal EventLog max-results helper rule flags bounded max_results path",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleFlagsBoundedMaxResultsPath);
+        failed += Run("Analyze run internal EventLog max-results helper rule flags legacy ResolveMaxResults path",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleFlagsLegacyResolveMaxResults);
+        failed += Run("Analyze run internal EventLog max-results helper rule accepts explicit EventLog helpers",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleAcceptsExplicitEventLogHelpers);
+        failed += Run("Analyze run internal EventLog max-results helper rule allows bounded helper for non-max_results args",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleAllowsBoundedOptionForNonMaxResultsArgs);
+        failed += Run("Analyze run internal EventLog max-results helper rule ignores non-EventLog tools",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleIgnoresNonEventLogTools);
         failed += Run("Analyze run internal maintainability warns on unmapped internal rule",
             TestAnalyzeRunInternalMaintainabilityWarnsOnUnmappedInternalRule);
         failed += Run("Analyze run internal maintainability warns on ambiguous internal rule match",
