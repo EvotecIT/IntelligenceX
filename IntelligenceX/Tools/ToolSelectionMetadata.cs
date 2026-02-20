@@ -9,6 +9,8 @@ namespace IntelligenceX.Tools;
 /// Provides centralized tool-selection metadata enrichment for routing hints.
 /// </summary>
 public static class ToolSelectionMetadata {
+    private const string DefaultCategory = "general";
+
     private sealed class ExplicitSelectionOverride {
         public ExplicitSelectionOverride(
             string? category,
@@ -47,10 +49,10 @@ public static class ToolSelectionMetadata {
         /// Initializes a new routing taxonomy descriptor.
         /// </summary>
         public ToolSelectionRoutingInfo(string scope, string operation, string entity, string risk, bool isExplicit) {
-            Scope = string.IsNullOrWhiteSpace(scope) ? "general" : scope.Trim();
-            Operation = string.IsNullOrWhiteSpace(operation) ? "read" : operation.Trim();
-            Entity = string.IsNullOrWhiteSpace(entity) ? "resource" : entity.Trim();
-            Risk = string.IsNullOrWhiteSpace(risk) ? "low" : risk.Trim();
+            Scope = NormalizeToken(scope, "general");
+            Operation = NormalizeToken(operation, "read");
+            Entity = NormalizeToken(entity, "resource");
+            Risk = NormalizeToken(risk, "low");
             IsExplicit = isExplicit;
         }
 
@@ -234,9 +236,9 @@ public static class ToolSelectionMetadata {
         }
 
         var explicitOverride = GetExplicitOverride(definition);
-        var category = string.IsNullOrWhiteSpace(definition.Category)
+        var category = NormalizeCategory(string.IsNullOrWhiteSpace(definition.Category)
             ? (explicitOverride?.Category ?? InferCategory(definition.Name, toolType))
-            : definition.Category;
+            : definition.Category);
         var routing = ResolveRouting(definition, category, explicitOverride);
         var tags = BuildSelectionTags(definition, category, routing, explicitOverride);
 
@@ -267,9 +269,9 @@ public static class ToolSelectionMetadata {
         }
 
         var explicitOverride = GetExplicitOverride(definition);
-        var category = string.IsNullOrWhiteSpace(definition.Category)
+        var category = NormalizeCategory(string.IsNullOrWhiteSpace(definition.Category)
             ? (explicitOverride?.Category ?? InferCategory(definition.Name, toolType))
-            : definition.Category;
+            : definition.Category);
         return ResolveRouting(definition, category, explicitOverride);
     }
 
@@ -542,7 +544,7 @@ public static class ToolSelectionMetadata {
                 return;
             }
 
-            var normalized = (value ?? string.Empty).Trim();
+            var normalized = NormalizeToken(value, fallback: string.Empty);
             if (normalized.Length == 0) {
                 return;
             }
@@ -606,6 +608,20 @@ public static class ToolSelectionMetadata {
         }
 
         return tags.Count == 0 ? Array.Empty<string>() : tags.ToArray();
+    }
+
+    private static string NormalizeCategory(string? value) {
+        var normalized = NormalizeToken(value, fallback: string.Empty);
+        return normalized.Length == 0 ? DefaultCategory : normalized;
+    }
+
+    private static string NormalizeToken(string? value, string fallback) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return fallback;
+        }
+
+        return normalized.ToLowerInvariant();
     }
 
     private static bool HasAnyProperty(JsonObject? schema, IReadOnlyList<string> propertyNames) {

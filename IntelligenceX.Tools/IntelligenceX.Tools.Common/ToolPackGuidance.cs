@@ -258,10 +258,9 @@ public sealed class ToolPackToolCatalogEntryModel {
     public string? DisplayName { get; init; }
 
     /// <summary>
-    /// Optional category for routing/scoping.
+    /// Category for routing/scoping.
     /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public string? Category { get; init; }
+    public string Category { get; init; } = "general";
 
     /// <summary>
     /// Selection tags exposed by tool definition metadata.
@@ -594,10 +593,8 @@ public static class ToolPackGuidance {
                 DisplayName = string.IsNullOrWhiteSpace(enrichedDefinition.DisplayName)
                     ? null
                     : enrichedDefinition.DisplayName.Trim(),
-                Category = string.IsNullOrWhiteSpace(enrichedDefinition.Category)
-                    ? null
-                    : enrichedDefinition.Category.Trim(),
-                Tags = NormalizeValues(enrichedDefinition.Tags),
+                Category = NormalizeCategory(enrichedDefinition.Category),
+                Tags = NormalizeTags(enrichedDefinition.Tags),
                 Routing = new ToolPackToolRoutingModel {
                     Scope = routing.Scope,
                     Operation = routing.Operation,
@@ -831,8 +828,8 @@ public static class ToolPackGuidance {
             list.Add(new ToolPackToolCatalogEntryModel {
                 Name = name,
                 DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? null : entry.DisplayName.Trim(),
-                Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
-                Tags = NormalizeValues(entry.Tags),
+                Category = NormalizeCategory(entry.Category),
+                Tags = NormalizeTags(entry.Tags),
                 Routing = NormalizeRouting(entry.Routing),
                 Description = entry.Description?.Trim() ?? string.Empty,
                 RequiredArguments = NormalizeValues(entry.RequiredArguments),
@@ -903,11 +900,15 @@ public static class ToolPackGuidance {
             return new ToolPackToolRoutingModel();
         }
 
-        var scope = string.IsNullOrWhiteSpace(routing.Scope) ? "general" : routing.Scope.Trim();
-        var operation = string.IsNullOrWhiteSpace(routing.Operation) ? "read" : routing.Operation.Trim();
-        var entity = string.IsNullOrWhiteSpace(routing.Entity) ? "resource" : routing.Entity.Trim();
-        var risk = string.IsNullOrWhiteSpace(routing.Risk) ? "low" : routing.Risk.Trim();
-        var source = string.IsNullOrWhiteSpace(routing.Source) ? "inferred" : routing.Source.Trim();
+        var scope = NormalizeRoutingToken(routing.Scope, "general");
+        var operation = NormalizeRoutingToken(routing.Operation, "read");
+        var entity = NormalizeRoutingToken(routing.Entity, "resource");
+        var risk = NormalizeRoutingToken(routing.Risk, "low");
+        var source = NormalizeRoutingToken(routing.Source, "inferred");
+        if (!string.Equals(source, "explicit", StringComparison.Ordinal) &&
+            !string.Equals(source, "inferred", StringComparison.Ordinal)) {
+            source = "inferred";
+        }
 
         return new ToolPackToolRoutingModel {
             Scope = scope,
@@ -916,6 +917,46 @@ public static class ToolPackGuidance {
             Risk = risk,
             Source = source
         };
+    }
+
+    private static string NormalizeCategory(string? category) {
+        var normalized = (category ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "general";
+        }
+
+        return normalized.ToLowerInvariant();
+    }
+
+    private static IReadOnlyList<string> NormalizeTags(IEnumerable<string>? tags) {
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tag in tags ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(tag)) {
+                continue;
+            }
+
+            var normalized = tag.Trim().ToLowerInvariant();
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+
+        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+    }
+
+    private static string NormalizeRoutingToken(string? value, string fallback) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return fallback;
+        }
+
+        return normalized.ToLowerInvariant();
     }
 
     private static ToolPackToolTraitsModel NormalizeTraits(ToolPackToolTraitsModel? traits) {

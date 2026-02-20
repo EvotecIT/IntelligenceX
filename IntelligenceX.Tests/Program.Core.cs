@@ -248,7 +248,13 @@ internal static partial class Program {
         AssertEqual("system_info", aliasDef.AliasOf, "aliasOf");
         AssertEqual("system_info", aliasDef.CanonicalName, "canonical name");
         AssertEqual("Read host details", aliasDef.Description, "alias description");
-        AssertSequenceEqual(new[] { "system", "inventory", "host" }, aliasDef.Tags.ToArray(), "alias merged tags");
+        AssertEqual(true, aliasDef.Tags.Contains("system", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical tag");
+        AssertEqual(true, aliasDef.Tags.Contains("inventory", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical custom tag");
+        AssertEqual(true, aliasDef.Tags.Contains("host", StringComparer.OrdinalIgnoreCase), "alias merged tags include alias tag");
+        AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("scope:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include scope taxonomy");
+        AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("operation:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include operation taxonomy");
+        AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("entity:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include entity taxonomy");
+        AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("risk:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include risk taxonomy");
     }
 
     private static void TestToolRunnerMaxRounds() {

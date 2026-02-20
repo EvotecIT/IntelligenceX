@@ -297,6 +297,34 @@ public class ToolPackGuidanceTests {
         Assert.Equal("inferred", item.Routing.Source);
     }
 
+    [Fact]
+    public void CatalogFromTools_ShouldDefaultCategoryAndNormalizeTagsAndRoutingCase() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "custom_probe",
+                "Custom probe",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String()),
+                        ("max_results", ToolSchema.Integer()))
+                    .NoAdditionalProperties(),
+                category: "  ",
+                tags: new[] { "Tag", "tag", "TAG", "MixedCase" }))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.Equal("general", item.Category);
+        Assert.Contains("tag", item.Tags);
+        Assert.Contains("mixedcase", item.Tags);
+        Assert.Equal(1, item.Tags.Count(static x => string.Equals(x, "tag", StringComparison.Ordinal)));
+        Assert.All(item.Tags, static x => Assert.Equal(x.ToLowerInvariant(), x));
+
+        Assert.Equal("host", item.Routing.Scope);
+        Assert.Equal("probe", item.Routing.Operation);
+        Assert.Equal("resource", item.Routing.Entity);
+        Assert.Equal("low", item.Routing.Risk);
+        Assert.Equal("inferred", item.Routing.Source);
+    }
+
     private sealed class StubTool : ITool {
         public StubTool(ToolDefinition definition) {
             Definition = definition;
