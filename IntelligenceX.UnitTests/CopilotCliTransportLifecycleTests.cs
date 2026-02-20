@@ -125,8 +125,7 @@ public sealed class CopilotCliTransportLifecycleTests {
     private static async Task<bool> WaitUntilDisposedAsync(CopilotCliTransport transport, TimeSpan timeout) {
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < timeout) {
-            var ex = await Record.ExceptionAsync(() => transport.LogoutAsync(CancellationToken.None));
-            if (ex is ObjectDisposedException) {
+            if (ReadDisposeState(transport) != 0) {
                 return true;
             }
 
@@ -134,5 +133,12 @@ public sealed class CopilotCliTransportLifecycleTests {
         }
 
         return false;
+    }
+
+    private static int ReadDisposeState(CopilotCliTransport transport) {
+        var field = typeof(CopilotCliTransport).GetField("_disposeState", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        var value = field!.GetValue(transport);
+        return Assert.IsType<int>(value);
     }
 }

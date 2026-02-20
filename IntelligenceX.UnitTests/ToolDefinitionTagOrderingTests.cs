@@ -152,6 +152,49 @@ public sealed class ToolDefinitionTagOrderingTests {
         AssertSingleTaxonomyTag(alias.Tags, "scope:");
     }
 
+    [Fact]
+    public void CreateAliasDefinition_ShouldApplyCaseInsensitiveTaxonomyOverrides_AcrossAllKeys() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: null,
+                tags: new[] {
+                    "scope:general",
+                    "operation:probe",
+                    "entity:resource",
+                    "risk:low",
+                    "routing:inferred"
+                }),
+            toolType: null);
+
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias",
+            tags: new[] {
+                "SCOPE:DOMAIN",
+                "Operation:Search",
+                "ENTITY:directory_object",
+                "RISK:HIGH",
+                "ROUTING:EXPLICIT"
+            });
+
+        Assert.Contains("scope:domain", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("operation:search", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("operation:probe", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:directory_object", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:high", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "scope:");
+        AssertSingleTaxonomyTag(alias.Tags, "operation:");
+        AssertSingleTaxonomyTag(alias.Tags, "entity:");
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "routing:");
+    }
+
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
         Assert.Equal(
             1,
