@@ -609,6 +609,14 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderMarkerSupportsHashComments);
         failed += Run("Analyze run internal maintainability supports multiple rules",
             TestAnalyzeRunInternalMaintainabilitySupportsMultipleRules);
+        failed += Run("Analyze run internal maintainability helper rejects empty rule id",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyRuleId);
+        failed += Run("Analyze run internal maintainability helper rejects empty path suffix",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyPathSuffix);
+        failed += Run("Analyze run internal maintainability helper rejects empty assertion message",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyAssertionMessage);
+        failed += Run("Analyze run internal maintainability helper rejects null findings",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectNullFindings);
         failed += Run("Analyze run internal write-tool schema rule flags missing helpers",
             TestAnalyzeRunInternalWriteToolSchemaRuleFlagsMissingHelpers);
         failed += Run("Analyze run internal write-tool schema rule accepts canonical helpers",
