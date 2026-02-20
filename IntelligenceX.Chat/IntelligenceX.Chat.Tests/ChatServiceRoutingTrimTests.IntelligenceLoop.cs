@@ -189,6 +189,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("Potential issues to verify", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Recommended next fixes", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Signal <text> -> Why it matters: <text> -> Next action: <text>", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Fix action: <text>", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("exactly one space after each colon", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not use `*` or `**` inside the signal chain", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"<label>: <text>\"", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hidden regressions", text, StringComparison.OrdinalIgnoreCase);
     }
 
