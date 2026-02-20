@@ -657,6 +657,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalEventLogMaxResultsHelperRuleAllowsBoundedOptionForNonMaxResultsArgs);
         failed += Run("Analyze run internal EventLog max-results helper rule ignores non-EventLog tools",
             TestAnalyzeRunInternalEventLogMaxResultsHelperRuleIgnoresNonEventLogTools);
+        failed += Run("Analyze run internal maintainability resolves canonical rule-id registration",
+            TestAnalyzeRunInternalMaintainabilityResolvesCanonicalRuleIdRegistration);
         failed += Run("Analyze run internal maintainability warns on unmapped internal rule",
             TestAnalyzeRunInternalMaintainabilityWarnsOnUnmappedInternalRule);
         failed += Run("Analyze run internal maintainability warns on ambiguous internal rule match",
