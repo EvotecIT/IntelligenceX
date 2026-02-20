@@ -70,6 +70,7 @@ Catalog layout:
 - `Analysis/Catalog/rules/internal/IXTOOL002.json`
 - `Analysis/Catalog/rules/internal/IXTOOL003.json`
 - `Analysis/Catalog/rules/internal/IXTOOL004.json`
+- `Analysis/Catalog/rules/internal/IXTOOL005.json`
 - `Analysis/Catalog/overrides/csharp/CA5350.json` (optional, IntelligenceX-specific overlay)
 
 Example rule file:
@@ -185,8 +186,9 @@ Current built-in runners in `analyze run`:
   - `IXTOOL002` checks AD `ToolDefinition` registrations with required `domain_name` and flags tools that do not use canonical required-domain helper paths.
   - `IXTOOL003` checks tool source files under `IntelligenceX.Tools/**` and flags direct `max_results` metadata writes (for example `meta.Add("max_results", ...)` or `meta["max_results"] = ...`) instead of `AddMaxResultsMeta(...)`.
   - `IXTOOL004` checks tool source files under `IntelligenceX.Tools/**` (excluding `IntelligenceX.Tools/IntelligenceX.Tools.Tests/**` and `IntelligenceX.Tools/IntelligenceX.Tools.Common/ToolArgs.cs`) and flags legacy `ToolArgs.GetPositiveOptionBoundedInt32OrDefault(...)` usage instead of the canonical `ToolArgs.GetOptionBoundedInt32(...)` overload with explicit non-positive behavior.
+  - `IXTOOL005` checks EventLog tool source files under `IntelligenceX.Tools/IntelligenceX.Tools.EventLog/**` and flags ambiguous `max_results` helper paths (`ResolveBoundedOptionLimit(..., "max_results", ...)` and `ResolveMaxResults(...)`) instead of explicit `ResolveOptionBoundedMaxResults(...)` or `ResolveCappedMaxResults(...)`.
   - Internal maintainability checks support `include-ext:<extension>` tags to scope analyzed file extensions per rule (default: `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`).
-  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json`, `Analysis/Catalog/rules/internal/IXDUP001.json`, `Analysis/Catalog/rules/internal/IXTOOL001.json`, `Analysis/Catalog/rules/internal/IXTOOL002.json`, `Analysis/Catalog/rules/internal/IXTOOL003.json`, and `Analysis/Catalog/rules/internal/IXTOOL004.json`).
+  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json`, `Analysis/Catalog/rules/internal/IXDUP001.json`, `Analysis/Catalog/rules/internal/IXTOOL001.json`, `Analysis/Catalog/rules/internal/IXTOOL002.json`, `Analysis/Catalog/rules/internal/IXTOOL003.json`, `Analysis/Catalog/rules/internal/IXTOOL004.json`, and `Analysis/Catalog/rules/internal/IXTOOL005.json`).
   - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
   - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.
   - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
@@ -244,7 +246,8 @@ If you enable `intelligencex-maintainability-default` in an existing repository,
 `IXTOOL002` defaults to `warning` severity and is intended to keep required-domain AD tools aligned with canonical request helper paths.
 `IXTOOL003` defaults to `warning` severity and is intended to keep `max_results` metadata writes centralized through `AddMaxResultsMeta(...)`.
 `IXTOOL004` defaults to `warning` severity and is intended to keep option-bounded max-results normalization on the canonical helper path.
-To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001","IXTOOL002","IXTOOL003","IXTOOL004"]`).
+`IXTOOL005` defaults to `warning` severity and is intended to keep EventLog `max_results` helper semantics explicit and stable.
+To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001","IXTOOL002","IXTOOL003","IXTOOL004","IXTOOL005"]`).
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 
