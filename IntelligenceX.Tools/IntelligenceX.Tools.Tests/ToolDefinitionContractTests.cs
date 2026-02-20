@@ -337,6 +337,28 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void CreateAliasDefinition_ShouldApplyCaseInsensitiveTaxonomyOverrides() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "alpha" }),
+            toolType: null);
+
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias",
+            tags: new[] { "RISK:LOW", "risk:high", "ROUTING:EXPLICIT", "routing:explicit" });
+
+        Assert.Contains("risk:high", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "routing:");
+    }
+
+    [Fact]
     public void Register_WithReplaceExisting_ShouldPreserveSingleTaxonomyTagPerKey() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
