@@ -99,6 +99,34 @@ internal static partial class Program {
 
             for (var i = 0; i < args.Length; i++) {
                 var a = args[i] ?? string.Empty;
+
+                (bool Success, string? Value, string? Error) ConsumeRuntimePolicyValue() {
+                    return TryGetValue(args, ref i, out var value, out var valueError)
+                        ? (true, value, null)
+                        : (false, null, valueError);
+                }
+
+                if (!ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+                        argument: a,
+                        consumeValue: ConsumeRuntimePolicyValue,
+                        setWriteGovernanceMode: mode => options.WriteGovernanceMode = mode,
+                        setRequireWriteGovernanceRuntime: required => options.RequireWriteGovernanceRuntime = required,
+                        setRequireWriteAuditSinkForWriteOperations: required => options.RequireWriteAuditSinkForWriteOperations = required,
+                        setWriteAuditSinkMode: mode => options.WriteAuditSinkMode = mode,
+                        setWriteAuditSinkPath: path => options.WriteAuditSinkPath = path,
+                        setAuthenticationRuntimePreset: preset => options.AuthenticationRuntimePreset = preset,
+                        setRequireAuthenticationRuntime: required => options.RequireAuthenticationRuntime = required,
+                        setRunAsProfilePath: path => options.RunAsProfilePath = path,
+                        setAuthenticationProfilePath: path => options.AuthenticationProfilePath = path,
+                        handled: out var runtimePolicyHandled,
+                        error: out error)) {
+                    return options;
+                }
+
+                if (runtimePolicyHandled) {
+                    continue;
+                }
+
                 switch (a) {
                     case "-h":
                     case "--help":
@@ -265,72 +293,6 @@ internal static partial class Program {
                         break;
                     case "--no-default-plugin-paths":
                         options.EnableDefaultPluginPaths = false;
-                        break;
-                    case "--write-governance-mode":
-                        if (!TryGetValue(args, ref i, out var writeGovernanceModeValue, out error)) {
-                            return options;
-                        }
-                        if (!ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(writeGovernanceModeValue, out var writeGovernanceMode)) {
-                            error = ToolRuntimePolicyBootstrap.WriteGovernanceModeParseError;
-                            return options;
-                        }
-                        options.WriteGovernanceMode = writeGovernanceMode;
-                        break;
-                    case "--require-write-governance-runtime":
-                        options.RequireWriteGovernanceRuntime = true;
-                        break;
-                    case "--no-require-write-governance-runtime":
-                        options.RequireWriteGovernanceRuntime = false;
-                        break;
-                    case "--require-write-audit-sink":
-                        options.RequireWriteAuditSinkForWriteOperations = true;
-                        break;
-                    case "--no-require-write-audit-sink":
-                        options.RequireWriteAuditSinkForWriteOperations = false;
-                        break;
-                    case "--write-audit-sink-mode":
-                        if (!TryGetValue(args, ref i, out var writeAuditSinkModeValue, out error)) {
-                            return options;
-                        }
-                        if (!ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(writeAuditSinkModeValue, out var writeAuditSinkMode)) {
-                            error = ToolRuntimePolicyBootstrap.WriteAuditSinkModeParseError;
-                            return options;
-                        }
-                        options.WriteAuditSinkMode = writeAuditSinkMode;
-                        break;
-                    case "--write-audit-sink-path":
-                        if (!TryGetValue(args, ref i, out var writeAuditSinkPath, out error)) {
-                            return options;
-                        }
-                        options.WriteAuditSinkPath = writeAuditSinkPath;
-                        break;
-                    case "--auth-runtime-preset":
-                        if (!TryGetValue(args, ref i, out var authRuntimePresetValue, out error)) {
-                            return options;
-                        }
-                        if (!ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(authRuntimePresetValue, out var authRuntimePreset)) {
-                            error = ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError;
-                            return options;
-                        }
-                        options.AuthenticationRuntimePreset = authRuntimePreset;
-                        break;
-                    case "--require-auth-runtime":
-                        options.RequireAuthenticationRuntime = true;
-                        break;
-                    case "--no-require-auth-runtime":
-                        options.RequireAuthenticationRuntime = false;
-                        break;
-                    case "--run-as-profile-path":
-                        if (!TryGetValue(args, ref i, out var runAsProfilePath, out error)) {
-                            return options;
-                        }
-                        options.RunAsProfilePath = runAsProfilePath;
-                        break;
-                    case "--auth-profile-path":
-                        if (!TryGetValue(args, ref i, out var authenticationProfilePath, out error)) {
-                            return options;
-                        }
-                        options.AuthenticationProfilePath = authenticationProfilePath;
                         break;
                     case "--max-table-rows":
                         if (!TryGetValue(args, ref i, out var maxRows, out error)) {

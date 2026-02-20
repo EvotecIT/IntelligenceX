@@ -122,6 +122,91 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Equal("--auth-runtime-preset must be one of: default, strict, lab.", ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError);
     }
 
+    [Fact]
+    public void TryApplyRuntimePolicyCliArgument_AppliesWriteGovernanceMode() {
+        var writeMode = ToolWriteGovernanceMode.Enforced;
+        var requireWriteRuntime = true;
+        var requireWriteAuditSink = false;
+        var writeAuditSinkMode = ToolWriteAuditSinkMode.None;
+        string? writeAuditSinkPath = null;
+        var authPreset = ToolAuthenticationRuntimePreset.Default;
+        var requireAuthRuntime = false;
+        string? runAsProfilePath = null;
+        string? authProfilePath = null;
+
+        var ok = ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+            argument: "--write-governance-mode",
+            consumeValue: static () => (true, "yolo", null),
+            setWriteGovernanceMode: mode => writeMode = mode,
+            setRequireWriteGovernanceRuntime: required => requireWriteRuntime = required,
+            setRequireWriteAuditSinkForWriteOperations: required => requireWriteAuditSink = required,
+            setWriteAuditSinkMode: mode => writeAuditSinkMode = mode,
+            setWriteAuditSinkPath: path => writeAuditSinkPath = path,
+            setAuthenticationRuntimePreset: preset => authPreset = preset,
+            setRequireAuthenticationRuntime: required => requireAuthRuntime = required,
+            setRunAsProfilePath: path => runAsProfilePath = path,
+            setAuthenticationProfilePath: path => authProfilePath = path,
+            handled: out var handled,
+            error: out var error);
+
+        Assert.True(ok);
+        Assert.True(handled);
+        Assert.Null(error);
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, writeMode);
+        Assert.True(requireWriteRuntime);
+        Assert.False(requireWriteAuditSink);
+        Assert.Equal(ToolWriteAuditSinkMode.None, writeAuditSinkMode);
+        Assert.Null(writeAuditSinkPath);
+        Assert.Equal(ToolAuthenticationRuntimePreset.Default, authPreset);
+        Assert.False(requireAuthRuntime);
+        Assert.Null(runAsProfilePath);
+        Assert.Null(authProfilePath);
+    }
+
+    [Fact]
+    public void TryApplyRuntimePolicyCliArgument_InvalidAuthPreset_ReturnsCanonicalError() {
+        var ok = ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+            argument: "--auth-runtime-preset",
+            consumeValue: static () => (true, "invalid", null),
+            setWriteGovernanceMode: static _ => { },
+            setRequireWriteGovernanceRuntime: static _ => { },
+            setRequireWriteAuditSinkForWriteOperations: static _ => { },
+            setWriteAuditSinkMode: static _ => { },
+            setWriteAuditSinkPath: static _ => { },
+            setAuthenticationRuntimePreset: static _ => { },
+            setRequireAuthenticationRuntime: static _ => { },
+            setRunAsProfilePath: static _ => { },
+            setAuthenticationProfilePath: static _ => { },
+            handled: out var handled,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.True(handled);
+        Assert.Equal(ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError, error);
+    }
+
+    [Fact]
+    public void TryApplyRuntimePolicyCliArgument_UnknownArgument_IsNotHandled() {
+        var ok = ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+            argument: "--not-runtime-policy",
+            consumeValue: static () => throw new InvalidOperationException("consumeValue should not be called."),
+            setWriteGovernanceMode: static _ => { },
+            setRequireWriteGovernanceRuntime: static _ => { },
+            setRequireWriteAuditSinkForWriteOperations: static _ => { },
+            setWriteAuditSinkMode: static _ => { },
+            setWriteAuditSinkPath: static _ => { },
+            setAuthenticationRuntimePreset: static _ => { },
+            setRequireAuthenticationRuntime: static _ => { },
+            setRunAsProfilePath: static _ => { },
+            setAuthenticationProfilePath: static _ => { },
+            handled: out var handled,
+            error: out var error);
+
+        Assert.True(ok);
+        Assert.False(handled);
+        Assert.Null(error);
+    }
+
     private static void TryDelete(string path) {
         try {
             if (File.Exists(path)) {
