@@ -15,9 +15,11 @@
 - [x] Add AD scope-discovery helper (`ad_scope_discovery`) with naming contexts, DC/domain scope, and probe receipt output.
 - [x] Extend AD handoff helper output with first-class `ad_scope_discovery` target arguments (`discovery_fallback`, derived domain, DC seeds).
 - [x] Keep detailed checklist in `InternalDocs/backlogs/eventlog-ad-correlation-e2e.md`.
+- [x] Keep current EventViewerX/ADPlayground coverage map in `InternalDocs/backlogs/eventlog-ad-tool-gap-matrix.md`.
 
 ## Remaining Platform Tasks
 
+- [x] Add AD query wrappers for service-account and dormant-account hygiene (`ad_service_account_usage`, `ad_never_logged_in_accounts`) with safe caps and structured JSON.
 - [ ] Implement remaining `IntelligenceX.Tools.EventLog` EVTX parsing tools (EventViewerX) with safe-by-default limits and structured JSON output.
 - [ ] Implement remaining `IntelligenceX.Tools.ADPlayground` query tools (ADPlayground) with safe-by-default limits and structured JSON output.
 - [ ] Decide packaging split for Windows-only capabilities (separate `net*-windows` pack vs runtime OS checks).

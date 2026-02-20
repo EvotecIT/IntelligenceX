@@ -666,6 +666,18 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_never_logged_in_accounts",
+            new[] { "domain_name", "grace_period_days", "reference_time_utc", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
+            "ad_service_account_usage",
+            new[] { "domain_name", "account_type", "used_only", "some_computers_stale_only", "all_computers_stale_only", "include_principals", "include_principal_infos", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_name" }
+        };
+
+        yield return new object[] {
             "ad_spn_stats",
             new[] { "spn_contains", "spn_exact", "kind", "enabled_only", "search_base_dn", "domain_controller", "max_results", "max_service_classes", "max_hosts", "include_examples", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

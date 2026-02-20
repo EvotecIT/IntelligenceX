@@ -116,6 +116,8 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdPrivilegedGroupsSummaryTool(options);
         yield return new AdDomainAdminsSummaryTool(options);
         yield return new AdStaleAccountsTool(options);
+        yield return new AdNeverLoggedInAccountsTool(options);
+        yield return new AdServiceAccountUsageTool(options);
         yield return new AdKrbtgtHealthTool(options);
         yield return new AdLdapQueryTool(options);
         yield return new AdLdapQueryPagedTool(options);
