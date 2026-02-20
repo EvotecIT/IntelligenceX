@@ -182,6 +182,12 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             Truncated: truncated,
             Events: rows);
 
+        var entityHandoff = EventLogEntityHandoff.BuildFromRows(
+            rows: rows,
+            whoSelector: static row => row.Who,
+            objectAffectedSelector: static row => row.ObjectAffected,
+            computerSelector: static row => row.Computer);
+
         return BuildAutoTableResponse(
             arguments: arguments,
             model: result,
@@ -224,6 +230,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 if (timePeriod.HasValue) {
                     meta.Add("time_period", EventLogNamedEventsQueryShared.ToSnakeCase(timePeriod.Value.ToString()));
                 }
+                meta.Add("entity_handoff", entityHandoff);
             });
     }
 

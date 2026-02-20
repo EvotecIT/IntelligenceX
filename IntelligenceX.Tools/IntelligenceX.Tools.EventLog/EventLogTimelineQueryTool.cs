@@ -179,6 +179,12 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             return ToolResponse.Error("query_failed", "Timeline query failed.");
         }
 
+        var entityHandoff = EventLogEntityHandoff.BuildFromRows(
+            rows: result.Timeline,
+            whoSelector: static row => row.Who,
+            objectAffectedSelector: static row => row.ObjectAffected,
+            computerSelector: static row => row.Computer);
+
         return BuildAutoTableResponse(
             arguments: context.Arguments,
             model: result,
@@ -232,6 +238,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(context.Request.CorrelationProfile)) {
                     meta.Add("correlation_profile", context.Request.CorrelationProfile);
                 }
+                meta.Add("entity_handoff", entityHandoff);
             });
     }
 
