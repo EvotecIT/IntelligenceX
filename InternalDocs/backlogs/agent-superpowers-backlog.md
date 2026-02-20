@@ -37,7 +37,7 @@ Tracking note: detailed EventLog -> AD handoff execution plan lives in `Internal
 - [x] (P0) Ensure EventLog tool pack exposes live query and stats tools when enabled (top-N events, filter, time window).
 - [x] (P0) Add a single "top events" tool (channel, provider, level, since, max events) with compact JSON output.
 - [x] (P0) Add an EVTX-local query workflow: find EVTX, query, and summarize (no remote assumptions).
-- [ ] (P0) Add explicit "remote vs local" error envelopes with next actions (export EVTX, enable live query, provide creds).
+- [x] (P0) Add explicit "remote vs local" error envelopes with next actions (export EVTX, enable live query, provide creds).
 - [x] (P0) Add end-to-end test path: `eventlog_*` `meta.entity_handoff` -> AD helper input -> AD resolution flow.
 - [x] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
 - [x] (P1) Add EventLog -> AD correlation examples (local and remote) with reusable correlation profiles/keys.
@@ -72,7 +72,7 @@ about what scope it actually achieved, and offer the correct next step.
 - [ ] (P2) Add tool-level "explain" endpoints (examples, common filters, expected runtime, output schema).
 
 ## Parallelizable Work (Dev Plan)
-- [ ] (dev-parallel) EventLog: live query + top-N tool + error envelopes.
+- [x] (dev-parallel) EventLog: live query + top-N tool + error envelopes.
 - [ ] (dev-parallel) ADPlayground/TestimoX: forest discovery + scope receipts + forest bundle.
 - [ ] (dev-parallel) ComputerX: services/process/network bundles (read-only first).
 - [ ] (dev-parallel) Chat engine: tool receipt enforcement + capability handshake + scheduler.

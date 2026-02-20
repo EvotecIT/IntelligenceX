@@ -182,7 +182,10 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         }
 
         if (!ok) {
-            return ErrorFromLiveQueryFailure(failure);
+            return ErrorFromLiveQueryFailure(
+                failure: failure,
+                machineName: machineName,
+                logName: logName);
         }
 
         var response = BuildAutoTableResponse(

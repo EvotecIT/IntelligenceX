@@ -92,7 +92,10 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
                 result: out var result,
                 failure: out var failure,
                 cancellationToken: cancellationToken)) {
-            return Task.FromResult(ErrorFromLiveStatsFailure(failure));
+            return Task.FromResult(ErrorFromLiveStatsFailure(
+                failure: failure,
+                machineName: machineName,
+                logName: logName));
         }
 
         var response = BuildAutoTableResponse(

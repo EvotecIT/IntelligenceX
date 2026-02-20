@@ -74,7 +74,10 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
                 result: out var root,
                 failure: out var failure,
                 cancellationToken: cancellationToken)) {
-            return Task.FromResult(ErrorFromLiveQueryFailure(failure));
+            return Task.FromResult(ErrorFromLiveQueryFailure(
+                failure: failure,
+                machineName: machineName,
+                logName: logName));
         }
 
         var response = BuildAutoTableResponse(

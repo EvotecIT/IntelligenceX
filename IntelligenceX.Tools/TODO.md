@@ -5,6 +5,7 @@
 - [x] EventLog pack ships live and EVTX query/stats/top-event tools with safe limits and structured JSON.
 - [x] EventLog pack ships reusable correlation/timeline tools (`eventlog_timeline_explain`, `eventlog_timeline_query`).
 - [x] EventLog timeline and named-events outputs emit structured `meta.entity_handoff` candidates.
+- [x] EventLog live tools and catalog/listing paths emit explicit remote-vs-local error envelopes with actionable hints.
 - [x] Add end-to-end tests: `eventlog_named_events_query` -> `meta.entity_handoff` -> AD helper input normalization.
 - [x] Add end-to-end tests: `eventlog_timeline_query` -> `meta.entity_handoff` -> AD helper input normalization.
 - [x] Add a small AD-side helper tool so EventLog handoff candidates are first-class AD inputs (less prompt glue).
