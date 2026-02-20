@@ -280,6 +280,20 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures transcript auto-follow detaches when users scroll away from live output,
+    /// so async visual rendering does not force-pin older readers back to the bottom.
+    /// </summary>
+    [Fact]
+    public void TranscriptRendering_UsesUserAwareFollowStateForAutoScroll() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("var transcriptFollowState = {", script, StringComparison.Ordinal);
+        Assert.Contains("transcript.addEventListener(\"scroll\", function()", script, StringComparison.Ordinal);
+        Assert.Contains("if (!transcriptFollowState.enabled) {", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures runtime UI keeps explicit manual model guidance and does not regress to legacy restart commands.
     /// </summary>
     [Fact]

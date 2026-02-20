@@ -298,13 +298,57 @@
     renderOptions();
   };
 
-  function isNearBottom(el) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  var transcriptFollowState = {
+    enabled: true,
+    suppressScrollEvent: false
+  };
+
+  function isNearBottom(el, thresholdPx) {
+    if (!el) {
+      return true;
+    }
+
+    var threshold = Number(thresholdPx);
+    if (!Number.isFinite(threshold)) {
+      threshold = 80;
+    }
+
+    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }
+
+  function setTranscriptScrollTop(top) {
+    transcriptFollowState.suppressScrollEvent = true;
+    transcript.scrollTop = top;
+    transcriptFollowState.suppressScrollEvent = false;
   }
 
   function scrollToBottom(el) {
+    if (!el) {
+      return;
+    }
+
+    if (el === transcript) {
+      transcriptFollowState.suppressScrollEvent = true;
+      el.scrollTop = el.scrollHeight;
+      transcriptFollowState.suppressScrollEvent = false;
+      transcriptFollowState.enabled = true;
+      return;
+    }
+
     el.scrollTop = el.scrollHeight;
   }
+
+  function refreshTranscriptFollowState() {
+    transcriptFollowState.enabled = isNearBottom(transcript, 16);
+  }
+
+  transcript.addEventListener("scroll", function() {
+    if (transcriptFollowState.suppressScrollEvent) {
+      return;
+    }
+    refreshTranscriptFollowState();
+  });
+  refreshTranscriptFollowState();
 
   window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
@@ -317,7 +361,7 @@
       }
       label.textContent = text + timelineSummary;
       el.classList.add("active");
-      if (isNearBottom(transcript)) {
+      if (transcriptFollowState.enabled && isNearBottom(transcript)) {
         scrollToBottom(transcript);
       }
     } else {
@@ -538,7 +582,7 @@
   var transcriptRenderRevision = 0;
 
   window.ixSetTranscript = function(html) {
-    var shouldStickBottom = isNearBottom(transcript);
+    var shouldStickBottom = transcriptFollowState.enabled;
     var previousTop = transcript.scrollTop;
     var stickAnchorTop = -1;
     var renderRevision = ++transcriptRenderRevision;
@@ -562,12 +606,16 @@
       scrollToBottom(transcript);
       stickAnchorTop = transcript.scrollTop;
     } else {
-      transcript.scrollTop = previousTop;
+      setTranscriptScrollTop(previousTop);
     }
 
     if (shouldStickBottom && visualRenderTask && typeof visualRenderTask.then === "function") {
       visualRenderTask.then(function() {
         if (renderRevision !== transcriptRenderRevision) {
+          return;
+        }
+
+        if (!transcriptFollowState.enabled) {
           return;
         }
 

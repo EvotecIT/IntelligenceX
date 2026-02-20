@@ -36,6 +36,28 @@
     return null;
   }
 
+  function isEditableWheelTarget(el) {
+    if (typeof isEditableElement === "function") {
+      return isEditableElement(el);
+    }
+
+    if (!el || !el.tagName) {
+      return false;
+    }
+
+    var tag = el.tagName.toLowerCase();
+    if (tag === "textarea") {
+      return true;
+    }
+
+    if (tag === "input") {
+      var type = (el.type || "text").toLowerCase();
+      return type !== "button" && type !== "checkbox" && type !== "radio" && type !== "submit";
+    }
+
+    return !!el.isContentEditable;
+  }
+
   function handleWheelInput(e, deltaY) {
     if (e && e.__ixWheelProcessed === true) {
       wheelDiag.counters.duplicates++;
@@ -70,7 +92,7 @@
       return;
     }
 
-    if (modalMode === IX_MODAL_MODE_NONE && isEditableElement(targetEl) && !inTranscript) {
+    if (modalMode === IX_MODAL_MODE_NONE && isEditableWheelTarget(targetEl) && !inTranscript) {
       wheelDiag.counters.skippedEditable++;
       recordWheelDiag("editable_skip", { deltaY: Number(deltaY) });
       return;
