@@ -460,6 +460,23 @@ public sealed partial class MainWindow : Window {
         return null;
     }
 
+    private static long? TryGetInt64(JsonElement obj, string name) {
+        if (obj.ValueKind != JsonValueKind.Object || !obj.TryGetProperty(name, out var el)) {
+            return null;
+        }
+
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt64(out var parsedNumber)) {
+            return parsedNumber;
+        }
+
+        if (el.ValueKind == JsonValueKind.String
+            && long.TryParse(el.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedString)) {
+            return parsedString;
+        }
+
+        return null;
+    }
+
     private static bool IsTruthy(string? value) {
         if (string.IsNullOrWhiteSpace(value)) {
             return false;

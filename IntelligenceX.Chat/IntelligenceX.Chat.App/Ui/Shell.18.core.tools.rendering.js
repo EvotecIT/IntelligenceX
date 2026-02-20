@@ -252,6 +252,25 @@
     renderDebugPanel();
   };
 
+  function normalizeRuntimeApplyRequestId(value) {
+    var parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+    parsed = Math.floor(parsed);
+    return parsed > 0 ? parsed : 0;
+  }
+
+  function resolveRuntimeApplyRequestId(localModel) {
+    if (!localModel || typeof localModel !== "object") {
+      return 0;
+    }
+    var runtimeApply = localModel.runtimeApply && typeof localModel.runtimeApply === "object"
+      ? localModel.runtimeApply
+      : {};
+    return normalizeRuntimeApplyRequestId(runtimeApply.requestId);
+  }
+
   window.ixSetOptionsData = function(nextOptions) {
     nextOptions = nextOptions || {};
     state.options.timestampMode = nextOptions.timestampMode || state.options.timestampMode;
@@ -265,7 +284,25 @@
     state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;
     state.options.conversations = nextOptions.conversations || [];
     state.options.profile = nextOptions.profile || state.options.profile;
-    state.options.localModel = nextOptions.localModel || state.options.localModel;
+    var currentLocalModel = state.options.localModel && typeof state.options.localModel === "object"
+      ? state.options.localModel
+      : null;
+    var incomingLocalModel = nextOptions.localModel && typeof nextOptions.localModel === "object"
+      ? nextOptions.localModel
+      : currentLocalModel;
+    if (incomingLocalModel && currentLocalModel) {
+      var incomingRequestId = resolveRuntimeApplyRequestId(incomingLocalModel);
+      var currentRequestId = resolveRuntimeApplyRequestId(currentLocalModel);
+      if (currentRequestId > 0 && incomingRequestId > 0 && incomingRequestId < currentRequestId) {
+        incomingLocalModel.runtimeApply = currentLocalModel.runtimeApply;
+        incomingLocalModel.isApplying = currentLocalModel.isApplying === true
+          || (currentLocalModel.runtimeApply && currentLocalModel.runtimeApply.isActive === true);
+      }
+    }
+    state.options.localModel = incomingLocalModel;
+    if (window.ixRememberRuntimeApplyRequestId && incomingLocalModel) {
+      window.ixRememberRuntimeApplyRequestId(resolveRuntimeApplyRequestId(incomingLocalModel));
+    }
     state.options.policy = nextOptions.policy || null;
     var incomingPacks = Array.isArray(nextOptions.packs) ? nextOptions.packs : [];
     var incomingTools = Array.isArray(nextOptions.tools) ? nextOptions.tools : [];

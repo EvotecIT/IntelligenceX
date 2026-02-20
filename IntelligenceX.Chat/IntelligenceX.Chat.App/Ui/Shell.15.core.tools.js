@@ -1301,7 +1301,11 @@
     var simpleHint = byId("optLocalSimpleHint");
     if (simpleHint) {
       if (isApplying) {
-        simpleHint.textContent = "Applying runtime settings. Please wait while the runtime updates.";
+        if (normalizeModelText(runtimeApply.stage || "").toLowerCase() === "queued") {
+          simpleHint.textContent = "Runtime switch queued. Current apply will finish first, then latest settings are applied.";
+        } else {
+          simpleHint.textContent = "Applying runtime settings. Please wait while the runtime updates.";
+        }
       } else if (transport === "native") {
         simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
       } else if (isCopilotCli) {
