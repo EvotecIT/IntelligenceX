@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -58,14 +57,11 @@ public sealed class CopilotCliTransportLifecycleTests {
 
         var initializeTask = transport.InitializeAsync(new ClientInfo("ix", "IntelligenceX", "1.0.0"), CancellationToken.None);
         var disposeTask = Task.Run(() => transport.Dispose());
-        await Task.Delay(50);
+        var disposeStarted = SpinWait.SpinUntil(() => GetDisposeState(transport) != 0, TimeSpan.FromSeconds(2));
+        Assert.True(disposeStarted, "Dispose did not transition state before timeout.");
         gate.Release();
 
-        var ex = await Record.ExceptionAsync(() => initializeTask);
-        Assert.NotNull(ex);
-        Assert.True(
-            ex is ObjectDisposedException || ex is FileNotFoundException,
-            $"Expected ObjectDisposedException or FileNotFoundException, got {ex.GetType().FullName}: {ex.Message}");
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => initializeTask);
         await disposeTask;
     }
 
@@ -123,5 +119,12 @@ public sealed class CopilotCliTransportLifecycleTests {
         Assert.NotNull(field);
         var value = field!.GetValue(transport);
         return Assert.IsType<SemaphoreSlim>(value);
+    }
+
+    private static int GetDisposeState(CopilotCliTransport transport) {
+        var field = typeof(CopilotCliTransport).GetField("_disposeState", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        var value = field!.GetValue(transport);
+        return Assert.IsType<int>(value);
     }
 }
