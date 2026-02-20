@@ -1327,6 +1327,9 @@
     var runtimeApply = local.runtimeApply && typeof local.runtimeApply === "object"
       ? local.runtimeApply
       : {};
+    var hasPendingRuntimeDraft = typeof hasPendingLocalProviderChanges === "function"
+      ? hasPendingLocalProviderChanges()
+      : false;
     var profileApplyMode = normalizeProfileApplyMode(state.options.profileApplyMode || "session");
     var runtimeDetection = local.runtimeDetection || {};
     var runtimeDetectionHasRun = runtimeDetection.hasRun === true;
@@ -1419,6 +1422,8 @@
         } else {
           simpleHint.textContent = "Applying runtime settings. Please wait while the runtime updates.";
         }
+      } else if (hasPendingRuntimeDraft) {
+        simpleHint.textContent = "Runtime edits are pending. Click Apply Runtime to commit provider/model changes.";
       } else if (transport === "native") {
         simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
       } else if (isCopilotCli) {
@@ -1645,10 +1650,12 @@
       applyRuntimeButton.disabled = isApplying || turnBusy;
       applyRuntimeButton.textContent = isApplying
         ? (applyStage === "queued" ? "Runtime Queued..." : "Applying Runtime...")
-        : "Apply Runtime";
+        : (hasPendingRuntimeDraft ? "Apply Runtime (Pending)" : "Apply Runtime");
       applyRuntimeButton.title = turnBusy
         ? "Wait for the current turn to finish before applying runtime changes."
-        : "Manual field edits require Apply Runtime. Quick runtime buttons apply automatically.";
+        : (hasPendingRuntimeDraft
+          ? "Unsaved runtime changes detected. Click to apply these provider/model edits."
+          : "Manual field edits require Apply Runtime. Quick runtime buttons apply automatically.");
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();

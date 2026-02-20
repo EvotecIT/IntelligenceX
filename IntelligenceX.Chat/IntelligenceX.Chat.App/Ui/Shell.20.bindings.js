@@ -948,6 +948,11 @@
     }, localProviderAutoApplyDelayMs);
   }
 
+  function markLocalProviderDraftChanged() {
+    clearScheduledLocalProviderApply();
+    renderLocalModelOptions();
+  }
+
   function applyLocalProviderSettings(forceRefresh, clearApiKey, clearBasicAuth) {
     clearScheduledLocalProviderApply();
     var local = ((state.options || {}).localModel || {});
@@ -1256,7 +1261,7 @@
       autoDetectButton.hidden = !isCompatible;
     }
 
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalProviderPreset").addEventListener("change", function(e) {
@@ -1265,50 +1270,50 @@
       applyCompatiblePresetSelection(preset);
     }
     syncCustomSelect(e.target);
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalAuthMode").addEventListener("change", function(e) {
     e.target.value = normalizeCompatibleAuthMode(e.target.value || "bearer");
     syncCustomSelect(e.target);
     byId("optLocalTransport").dispatchEvent(new Event("change"));
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalBaseUrl").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalApiKey").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalModelInput").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optReasoningEffort").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optReasoningSummary").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optTextVerbosity").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optTemperature").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalBasicUsername").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalBasicPassword").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalModelSelect").addEventListener("change", function(e) {
@@ -1327,7 +1332,7 @@
     if (modelInput) {
       modelInput.value = selected;
     }
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optNativeAccountSlot").addEventListener("change", function(e) {
@@ -1341,11 +1346,11 @@
       accountIdInput.value = resolveNativeSlotAccountId(local, slot);
     }
 
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optNativeAccountId").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalModelFilter").addEventListener("input", function(e) {
