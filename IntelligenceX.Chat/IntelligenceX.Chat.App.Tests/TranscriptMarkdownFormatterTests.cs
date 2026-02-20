@@ -47,7 +47,7 @@ public sealed class TranscriptMarkdownFormatterTests {
     public void Format_IncludesAssistantModelCommentWhenProvided() {
         var now = new DateTime(2026, 2, 20, 19, 12, 7, DateTimeKind.Local);
         var markdown = TranscriptMarkdownFormatter.Format(new[] {
-            ("Assistant", "Ready.", now, "ibm/granite-4-h-tiny")
+            ("Assistant", "Ready.", now, (string?)"ibm/granite-4-h-tiny")
         }, "HH:mm:ss");
 
         Assert.Contains("### Assistant (19:12:07)", markdown);

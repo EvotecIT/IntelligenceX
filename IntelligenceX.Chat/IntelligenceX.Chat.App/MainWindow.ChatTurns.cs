@@ -232,7 +232,15 @@ public sealed partial class MainWindow : Window {
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
-        ReplaceLastAssistantText(conversation, assistantText);
+        if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
+                _activeTurnReceivedDelta,
+                assistantText,
+                TryGetLastAssistantText(conversation, out var streamedAssistantText) ? streamedAssistantText : string.Empty,
+                out var runtimeWarningNotice)) {
+            conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
+        } else {
+            ReplaceLastAssistantText(conversation, assistantText);
+        }
         _activeTurnReceivedDelta = false;
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
             conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now, turn.AssistantModelLabel));
@@ -308,6 +316,39 @@ public sealed partial class MainWindow : Window {
 
         text = string.Empty;
         return false;
+    }
+
+    internal static bool ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
+        bool activeTurnReceivedDelta,
+        string? finalAssistantText,
+        string? streamedAssistantText,
+        out string notice) {
+        notice = string.Empty;
+        if (!activeTurnReceivedDelta) {
+            return false;
+        }
+
+        var finalText = (finalAssistantText ?? string.Empty).Trim();
+        if (!IsNoTextWarningText(finalText)) {
+            return false;
+        }
+
+        var streamed = (streamedAssistantText ?? string.Empty).Trim();
+        if (streamed.Length == 0 || StartsWithOutcomeMarker(streamed) || IsNoTextWarningText(streamed)) {
+            return false;
+        }
+
+        notice = "Runtime warning: no final response envelope was produced. Kept the partial streamed response shown above.";
+        return true;
+    }
+
+    internal static bool IsNoTextWarningText(string? text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.StartsWith("[warning] No response text was produced", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {

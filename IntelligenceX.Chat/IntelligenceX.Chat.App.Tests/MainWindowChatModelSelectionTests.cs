@@ -155,6 +155,9 @@ public sealed class MainWindowChatModelSelectionTests {
         Assert.Contains("disabled", description, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Ensures tool availability reports unknown instead of disabled before tool catalog is loaded.
+    /// </summary>
     [Fact]
     public void DescribeTurnToolAvailability_ReportsUnknownWhenToolCatalogNotLoadedYet() {
         var description = MainWindow.DescribeTurnToolAvailability(
