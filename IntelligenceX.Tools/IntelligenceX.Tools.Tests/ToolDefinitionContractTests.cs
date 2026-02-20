@@ -115,6 +115,21 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void Enrich_ShouldNotMutateToolNameOrCanonicalName() {
+        var aliasDefinition = new ToolDefinition(
+            name: "system_info_alias",
+            description: "Alias",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            aliasOf: "system_info");
+
+        var enriched = ToolSelectionMetadata.Enrich(aliasDefinition, toolType: null);
+
+        Assert.Equal("system_info_alias", enriched.Name);
+        Assert.Equal("system_info", enriched.AliasOf);
+        Assert.Equal(aliasDefinition.CanonicalName, enriched.CanonicalName);
+    }
+
+    [Fact]
     public void CorePackToolNames_ShouldRemainStable() {
         var registry = new ToolRegistry();
         registry.RegisterEventLogPack(new EventLogToolOptions());
