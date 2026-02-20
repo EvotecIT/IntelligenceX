@@ -24,6 +24,7 @@ EventLog note: current gaps are no longer "core parser missing", but optional co
 | --- | --- | --- |
 | `ManagedServiceAccountUsageAnalyzer.GetUsage(domain)` | `ad_service_account_usage` | Added |
 | `InactiveUserDetector.GetNeverLoggedInAccounts(domain, grace)` | `ad_never_logged_in_accounts` | Added |
+| `KdsRootKeyChecker.GetRootKeys()` | `ad_kds_root_keys` | Added |
 | EventLog handoff normalization | `ad_handoff_prepare` | Added |
 | Scope/discovery receipt | `ad_scope_discovery` | Added |
 
@@ -31,7 +32,6 @@ EventLog note: current gaps are no longer "core parser missing", but optional co
 
 | Priority | Candidate tool | Upstream source | Why |
 | --- | --- | --- | --- |
-| P1 | `ad_kds_root_keys` | `KdsRootKeyChecker` | gMSA readiness posture; currently unwrapped |
 | P1 | `ad_wmi_filters` | `Gpo/WmiFilterService.EnumerateFilters` | common GPO troubleshooting surface; currently unwrapped |
 | P1 | `ad_wsus_configuration` | `Gpo/WsusConfigurationService.Get` | patching posture visibility from AD/GPO context |
 | P2 | `eventlog_evtx_security_samples` | `Security*QueryResult.Samples` | convenience extraction wrapper for sample rows |
