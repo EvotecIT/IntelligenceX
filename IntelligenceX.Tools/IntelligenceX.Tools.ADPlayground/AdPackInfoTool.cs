@@ -48,6 +48,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_dns_scavenging for DNS server/zone/delegation posture diagnostics.",
                 "Use ad_gpo_list/ad_gpo_changes/ad_gpo_health/ad_gpo_inventory_health/ad_gpo_duplicates/ad_gpo_blocked_inheritance/ad_gpo_ou_link_summary/ad_gpo_integrity/ad_gpo_redirect/ad_gpo_permission_read/ad_gpo_permission_administrative/ad_gpo_permission_consistency/ad_gpo_permission_unknown/ad_gpo_permission_root/ad_gpo_permission_report for GPO inventory, timeline, topology, and permission hygiene diagnostics.",
                 "Use ad_handoff_prepare to normalize cross-pack entity_handoff payloads before AD queries.",
+                "Example EventLog handoff flow: ad_handoff_prepare -> ad_object_resolve -> ad_search/ad_object_get for focused follow-up.",
                 "Use ad_object_resolve to avoid N+1 object lookups when correlating identities.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
                 "Use ad_search_facets/ad_replication_summary/ad_replication_connections/ad_replication_status/ad_directory_discovery_diagnostics/ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_delegation_audit/ad_spn_stats for aggregated diagnostics.",

@@ -40,7 +40,8 @@ Tracking note: detailed EventLog -> AD handoff execution plan lives in `Internal
 - [ ] (P0) Add explicit "remote vs local" error envelopes with next actions (export EVTX, enable live query, provide creds).
 - [x] (P0) Add end-to-end test path: `eventlog_*` `meta.entity_handoff` -> AD helper input -> AD resolution flow.
 - [x] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
-- [ ] (P1) Add EventLog -> AD correlation examples (local and remote) with reusable correlation profiles/keys.
+- [x] (P1) Add EventLog -> AD correlation examples (local and remote) with reusable correlation profiles/keys.
+  Reference: `InternalDocs/agent-playbooks/eventlog-ad-correlation-playbook.md`.
 - [ ] (P2) Add path allowlist friendly scanning for likely EVTX export locations with user-configurable roots.
 
 ## ADPlayground + TestimoX (Forest-Level Reality)
@@ -65,7 +66,8 @@ about what scope it actually achieved, and offer the correct next step.
 ## Tool Pack UX + Documentation
 - [ ] (P0) Add a "what I can do right now" tool (lists enabled packs/tools + examples).
 - [ ] (P0) Standardize tool output envelopes (summary + data rows + typed errors + hints).
-- [ ] (P1) Add examples for "remote event logs" flows: live query enabled vs EVTX export path.
+- [x] (P1) Add examples for "remote event logs" flows: live query enabled vs EVTX export path.
+  Reference: `InternalDocs/agent-playbooks/eventlog-ad-correlation-playbook.md`.
 - [ ] (P1) Add examples for "forest-wide" flows: success vs degraded discovery and how to fix it.
 - [ ] (P2) Add tool-level "explain" endpoints (examples, common filters, expected runtime, output schema).
 

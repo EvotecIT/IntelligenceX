@@ -48,6 +48,8 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_named_events_catalog/eventlog_named_events_query for rule-based, intent-level detections (AD/Kerberos/GPO/etc).",
                 "Use eventlog_timeline_explain to get reusable timeline-query guidance from current investigation shape.",
                 "Use eventlog_timeline_query to build reusable timeline and correlation views from named-event evidence (no fixed report templates).",
+                "Example local EVTX -> AD flow: eventlog_evtx_find -> eventlog_timeline_query(correlation_profile=identity) -> ad_handoff_prepare -> ad_object_resolve.",
+                "Example remote live -> AD flow: eventlog_live_query/eventlog_timeline_query(machine_name) -> ad_handoff_prepare -> ad_environment_discover -> ad_search.",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
                 "For authentication investigations and timeline correlation, use eventlog_named_events_catalog first, then eventlog_timeline_query with named_events/categories and either correlation_profile or explicit correlation_keys.",
                 "For AD identity correlation: call ad_handoff_prepare first, then ad_environment_discover and ad_search/ad_object_resolve."

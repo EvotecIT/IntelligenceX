@@ -27,7 +27,8 @@
 - [x] Batch 2: add contract tests for `eventlog_timeline_query` `meta.entity_handoff` shape, caps, and required metadata.
 - [x] Batch 3: add an AD helper tool that accepts EventLog handoff candidates and returns normalized AD-ready identities/computers.
 - [x] Batch 4: add EventLog -> AD helper -> AD query argument end-to-end tests.
-- [ ] Batch 5: add docs/pack-guidance examples for local and remote EventLog -> AD correlation runs.
+- [x] Batch 5: add docs/pack-guidance examples for local and remote EventLog -> AD correlation runs.
+  Reference: `InternalDocs/agent-playbooks/eventlog-ad-correlation-playbook.md`.
 
 ## Open Decisions
 
