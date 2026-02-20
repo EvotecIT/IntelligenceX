@@ -123,13 +123,18 @@ public sealed class CopilotCliTransportLifecycleTests {
     }
 
     private static async Task<bool> WaitUntilDisposedAsync(CopilotCliTransport transport, TimeSpan timeout) {
+        using var cts = new CancellationTokenSource(timeout);
         var stopwatch = Stopwatch.StartNew();
-        while (stopwatch.Elapsed < timeout) {
+        while (!cts.IsCancellationRequested && stopwatch.Elapsed < timeout) {
             if (ReadDisposeState(transport) != 0) {
                 return true;
             }
 
-            await Task.Delay(10);
+            try {
+                await Task.Delay(10, cts.Token).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+                break;
+            }
         }
 
         return false;
