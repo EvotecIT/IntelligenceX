@@ -110,6 +110,7 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdRecycleBinLifetimeTool(options);
         yield return new AdObjectGetTool(options);
         yield return new AdObjectResolveTool(options);
+        yield return new AdHandoffPrepareTool(options);
         yield return new AdDelegationAuditTool(options);
         yield return new AdPrivilegedGroupsSummaryTool(options);
         yield return new AdDomainAdminsSummaryTool(options);

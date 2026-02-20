@@ -5,11 +5,11 @@
 - [x] EventLog pack ships live and EVTX query/stats/top-event tools with safe limits and structured JSON.
 - [x] EventLog pack ships reusable correlation/timeline tools (`eventlog_timeline_explain`, `eventlog_timeline_query`).
 - [x] EventLog timeline and named-events outputs emit structured `meta.entity_handoff` candidates.
-- [ ] Add end-to-end tests: `eventlog_named_events_query` -> `meta.entity_handoff` -> AD helper input normalization.
-- [ ] Add end-to-end tests: `eventlog_timeline_query` -> `meta.entity_handoff` -> AD helper input normalization.
-- [ ] Add a small AD-side helper tool so EventLog handoff candidates are first-class AD inputs (less prompt glue).
-- [ ] Add AD helper contract tests (schema snapshot, caps/truncation, invalid-input envelopes).
-- [ ] Update EventLog and AD pack guidance to advertise a single reusable EventLog -> AD flow.
+- [x] Add end-to-end tests: `eventlog_named_events_query` -> `meta.entity_handoff` -> AD helper input normalization.
+- [x] Add end-to-end tests: `eventlog_timeline_query` -> `meta.entity_handoff` -> AD helper input normalization.
+- [x] Add a small AD-side helper tool so EventLog handoff candidates are first-class AD inputs (less prompt glue).
+- [x] Add AD helper contract tests (schema snapshot, caps/truncation, invalid-input envelopes).
+- [x] Update EventLog and AD pack guidance to advertise a single reusable EventLog -> AD flow.
 - [ ] Keep detailed checklist in `InternalDocs/backlogs/eventlog-ad-correlation-e2e.md`.
 
 ## Remaining Platform Tasks

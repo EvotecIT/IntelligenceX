@@ -510,6 +510,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_handoff_prepare",
+            new[] { "entity_handoff", "include_computers", "max_identities", "min_candidate_count" },
+            new[] { "entity_handoff" }
+        };
+
+        yield return new object[] {
             "ad_object_get",
             new[] { "identity", "kind", "search_base_dn", "domain_controller", "attributes", "max_values_per_attribute" },
             new[] { "identity" }

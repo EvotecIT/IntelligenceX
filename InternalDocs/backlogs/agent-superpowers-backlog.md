@@ -38,8 +38,8 @@ Tracking note: detailed EventLog -> AD handoff execution plan lives in `Internal
 - [x] (P0) Add a single "top events" tool (channel, provider, level, since, max events) with compact JSON output.
 - [x] (P0) Add an EVTX-local query workflow: find EVTX, query, and summarize (no remote assumptions).
 - [ ] (P0) Add explicit "remote vs local" error envelopes with next actions (export EVTX, enable live query, provide creds).
-- [ ] (P0) Add end-to-end test path: `eventlog_*` `meta.entity_handoff` -> AD helper input -> AD resolution flow.
-- [ ] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
+- [x] (P0) Add end-to-end test path: `eventlog_*` `meta.entity_handoff` -> AD helper input -> AD resolution flow.
+- [x] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
 - [ ] (P1) Add EventLog -> AD correlation examples (local and remote) with reusable correlation profiles/keys.
 - [ ] (P2) Add path allowlist friendly scanning for likely EVTX export locations with user-configurable roots.
 

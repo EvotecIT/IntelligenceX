@@ -47,6 +47,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_site_coverage for per-site subnet/DC coverage and orphaned subnet visibility.",
                 "Use ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_dns_scavenging for DNS server/zone/delegation posture diagnostics.",
                 "Use ad_gpo_list/ad_gpo_changes/ad_gpo_health/ad_gpo_inventory_health/ad_gpo_duplicates/ad_gpo_blocked_inheritance/ad_gpo_ou_link_summary/ad_gpo_integrity/ad_gpo_redirect/ad_gpo_permission_read/ad_gpo_permission_administrative/ad_gpo_permission_consistency/ad_gpo_permission_unknown/ad_gpo_permission_root/ad_gpo_permission_report for GPO inventory, timeline, topology, and permission hygiene diagnostics.",
+                "Use ad_handoff_prepare to normalize cross-pack entity_handoff payloads before AD queries.",
                 "Use ad_object_resolve to avoid N+1 object lookups when correlating identities.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
                 "Use ad_search_facets/ad_replication_summary/ad_replication_connections/ad_replication_status/ad_directory_discovery_diagnostics/ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_delegation_audit/ad_spn_stats for aggregated diagnostics.",
@@ -85,7 +86,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     suggestedTools: new[] { "ad_pki_templates", "ad_pki_posture" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Resolve/expand identities for correlation",
-                    suggestedTools: new[] { "ad_object_resolve", "ad_object_get", "ad_group_members_resolved" }),
+                    suggestedTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Run diagnostics and aggregate analysis",
                     suggestedTools: new[] { "ad_search_facets", "ad_replication_summary", "ad_replication_connections", "ad_replication_status", "ad_directory_discovery_diagnostics", "ad_dns_server_config", "ad_dns_zone_config", "ad_dns_zone_security", "ad_dns_delegation", "ad_delegation_audit", "ad_spn_stats", "ad_spn_hygiene", "ad_ldap_diagnostics", "ad_dns_scavenging" }),
@@ -101,7 +102,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 ToolPackGuidance.Capability(
                     id: "identity_resolution",
                     summary: "Resolve identities and membership details for cross-tool correlation.",
-                    primaryTools: new[] { "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved" }),
+                    primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved" }),
                 ToolPackGuidance.Capability(
                     id: "ad_diagnostics",
                     summary: "Provide LDAP diagnostics and aggregated security/replication insights.",
@@ -149,7 +150,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     summary: "Consume identity/host indicators from other packs and normalize them for AD object resolution.",
                     entityKinds: new[] { "identity", "user", "group", "computer", "host" },
                     sourceTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query", "system_whoami", "powershell_run" },
-                    targetTools: new[] { "ad_object_resolve", "ad_search", "ad_object_get", "ad_group_members_resolved" },
+                    targetTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_search", "ad_object_get", "ad_group_members_resolved" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("*.who", "identities", "Batch and deduplicate values for ad_object_resolve."),
                         ToolPackGuidance.EntityFieldMapping("*.object_affected", "identities", "Batch and deduplicate values for ad_object_resolve."),

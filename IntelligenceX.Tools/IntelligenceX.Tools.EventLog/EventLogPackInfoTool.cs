@@ -50,7 +50,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_timeline_query to build reusable timeline and correlation views from named-event evidence (no fixed report templates).",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
                 "For authentication investigations and timeline correlation, use eventlog_named_events_catalog first, then eventlog_timeline_query with named_events/categories and either correlation_profile or explicit correlation_keys.",
-                "For AD identity correlation: call ad_environment_discover, then ad_search using identities extracted from eventlog_named_events_query evidence."
+                "For AD identity correlation: call ad_handoff_prepare first, then ad_environment_discover and ad_search/ad_object_resolve."
             },
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
@@ -79,8 +79,8 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_evtx_query" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Correlate event identities with AD objects",
-                    suggestedTools: new[] { "eventlog_timeline_query", "ad_environment_discover", "ad_search" },
-                    notes: "Drive AD lookups from normalized user/domain identities in named-events query evidence.")
+                    suggestedTools: new[] { "eventlog_timeline_query", "ad_handoff_prepare", "ad_environment_discover", "ad_search", "ad_object_resolve" },
+                    notes: "Normalize event identities via ad_handoff_prepare before AD lookups to keep correlation flows reusable.")
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
@@ -102,8 +102,8 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 ToolPackGuidance.Capability(
                     id: "correlation_workflow",
                     summary: "Use named-event detections as reusable correlation building blocks across log, timeline, and AD enrichment workflows.",
-                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_named_events_query", "eventlog_evtx_query" },
-                    notes: "Use ad_environment_discover + ad_search in the AD pack for identity enrichment.")
+                    primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_named_events_query", "eventlog_evtx_query", "ad_handoff_prepare" },
+                    notes: "Use ad_handoff_prepare + ad_environment_discover + ad_search/ad_object_resolve in the AD pack for identity enrichment.")
             },
             entityHandoffs: new[] {
                 ToolPackGuidance.EntityHandoff(
@@ -111,7 +111,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     summary: "Promote normalized identity and host fields from EventLog evidence into AD lookup workflows.",
                     entityKinds: new[] { "identity", "user", "host", "computer" },
                     sourceTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query" },
-                    targetTools: new[] { "ad_environment_discover", "ad_search", "ad_object_resolve" },
+                    targetTools: new[] { "ad_handoff_prepare", "ad_environment_discover", "ad_search", "ad_object_resolve" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("events[].who", "identity", "Trim and preserve UPN/DOMAIN\\\\user forms."),
                         ToolPackGuidance.EntityFieldMapping("events[].object_affected", "identity", "Use when object_affected represents a user/computer identity."),
@@ -125,7 +125,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
             toolCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw event arrays and report objects for model reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only.",
-            correlationGuidance: "Use eventlog_timeline_query with correlation_profile presets or explicit correlation_keys, then bootstrap AD lookups from user/domain payload evidence.",
+            correlationGuidance: "Use eventlog_timeline_query with correlation_profile presets or explicit correlation_keys, then normalize entity_handoff via ad_handoff_prepare before AD lookups.",
             setupHints: new {
                 Platform = Environment.OSVersion.Platform.ToString(),
                 MaxResults = Options.MaxResults,
