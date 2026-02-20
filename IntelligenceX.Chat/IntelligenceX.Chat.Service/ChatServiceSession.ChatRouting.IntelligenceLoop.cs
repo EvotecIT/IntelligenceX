@@ -267,8 +267,13 @@ internal sealed partial class ChatServiceSession {
             - Add a short "Potential issues to verify" section (1-3 bullets).
             - Add a short "Recommended next fixes" section (1-3 bullets).
             - For each bullet, include signal -> why it matters -> exact next validation/fix action.
-            - Keep markdown labels readable: use "Why it matters: <text>" and "Next/Fix action: <text>" with a space after each colon.
-            - Do not nest or overlap bold markers across the full signal/action chain.
+            - Use one-line chain format per bullet:
+              "- Signal <text> -> Why it matters: <text> -> Next action: <text>"
+              or
+              "- Signal <text> -> Why it matters: <text> -> Fix action: <text>"
+            - Keep exactly one space after each colon and around each "->" separator.
+            - Do not use `*` or `**` inside the signal chain (except inside inline code spans).
+            - If writing in another language, keep the same punctuation contract: "<label>: <text>".
             - If confidence is uncertain, say what evidence is missing and how to collect it.
             - Prefer proactive checks that can catch hidden regressions, not just obvious follow-ups.
             - Do not invent tool outputs or claim completed actions that were not executed.
