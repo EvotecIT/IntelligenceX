@@ -645,6 +645,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleAcceptsCanonicalHelperUsage);
         failed += Run("Analyze run internal canonical bounded-int helper rule ignores ToolArgs implementation file",
             TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolArgsImplementationFile);
+        failed += Run("Analyze run internal canonical bounded-int helper rule ignores IntelligenceX.Tools.Tests project",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolsTestsProject);
         failed += Run("Analyze run internal duplication threshold",
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",

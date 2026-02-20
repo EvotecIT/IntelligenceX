@@ -141,5 +141,45 @@ public static class ToolArgs {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
+
+    private static void TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolsTestsProject() {
+        var temp = Path.Combine(Path.GetTempPath(),
+            "ix-analyze-canonical-bounded-int-helper-tools-tests-scope-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupToolContractAnalysisWorkspace(temp);
+
+            var testsDir = Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.Tests");
+            Directory.CreateDirectory(testsDir);
+            File.WriteAllText(Path.Combine(testsDir, "SampleLegacyBoundedIntHelperTests.cs"), """
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.Tests;
+
+public sealed class SampleLegacyBoundedIntHelperTests {
+    public static int ReadLimit(object? arguments) {
+        return ToolArgs.GetPositiveOptionBoundedInt32OrDefault(arguments, "max_results", 100, 100);
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run canonical bounded-int helper tools tests scope exit");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(false, findings.Any(item =>
+                    item.RuleId.Equals("IXTOOL004", StringComparison.OrdinalIgnoreCase) &&
+                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.Tests/SampleLegacyBoundedIntHelperTests.cs",
+                        StringComparison.OrdinalIgnoreCase)),
+                "analyze run canonical bounded-int helper tools tests scope no finding");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
 }
 #endif
