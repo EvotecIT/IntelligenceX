@@ -19,6 +19,7 @@ public sealed partial class MainWindow {
     private const int MaxVisualPopoutBase64Chars = ((MaxVisualPopoutBytes + 2) / 3) * 4;
     private const int MaxVisualPopoutTitleChars = 160;
     private static readonly TimeSpan VisualPopoutRetention = TimeSpan.FromHours(12);
+    internal readonly record struct VisualPopoutOpenResult(bool Ok, string? FilePath, string Message);
 
     private async Task ExportTableArtifactAsync(string format, string title, JsonElement rowsElement, string exportId = "", string? outputPath = null) {
         if (!ExportPreferencesContract.TryNormalizeFormat(format, out var normalizedFormat)) {
@@ -522,7 +523,7 @@ public sealed partial class MainWindow {
         }
     }
 
-    private static bool TryNormalizeVisualPopoutMimeType(string? mimeType, out string normalizedMimeType, out string normalizedFormat) {
+    internal static bool TryNormalizeVisualPopoutMimeType(string? mimeType, out string normalizedMimeType, out string normalizedFormat) {
         normalizedMimeType = (mimeType ?? string.Empty).Trim().ToLowerInvariant();
         normalizedFormat = string.Empty;
 
@@ -537,11 +538,58 @@ public sealed partial class MainWindow {
         return false;
     }
 
+    internal static string NormalizeVisualPopoutTitle(string? title) {
+        var normalizedTitle = (title ?? string.Empty).Trim();
+        if (normalizedTitle.Length > MaxVisualPopoutTitleChars) {
+            normalizedTitle = normalizedTitle[..MaxVisualPopoutTitleChars].TrimEnd();
+        }
+
+        return normalizedTitle;
+    }
+
+    internal static bool TryPrepareVisualPopoutRequest(
+        string? title,
+        string? mimeType,
+        string? dataBase64,
+        out string normalizedTitle,
+        out string normalizedFormat,
+        out byte[] payloadBytes,
+        out string errorMessage) {
+        normalizedTitle = NormalizeVisualPopoutTitle(title);
+        normalizedFormat = string.Empty;
+        payloadBytes = Array.Empty<byte>();
+        errorMessage = "Invalid popout request.";
+
+        if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out normalizedFormat)) {
+            errorMessage = "Unsupported popout mime type.";
+            return false;
+        }
+
+        var payload = dataBase64 ?? string.Empty;
+        if (payload.Length > MaxVisualPopoutBase64Chars) {
+            errorMessage = "Popout payload exceeds maximum allowed size.";
+            return false;
+        }
+
+        if (!TryDecodeVisualPopoutPayload(payload, out payloadBytes, out errorMessage)) {
+            return false;
+        }
+
+        if (payloadBytes.Length > MaxVisualPopoutBytes) {
+            errorMessage = "Popout payload exceeds maximum allowed size.";
+            payloadBytes = Array.Empty<byte>();
+            return false;
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
     private static string GetVisualPopoutDirectoryPath() {
         return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "visual-popout");
     }
 
-    private static bool TryDecodeVisualPopoutPayload(string? dataBase64, out byte[] payloadBytes, out string errorMessage) {
+    internal static bool TryDecodeVisualPopoutPayload(string? dataBase64, out byte[] payloadBytes, out string errorMessage) {
         payloadBytes = Array.Empty<byte>();
         errorMessage = "Invalid popout payload.";
         var payload = dataBase64 ?? string.Empty;
@@ -572,6 +620,7 @@ public sealed partial class MainWindow {
             return false;
         }
 
+        errorMessage = string.Empty;
         return true;
     }
 
@@ -593,7 +642,7 @@ public sealed partial class MainWindow {
         }
     }
 
-    private async Task OpenVisualPopoutAsync(string title, string normalizedFormat, byte[] bytes) {
+    private async Task<VisualPopoutOpenResult> OpenVisualPopoutAsync(string title, string normalizedFormat, byte[] bytes) {
         try {
             var popoutDirectory = GetVisualPopoutDirectoryPath();
             Directory.CreateDirectory(popoutDirectory);
@@ -613,10 +662,16 @@ public sealed partial class MainWindow {
             });
 
             var fileName = Path.GetFileName(popoutPath);
-            await NotifyVisualPopoutResultAsync(ok: true, filePath: popoutPath, message: "Opened popout: " + fileName).ConfigureAwait(false);
+            return new VisualPopoutOpenResult(
+                Ok: true,
+                FilePath: popoutPath,
+                Message: "Opened popout: " + fileName);
         } catch (Exception ex) {
             StartupLog.Write("OpenVisualPopoutAsync failed: " + ex.Message);
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed. Please try again.").ConfigureAwait(false);
+            return new VisualPopoutOpenResult(
+                Ok: false,
+                FilePath: null,
+                Message: "Popout failed. Please try again.");
         }
     }
 

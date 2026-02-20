@@ -493,30 +493,23 @@ public sealed partial class MainWindow : Window {
                             var popoutDirectory = GetVisualPopoutDirectoryPath();
                             CleanupStaleVisualPopoutFiles(popoutDirectory);
 
-                            var title = (TryGetString(root, "title") ?? string.Empty).Trim();
-                            if (title.Length > MaxVisualPopoutTitleChars) {
-                                title = title[..MaxVisualPopoutTitleChars].TrimEnd();
-                            }
+                            var title = TryGetString(root, "title");
                             var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
-                            var dataBase64 = TryGetString(root, "dataBase64") ?? string.Empty;
-                            if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out var normalizedFormat)) {
-                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Unsupported popout mime type.").ConfigureAwait(true);
-                                break;
-                            }
-                            if (dataBase64.Length > MaxVisualPopoutBase64Chars) {
-                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
-                                break;
-                            }
-                            if (!TryDecodeVisualPopoutPayload(dataBase64, out var payloadBytes, out var payloadErrorMessage)) {
-                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: payloadErrorMessage).ConfigureAwait(true);
-                                break;
-                            }
-                            if (payloadBytes.Length > MaxVisualPopoutBytes) {
-                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
+                            var dataBase64 = TryGetString(root, "dataBase64");
+                            if (!TryPrepareVisualPopoutRequest(
+                                    title,
+                                    mimeType,
+                                    dataBase64,
+                                    out var normalizedTitle,
+                                    out var normalizedFormat,
+                                    out var payloadBytes,
+                                    out var requestErrorMessage)) {
+                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: requestErrorMessage).ConfigureAwait(true);
                                 break;
                             }
 
-                            await OpenVisualPopoutAsync(title, normalizedFormat, payloadBytes).ConfigureAwait(true);
+                            var popoutResult = await OpenVisualPopoutAsync(normalizedTitle, normalizedFormat, payloadBytes).ConfigureAwait(true);
+                            await NotifyVisualPopoutResultAsync(popoutResult.Ok, popoutResult.FilePath, popoutResult.Message).ConfigureAwait(true);
                         } catch (Exception ex) {
                             StartupLog.Write("open_visual_popout dispatch failed: " + ex.Message);
                             await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed. Please try again.").ConfigureAwait(true);
