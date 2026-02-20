@@ -534,6 +534,10 @@ public sealed partial class MainWindow {
         return false;
     }
 
+    private static string GetVisualPopoutDirectoryPath() {
+        return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "visual-popout");
+    }
+
     private static bool TryDecodeVisualPopoutPayload(string? dataBase64, out byte[] payloadBytes, out string errorMessage) {
         payloadBytes = Array.Empty<byte>();
         errorMessage = "Invalid popout payload.";
@@ -588,7 +592,7 @@ public sealed partial class MainWindow {
 
     private async Task OpenVisualPopoutAsync(string title, string normalizedFormat, byte[] bytes) {
         try {
-            var popoutDirectory = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "visual-popout");
+            var popoutDirectory = GetVisualPopoutDirectoryPath();
             Directory.CreateDirectory(popoutDirectory);
             CleanupStaleVisualPopoutFiles(popoutDirectory);
 

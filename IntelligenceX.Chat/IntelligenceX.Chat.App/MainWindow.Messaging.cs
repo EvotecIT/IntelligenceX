@@ -489,23 +489,30 @@ public sealed partial class MainWindow : Window {
                     }
                 case "open_visual_popout":
                     {
-                        var title = (TryGetString(root, "title") ?? string.Empty).Trim();
-                        var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
-                        var dataBase64 = TryGetString(root, "dataBase64") ?? string.Empty;
-                        if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out var normalizedFormat)) {
-                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Unsupported popout mime type.").ConfigureAwait(true);
-                            break;
-                        }
-                        if (dataBase64.Length > MaxVisualExportBase64Chars) {
-                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
-                            break;
-                        }
-                        if (!TryDecodeVisualPopoutPayload(dataBase64, out var payloadBytes, out var payloadErrorMessage)) {
-                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: payloadErrorMessage).ConfigureAwait(true);
-                            break;
-                        }
+                        try {
+                            var popoutDirectory = GetVisualPopoutDirectoryPath();
+                            CleanupStaleVisualPopoutFiles(popoutDirectory);
 
-                        await OpenVisualPopoutAsync(title, normalizedFormat, payloadBytes).ConfigureAwait(true);
+                            var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                            var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
+                            var dataBase64 = TryGetString(root, "dataBase64") ?? string.Empty;
+                            if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out var normalizedFormat)) {
+                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Unsupported popout mime type.").ConfigureAwait(true);
+                                break;
+                            }
+                            if (dataBase64.Length > MaxVisualExportBase64Chars) {
+                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
+                                break;
+                            }
+                            if (!TryDecodeVisualPopoutPayload(dataBase64, out var payloadBytes, out var payloadErrorMessage)) {
+                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: payloadErrorMessage).ConfigureAwait(true);
+                                break;
+                            }
+
+                            await OpenVisualPopoutAsync(title, normalizedFormat, payloadBytes).ConfigureAwait(true);
+                        } catch (Exception ex) {
+                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed: " + ex.Message).ConfigureAwait(true);
+                        }
                         break;
                     }
             }

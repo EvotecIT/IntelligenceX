@@ -580,6 +580,11 @@ public sealed partial class MainWindow : Window {
             LogInputReliabilityTelemetry("shutdown");
             UninstallGlobalWheelHook();
             UninstallWindowMessageHook();
+            try {
+                CleanupStaleVisualPopoutFiles(GetVisualPopoutDirectoryPath());
+            } catch {
+                // Ignore visual popout cleanup failures during shutdown.
+            }
             _stateStore.Dispose();
         };
     }
