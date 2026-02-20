@@ -33,7 +33,7 @@ internal static partial class Program {
         Directory.CreateDirectory(temp);
         try {
             SetupInternalMaintainabilityDispatchWorkspace(temp, "IXLOC001", new[] {
-                "max-lines:700",
+                "max-lines:1",
                 "dup-window-lines:8",
                 "include-ext:cs"
             });
@@ -47,6 +47,16 @@ internal static partial class Program {
                 result.Output.Contains("IXLOC001", StringComparison.OrdinalIgnoreCase) &&
                 result.Output.Contains("matched multiple handlers", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal dispatch ambiguous warning");
+
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(true, findings.Any(item => item.RuleId.Equals("IXLOC001", StringComparison.OrdinalIgnoreCase)),
+                "analyze run internal dispatch ambiguous first handler emits findings");
+
+            using var metricsDocument = System.Text.Json.JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(output, "intelligencex.duplication.json")));
+            var duplicationRules = metricsDocument.RootElement.GetProperty("rules");
+            AssertEqual(0, duplicationRules.GetArrayLength(),
+                "analyze run internal dispatch ambiguous first handler does not emit duplication metrics");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
@@ -91,7 +101,10 @@ internal static partial class Program {
 }
 """);
 
-        File.WriteAllText(Path.Combine(workspacePath, "Sample.cs"), "public static class Sample { }\n");
+        File.WriteAllText(Path.Combine(workspacePath, "Sample.cs"),
+            "public static class Sample {\n" +
+            "    public static int Value = 1;\n" +
+            "}\n");
     }
 }
 #endif
