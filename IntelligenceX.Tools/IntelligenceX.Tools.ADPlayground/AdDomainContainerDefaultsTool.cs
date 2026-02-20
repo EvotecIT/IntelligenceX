@@ -62,9 +62,8 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var changedOnly = ToolArgs.GetBoolean(arguments, "changed_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -126,10 +125,8 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("changed_only", changedOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

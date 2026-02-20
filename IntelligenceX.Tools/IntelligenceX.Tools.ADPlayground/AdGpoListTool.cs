@@ -78,7 +78,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
 
         if (!ToolEnumBinders.TryParseOptional(
@@ -103,7 +103,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", $"modified_since_utc: {modifiedSinceError}"));
         }
 
-        var maxResults = ResolveMaxResults(arguments);
+
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;
@@ -148,8 +148,7 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
                 if (!string.IsNullOrWhiteSpace(nameContains)) {
                     meta.Add("name_contains", nameContains);
                 }
@@ -191,4 +190,3 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
         return true;
     }
 }
-

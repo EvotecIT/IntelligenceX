@@ -56,9 +56,9 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var includeFineGrained = ToolArgs.GetBoolean(arguments, "include_fine_grained", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
+
 
         var domains = LdapQueryHelper.GetTargetDomains(domainName, forestName)
             .Where(static x => !string.IsNullOrWhiteSpace(x))
@@ -130,12 +130,10 @@ public sealed class AdPasswordPolicyTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("include_fine_grained", includeFineGrained);
                 meta.Add("domains_count", domains.Count);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

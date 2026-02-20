@@ -261,6 +261,34 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
     }
 
     [Fact]
+    public void ResolveDomainAndForestScopeWithMaxResults_ShouldReturnScopeAndClampMax() {
+        var tool = new HarnessTool();
+
+        var resolved = tool.ResolveDomainAndForestScopeWithMax(
+            new JsonObject()
+                .Add("domain_name", "contoso.local")
+                .Add("forest_name", "contoso.local")
+                .Add("max_results", 0));
+
+        Assert.Equal("contoso.local", resolved.DomainName);
+        Assert.Equal("contoso.local", resolved.ForestName);
+        Assert.Equal(1, resolved.MaxResults);
+    }
+
+    [Fact]
+    public void ResolveDomainAndForestScopeWithMaxResults_ShouldUseOptionCapWhenRequested() {
+        var tool = new HarnessTool();
+
+        var resolved = tool.ResolveDomainAndForestScopeWithMax(
+            new JsonObject().Add("max_results", 0),
+            useOptionCapDefaultForNonPositive: true);
+
+        Assert.Null(resolved.DomainName);
+        Assert.Null(resolved.ForestName);
+        Assert.Equal(1000, resolved.MaxResults);
+    }
+
+    [Fact]
     public void AddDomainAndForestMeta_ShouldAddOnlyNonEmptyValues() {
         var tool = new HarnessTool();
 
@@ -285,6 +313,21 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
 
         Assert.Equal("contoso.local", meta.GetString("domain_name"));
         Assert.Equal(123, meta.GetInt64("max_results"));
+    }
+
+    [Fact]
+    public void AddDomainAndForestAndMaxResultsMeta_ShouldAddAllKeys() {
+        var tool = new HarnessTool();
+
+        var withAll = tool.CreateDomainForestAndMaxResultsMeta("contoso.local", "corp.contoso.local", 321);
+        Assert.Equal("contoso.local", withAll.GetString("domain_name"));
+        Assert.Equal("corp.contoso.local", withAll.GetString("forest_name"));
+        Assert.Equal(321, withAll.GetInt64("max_results"));
+
+        var withDomainOnly = tool.CreateDomainForestAndMaxResultsMeta("contoso.local", " ", 22);
+        Assert.Equal("contoso.local", withDomainOnly.GetString("domain_name"));
+        Assert.Null(withDomainOnly.GetString("forest_name"));
+        Assert.Equal(22, withDomainOnly.GetInt64("max_results"));
     }
 
     [Fact]
@@ -491,6 +534,16 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
             return ResolveMaxResults(arguments);
         }
 
+        public (string? DomainName, string? ForestName, int MaxResults) ResolveDomainAndForestScopeWithMax(
+            JsonObject? arguments,
+            bool useOptionCapDefaultForNonPositive = false) {
+            return ResolveDomainAndForestScopeWithMaxResults(
+                arguments,
+                nonPositiveBehavior: useOptionCapDefaultForNonPositive
+                    ? MaxResultsNonPositiveBehavior.DefaultToOptionCap
+                    : MaxResultsNonPositiveBehavior.ClampToOne);
+        }
+
         public JsonObject CreateScopeMeta(string? domainName, string? forestName) {
             var meta = new JsonObject();
             AddDomainAndForestMeta(meta, domainName, forestName);
@@ -500,6 +553,12 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
         public JsonObject CreateDomainAndMaxResultsMeta(string domainName, int maxResults) {
             var meta = new JsonObject();
             AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
+            return meta;
+        }
+
+        public JsonObject CreateDomainForestAndMaxResultsMeta(string? domainName, string? forestName, int maxResults) {
+            var meta = new JsonObject();
+            AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             return meta;
         }
 

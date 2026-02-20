@@ -72,11 +72,10 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var unprotectedOnly = ToolArgs.GetBoolean(arguments, "unprotected_only", defaultValue: false);
         var includeUnprotectedOus = ToolArgs.GetBoolean(arguments, "include_unprotected_ous", defaultValue: false);
         var maxOuRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_ou_rows_per_domain", 100, 1, 5000);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -160,10 +159,8 @@ public sealed class AdOuProtectionTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("unprotected_only", unprotectedOnly);
                 meta.Add("include_unprotected_ous", includeUnprotectedOus);
                 meta.Add("max_ou_rows_per_domain", maxOuRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

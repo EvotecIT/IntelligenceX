@@ -157,6 +157,20 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Resolves optional domain/forest scope plus normalized max-results using shared semantics.
+    /// </summary>
+    protected (string? DomainName, string? ForestName, int MaxResults) ResolveDomainAndForestScopeWithMaxResults(
+        JsonObject? arguments,
+        string maxResultsArgumentName = "max_results",
+        MaxResultsNonPositiveBehavior nonPositiveBehavior = MaxResultsNonPositiveBehavior.ClampToOne) {
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        return (
+            DomainName: domainName,
+            ForestName: forestName,
+            MaxResults: ResolveMaxResults(arguments, maxResultsArgumentName, nonPositiveBehavior));
+    }
+
+    /// <summary>
     /// Resolves tool-requested AD attribute list via ADPlayground policy helper.
     /// </summary>
     protected static List<string> ResolveAttributes(
@@ -563,6 +577,18 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     protected static void AddDomainAndForestMeta(JsonObject meta, string? domainName, string? forestName) {
         AddOptionalStringMeta(meta, "domain_name", domainName);
         AddOptionalStringMeta(meta, "forest_name", forestName);
+    }
+
+    /// <summary>
+    /// Adds standard <c>max_results</c> plus optional <c>domain_name</c>/<c>forest_name</c> metadata keys.
+    /// </summary>
+    protected static void AddDomainAndForestAndMaxResultsMeta(
+        JsonObject meta,
+        string? domainName,
+        string? forestName,
+        int maxResults) {
+        AddMaxResultsMeta(meta, maxResults);
+        AddDomainAndForestMeta(meta, domainName, forestName);
     }
 
     /// <summary>

@@ -72,11 +72,10 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var onlyPresent = ToolArgs.GetBoolean(arguments, "only_present", defaultValue: false);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
         var includeSpns = ToolArgs.GetBoolean(arguments, "include_spns", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -148,10 +147,8 @@ public sealed class AdAzureAdSsoTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("only_present", onlyPresent);
                 meta.Add("risky_only", riskyOnly);
                 meta.Add("include_spns", includeSpns);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

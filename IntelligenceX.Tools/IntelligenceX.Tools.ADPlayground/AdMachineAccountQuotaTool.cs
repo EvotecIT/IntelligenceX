@@ -63,10 +63,9 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var threshold = ToolArgs.GetCappedInt32(arguments, "threshold", 0, -1, int.MaxValue);
         var riskyOnly = ToolArgs.GetBoolean(arguments, "risky_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -130,10 +129,8 @@ public sealed class AdMachineAccountQuotaTool : ActiveDirectoryToolBase, ITool {
             metaMutate: meta => {
                 meta.Add("threshold", threshold);
                 meta.Add("risky_only", riskyOnly);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

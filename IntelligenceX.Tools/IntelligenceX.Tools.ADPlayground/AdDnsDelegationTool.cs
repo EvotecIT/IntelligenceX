@@ -64,10 +64,9 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var identityContains = ToolArgs.GetOptionalTrimmed(arguments, "identity_contains");
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -133,7 +132,6 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
                 if (!string.IsNullOrWhiteSpace(zoneNameContains)) {
                     meta.Add("zone_name_contains", zoneNameContains);
@@ -141,8 +139,7 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(identityContains)) {
                     meta.Add("identity_contains", identityContains);
                 }
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

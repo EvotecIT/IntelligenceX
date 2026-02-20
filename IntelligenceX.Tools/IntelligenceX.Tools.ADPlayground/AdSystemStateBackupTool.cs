@@ -67,11 +67,10 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var thresholdDays = ToolArgs.GetCappedInt32(arguments, "threshold_days", 30, 1, 3650);
         var missingOnly = ToolArgs.GetBoolean(arguments, "missing_only", defaultValue: false);
         var staleOnly = ToolArgs.GetBoolean(arguments, "stale_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -146,12 +145,10 @@ public sealed class AdSystemStateBackupTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("threshold_days", thresholdDays);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("missing_only", missingOnly);
                 meta.Add("stale_only", staleOnly);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

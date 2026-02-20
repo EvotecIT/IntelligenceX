@@ -80,14 +80,13 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var allowlist = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("allowlist_classes"));
         var blocklist = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("blocklist_classes"));
         var dnsResolveClasses = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("dns_resolve_classes"));
         var topN = ToolArgs.GetCappedInt32(arguments, "top_n", 10, 1, 50);
         var includeInvalidSpnSample = ToolArgs.GetBoolean(arguments, "include_invalid_spn_sample", defaultValue: true);
         var maxInvalidSpnSample = ToolArgs.GetCappedInt32(arguments, "max_invalid_spn_sample", 25, 1, 200);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -169,12 +168,10 @@ public sealed class AdSpnHygieneTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 meta.Add("top_n", topN);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
                 meta.Add("allowlist_count", allowlist.Count);
                 meta.Add("blocklist_count", blocklist.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

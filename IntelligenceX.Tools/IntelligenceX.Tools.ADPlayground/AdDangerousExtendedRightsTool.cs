@@ -68,10 +68,9 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var includeFindings = ToolArgs.GetBoolean(arguments, "include_findings", defaultValue: true);
         var maxFindingsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_findings_per_domain", 200, 1, Options.MaxResults);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -136,10 +135,8 @@ public sealed class AdDangerousExtendedRightsTool : ActiveDirectoryToolBase, ITo
             metaMutate: meta => {
                 meta.Add("include_findings", includeFindings);
                 meta.Add("max_findings_per_domain", maxFindingsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
     }
 }
-

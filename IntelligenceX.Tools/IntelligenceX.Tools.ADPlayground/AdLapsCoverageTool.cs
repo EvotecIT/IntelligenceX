@@ -83,7 +83,7 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var coverageBelowPercent = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("coverage_below_percent"), 100);
         if (coverageBelowPercent.HasValue) {
             coverageBelowPercent = Math.Clamp(coverageBelowPercent.Value, 0, 100);
@@ -91,7 +91,6 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
         var expiredOnly = ToolArgs.GetBoolean(arguments, "expired_only", defaultValue: false);
         var includeSamples = ToolArgs.GetBoolean(arguments, "include_samples", defaultValue: false);
         var maxSampleRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_sample_rows_per_domain", 50, 1, 1000);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -179,10 +178,8 @@ public sealed class AdLapsCoverageTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("expired_only", expiredOnly);
                 meta.Add("include_samples", includeSamples);
                 meta.Add("max_sample_rows_per_domain", maxSampleRowsPerDomain);
-                AddMaxResultsMeta(meta, maxResults);
                 meta.Add("error_count", errors.Count);
-                AddDomainAndForestMeta(meta, domainName, forestName);
+                AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             });
     }
 }
-
