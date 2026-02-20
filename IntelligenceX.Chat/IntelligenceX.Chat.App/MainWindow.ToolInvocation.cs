@@ -612,7 +612,8 @@ public sealed partial class MainWindow {
             var fileName = Path.GetFileName(popoutPath);
             await NotifyVisualPopoutResultAsync(ok: true, filePath: popoutPath, message: "Opened popout: " + fileName).ConfigureAwait(false);
         } catch (Exception ex) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed: " + ex.Message).ConfigureAwait(false);
+            StartupLog.Write("OpenVisualPopoutAsync failed: " + ex.Message);
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed. Please try again.").ConfigureAwait(false);
         }
     }
 

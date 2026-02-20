@@ -511,7 +511,8 @@ public sealed partial class MainWindow : Window {
 
                             await OpenVisualPopoutAsync(title, normalizedFormat, payloadBytes).ConfigureAwait(true);
                         } catch (Exception ex) {
-                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed: " + ex.Message).ConfigureAwait(true);
+                            StartupLog.Write("open_visual_popout dispatch failed: " + ex.Message);
+                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed. Please try again.").ConfigureAwait(true);
                         }
                         break;
                     }
