@@ -76,6 +76,21 @@ public sealed class ToolRegistryReplacementTests {
     }
 
     [Fact]
+    public void Register_ShouldPreferNamePrefixCategoryOverRuntimeToolNamespace() {
+        var registry = new ToolRegistry();
+        registry.Register(new IntelligenceX.Tools.System.WrappedSystemTool(
+            new ToolDefinition(
+                name: "ad_custom_probe",
+                description: "Probe",
+                parameters: null)));
+
+        Assert.True(registry.TryGetDefinition("ad_custom_probe", out var definition));
+        Assert.NotNull(definition);
+        Assert.Equal("active_directory", definition!.Category);
+        Assert.Contains("active_directory", definition.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RegisterAlias_WithReplaceExisting_ShouldRebindAliasToNewCanonicalTool() {
         var registry = new ToolRegistry();
 
