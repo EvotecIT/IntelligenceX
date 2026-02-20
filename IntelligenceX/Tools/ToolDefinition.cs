@@ -276,9 +276,7 @@ public sealed class ToolDefinition {
         taxonomyKeys.Sort(StringComparer.OrdinalIgnoreCase);
         foreach (var taxonomyKey in taxonomyKeys) {
             var taxonomyTag = taxonomyByKey[taxonomyKey];
-            if (seen.Add(taxonomyTag)) {
-                merged.Add(taxonomyTag);
-            }
+            merged.Add(taxonomyTag);
         }
 
         if (merged.Count == 0) {

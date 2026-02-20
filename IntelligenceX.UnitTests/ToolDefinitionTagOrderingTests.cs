@@ -224,6 +224,28 @@ public sealed class ToolDefinitionTagOrderingTests {
         AssertSingleTaxonomyTag(aliasA.Tags, "routing:");
     }
 
+    [Fact]
+    public void CreateAliasDefinition_ShouldPreferOverrideTaxonomyValue_WithCaseAndWhitespaceVariants() {
+        var canonical = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: null,
+            tags: new[] { "Risk:Low", "Scope:General", "inventory" });
+
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias",
+            tags: new[] { " risk:HIGH ", " scope:domain ", "routing:explicit" });
+
+        Assert.Contains("risk:HIGH", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Risk:Low", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("scope:domain", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Scope:General", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(alias.Tags, "risk:");
+        AssertSingleTaxonomyTag(alias.Tags, "scope:");
+        AssertSingleTaxonomyTag(alias.Tags, "routing:");
+    }
+
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
         Assert.Equal(
             1,
