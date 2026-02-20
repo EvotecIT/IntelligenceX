@@ -219,27 +219,27 @@ public sealed class ToolPackToolRoutingModel {
     /// <summary>
     /// Primary scope where the tool operates (for example: host/domain/file/message/pack).
     /// </summary>
-    public string Scope { get; init; } = "general";
+    public string Scope { get; init; } = ToolRoutingTaxonomy.ScopeGeneral;
 
     /// <summary>
     /// Primary operation kind (for example: query/search/list/read/write/execute/guide).
     /// </summary>
-    public string Operation { get; init; } = "read";
+    public string Operation { get; init; } = ToolRoutingTaxonomy.OperationRead;
 
     /// <summary>
     /// Primary entity class handled by this tool.
     /// </summary>
-    public string Entity { get; init; } = "resource";
+    public string Entity { get; init; } = ToolRoutingTaxonomy.EntityResource;
 
     /// <summary>
     /// Relative execution risk profile (for example: low/medium/high).
     /// </summary>
-    public string Risk { get; init; } = "low";
+    public string Risk { get; init; } = ToolRoutingTaxonomy.RiskLow;
 
     /// <summary>
     /// Routing source marker (<c>explicit</c> when overridden, otherwise <c>inferred</c>).
     /// </summary>
-    public string Source { get; init; } = "inferred";
+    public string Source { get; init; } = ToolRoutingTaxonomy.SourceInferred;
 }
 
 /// <summary>
@@ -476,16 +476,6 @@ public sealed class ToolPackToolTraitsModel {
 /// Factory for consistent pack guidance models.
 /// </summary>
 public static class ToolPackGuidance {
-    private static readonly HashSet<string> AllowedRoutingRisks = new(StringComparer.Ordinal) {
-        "low",
-        "medium",
-        "high"
-    };
-    private static readonly HashSet<string> AllowedRoutingSources = new(StringComparer.Ordinal) {
-        "explicit",
-        "inferred"
-    };
-
     private static readonly string[] TableViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
     private static readonly string[] PagingArgumentNames = { "cursor", "page_size", "offset", "skip", "limit" };
     private static readonly string[] TimeRangeArgumentNames = { "start_time_utc", "end_time_utc", "since_utc", "before_utc", "reference_time_utc" };
@@ -610,7 +600,9 @@ public static class ToolPackGuidance {
                     Operation = routing.Operation,
                     Entity = routing.Entity,
                     Risk = routing.Risk,
-                    Source = routing.IsExplicit ? "explicit" : "inferred"
+                    Source = routing.IsExplicit
+                        ? ToolRoutingTaxonomy.SourceExplicit
+                        : ToolRoutingTaxonomy.SourceInferred
                 },
                 Description = enrichedDefinition.Description?.Trim() ?? string.Empty,
                 RequiredArguments = requiredArguments,
@@ -910,33 +902,34 @@ public static class ToolPackGuidance {
             return new ToolPackToolRoutingModel();
         }
 
-        var scope = NormalizeRoutingToken(routing.Scope, "general");
-        var operation = NormalizeRoutingToken(routing.Operation, "read");
-        var entity = NormalizeRoutingToken(routing.Entity, "resource");
+        var scope = NormalizeRoutingToken(routing.Scope, ToolRoutingTaxonomy.ScopeGeneral);
+        var operation = NormalizeRoutingToken(routing.Operation, ToolRoutingTaxonomy.OperationRead);
+        var entity = NormalizeRoutingToken(routing.Entity, ToolRoutingTaxonomy.EntityResource);
         var rawRisk = (routing.Risk ?? string.Empty).Trim();
-        var risk = NormalizeRoutingToken(routing.Risk, "low");
+        var risk = NormalizeRoutingToken(routing.Risk, ToolRoutingTaxonomy.RiskLow);
         var rawSource = (routing.Source ?? string.Empty).Trim();
-        var source = NormalizeRoutingToken(routing.Source, "inferred");
-        if (!AllowedRoutingSources.Contains(source)) {
+        var source = NormalizeRoutingToken(routing.Source, ToolRoutingTaxonomy.SourceInferred);
+        if (!ToolRoutingTaxonomy.IsAllowedSource(source)) {
             if (rawSource.Length > 0) {
                 throw new InvalidOperationException(
-                    $"Routing source '{rawSource}' is invalid. Allowed values: explicit, inferred.");
+                    $"Routing source '{rawSource}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedSources)}.");
             }
 
-            source = "inferred";
+            source = ToolRoutingTaxonomy.SourceInferred;
         }
 
-        if (!AllowedRoutingRisks.Contains(risk)) {
-            if (string.Equals(source, "explicit", StringComparison.Ordinal)) {
+        if (!ToolRoutingTaxonomy.IsAllowedRisk(risk)) {
+            if (string.Equals(source, ToolRoutingTaxonomy.SourceExplicit, StringComparison.Ordinal)) {
                 throw new InvalidOperationException(
-                    $"Explicit routing risk '{rawRisk}' is invalid. Allowed values: low, medium, high.");
+                    $"Explicit routing risk '{rawRisk}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
             }
 
-            risk = "low";
+            risk = ToolRoutingTaxonomy.RiskLow;
         }
 
-        if (string.Equals(source, "explicit", StringComparison.Ordinal) && rawRisk.Length == 0) {
-            throw new InvalidOperationException("Explicit routing risk is required and must be one of: low, medium, high.");
+        if (string.Equals(source, ToolRoutingTaxonomy.SourceExplicit, StringComparison.Ordinal) && rawRisk.Length == 0) {
+            throw new InvalidOperationException(
+                $"Explicit routing risk is required and must be one of: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
         }
 
         return new ToolPackToolRoutingModel {

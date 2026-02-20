@@ -21,65 +21,7 @@ namespace IntelligenceX.Tools.Tests;
 public class ToolPackInfoContractTests {
     [Fact]
     public async Task PackInfoTools_ShouldExposeRegisteredToolCatalogs() {
-        var adOptions = new ActiveDirectoryToolOptions();
-        var eventLogOptions = new EventLogToolOptions();
-        var fileSystemOptions = new FileSystemToolOptions();
-        var systemOptions = new SystemToolOptions();
-        var emailOptions = new EmailToolOptions();
-        var powerShellOptions = new PowerShellToolOptions { Enabled = true };
-        var testimoXOptions = new TestimoXToolOptions { Enabled = true };
-        var officeImoOptions = new OfficeImoToolOptions();
-
-        var cases = new[] {
-            new PackCase(
-                Pack: "active_directory",
-                Engine: "ADPlayground",
-                Tool: new AdPackInfoTool(adOptions),
-                ExpectedTools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(adOptions),
-                ExpectedCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(adOptions)),
-            new PackCase(
-                Pack: "eventlog",
-                Engine: "EventViewerX",
-                Tool: new EventLogPackInfoTool(eventLogOptions),
-                ExpectedTools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(eventLogOptions),
-                ExpectedCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(eventLogOptions)),
-            new PackCase(
-                Pack: "filesystem",
-                Engine: "IntelligenceX.Engines.FileSystem",
-                Tool: new FileSystemPackInfoTool(fileSystemOptions),
-                ExpectedTools: ToolRegistryFileSystemExtensions.GetRegisteredToolNames(fileSystemOptions),
-                ExpectedCatalog: ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(fileSystemOptions)),
-            new PackCase(
-                Pack: "system",
-                Engine: "ComputerX",
-                Tool: new SystemPackInfoTool(systemOptions),
-                ExpectedTools: ToolRegistrySystemExtensions.GetRegisteredToolNames(systemOptions),
-                ExpectedCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(systemOptions)),
-            new PackCase(
-                Pack: "email",
-                Engine: "Mailozaurr",
-                Tool: new EmailPackInfoTool(emailOptions),
-                ExpectedTools: ToolRegistryEmailExtensions.GetRegisteredToolNames(emailOptions),
-                ExpectedCatalog: ToolRegistryEmailExtensions.GetRegisteredToolCatalog(emailOptions)),
-            new PackCase(
-                Pack: "powershell",
-                Engine: "IntelligenceX.Engines.PowerShell",
-                Tool: new PowerShellPackInfoTool(powerShellOptions),
-                ExpectedTools: ToolRegistryPowerShellExtensions.GetRegisteredToolNames(powerShellOptions),
-                ExpectedCatalog: ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(powerShellOptions)),
-            new PackCase(
-                Pack: "testimox",
-                Engine: "TestimoX",
-                Tool: new TestimoXPackInfoTool(testimoXOptions),
-                ExpectedTools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(testimoXOptions),
-                ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions)),
-            new PackCase(
-                Pack: "officeimo",
-                Engine: "OfficeIMO.Reader",
-                Tool: new OfficeImoPackInfoTool(officeImoOptions),
-                ExpectedTools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(officeImoOptions),
-                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions))
-        };
+        var cases = BuildPackCases();
 
         foreach (var @case in cases) {
             var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
@@ -142,11 +84,11 @@ public class ToolPackInfoContractTests {
                 Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("source").GetString()));
                 Assert.Contains(
                     routing.GetProperty("risk").GetString() ?? string.Empty,
-                    new[] { "low", "medium", "high" },
+                    ToolRoutingTaxonomy.AllowedRisks,
                     StringComparer.Ordinal);
                 Assert.Contains(
                     routing.GetProperty("source").GetString() ?? string.Empty,
-                    new[] { "explicit", "inferred" },
+                    ToolRoutingTaxonomy.AllowedSources,
                     StringComparer.Ordinal);
                 Assert.True(entry.TryGetProperty("required_arguments", out var requiredArguments));
                 Assert.Equal(JsonValueKind.Array, requiredArguments.ValueKind);
@@ -276,6 +218,100 @@ public class ToolPackInfoContractTests {
                 Assert.True(entityHandoffs.GetArrayLength() > 0);
             }
         }
+    }
+
+    [Fact]
+    public async Task PackInfoTools_ShouldExposeDeterministicCatalogTaxonomyAcrossPacks() {
+        var cases = BuildPackCases();
+
+        foreach (var @case in cases) {
+            var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+            using var document = JsonDocument.Parse(json);
+            var toolCatalog = document.RootElement.GetProperty("tool_catalog");
+            Assert.Equal(JsonValueKind.Array, toolCatalog.ValueKind);
+
+            foreach (var entry in toolCatalog.EnumerateArray()) {
+                var tags = ReadStringArrayPreserveOrder(entry.GetProperty("tags"));
+                var sortedTags = tags
+                    .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                Assert.True(
+                    sortedTags.SequenceEqual(tags, StringComparer.OrdinalIgnoreCase),
+                    $"{@case.Pack}:{entry.GetProperty("name").GetString()} tags should be deterministic.");
+
+                var routing = entry.GetProperty("routing");
+                Assert.Contains(
+                    routing.GetProperty("risk").GetString() ?? string.Empty,
+                    ToolRoutingTaxonomy.AllowedRisks,
+                    StringComparer.Ordinal);
+                Assert.Contains(
+                    routing.GetProperty("source").GetString() ?? string.Empty,
+                    ToolRoutingTaxonomy.AllowedSources,
+                    StringComparer.Ordinal);
+            }
+        }
+    }
+
+    private static PackCase[] BuildPackCases() {
+        var adOptions = new ActiveDirectoryToolOptions();
+        var eventLogOptions = new EventLogToolOptions();
+        var fileSystemOptions = new FileSystemToolOptions();
+        var systemOptions = new SystemToolOptions();
+        var emailOptions = new EmailToolOptions();
+        var powerShellOptions = new PowerShellToolOptions { Enabled = true };
+        var testimoXOptions = new TestimoXToolOptions { Enabled = true };
+        var officeImoOptions = new OfficeImoToolOptions();
+
+        return new[] {
+            new PackCase(
+                Pack: "active_directory",
+                Engine: "ADPlayground",
+                Tool: new AdPackInfoTool(adOptions),
+                ExpectedTools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(adOptions),
+                ExpectedCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(adOptions)),
+            new PackCase(
+                Pack: "eventlog",
+                Engine: "EventViewerX",
+                Tool: new EventLogPackInfoTool(eventLogOptions),
+                ExpectedTools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(eventLogOptions),
+                ExpectedCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(eventLogOptions)),
+            new PackCase(
+                Pack: "filesystem",
+                Engine: "IntelligenceX.Engines.FileSystem",
+                Tool: new FileSystemPackInfoTool(fileSystemOptions),
+                ExpectedTools: ToolRegistryFileSystemExtensions.GetRegisteredToolNames(fileSystemOptions),
+                ExpectedCatalog: ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(fileSystemOptions)),
+            new PackCase(
+                Pack: "system",
+                Engine: "ComputerX",
+                Tool: new SystemPackInfoTool(systemOptions),
+                ExpectedTools: ToolRegistrySystemExtensions.GetRegisteredToolNames(systemOptions),
+                ExpectedCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(systemOptions)),
+            new PackCase(
+                Pack: "email",
+                Engine: "Mailozaurr",
+                Tool: new EmailPackInfoTool(emailOptions),
+                ExpectedTools: ToolRegistryEmailExtensions.GetRegisteredToolNames(emailOptions),
+                ExpectedCatalog: ToolRegistryEmailExtensions.GetRegisteredToolCatalog(emailOptions)),
+            new PackCase(
+                Pack: "powershell",
+                Engine: "IntelligenceX.Engines.PowerShell",
+                Tool: new PowerShellPackInfoTool(powerShellOptions),
+                ExpectedTools: ToolRegistryPowerShellExtensions.GetRegisteredToolNames(powerShellOptions),
+                ExpectedCatalog: ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(powerShellOptions)),
+            new PackCase(
+                Pack: "testimox",
+                Engine: "TestimoX",
+                Tool: new TestimoXPackInfoTool(testimoXOptions),
+                ExpectedTools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(testimoXOptions),
+                ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions)),
+            new PackCase(
+                Pack: "officeimo",
+                Engine: "OfficeIMO.Reader",
+                Tool: new OfficeImoPackInfoTool(officeImoOptions),
+                ExpectedTools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(officeImoOptions),
+                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions))
+        };
     }
 
     private static string[] ReadStringArray(JsonElement element) {

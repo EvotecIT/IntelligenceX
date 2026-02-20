@@ -178,7 +178,7 @@ public class ToolPackGuidanceTests {
         Assert.Equal("stub_a", a.Name);
         Assert.Equal("Tool A", a.Description);
         Assert.NotNull(a.Routing);
-        Assert.Equal("inferred", a.Routing.Source);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, a.Routing.Source);
         Assert.False(string.IsNullOrWhiteSpace(a.Routing.Scope));
         Assert.False(string.IsNullOrWhiteSpace(a.Routing.Operation));
         Assert.False(string.IsNullOrWhiteSpace(a.Routing.Entity));
@@ -293,8 +293,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal("host", item.Routing.Scope);
         Assert.Equal("query", item.Routing.Operation);
         Assert.Equal("event", item.Routing.Entity);
-        Assert.Equal("low", item.Routing.Risk);
-        Assert.Equal("inferred", item.Routing.Source);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
     }
 
     [Fact]
@@ -322,8 +322,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal("host", item.Routing.Scope);
         Assert.Equal("probe", item.Routing.Operation);
         Assert.Equal("resource", item.Routing.Entity);
-        Assert.Equal("low", item.Routing.Risk);
-        Assert.Equal("inferred", item.Routing.Source);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
     }
 
     [Fact]
@@ -341,7 +341,7 @@ public class ToolPackGuidanceTests {
                         Operation = "Read",
                         Entity = "Host",
                         Risk = "critical",
-                        Source = "inferred"
+                        Source = ToolRoutingTaxonomy.SourceInferred
                     }
                 }
             });
@@ -350,8 +350,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal("host", item.Routing.Scope);
         Assert.Equal("read", item.Routing.Operation);
         Assert.Equal("host", item.Routing.Entity);
-        Assert.Equal("low", item.Routing.Risk);
-        Assert.Equal("inferred", item.Routing.Source);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
     }
 
     [Fact]
@@ -366,7 +366,7 @@ public class ToolPackGuidanceTests {
                         Name = "system_info",
                         Description = "System info",
                         Routing = new ToolPackToolRoutingModel {
-                            Risk = "low",
+                            Risk = ToolRoutingTaxonomy.RiskLow,
                             Source = "manual"
                         }
                     }
@@ -388,7 +388,7 @@ public class ToolPackGuidanceTests {
                         Description = "System info",
                         Routing = new ToolPackToolRoutingModel {
                             Risk = "critical",
-                            Source = "explicit"
+                            Source = ToolRoutingTaxonomy.SourceExplicit
                         }
                     }
                 }));

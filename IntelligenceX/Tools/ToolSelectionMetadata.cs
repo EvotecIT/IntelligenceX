@@ -49,10 +49,10 @@ public static class ToolSelectionMetadata {
         /// Initializes a new routing taxonomy descriptor.
         /// </summary>
         public ToolSelectionRoutingInfo(string scope, string operation, string entity, string risk, bool isExplicit) {
-            Scope = NormalizeToken(scope, "general");
-            Operation = NormalizeToken(operation, "read");
-            Entity = NormalizeToken(entity, "resource");
-            Risk = NormalizeToken(risk, "low");
+            Scope = NormalizeToken(scope, ToolRoutingTaxonomy.ScopeGeneral);
+            Operation = NormalizeToken(operation, ToolRoutingTaxonomy.OperationRead);
+            Entity = NormalizeToken(entity, ToolRoutingTaxonomy.EntityResource);
+            Risk = NormalizeToken(risk, ToolRoutingTaxonomy.RiskLow);
             IsExplicit = isExplicit;
         }
 
@@ -97,9 +97,9 @@ public static class ToolSelectionMetadata {
             ["system_info"] = new ExplicitSelectionOverride(
                 category: "system",
                 scope: "host",
-                operation: "read",
+                operation: ToolRoutingTaxonomy.OperationRead,
                 entity: "host",
-                risk: "low",
+                risk: ToolRoutingTaxonomy.RiskLow,
                 tags: new[] { "inventory", "baseline" },
                 isHighTraffic: true,
                 isHighRisk: false),
@@ -108,7 +108,7 @@ public static class ToolSelectionMetadata {
                 scope: "host",
                 operation: "query",
                 entity: "event",
-                risk: "low",
+                risk: ToolRoutingTaxonomy.RiskLow,
                 tags: new[] { "named_events", "correlation" },
                 isHighTraffic: true,
                 isHighRisk: false),
@@ -117,7 +117,7 @@ public static class ToolSelectionMetadata {
                 scope: "host",
                 operation: "query",
                 entity: "event",
-                risk: "low",
+                risk: ToolRoutingTaxonomy.RiskLow,
                 tags: new[] { "timeline", "correlation" },
                 isHighTraffic: true,
                 isHighRisk: false),
@@ -144,7 +144,7 @@ public static class ToolSelectionMetadata {
                 scope: "domain",
                 operation: "transform",
                 entity: "identity",
-                risk: "low",
+                risk: ToolRoutingTaxonomy.RiskLow,
                 tags: new[] { "handoff", "normalization" },
                 isHighTraffic: true,
                 isHighRisk: false),
@@ -421,7 +421,7 @@ public static class ToolSelectionMetadata {
             return "repository";
         }
 
-        return "general";
+        return ToolRoutingTaxonomy.ScopeGeneral;
     }
 
     private static string InferOperation(string? toolName, bool isWriteCapable) {
@@ -460,10 +460,10 @@ public static class ToolSelectionMetadata {
             return isWriteCapable ? "execute_write" : "execute";
         }
         if (name.EndsWith("_get", StringComparison.OrdinalIgnoreCase)) {
-            return "read";
+            return ToolRoutingTaxonomy.OperationRead;
         }
 
-        return isWriteCapable ? "write" : "read";
+        return isWriteCapable ? "write" : ToolRoutingTaxonomy.OperationRead;
     }
 
     private static string InferEntity(string? toolName, string? category) {
@@ -513,7 +513,7 @@ public static class ToolSelectionMetadata {
             return "message";
         }
 
-        return "resource";
+        return ToolRoutingTaxonomy.EntityResource;
     }
 
     private static string InferRisk(ToolDefinition definition, string operation) {
@@ -528,7 +528,7 @@ public static class ToolSelectionMetadata {
             return "medium";
         }
 
-        return "low";
+        return ToolRoutingTaxonomy.RiskLow;
     }
 
     private static IReadOnlyList<string> BuildSelectionTags(
@@ -563,7 +563,10 @@ public static class ToolSelectionMetadata {
         AddTag($"operation:{routing.Operation}");
         AddTag($"entity:{routing.Entity}");
         AddTag($"risk:{routing.Risk}");
-        AddTag(routing.IsExplicit ? "routing:explicit" : "routing:inferred");
+        AddTag(
+            routing.IsExplicit
+                ? $"routing:{ToolRoutingTaxonomy.SourceExplicit}"
+                : $"routing:{ToolRoutingTaxonomy.SourceInferred}");
 
         foreach (var tag in explicitOverride?.Tags ?? Array.Empty<string>()) {
             AddTag(tag);
