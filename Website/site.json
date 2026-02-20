@@ -23,11 +23,19 @@
     },
     {
       "Name": "blog",
+      "Preset": "blog",
       "Input": "content/blog",
       "Output": "/blog",
       "DefaultLayout": "page",
       "ListLayout": "page",
       "UseToc": false,
+      "EditorialCards": {
+        "ImageAspect": "16/9",
+        "ImageFit": "cover",
+        "ImagePosition": "center",
+        "GridClass": "ix-editorial-list ix-editorial-list-blog",
+        "CardClass": "ix-editorial-card ix-editorial-card-blog"
+      },
       "Include": ["*.md", "**/*.md"]
     },
     {
