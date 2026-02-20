@@ -2,6 +2,48 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static void TestAnalyzeRunInternalMaintainabilityHelpersPositivePaths() {
+        var findings = new List<(string RuleId, string Path)> {
+            ("IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/FirstTool.cs"),
+            ("IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SecondTool.cs"),
+            ("IXDUP001", "src/check.py")
+        };
+
+        AssertHasFinding(findings, "IXTOOL003", "positive helper has rule");
+        AssertHasFinding(findings, "IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/FirstTool.cs",
+            "positive helper has rule+path");
+        AssertHasExactlyOneFinding(findings, "IXTOOL003",
+            "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SecondTool.cs",
+            "positive helper has exactly one");
+        AssertNoFinding(findings, "IXTOOL999", "positive helper no unmatched rule");
+        AssertNoFinding(findings, "IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/MissingTool.cs",
+            "positive helper no unmatched rule+path");
+        AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".py", "positive helper suffix match");
+        AssertNoFindingWithPathSuffix(findings, "IXDUP001", ".cs", "positive helper suffix miss");
+    }
+
+    private static void TestAnalyzeRunInternalMaintainabilityHelpersFailureIncludesMatchCount() {
+        var findings = new List<(string RuleId, string Path)> {
+            ("IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/OnlyTool.cs")
+        };
+
+        try {
+            AssertHasFinding(findings, "IXTOOL999", "missing rule should fail");
+            throw new InvalidOperationException("Expected missing-rule helper assertion to fail.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "missing rule should fail (matches=0)",
+                "analyze run internal maintainability helper match-count message for missing rule");
+        }
+
+        try {
+            AssertNoFinding(findings, "IXTOOL003", "existing rule should fail");
+            throw new InvalidOperationException("Expected existing-rule helper assertion to fail.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "existing rule should fail (matches=1)",
+                "analyze run internal maintainability helper match-count message for existing rule");
+        }
+    }
+
     private static void TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyRuleId() {
         var findings = new List<(string RuleId, string Path)> {
             ("IXTOOL001", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleBadTool.cs")
