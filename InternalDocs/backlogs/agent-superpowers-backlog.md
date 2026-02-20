@@ -43,6 +43,8 @@ Tracking note: detailed EventLog -> AD handoff execution plan lives in `Internal
 - [x] (P0) Add small AD-side helper tool so EventLog handoff candidates are first-class AD inputs.
 - [x] (P1) Add EventLog -> AD correlation examples (local and remote) with reusable correlation profiles/keys.
   Reference: `InternalDocs/agent-playbooks/eventlog-ad-correlation-playbook.md`.
+- [ ] (P1) Extend `eventlog_live_query` and `eventlog_evtx_query` with first-class structured filters (`keywords`, `level`, `user_id`, `event_record_id`, named-data include/exclude) so AD investigations do not rely on XPath-only filtering.
+- [ ] (P2) Decide whether to expose EventViewerX `WatcherManager`/`WatchEvents` as read-only tools with explicit lifecycle/governance contracts.
 - [ ] (P2) Add path allowlist friendly scanning for likely EVTX export locations with user-configurable roots.
 
 ## ADPlayground + TestimoX (Forest-Level Reality)

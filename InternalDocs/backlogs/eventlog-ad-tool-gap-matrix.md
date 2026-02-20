@@ -9,14 +9,14 @@ Last updated: 2026-02-20
 | `Reports.Evtx.EvtxEventReportBuilder` | `eventlog_evtx_query` | Covered |
 | `Reports.Stats.EvtxStatsReportBuilder` | `eventlog_evtx_stats` | Covered |
 | `Reports.Security.SecurityEvtxQueryExecutor` (`user_logons`, `failed_logons`, `account_lockouts`) | `eventlog_evtx_security_summary` (`report_kind`) | Covered |
-| `Reports.Inventory.EventCatalogQueryExecutor` channels | `eventlog_channel_list` | Covered |
-| `Reports.Inventory.EventCatalogQueryExecutor` providers | `eventlog_provider_list` | Covered |
+| `Reports.Inventory.EventCatalogQueryExecutor` channels | `eventlog_channels_list` | Covered |
+| `Reports.Inventory.EventCatalogQueryExecutor` providers | `eventlog_providers_list` | Covered |
 | `Reports.Live.LiveEventQueryExecutor` | `eventlog_live_query` | Covered |
 | `Reports.Live.LiveStatsQueryExecutor` | `eventlog_live_stats` | Covered |
 | `Reports.Correlation.NamedEventsTimelineQueryExecutor` | `eventlog_timeline_query`, `eventlog_timeline_explain` | Covered |
 | Named-event rules (`Enums.NamedEvents`) | `eventlog_named_events_catalog`, `eventlog_named_events_query` | Covered |
 
-EventLog note: current gaps are no longer "core parser missing", but optional convenience wrappers and deeper scenario bundles.
+EventLog note: report-surface coverage is complete; remaining gaps are feature-parity and operator ergonomics on top of existing wrappers.
 
 ## ADPlayground Query Coverage (Recent Additions)
 
@@ -35,7 +35,8 @@ EventLog note: current gaps are no longer "core parser missing", but optional co
 
 | Priority | Candidate tool | Upstream source | Why |
 | --- | --- | --- | --- |
-| P2 | `eventlog_evtx_security_samples` | `Security*QueryResult.Samples` | convenience extraction wrapper for sample rows |
+| P1 | Extend `eventlog_live_query` and `eventlog_evtx_query` with first-class advanced filters | `SearchEvents.QueryLog` / `SearchEvents.QueryLogFile` | expose structured filters (`keywords`, `level`, `user_id`, `event_record_id`, `named_data_filter`, `named_data_exclude_filter`) without forcing XPath-only workflows |
+| P2 | Evaluate `eventlog_watcher_*` read-only wrappers | `WatcherManager` / `WatchEvents` | optional long-running watch capability for operations workflows; requires lifecycle/governance contract |
 
 ## Write-Tool Candidates (Require Governance Contracts)
 
