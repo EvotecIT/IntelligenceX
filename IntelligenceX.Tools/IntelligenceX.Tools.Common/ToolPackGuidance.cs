@@ -481,6 +481,10 @@ public static class ToolPackGuidance {
         "medium",
         "high"
     };
+    private static readonly HashSet<string> AllowedRoutingSources = new(StringComparer.Ordinal) {
+        "explicit",
+        "inferred"
+    };
 
     private static readonly string[] TableViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
     private static readonly string[] PagingArgumentNames = { "cursor", "page_size", "offset", "skip", "limit" };
@@ -909,15 +913,30 @@ public static class ToolPackGuidance {
         var scope = NormalizeRoutingToken(routing.Scope, "general");
         var operation = NormalizeRoutingToken(routing.Operation, "read");
         var entity = NormalizeRoutingToken(routing.Entity, "resource");
+        var rawRisk = (routing.Risk ?? string.Empty).Trim();
         var risk = NormalizeRoutingToken(routing.Risk, "low");
+        var rawSource = (routing.Source ?? string.Empty).Trim();
+        var source = NormalizeRoutingToken(routing.Source, "inferred");
+        if (!AllowedRoutingSources.Contains(source)) {
+            if (rawSource.Length > 0) {
+                throw new InvalidOperationException(
+                    $"Routing source '{rawSource}' is invalid. Allowed values: explicit, inferred.");
+            }
+
+            source = "inferred";
+        }
+
         if (!AllowedRoutingRisks.Contains(risk)) {
+            if (string.Equals(source, "explicit", StringComparison.Ordinal)) {
+                throw new InvalidOperationException(
+                    $"Explicit routing risk '{rawRisk}' is invalid. Allowed values: low, medium, high.");
+            }
+
             risk = "low";
         }
 
-        var source = NormalizeRoutingToken(routing.Source, "inferred");
-        if (!string.Equals(source, "explicit", StringComparison.Ordinal) &&
-            !string.Equals(source, "inferred", StringComparison.Ordinal)) {
-            source = "inferred";
+        if (string.Equals(source, "explicit", StringComparison.Ordinal) && rawRisk.Length == 0) {
+            throw new InvalidOperationException("Explicit routing risk is required and must be one of: low, medium, high.");
         }
 
         return new ToolPackToolRoutingModel {
