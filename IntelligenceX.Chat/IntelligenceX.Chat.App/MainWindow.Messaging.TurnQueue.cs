@@ -51,6 +51,14 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        // Keep user bubble rendering immediate, but still validate connectivity
+        // before we enter active send state.
+        if (_client is null && !await EnsureConnectedAsync().ConfigureAwait(false)) {
+            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            return;
+        }
+
         long? queueWaitMs = null;
         if (queuedAtUtc.HasValue && queuedAtUtc.Value.Kind == DateTimeKind.Utc) {
             var elapsed = DateTime.UtcNow - queuedAtUtc.Value;
