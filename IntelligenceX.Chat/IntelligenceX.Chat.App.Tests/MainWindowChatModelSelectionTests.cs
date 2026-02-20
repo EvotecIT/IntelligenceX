@@ -40,6 +40,20 @@ public sealed class MainWindowChatModelSelectionTests {
     }
 
     /// <summary>
+    /// Ensures local compatible runtimes do not send stale cloud model ids before discovery completes.
+    /// </summary>
+    [Fact]
+    public void ResolveChatRequestModelOverride_ClearsCloudModelWhenLocalCatalogIsUnavailable() {
+        var resolved = MainWindow.ResolveChatRequestModelOverride(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            "gpt-5.3-codex",
+            Array.Empty<ModelInfoDto>());
+
+        Assert.Null(resolved);
+    }
+
+    /// <summary>
     /// Ensures compatible runtimes use a discovered default model when no model is configured.
     /// </summary>
     [Fact]

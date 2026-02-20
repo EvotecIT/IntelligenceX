@@ -574,6 +574,8 @@ Quick start prompts:
         IReadOnlyList<ModelInfoDto>? availableModels) {
         var normalizedTransport = NormalizeLocalProviderTransport(transport);
         var normalizedConfiguredModel = (configuredModel ?? string.Empty).Trim();
+        var localCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            && IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl));
         var supportsCatalogFallback =
             string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
@@ -591,11 +593,12 @@ Quick start prompts:
         }
 
         if (preferredModel.Length == 0) {
+            if (localCompatibleRuntime && IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
+                return null;
+            }
             return normalizedConfiguredModel;
         }
 
-        var localCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            && IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl));
         if (localCompatibleRuntime || IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
             return preferredModel;
         }
