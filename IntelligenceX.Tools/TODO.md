@@ -12,6 +12,7 @@
 - [x] Add a small AD-side helper tool so EventLog handoff candidates are first-class AD inputs (less prompt glue).
 - [x] Add AD helper contract tests (schema snapshot, caps/truncation, invalid-input envelopes).
 - [x] Update EventLog and AD pack guidance to advertise a single reusable EventLog -> AD flow.
+- [x] Add AD scope-discovery helper (`ad_scope_discovery`) with naming contexts, DC/domain scope, and probe receipt output.
 - [x] Keep detailed checklist in `InternalDocs/backlogs/eventlog-ad-correlation-e2e.md`.
 
 ## Remaining Platform Tasks

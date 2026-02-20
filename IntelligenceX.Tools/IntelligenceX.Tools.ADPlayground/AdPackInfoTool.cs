@@ -33,6 +33,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
             tools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Call ad_environment_discover first to learn effective domain_controller/search_base_dn and candidate DCs.",
+                "Use ad_scope_discovery for explicit scope + receipt output (forest/domain, naming contexts, domains/DCs, and missing-reason diagnostics).",
                 "Use ad_forest_discover to make forest scope explicit and get a receipt (domains/trusts/DCs discovered and how).",
                 "Use ad_forest_functional for forest-level functional posture and recommended target-level planning.",
                 "Use ad_search/ad_groups_list/ad_spn_search for broad discovery.",
@@ -63,7 +64,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     suggestedTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Discover forest scope and enumerate domains/DCs/trusts",
-                    suggestedTools: new[] { "ad_forest_discover", "ad_forest_functional" }),
+                    suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_forest_functional" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Inspect AD topology (sites, subnets, and site links)",
                     suggestedTools: new[] { "ad_sites", "ad_subnets", "ad_site_links" }),
@@ -108,6 +109,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     id: "ad_diagnostics",
                     summary: "Provide LDAP diagnostics and aggregated security/replication insights.",
                     primaryTools: new[] { "ad_ldap_diagnostics", "ad_search_facets", "ad_replication_summary", "ad_replication_connections", "ad_replication_status", "ad_directory_discovery_diagnostics", "ad_dns_server_config", "ad_dns_zone_config", "ad_dns_zone_security", "ad_dns_delegation", "ad_delegation_audit", "ad_spn_stats", "ad_spn_hygiene", "ad_dns_scavenging" }),
+                ToolPackGuidance.Capability(
+                    id: "scope_discovery_receipt",
+                    summary: "Discover effective AD scope and emit probe receipts with endpoints, timeouts, and missing reasons.",
+                    primaryTools: new[] { "ad_scope_discovery", "ad_forest_discover" }),
                 ToolPackGuidance.Capability(
                     id: "topology_inventory",
                     summary: "Inspect Active Directory site/subnet/link topology and link schedule coverage.",

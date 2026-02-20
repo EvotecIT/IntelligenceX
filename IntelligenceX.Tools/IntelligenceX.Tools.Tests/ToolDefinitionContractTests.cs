@@ -57,6 +57,7 @@ public class ToolDefinitionContractTests {
         var expected = new[] {
             "ad_pack_info",
             "ad_environment_discover",
+            "ad_scope_discovery",
             "ad_handoff_prepare",
             "ad_object_resolve",
             "ad_stale_accounts",
