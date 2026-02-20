@@ -667,7 +667,7 @@ public sealed partial class MainWindow {
                 FilePath: popoutPath,
                 Message: "Opened popout: " + fileName);
         } catch (Exception ex) {
-            StartupLog.Write("OpenVisualPopoutAsync failed: " + ex.Message);
+            StartupLog.Write("OpenVisualPopoutAsync failed: " + ex);
             return new VisualPopoutOpenResult(
                 Ok: false,
                 FilePath: null,
