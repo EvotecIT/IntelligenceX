@@ -14,8 +14,10 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
     private const string EventLogEntityHandoffContract = "eventlog_entity_handoff";
+    private const string DefaultScopeDiscoveryFallback = "current_domain";
     private const int DefaultMaxIdentities = 50;
     private const int MaxIdentitiesCap = 500;
+    private const int MaxScopeSeedDomainControllers = 25;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_handoff_prepare",
@@ -83,9 +85,15 @@ public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
     private sealed record AdSearchTarget(
         string Identity);
 
+    private sealed record AdScopeDiscoveryTarget(
+        string DiscoveryFallback,
+        string? DomainName,
+        IReadOnlyList<string> IncludeDomainControllers);
+
     private sealed record TargetArguments(
         AdObjectResolveTarget AdObjectResolve,
-        AdSearchTarget? AdSearch);
+        AdSearchTarget? AdSearch,
+        AdScopeDiscoveryTarget AdScopeDiscovery);
 
     private sealed record PreparedHandoffResult(
         string SourceContract,
@@ -176,6 +184,7 @@ public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
             .Select(static candidate => candidate.Value)
             .ToArray();
         var primaryIdentity = identities.Length > 0 ? identities[0] : null;
+        var scopeDiscoveryTarget = BuildScopeDiscoveryTarget(computerCandidates, minCandidateCount);
 
         var result = new PreparedHandoffResult(
             SourceContract: EventLogEntityHandoffContract,
@@ -190,7 +199,8 @@ public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
             Candidates: selected,
             TargetArguments: new TargetArguments(
                 AdObjectResolve: new AdObjectResolveTarget(Identities: identities),
-                AdSearch: primaryIdentity is null ? null : new AdSearchTarget(Identity: primaryIdentity)));
+                AdSearch: primaryIdentity is null ? null : new AdSearchTarget(Identity: primaryIdentity),
+                AdScopeDiscovery: scopeDiscoveryTarget));
 
         var meta = new JsonObject()
             .Add("max_identities", maxIdentities)
@@ -198,7 +208,8 @@ public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
             .Add("min_candidate_count", minCandidateCount)
             .Add("candidates_total", merged.Count)
             .Add("candidates_selected", selected.Length)
-            .Add("truncated", truncated);
+            .Add("truncated", truncated)
+            .Add("scope_seed_domain_controllers", scopeDiscoveryTarget.IncludeDomainControllers.Count);
 
         var summary = ToolMarkdown.SummaryFacts(
             title: "AD Handoff Prepared",
@@ -206,6 +217,7 @@ public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
                 ("Identities", identities.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 ("Include computers", includeComputers ? "true" : "false"),
                 ("Min candidate count", minCandidateCount.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("Scope seed DCs", scopeDiscoveryTarget.IncludeDomainControllers.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 ("Truncated", truncated ? "true" : "false")
             });
 
@@ -334,5 +346,52 @@ public sealed class AdHandoffPrepareTool : ActiveDirectoryToolBase, ITool {
         }
 
         return false;
+    }
+
+    private static AdScopeDiscoveryTarget BuildScopeDiscoveryTarget(
+        IReadOnlyList<CandidateInput> computerCandidates,
+        int minCandidateCount) {
+        var includeDomainControllers = computerCandidates
+            .Where(candidate => candidate.Count >= minCandidateCount)
+            .Select(static candidate => NormalizeHostOrName(candidate.Value))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxScopeSeedDomainControllers)
+            .ToArray();
+
+        var domainName = includeDomainControllers
+            .Select(static value => TryExtractDnsDomainName(value))
+            .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+
+        return new AdScopeDiscoveryTarget(
+            DiscoveryFallback: DefaultScopeDiscoveryFallback,
+            DomainName: domainName,
+            IncludeDomainControllers: includeDomainControllers);
+    }
+
+    private static string? TryExtractDnsDomainName(string? host) {
+        var normalized = NormalizeHostOrName(host);
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return null;
+        }
+
+        var firstDot = normalized.IndexOf('.');
+        if (firstDot <= 0 || firstDot >= normalized.Length - 1) {
+            return null;
+        }
+
+        var domain = normalized[(firstDot + 1)..];
+        return string.IsNullOrWhiteSpace(domain)
+            ? null
+            : domain;
+    }
+
+    private static string NormalizeHostOrName(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        return value.Trim().TrimEnd('.');
     }
 }

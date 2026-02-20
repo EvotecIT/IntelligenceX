@@ -87,6 +87,18 @@ public class AdHandoffPrepareToolTests {
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .ToArray();
         Assert.Equal(identities, resolveTargets, StringComparer.OrdinalIgnoreCase);
+
+        var scopeTarget = root.GetProperty("target_arguments").GetProperty("ad_scope_discovery");
+        Assert.Equal("current_domain", scopeTarget.GetProperty("discovery_fallback").GetString());
+        Assert.Equal("lab.local", scopeTarget.GetProperty("domain_name").GetString());
+        var includeDomainControllers = scopeTarget
+            .GetProperty("include_domain_controllers")
+            .EnumerateArray()
+            .Select(static value => value.GetString())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        Assert.Contains("DC01.lab.local", includeDomainControllers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("SQL01.lab.local", includeDomainControllers, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -123,6 +135,19 @@ public class AdHandoffPrepareToolTests {
         Assert.Contains("bob", identities, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("CN=Bob,CN=Users,DC=lab,DC=local", identities, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("DC04.lab.local", identities, StringComparer.OrdinalIgnoreCase);
+
+        var scopeTarget = root.GetProperty("target_arguments").GetProperty("ad_scope_discovery");
+        Assert.Equal("current_domain", scopeTarget.GetProperty("discovery_fallback").GetString());
+        Assert.Equal("lab.local", scopeTarget.GetProperty("domain_name").GetString());
+        var includeDomainControllers = scopeTarget
+            .GetProperty("include_domain_controllers")
+            .EnumerateArray()
+            .Select(static value => value.GetString())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        Assert.Contains("DC02.lab.local", includeDomainControllers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("DC03.lab.local", includeDomainControllers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("DC04.lab.local", includeDomainControllers, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

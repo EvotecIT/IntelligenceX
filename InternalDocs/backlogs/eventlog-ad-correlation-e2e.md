@@ -18,6 +18,7 @@
 - [x] End-to-end test proves `eventlog_named_events_query` output handoff can be consumed by AD helper input without prompt glue.
 - [x] End-to-end test proves `eventlog_timeline_query` output handoff can be consumed by AD helper input without prompt glue.
 - [x] AD helper output is deterministic, capped, and structured for direct AD tool calls.
+- [x] AD helper output includes first-class `ad_scope_discovery` target arguments derived from EventLog handoff candidates.
 - [x] EventLog pack guidance and AD pack guidance both document the same handoff flow.
 - [x] Backlogs/TODOs are synced with only true remaining work.
 

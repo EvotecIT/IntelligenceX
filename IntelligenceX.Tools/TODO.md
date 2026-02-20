@@ -13,6 +13,7 @@
 - [x] Add AD helper contract tests (schema snapshot, caps/truncation, invalid-input envelopes).
 - [x] Update EventLog and AD pack guidance to advertise a single reusable EventLog -> AD flow.
 - [x] Add AD scope-discovery helper (`ad_scope_discovery`) with naming contexts, DC/domain scope, and probe receipt output.
+- [x] Extend AD handoff helper output with first-class `ad_scope_discovery` target arguments (`discovery_fallback`, derived domain, DC seeds).
 - [x] Keep detailed checklist in `InternalDocs/backlogs/eventlog-ad-correlation-e2e.md`.
 
 ## Remaining Platform Tasks
