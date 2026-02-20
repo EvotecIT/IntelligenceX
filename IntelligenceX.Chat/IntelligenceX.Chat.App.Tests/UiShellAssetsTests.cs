@@ -220,6 +220,7 @@ public sealed class UiShellAssetsTests {
         var html = UiShellAssets.Load();
 
         Assert.Contains("id=\"optLocalModelManualHint\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeApplyProgress\"", html, StringComparison.Ordinal);
         Assert.Contains("id=\"optRuntimeCapabilities\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("restart_runtime", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Restarting local runtime...", html, StringComparison.Ordinal);
@@ -239,9 +240,12 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("appendRuntimeCapabilityRow(", script, StringComparison.Ordinal);
         Assert.Contains("renderRuntimeCapabilities({", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeCapabilities = local.runtimeCapabilities", script, StringComparison.Ordinal);
+        Assert.Contains("var runtimeApplyProgress = byId(\"optRuntimeApplyProgress\")", script, StringComparison.Ordinal);
+        Assert.Contains("var runtimeApply = local.runtimeApply", script, StringComparison.Ordinal);
         Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability-value-supported", css, StringComparison.Ordinal);
+        Assert.Contains(".options-runtime-apply-progress", css, StringComparison.Ordinal);
     }
 
     /// <summary>

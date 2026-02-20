@@ -359,6 +359,27 @@ body.options-open .options-panel {
   color: var(--ix-text-secondary);
 }
 
+.options-runtime-apply-progress {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(58, 96, 144, 0.45);
+  border-radius: 8px;
+  background: rgba(9, 33, 60, 0.38);
+  color: var(--ix-text-secondary);
+}
+
+.options-runtime-apply-progress.active {
+  border-color: rgba(76, 195, 255, 0.45);
+  background: rgba(76, 195, 255, 0.12);
+  color: #d9f3ff;
+}
+
+.options-runtime-apply-progress.error {
+  border-color: rgba(255, 170, 145, 0.45);
+  background: rgba(120, 40, 26, 0.3);
+  color: #ffd9c9;
+}
+
 .options-policy-list-wrap {
   margin-top: 8px;
   border: 1px solid rgba(58, 96, 144, 0.45);

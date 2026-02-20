@@ -424,6 +424,14 @@ public sealed partial class MainWindow : Window {
                     detectedName = _localRuntimeDetectedName ?? string.Empty,
                     detectedBaseUrl = _localRuntimeDetectedBaseUrl ?? string.Empty,
                     warning = _localRuntimeDetectionWarning ?? string.Empty
+                },
+                runtimeApply = new {
+                    stage = _runtimeApplyStage,
+                    detail = _runtimeApplyDetail,
+                    isActive = _runtimeApplyActive,
+                    updatedLocal = _runtimeApplyUpdatedUtc.HasValue
+                        ? _runtimeApplyUpdatedUtc.Value.ToLocalTime().ToString(_timestampFormat, CultureInfo.InvariantCulture)
+                        : string.Empty
                 }
             },
             packs,

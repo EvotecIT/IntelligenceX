@@ -212,7 +212,7 @@ public sealed partial class MainWindow : Window {
     private long _dragMoveWatchdogArmCount;
     private long _dragMoveWatchdogForcedReleaseCount;
     private static readonly bool VerboseServiceLogs = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_VERBOSE_SERVICE_LOGS"));
-    private static readonly bool DetachedServiceMode = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
+    private static readonly bool DetachedServiceMode = ResolveDetachedServiceMode();
     private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));
 
     private readonly string _pipeName = "intelligencex.chat";
@@ -375,6 +375,10 @@ public sealed partial class MainWindow : Window {
     private int _localProviderApplyInFlight;
     private readonly object _localProviderApplySync = new();
     private LocalProviderApplyRequest? _pendingLocalProviderApply;
+    private string _runtimeApplyStage = "idle";
+    private string _runtimeApplyDetail = string.Empty;
+    private bool _runtimeApplyActive;
+    private DateTime? _runtimeApplyUpdatedUtc;
 
     private sealed class ConversationRuntime {
         public required string Id { get; init; }
@@ -457,6 +461,21 @@ public sealed partial class MainWindow : Window {
         public bool? EnablePowerShellPack { get; init; }
         public bool? EnableTestimoXPack { get; init; }
         public bool? EnableOfficeImoPack { get; init; }
+    }
+
+    private static bool ResolveDetachedServiceMode() {
+        var forceDetached = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE"));
+        if (forceDetached) {
+            return true;
+        }
+
+        var forceAttached = IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_ATTACHED_SERVICE"));
+        if (forceAttached) {
+            return false;
+        }
+
+        // Default to detached so pipe reconnects do not force sidecar process restarts.
+        return true;
     }
 
     private sealed class MemoryDebugSnapshot {

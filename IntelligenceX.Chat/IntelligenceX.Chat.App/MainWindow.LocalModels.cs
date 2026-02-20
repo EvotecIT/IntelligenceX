@@ -41,6 +41,14 @@ public sealed partial class MainWindow : Window {
         string? DetectedBaseUrl,
         string? Warning);
 
+    private void UpdateRuntimeApplyProgress(string stage, string? detail, bool active) {
+        var normalizedStage = (stage ?? string.Empty).Trim().ToLowerInvariant();
+        _runtimeApplyStage = normalizedStage.Length == 0 ? "idle" : normalizedStage;
+        _runtimeApplyDetail = (detail ?? string.Empty).Trim();
+        _runtimeApplyActive = active;
+        _runtimeApplyUpdatedUtc = DateTime.UtcNow;
+    }
+
     private async Task RefreshModelsFromUiAsync(bool forceRefresh) {
         if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
             return;
@@ -146,16 +154,6 @@ public sealed partial class MainWindow : Window {
             _modelListIsStale = modelList.IsStale;
             _modelListWarning = string.IsNullOrWhiteSpace(modelList.Warning) ? null : modelList.Warning.Trim();
 
-            var normalizedCurrentModel = (_localProviderModel ?? string.Empty).Trim();
-            // Preserve explicit/manual model selections even when discovery catalogs differ between providers.
-            var shouldAutoSelectModel = _availableModels.Length > 0
-                                        && normalizedCurrentModel.Length == 0;
-            if (shouldAutoSelectModel) {
-                _localProviderModel = _availableModels[0].Model;
-                _appState.LocalProviderModel = _localProviderModel;
-                await PersistAppStateAsync().ConfigureAwait(false);
-            }
-
             CaptureModelCatalogCacheIntoAppState();
             QueuePersistAppState();
         } catch (Exception ex) {
@@ -197,14 +195,27 @@ public sealed partial class MainWindow : Window {
 
         if (Interlocked.CompareExchange(ref _localProviderApplyInFlight, 1, 0) != 0) {
             QueuePendingLocalProviderApply(request);
+            UpdateRuntimeApplyProgress("queued", "Runtime switch queued. Latest settings will apply next.", active: true);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
             await SetStatusAsync("Runtime switch already in progress. Queued latest settings.").ConfigureAwait(false);
             return;
         }
 
         try {
             var current = request;
+            var lastApplySucceeded = false;
+            var anyAttempted = false;
             while (true) {
-                await ApplyLocalProviderCoreAsync(current).ConfigureAwait(false);
+                anyAttempted = true;
+                try {
+                    lastApplySucceeded = await ApplyLocalProviderCoreAsync(current).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    lastApplySucceeded = false;
+                    UpdateRuntimeApplyProgress("failed", "Runtime apply failed: " + ex.Message, active: false);
+                    await SetStatusAsync("Runtime apply failed. " + ex.Message).ConfigureAwait(false);
+                    break;
+                }
+
                 if (!TryTakePendingLocalProviderApply(out var pending)) {
                     break;
                 }
@@ -213,7 +224,12 @@ public sealed partial class MainWindow : Window {
                     continue;
                 }
 
+                UpdateRuntimeApplyProgress("queued", "Applying queued runtime update...", active: true);
                 current = pending;
+            }
+
+            if (anyAttempted && lastApplySucceeded) {
+                UpdateRuntimeApplyProgress("completed", "Runtime settings applied without restarting the service process.", active: false);
             }
         } finally {
             Interlocked.Exchange(ref _localProviderApplyInFlight, 0);
@@ -221,17 +237,28 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task ApplyLocalProviderCoreAsync(LocalProviderApplyRequest request) {
+    private async Task<bool> ApplyLocalProviderCoreAsync(LocalProviderApplyRequest request) {
+        UpdateRuntimeApplyProgress("validating", "Validating runtime settings...", active: true);
         await SetStatusAsync("Applying runtime settings...").ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
 
         if (_isSending) {
+            UpdateRuntimeApplyProgress("failed", "Finish the active response before changing runtime settings.", active: false);
             await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
-            return;
+            return false;
         }
 
         var rawTransport = (request.Transport ?? string.Empty).Trim();
-        var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
+        string normalizedTransport;
+        if (rawTransport.Length == 0) {
+            normalizedTransport = NormalizeLocalProviderTransport(_localProviderTransport);
+        } else if (!TryNormalizeLocalProviderTransport(rawTransport, out normalizedTransport)) {
+            UpdateRuntimeApplyProgress("failed", "Invalid runtime transport value '" + rawTransport + "'.", active: false);
+            await SetStatusAsync("Invalid runtime transport value. Open Runtime settings and try again.").ConfigureAwait(false);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            return false;
+        }
+
         var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(request.BaseUrl, normalizedTransport, rawTransport);
         var normalizedModel = NormalizeLocalProviderModel(request.Model, normalizedTransport);
         var normalizedOpenAIAuthMode = NormalizeLocalProviderOpenAIAuthMode(request.OpenAIAuthMode);
@@ -313,18 +340,21 @@ public sealed partial class MainWindow : Window {
         _appState.LocalProviderTemperature = _localProviderTemperature;
 
         var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
+        UpdateRuntimeApplyProgress("persisting", "Saving runtime settings to the active profile...", active: true);
         CaptureModelCatalogCacheIntoAppState();
         await PersistAppStateAsync().ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
 
         if (!changed && profileSaved) {
+            UpdateRuntimeApplyProgress("syncing", "Refreshing runtime metadata...", active: true);
             await RefreshModelsFromUiAsync(request.ForceModelRefresh).ConfigureAwait(false);
-            return;
+            return true;
         }
 
         ClearConversationThreadIds();
         await PersistAppStateAsync().ConfigureAwait(false);
 
+        UpdateRuntimeApplyProgress("applying", "Applying runtime settings to the live session...", active: true);
         var liveApply = await TryApplyRuntimeSettingsLiveAsync(
                 // Always persist current runtime options for the active app profile so reconnects
                 // can recover transport/model settings without falling back to defaults.
@@ -349,17 +379,24 @@ public sealed partial class MainWindow : Window {
                 enableTestimoXPack: null,
                 enableOfficeImoPack: null).ConfigureAwait(false);
         if (liveApply) {
+            UpdateRuntimeApplyProgress("syncing", "Refreshing runtime discovery and model catalog...", active: true);
             await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
             await SyncConnectedServiceProfileAndModelsAsync(
                 forceModelRefresh: true,
                 setProfileNewThread: false,
                 appendWarnings: true).ConfigureAwait(false);
-            return;
+            return true;
         }
+
+        UpdateRuntimeApplyProgress(
+            "failed",
+            "Runtime settings couldn't be applied live. Session stayed running; review credentials/settings and apply again.",
+            active: false);
         await SetStatusAsync(
                 "Runtime settings couldn't be applied live. Session stayed running; verify credentials/settings and apply again.")
             .ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
+        return false;
     }
 
     private async Task<bool> TryApplyRuntimeSettingsLiveAsync(
