@@ -920,15 +920,7 @@ Quick start prompts:
         var lines = new List<string>();
         var options = BuildChatRequestOptions();
         var selectedModel = options?.Model;
-        var enabledTools = 0;
-        var disabledTools = 0;
-        foreach (var pair in _toolStates) {
-            if (pair.Value) {
-                enabledTools++;
-            } else {
-                disabledTools++;
-            }
-        }
+        CountKnownToolStates(out var knownToolCount, out var enabledTools, out var disabledTools);
 
         var transportLabel = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
             ? "compatible-http"
@@ -948,6 +940,7 @@ Quick start prompts:
                       _localProviderBaseUrl,
                       selectedModel,
                       _availableModels,
+                      knownToolCount,
                       enabledTools,
                       disabledTools));
         lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
@@ -977,8 +970,44 @@ Quick start prompts:
         return lines;
     }
 
+    private void CountKnownToolStates(out int knownToolCount, out int enabledTools, out int disabledTools) {
+        var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in _toolDescriptions.Keys) {
+            if (!string.IsNullOrWhiteSpace(key)) {
+                knownNames.Add(key.Trim());
+            }
+        }
+
+        if (knownNames.Count == 0) {
+            foreach (var key in _toolStates.Keys) {
+                if (!string.IsNullOrWhiteSpace(key)) {
+                    knownNames.Add(key.Trim());
+                }
+            }
+        }
+
+        knownToolCount = knownNames.Count;
+        enabledTools = 0;
+        disabledTools = 0;
+        if (knownToolCount == 0) {
+            return;
+        }
+
+        foreach (var toolName in knownNames) {
+            if (_toolStates.TryGetValue(toolName, out var enabled) && !enabled) {
+                disabledTools++;
+            } else {
+                enabledTools++;
+            }
+        }
+    }
+
     internal static string DescribeTurnToolAvailability(string? transport, string? baseUrl, string? selectedModel,
-        IReadOnlyList<ModelInfoDto>? availableModels, int enabledTools, int disabledTools) {
+        IReadOnlyList<ModelInfoDto>? availableModels, int knownToolCount, int enabledTools, int disabledTools) {
+        if (knownToolCount <= 0) {
+            return "unknown (tool catalog is still loading for this session).";
+        }
+
         if (enabledTools <= 0) {
             return "unavailable (all tool packs are disabled by runtime settings).";
         }

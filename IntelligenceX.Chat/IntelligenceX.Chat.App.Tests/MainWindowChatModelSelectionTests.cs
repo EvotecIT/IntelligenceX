@@ -111,6 +111,7 @@ public sealed class MainWindowChatModelSelectionTests {
             "http://127.0.0.1:1234/v1",
             "google/gemma-3-4b",
             new[] { Model("google/gemma-3-4b", capabilities: Array.Empty<string>()) },
+            knownToolCount: 4,
             enabledTools: 3,
             disabledTools: 1);
 
@@ -128,6 +129,7 @@ public sealed class MainWindowChatModelSelectionTests {
             "http://127.0.0.1:1234/v1",
             "openai/gpt-oss-20b",
             new[] { Model("openai/gpt-oss-20b", capabilities: new[] { "tool_use" }) },
+            knownToolCount: 4,
             enabledTools: 4,
             disabledTools: 0);
 
@@ -145,11 +147,27 @@ public sealed class MainWindowChatModelSelectionTests {
             baseUrl: null,
             selectedModel: "gpt-5.3-codex",
             availableModels: null,
+            knownToolCount: 8,
             enabledTools: 0,
             disabledTools: 8);
 
         Assert.Contains("unavailable", description, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("disabled", description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DescribeTurnToolAvailability_ReportsUnknownWhenToolCatalogNotLoadedYet() {
+        var description = MainWindow.DescribeTurnToolAvailability(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            selectedModel: null,
+            availableModels: null,
+            knownToolCount: 0,
+            enabledTools: 0,
+            disabledTools: 0);
+
+        Assert.Contains("unknown", description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("catalog", description, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ModelInfoDto Model(string model, bool isDefault = false, string[]? capabilities = null) {
