@@ -1785,7 +1785,8 @@
     lastExportPath: "",
     lastExportFormat: "",
     isMaximized: false,
-    popoutInFlight: false
+    popoutInFlight: false,
+    lifecycleGuardInitialized: false
   };
   var visualViewFeedbackClearTimer = 0;
   var visualViewRelayoutTimer = 0;
@@ -1960,6 +1961,29 @@
     if (visualViewState.popoutInFlight) {
       setVisualViewPopoutBusy(false);
     }
+  }
+
+  function initializeVisualViewLifecycleGuards() {
+    if (visualViewState.lifecycleGuardInitialized) {
+      return;
+    }
+    visualViewState.lifecycleGuardInitialized = true;
+
+    if (typeof MutationObserver === "function" && document.body) {
+      var visualViewBodyClassObserver = new MutationObserver(function() {
+        ensureVisualViewClosedState();
+      });
+      try {
+        visualViewBodyClassObserver.observe(document.body, {
+          attributes: true,
+          attributeFilter: ["class"]
+        });
+      } catch (_) {
+        // Ignore observer initialization failures.
+      }
+    }
+
+    ensureVisualViewClosedState();
   }
 
   function setVisualViewExportPath(path, format) {
@@ -2240,6 +2264,8 @@
   }
 
   function openVisualView(type, source, title) {
+    initializeVisualViewLifecycleGuards();
+
     var normalizedType = normalizeVisualType(type);
     var normalizedSource = normalizeText(source || "");
     if (!normalizedSource) {
@@ -2603,21 +2629,7 @@
   window.ixOpenVisualView = function(type, source, title) {
     openVisualView(type, source, title);
   };
-
-  if (typeof MutationObserver === "function" && document.body) {
-    var visualViewBodyClassObserver = new MutationObserver(function() {
-      ensureVisualViewClosedState();
-    });
-    try {
-      visualViewBodyClassObserver.observe(document.body, {
-        attributes: true,
-        attributeFilter: ["class"]
-      });
-    } catch (_) {
-      // Ignore observer initialization failures.
-    }
-  }
-  ensureVisualViewClosedState();
+  initializeVisualViewLifecycleGuards();
 
   if (visualViewBackdrop) {
     visualViewBackdrop.addEventListener("click", closeVisualView);

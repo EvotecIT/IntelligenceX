@@ -234,6 +234,8 @@ public sealed class UiShellAssetsTests {
             "window.ixOnVisualExportPathSelected",
             "window.ixOnVisualExportResult",
             "window.ixOnVisualPopoutResult",
+            "function initializeVisualViewLifecycleGuards()",
+            "initializeVisualViewLifecycleGuards();",
             "function ensureVisualViewClosedState()",
             "visualViewBodyClassObserver.observe(document.body",
             "attributeFilter: [\"class\"]",
