@@ -893,11 +893,31 @@
     }
   }
 
-  function applyLocalProviderSettings(forceRefresh, clearApiKey, clearBasicAuth) {
-    var local = ((state.options || {}).localModel || {});
-    if (local.isApplying === true) {
-      return;
+  var scheduledLocalProviderApplyTimer = 0;
+  var localProviderAutoApplyDelayMs = 220;
+
+  function clearScheduledLocalProviderApply() {
+    if (scheduledLocalProviderApplyTimer) {
+      clearTimeout(scheduledLocalProviderApplyTimer);
+      scheduledLocalProviderApplyTimer = 0;
     }
+  }
+
+  function scheduleLocalProviderApply(forceRefresh, clearApiKey, clearBasicAuth) {
+    clearScheduledLocalProviderApply();
+    var nextForceRefresh = forceRefresh !== false;
+    var nextClearApiKey = clearApiKey === true;
+    var nextClearBasicAuth = clearBasicAuth === true;
+    scheduledLocalProviderApplyTimer = setTimeout(function() {
+      scheduledLocalProviderApplyTimer = 0;
+      applyLocalProviderSettings(nextForceRefresh, nextClearApiKey, nextClearBasicAuth);
+    }, localProviderAutoApplyDelayMs);
+  }
+
+  function applyLocalProviderSettings(forceRefresh, clearApiKey, clearBasicAuth) {
+    clearScheduledLocalProviderApply();
+    var local = ((state.options || {}).localModel || {});
+    var wasApplying = local.isApplying === true;
     var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
     var baseUrl = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalBaseUrl").value || "").trim()
@@ -986,6 +1006,17 @@
       state.options.localModel.textVerbosity = textVerbosity;
       state.options.localModel.temperature = temperature;
       state.options.localModel.isApplying = true;
+      var runtimeApply = state.options.localModel.runtimeApply;
+      if (!runtimeApply || typeof runtimeApply !== "object") {
+        runtimeApply = {};
+        state.options.localModel.runtimeApply = runtimeApply;
+      }
+      runtimeApply.stage = wasApplying ? "queued" : "applying";
+      runtimeApply.detail = wasApplying
+        ? "Runtime switch queued. Latest settings will apply next."
+        : "Applying runtime settings...";
+      runtimeApply.isActive = true;
+      runtimeApply.updatedLocal = "";
       renderLocalModelOptions();
     }
     post("apply_local_provider", {
@@ -1199,11 +1230,11 @@
   });
 
   byId("optLocalBasicUsername").addEventListener("change", function() {
-    applyLocalProviderSettings(false);
+    scheduleLocalProviderApply(false);
   });
 
   byId("optLocalBasicPassword").addEventListener("change", function() {
-    applyLocalProviderSettings(false);
+    scheduleLocalProviderApply(false);
   });
 
   byId("optLocalModelSelect").addEventListener("change", function(e) {
@@ -1235,11 +1266,11 @@
       accountIdInput.value = resolveNativeSlotAccountId(local, slot);
     }
 
-    applyLocalProviderSettings(false);
+    scheduleLocalProviderApply(false);
   });
 
   byId("optNativeAccountId").addEventListener("change", function() {
-    applyLocalProviderSettings(false);
+    scheduleLocalProviderApply(false);
   });
 
   byId("optLocalModelFilter").addEventListener("input", function(e) {
