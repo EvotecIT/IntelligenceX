@@ -558,6 +558,32 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures signal-flow spacing repair remains language-neutral for non-English labels.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FixesTightSpacingAfterLocalizedSignalFlowLabels() {
+        var text = "- Sygnal **Migawka punktowa** -> Dlaczego to wazne:brak trendu historycznego -> Nastepna akcja:zbuduj probke 24h.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(
+            "- Sygnal **Migawka punktowa** -> Dlaczego to wazne: brak trendu historycznego -> Nastepna akcja: zbuduj probke 24h.",
+            normalized);
+    }
+
+    /// <summary>
+    /// Ensures compact arrow-to-strong transitions normalize without relying on fixed label words.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_FixesLocalizedArrowToStrongSpacing() {
+        var text = "- Signal **Punkt kontrolny** ->**Znaczenie:**brak pelnej probki.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- Signal **Punkt kontrolny** -> **Znaczenie:** brak pelnej probki.", normalized);
+    }
+
+    /// <summary>
     /// Ensures sentence-collapsed bullets after a closing parenthesis are split and normalized.
     /// </summary>
     [Fact]

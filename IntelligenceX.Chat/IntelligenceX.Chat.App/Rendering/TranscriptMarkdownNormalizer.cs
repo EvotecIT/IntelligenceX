@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -85,17 +86,9 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?m)^(?<prefix>\s*-\s+[^\r\n]*?)\*\*(?<inner>[^\r\n]*->\s*\*\*[^\r\n]*?)\*\*(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex SignalFlowArrowLabelTightRegex = new(
-        @"->\s*\*\*(?=(?:Why it matters|Action|Next action|Fix action):)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-
-    private static readonly Regex SignalFlowBoldLabelMissingSpaceRegex = new(
-        @"(?<label>\*\*(?:Why it matters|Action|Next action|Fix action):\*\*)(?=\S)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-
-    private static readonly Regex SignalFlowPlainLabelMissingSpaceRegex = new(
-        @"(?<label>(?<![\p{L}\p{N}_])(?:Why it matters|Action|Next action|Fix action):)(?=\S)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex SignalFlowArrowTightStrongRegex = new(
+        @"->\s*(?=\*\*)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex SentenceCollapsedBulletRegex = new(
         @"(?<=[\.\!\?\)\]])\s*(?=-\s*(?:\*\*[^\r\n]|[A-Z]{2,}\d+\b))",
@@ -191,6 +184,20 @@ internal static class TranscriptMarkdownNormalizer {
 
     private static int InlineCodePlaceholderCounter;
 
+    private static readonly Lazy<OfficeImoInputNormalizationBridge?> OfficeImoInputNormalizationBridgeLazy =
+        new(CreateOfficeImoInputNormalizationBridge);
+    private static readonly string[] OfficeImoInputNormalizationPropertyNames = [
+        "NormalizeLooseStrongDelimiters",
+        "NormalizeTightStrongBoundaries",
+        "NormalizeOrderedListMarkerSpacing",
+        "NormalizeOrderedListParenMarkers",
+        "NormalizeOrderedListCaretArtifacts",
+        "NormalizeTightParentheticalSpacing",
+        "NormalizeNestedStrongDelimiters",
+        "NormalizeTightArrowStrongBoundaries",
+        "NormalizeTightColonSpacing"
+    ];
+
     public static string NormalizeForRendering(string? text) {
         var normalized = text ?? string.Empty;
         if (normalized.Length == 0) {
@@ -201,6 +208,7 @@ internal static class TranscriptMarkdownNormalizer {
             var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans, out var tokenPrefix);
             var value = protectedInlineCode;
             value = ZeroWidthWhitespaceRegex.Replace(value, string.Empty);
+            value = NormalizeWithOfficeImoInputNormalizer(value);
             value = EmojiWordJoinRegex.Replace(value, "$1 ");
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
@@ -394,21 +402,115 @@ internal static class TranscriptMarkdownNormalizer {
     }
 
     private static string NormalizeSignalFlowLabelSpacing(string text) {
-        if (string.IsNullOrEmpty(text)) {
+        if (string.IsNullOrEmpty(text) || text.IndexOf("->", StringComparison.Ordinal) < 0) {
             return text;
         }
 
-        if (text.IndexOf("why it matters:", StringComparison.OrdinalIgnoreCase) < 0
-            && text.IndexOf("action:", StringComparison.OrdinalIgnoreCase) < 0
-            && text.IndexOf("next action:", StringComparison.OrdinalIgnoreCase) < 0
-            && text.IndexOf("fix action:", StringComparison.OrdinalIgnoreCase) < 0) {
+        var spacedArrows = SignalFlowArrowTightStrongRegex.Replace(text, "-> ");
+        var hasCrLf = spacedArrows.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = spacedArrows.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var changed = !spacedArrows.Equals(text, StringComparison.Ordinal);
+
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            if (line.IndexOf("->", StringComparison.Ordinal) < 0) {
+                continue;
+            }
+
+            var fixedLine = NormalizeSignalFlowArrowSegments(line);
+            if (fixedLine.Equals(line, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            lines[i] = fixedLine;
+            changed = true;
+        }
+
+        if (!changed) {
             return text;
         }
 
-        var value = SignalFlowArrowLabelTightRegex.Replace(text, "-> **");
-        value = SignalFlowBoldLabelMissingSpaceRegex.Replace(value, static match => match.Groups["label"].Value + " ");
-        value = SignalFlowPlainLabelMissingSpaceRegex.Replace(value, static match => match.Groups["label"].Value + " ");
-        return value;
+        var rebuilt = string.Join("\n", lines);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static string NormalizeSignalFlowArrowSegments(string line) {
+        var segments = line.Split("->", StringSplitOptions.None);
+        if (segments.Length < 2) {
+            return line;
+        }
+
+        var builder = new StringBuilder(line.Length + 8);
+        builder.Append(segments[0]);
+        for (var i = 1; i < segments.Length; i++) {
+            builder.Append("->");
+            builder.Append(NormalizeSignalFlowSegmentLabelSpacing(segments[i]));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string NormalizeSignalFlowSegmentLabelSpacing(string segment) {
+        if (string.IsNullOrEmpty(segment)) {
+            return segment;
+        }
+
+        var start = 0;
+        while (start < segment.Length && char.IsWhiteSpace(segment[start])) {
+            start++;
+        }
+        if (start >= segment.Length) {
+            return segment;
+        }
+
+        var strongNormalized = TryNormalizeLeadingStrongSignalLabel(segment, start);
+        if (!strongNormalized.Equals(segment, StringComparison.Ordinal)) {
+            return strongNormalized;
+        }
+
+        return TryNormalizeLeadingPlainSignalLabel(segment, start);
+    }
+
+    private static string TryNormalizeLeadingStrongSignalLabel(string segment, int start) {
+        if (start + 1 >= segment.Length || segment[start] != '*' || segment[start + 1] != '*') {
+            return segment;
+        }
+
+        var close = segment.IndexOf("**", start + 2, StringComparison.Ordinal);
+        if (close < 0 || close + 2 >= segment.Length) {
+            return segment;
+        }
+
+        if (segment[close - 1] != ':') {
+            return segment;
+        }
+
+        var next = segment[close + 2];
+        if (char.IsWhiteSpace(next)) {
+            return segment;
+        }
+
+        return segment.Insert(close + 2, " ");
+    }
+
+    private static string TryNormalizeLeadingPlainSignalLabel(string segment, int start) {
+        var colon = segment.IndexOf(':', start);
+        if (colon <= start || colon >= segment.Length - 1) {
+            return segment;
+        }
+
+        var previous = segment[colon - 1];
+        var next = segment[colon + 1];
+        if (char.IsWhiteSpace(next) || next == '/' || next == '\\') {
+            return segment;
+        }
+
+        if (!char.IsLetter(previous) || !char.IsLetter(next)) {
+            return segment;
+        }
+
+        return segment.Insert(colon + 1, " ");
     }
 
     private static string MergeSplitHostLabelBullets(string text) {
@@ -458,14 +560,85 @@ internal static class TranscriptMarkdownNormalizer {
 
         return text.Contains("****", StringComparison.Ordinal)
                || text.Contains("->**", StringComparison.Ordinal)
-               || text.Contains("-> **Why it matters:**", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("-> **Action:**", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("-> **Next action:**", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("-> **Fix action:**", StringComparison.OrdinalIgnoreCase)
-               || text.IndexOf("why it matters:", StringComparison.OrdinalIgnoreCase) >= 0
-               || text.IndexOf("action:", StringComparison.OrdinalIgnoreCase) >= 0
-               || text.IndexOf("next action:", StringComparison.OrdinalIgnoreCase) >= 0
-               || text.IndexOf("fix action:", StringComparison.OrdinalIgnoreCase) >= 0;
+               || HasCompactSignalFlowLabelSpacing(text);
+    }
+
+    private static bool HasCompactSignalFlowLabelSpacing(string text) {
+        if (string.IsNullOrEmpty(text) || text.IndexOf("->", StringComparison.Ordinal) < 0) {
+            return false;
+        }
+
+        var normalized = NormalizeSignalFlowLabelSpacing(text);
+        return !normalized.Equals(text, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeWithOfficeImoInputNormalizer(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return text;
+        }
+
+        var bridge = OfficeImoInputNormalizationBridgeLazy.Value;
+        if (bridge == null) {
+            return text;
+        }
+
+        return bridge.Normalize(text);
+    }
+
+    private static OfficeImoInputNormalizationBridge? CreateOfficeImoInputNormalizationBridge() {
+        try {
+            var optionsType = Type.GetType("OfficeIMO.Markdown.MarkdownInputNormalizationOptions, OfficeIMO.Markdown", throwOnError: false);
+            var normalizerType = Type.GetType("OfficeIMO.Markdown.MarkdownInputNormalizer, OfficeIMO.Markdown", throwOnError: false);
+            if (optionsType == null || normalizerType == null) {
+                return null;
+            }
+
+            var normalizeMethod = normalizerType.GetMethod(
+                "Normalize",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: [typeof(string), optionsType],
+                modifiers: null);
+            if (normalizeMethod == null) {
+                return null;
+            }
+
+            var enabledProperties = new List<PropertyInfo>(OfficeImoInputNormalizationPropertyNames.Length);
+            foreach (var propertyName in OfficeImoInputNormalizationPropertyNames) {
+                var property = optionsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+                if (property is { CanWrite: true } && property.PropertyType == typeof(bool)) {
+                    enabledProperties.Add(property);
+                }
+            }
+
+            if (enabledProperties.Count == 0) {
+                return null;
+            }
+
+            return new OfficeImoInputNormalizationBridge(optionsType, normalizeMethod, enabledProperties.ToArray());
+        } catch {
+            return null;
+        }
+    }
+
+    private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, PropertyInfo[] enabledProperties) {
+        public string Normalize(string text) {
+            try {
+                var options = Activator.CreateInstance(optionsType);
+                if (options == null) {
+                    return text;
+                }
+
+                for (var i = 0; i < enabledProperties.Length; i++) {
+                    enabledProperties[i].SetValue(options, true);
+                }
+
+                var normalized = normalizeMethod.Invoke(null, [text, options]) as string;
+                return string.IsNullOrEmpty(normalized) ? text : normalized;
+            } catch {
+                return text;
+            }
+        }
     }
 
     private static string FlattenNestedStrongOutsideInlineCode(string body) {
