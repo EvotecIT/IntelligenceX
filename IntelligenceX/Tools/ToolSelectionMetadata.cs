@@ -611,7 +611,7 @@ public static class ToolSelectionMetadata {
             return Array.Empty<string>();
         }
 
-        tags.Sort(StringComparer.Ordinal);
+        tags.Sort(StringComparer.OrdinalIgnoreCase);
         return tags.ToArray();
     }
 

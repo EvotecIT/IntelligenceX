@@ -951,7 +951,7 @@ public static class ToolPackGuidance {
             return Array.Empty<string>();
         }
 
-        list.Sort(StringComparer.Ordinal);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
         return list.ToArray();
     }
 

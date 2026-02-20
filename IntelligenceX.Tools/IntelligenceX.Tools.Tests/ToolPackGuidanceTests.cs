@@ -317,7 +317,7 @@ public class ToolPackGuidanceTests {
         Assert.Contains("mixedcase", item.Tags);
         Assert.Equal(1, item.Tags.Count(static x => string.Equals(x, "tag", StringComparison.Ordinal)));
         Assert.All(item.Tags, static x => Assert.Equal(x.ToLowerInvariant(), x));
-        Assert.Equal(item.Tags.OrderBy(static x => x, StringComparer.Ordinal), item.Tags);
+        Assert.Equal(item.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), item.Tags);
 
         Assert.Equal("host", item.Routing.Scope);
         Assert.Equal("probe", item.Routing.Operation);
