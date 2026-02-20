@@ -487,6 +487,19 @@ public sealed partial class MainWindow : Window {
                         await HandleVisualExportActionAsync(action, path).ConfigureAwait(true);
                         break;
                     }
+                case "open_visual_popout":
+                    {
+                        var title = (TryGetString(root, "title") ?? string.Empty).Trim();
+                        var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
+                        var dataBase64 = TryGetString(root, "dataBase64") ?? string.Empty;
+                        if (dataBase64.Length > MaxVisualExportBase64Chars) {
+                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(true);
+                            break;
+                        }
+
+                        await OpenVisualPopoutAsync(title, mimeType, dataBase64).ConfigureAwait(true);
+                        break;
+                    }
             }
         } catch (Exception ex) {
             AppendSystem(SystemNotice.UiMessageError(ex.Message));

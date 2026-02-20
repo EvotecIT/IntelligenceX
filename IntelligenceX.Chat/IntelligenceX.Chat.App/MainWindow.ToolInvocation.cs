@@ -15,6 +15,7 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow {
     private const int MaxVisualExportBytes = 12 * 1024 * 1024;
     private const int MaxVisualExportBase64Chars = ((MaxVisualExportBytes + 2) / 3) * 4;
+    private static readonly TimeSpan VisualPopoutRetention = TimeSpan.FromHours(12);
 
     private async Task ExportTableArtifactAsync(string format, string title, JsonElement rowsElement, string exportId = "", string? outputPath = null) {
         if (!ExportPreferencesContract.TryNormalizeFormat(format, out var normalizedFormat)) {
@@ -497,6 +498,116 @@ public sealed partial class MainWindow {
             await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixOnVisualExportActionResult && window.ixOnVisualExportActionResult(" + payload + ");").AsTask()).ConfigureAwait(false);
         } catch {
             // Ignore UI callback failures for action feedback.
+        }
+    }
+
+    private async Task NotifyVisualPopoutResultAsync(bool ok, string? filePath, string message) {
+        if (!_webViewReady) {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(new {
+            ok,
+            filePath,
+            message = (message ?? string.Empty).Trim()
+        });
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixOnVisualPopoutResult && window.ixOnVisualPopoutResult(" + payload + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            // Ignore UI callback failures for action feedback.
+        }
+    }
+
+    private static bool TryNormalizeVisualPopoutMimeType(string? mimeType, out string normalizedMimeType, out string normalizedFormat) {
+        normalizedMimeType = (mimeType ?? string.Empty).Trim().ToLowerInvariant();
+        normalizedFormat = string.Empty;
+
+        if (normalizedMimeType == "image/png") {
+            normalizedFormat = "png";
+            return true;
+        }
+        if (normalizedMimeType == "image/svg+xml") {
+            normalizedFormat = "svg";
+            return true;
+        }
+        return false;
+    }
+
+    private static void CleanupStaleVisualPopoutFiles(string directoryPath) {
+        if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath)) {
+            return;
+        }
+
+        var cutoff = DateTime.UtcNow - VisualPopoutRetention;
+        foreach (var filePath in Directory.EnumerateFiles(directoryPath, "*", SearchOption.TopDirectoryOnly)) {
+            try {
+                var lastWrite = File.GetLastWriteTimeUtc(filePath);
+                if (lastWrite <= cutoff) {
+                    File.Delete(filePath);
+                }
+            } catch {
+                // Ignore stale cleanup failures.
+            }
+        }
+    }
+
+    private async Task OpenVisualPopoutAsync(string title, string mimeType, string dataBase64) {
+        if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out var normalizedFormat)) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Unsupported popout mime type.").ConfigureAwait(false);
+            return;
+        }
+
+        var payload = dataBase64 ?? string.Empty;
+        if (payload.Length == 0) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Missing popout payload.").ConfigureAwait(false);
+            return;
+        }
+
+        if (payload.Length > MaxVisualExportBase64Chars) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(false);
+            return;
+        }
+
+        byte[] bytes;
+        try {
+            bytes = Convert.FromBase64String(payload);
+        } catch (Exception ex) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Invalid popout payload: " + ex.Message).ConfigureAwait(false);
+            return;
+        }
+
+        if (bytes.Length == 0) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload is empty.").ConfigureAwait(false);
+            return;
+        }
+        if (bytes.Length > MaxVisualExportBytes) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            var popoutDirectory = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "visual-popout");
+            Directory.CreateDirectory(popoutDirectory);
+            CleanupStaleVisualPopoutFiles(popoutDirectory);
+
+            var suggestedStem = BuildSuggestedExportFileName(title, normalizedFormat);
+            var extension = GetExportFileExtension(normalizedFormat);
+            var popoutPath = Path.Combine(popoutDirectory, suggestedStem + extension);
+            if (File.Exists(popoutPath)) {
+                popoutPath = Path.Combine(popoutDirectory, suggestedStem + "-" + Guid.NewGuid().ToString("N")[..8] + extension);
+            }
+
+            await File.WriteAllBytesAsync(popoutPath, bytes).ConfigureAwait(false);
+            Process.Start(new ProcessStartInfo {
+                FileName = popoutPath,
+                UseShellExecute = true
+            });
+
+            var fileName = Path.GetFileName(popoutPath);
+            await NotifyVisualPopoutResultAsync(ok: true, filePath: popoutPath, message: "Opened popout: " + fileName).ConfigureAwait(false);
+        } catch (Exception ex) {
+            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed: " + ex.Message).ConfigureAwait(false);
         }
     }
 
