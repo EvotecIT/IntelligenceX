@@ -87,11 +87,63 @@ public sealed class MainWindowChatModelSelectionTests {
         Assert.Equal("openai/gpt-oss-20b", resolved);
     }
 
-    private static ModelInfoDto Model(string model, bool isDefault = false) {
+    /// <summary>
+    /// Ensures local compatible runtimes report tools unavailable when selected model lacks tool_use capability.
+    /// </summary>
+    [Fact]
+    public void DescribeTurnToolAvailability_ReportsUnavailableWhenLocalModelDoesNotExposeToolUse() {
+        var description = MainWindow.DescribeTurnToolAvailability(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            "google/gemma-3-4b",
+            new[] { Model("google/gemma-3-4b", capabilities: Array.Empty<string>()) },
+            enabledTools: 3,
+            disabledTools: 1);
+
+        Assert.Contains("unavailable", description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tool_use", description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures local compatible runtimes report tools available when selected model advertises tool_use.
+    /// </summary>
+    [Fact]
+    public void DescribeTurnToolAvailability_ReportsAvailableWhenLocalModelSupportsToolUse() {
+        var description = MainWindow.DescribeTurnToolAvailability(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            "openai/gpt-oss-20b",
+            new[] { Model("openai/gpt-oss-20b", capabilities: new[] { "tool_use" }) },
+            enabledTools: 4,
+            disabledTools: 0);
+
+        Assert.Contains("available", description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tool_use", description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures tool availability reports disabled when no runtime packs are enabled.
+    /// </summary>
+    [Fact]
+    public void DescribeTurnToolAvailability_ReportsUnavailableWhenNoToolsEnabled() {
+        var description = MainWindow.DescribeTurnToolAvailability(
+            "native",
+            baseUrl: null,
+            selectedModel: "gpt-5.3-codex",
+            availableModels: null,
+            enabledTools: 0,
+            disabledTools: 8);
+
+        Assert.Contains("unavailable", description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("disabled", description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ModelInfoDto Model(string model, bool isDefault = false, string[]? capabilities = null) {
         return new ModelInfoDto {
             Id = model,
             Model = model,
-            IsDefault = isDefault
+            IsDefault = isDefault,
+            Capabilities = capabilities ?? Array.Empty<string>()
         };
     }
 }
