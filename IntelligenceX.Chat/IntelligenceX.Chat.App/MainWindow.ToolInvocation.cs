@@ -534,6 +534,40 @@ public sealed partial class MainWindow {
         return false;
     }
 
+    private static bool TryDecodeVisualPopoutPayload(string? dataBase64, out byte[] payloadBytes, out string errorMessage) {
+        payloadBytes = Array.Empty<byte>();
+        errorMessage = "Invalid popout payload.";
+        var payload = dataBase64 ?? string.Empty;
+        if (payload.Length == 0) {
+            errorMessage = "Missing popout payload.";
+            return false;
+        }
+        if (payload.Length > MaxVisualExportBase64Chars) {
+            errorMessage = "Popout payload exceeds maximum allowed size.";
+            return false;
+        }
+
+        try {
+            payloadBytes = Convert.FromBase64String(payload);
+        } catch (Exception ex) {
+            errorMessage = "Invalid popout payload: " + ex.Message;
+            return false;
+        }
+
+        if (payloadBytes.Length == 0) {
+            errorMessage = "Popout payload is empty.";
+            payloadBytes = Array.Empty<byte>();
+            return false;
+        }
+        if (payloadBytes.Length > MaxVisualExportBytes) {
+            errorMessage = "Popout payload exceeds maximum allowed size.";
+            payloadBytes = Array.Empty<byte>();
+            return false;
+        }
+
+        return true;
+    }
+
     private static void CleanupStaleVisualPopoutFiles(string directoryPath) {
         if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath)) {
             return;
@@ -552,40 +586,7 @@ public sealed partial class MainWindow {
         }
     }
 
-    private async Task OpenVisualPopoutAsync(string title, string mimeType, string dataBase64) {
-        if (!TryNormalizeVisualPopoutMimeType(mimeType, out _, out var normalizedFormat)) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Unsupported popout mime type.").ConfigureAwait(false);
-            return;
-        }
-
-        var payload = dataBase64 ?? string.Empty;
-        if (payload.Length == 0) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Missing popout payload.").ConfigureAwait(false);
-            return;
-        }
-
-        if (payload.Length > MaxVisualExportBase64Chars) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(false);
-            return;
-        }
-
-        byte[] bytes;
-        try {
-            bytes = Convert.FromBase64String(payload);
-        } catch (Exception ex) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Invalid popout payload: " + ex.Message).ConfigureAwait(false);
-            return;
-        }
-
-        if (bytes.Length == 0) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload is empty.").ConfigureAwait(false);
-            return;
-        }
-        if (bytes.Length > MaxVisualExportBytes) {
-            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout payload exceeds maximum allowed size.").ConfigureAwait(false);
-            return;
-        }
-
+    private async Task OpenVisualPopoutAsync(string title, string normalizedFormat, byte[] bytes) {
         try {
             var popoutDirectory = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "visual-popout");
             Directory.CreateDirectory(popoutDirectory);
