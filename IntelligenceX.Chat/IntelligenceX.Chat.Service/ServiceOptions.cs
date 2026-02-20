@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
@@ -81,6 +82,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
     public static ServiceOptions Parse(string[] args, out string? error) {
         error = null;
         var options = new ServiceOptions();
+        var clearOpenAIBasicAuthRequested = false;
 
         // Pre-scan for state/profile flags so we can load defaults before applying overrides.
         PreScanProfileFlags(args, options, out error);
@@ -226,6 +228,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
             if (arg is "--openai-clear-basic-auth") {
                 options.OpenAIBasicUsername = null;
                 options.OpenAIBasicPassword = null;
+                clearOpenAIBasicAuthRequested = true;
                 continue;
             }
             if (arg is "--openai-stream") {
@@ -521,6 +524,9 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
         options.OpenAIBasicUsername = string.IsNullOrWhiteSpace(options.OpenAIBasicUsername)
             ? null
             : options.OpenAIBasicUsername.Trim();
+        if (string.IsNullOrWhiteSpace(options.OpenAIBasicPassword) && !clearOpenAIBasicAuthRequested) {
+            options.OpenAIBasicPassword = Environment.GetEnvironmentVariable(ChatServiceEnvironmentVariables.OpenAIBasicPassword);
+        }
         options.OpenAIBasicPassword = string.IsNullOrWhiteSpace(options.OpenAIBasicPassword)
             ? null
             : options.OpenAIBasicPassword.Trim();
@@ -557,7 +563,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
         Console.WriteLine("  --openai-auth-mode <MODE>  Compatible-http auth mode: bearer|basic|none (default: bearer).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
         Console.WriteLine("  --openai-basic-username <NAME>  Optional Basic auth username for compatible-http.");
-        Console.WriteLine("  --openai-basic-password <SECRET>  Optional Basic auth password for compatible-http.");
+        Console.WriteLine("  --openai-basic-password <SECRET>  Optional Basic auth password for compatible-http (legacy; prefer INTELLIGENCEX_OPENAI_BASIC_PASSWORD env var).");
         Console.WriteLine("  --openai-account-id <ID>  Native ChatGPT account id to pin when multiple auth bundles exist.");
         Console.WriteLine("  --openai-clear-api-key Clear any saved compatible-http API key when profile overrides are saved.");
         Console.WriteLine("  --openai-clear-basic-auth Clear any saved compatible-http basic auth username/password when profile overrides are saved.");

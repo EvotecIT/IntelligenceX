@@ -445,6 +445,13 @@ public sealed partial class MainWindow : Window {
                     psi.ArgumentList.Add(arg);
                 }
             }
+            psi.Environment.Remove(ChatServiceEnvironmentVariables.OpenAIBasicPassword);
+            if (pending is not null && !pending.ClearOpenAIBasicAuth) {
+                var basicPassword = (pending.OpenAIBasicPassword ?? string.Empty).Trim();
+                if (basicPassword.Length > 0) {
+                    psi.Environment[ChatServiceEnvironmentVariables.OpenAIBasicPassword] = basicPassword;
+                }
+            }
 
             var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
             p.OutputDataReceived += (_, e) => {

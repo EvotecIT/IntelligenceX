@@ -81,7 +81,6 @@ internal static class ServiceLaunchArguments {
             args.Add("--openai-clear-basic-auth");
         } else {
             AddKeyValueArg(args, "--openai-basic-username", profileOptions.OpenAIBasicUsername);
-            AddKeyValueArg(args, "--openai-basic-password", profileOptions.OpenAIBasicPassword);
         }
         AddKeyValueArg(args, "--openai-account-id", profileOptions.OpenAIAccountId);
 

@@ -622,6 +622,15 @@ internal sealed partial class ChatServiceSession {
             }, cancellationToken).ConfigureAwait(false);
             return activeThreadId;
         }
+        if (!TryValidateChatRequestOptions(request.Options, out var optionsValidationError)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = optionsValidationError ?? "Invalid chat options.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return activeThreadId;
+        }
 
         ChatRun? existingRun;
         lock (_chatRunLock) {
@@ -790,6 +799,23 @@ internal sealed partial class ChatServiceSession {
         }, CancellationToken.None);
 
         return activeThreadId;
+    }
+
+    private static bool TryValidateChatRequestOptions(ChatRequestOptions? options, out string? error) {
+        error = null;
+        if (options is null) {
+            return true;
+        }
+
+        if (options.Temperature.HasValue) {
+            var temperature = options.Temperature.Value;
+            if (double.IsNaN(temperature) || double.IsInfinity(temperature) || temperature < 0d || temperature > 2d) {
+                error = "temperature must be between 0 and 2.";
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static TokenUsageDto? MapUsage(TurnUsage? usage) {

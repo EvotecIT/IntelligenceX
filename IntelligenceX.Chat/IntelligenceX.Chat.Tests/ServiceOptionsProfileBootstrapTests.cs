@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using DBAClientX;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
@@ -15,6 +16,8 @@ namespace IntelligenceX.Chat.Tests;
 /// Covers profile bootstrap semantics for service startup argument parsing.
 /// </summary>
 public sealed class ServiceOptionsProfileBootstrapTests {
+    private static readonly object EnvironmentVariablesSync = new();
+
     [Fact]
     public void Parse_DefaultsToNoResponseShapingLimits() {
         var options = ServiceOptions.Parse(Array.Empty<string>(), out var error);
@@ -193,6 +196,52 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_ReadsBasicPasswordFromEnvironment_WhenCliValueMissing() {
+        WithTemporaryEnvironmentVariable(ChatServiceEnvironmentVariables.OpenAIBasicPassword, "env-secret", () => {
+            var options = ServiceOptions.Parse(new[] {
+                "--openai-auth-mode", "basic",
+                "--openai-basic-username", "user1"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error));
+            Assert.Equal("user1", options.OpenAIBasicUsername);
+            Assert.Equal("env-secret", options.OpenAIBasicPassword);
+        });
+    }
+
+    [Fact]
+    public void Parse_DoesNotReadBasicPasswordFromEnvironment_WhenBasicAuthClearFlagPresent() {
+        WithTemporaryEnvironmentVariable(ChatServiceEnvironmentVariables.OpenAIBasicPassword, "env-secret", () => {
+            var options = ServiceOptions.Parse(new[] {
+                "--openai-auth-mode", "basic",
+                "--openai-basic-username", "user1",
+                "--openai-clear-basic-auth"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error));
+            Assert.Null(options.OpenAIBasicUsername);
+            Assert.Null(options.OpenAIBasicPassword);
+        });
+    }
+
+    [Fact]
+    public void Parse_CliBasicPasswordWinsOverEnvironmentValue() {
+        WithTemporaryEnvironmentVariable(ChatServiceEnvironmentVariables.OpenAIBasicPassword, "env-secret", () => {
+            var options = ServiceOptions.Parse(new[] {
+                "--openai-auth-mode", "basic",
+                "--openai-basic-username", "user1",
+                "--openai-basic-password", "cli-secret"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error));
+            Assert.Equal("cli-secret", options.OpenAIBasicPassword);
+        });
+    }
+
+    [Fact]
     public void Parse_RejectsInvalidWriteGovernanceMode() {
         _ = ServiceOptions.Parse(new[] {
             "--write-governance-mode", "invalid_mode"
@@ -251,6 +300,18 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             }
         } catch {
             // Best-effort cleanup only.
+        }
+    }
+
+    private static void WithTemporaryEnvironmentVariable(string name, string? value, Action action) {
+        lock (EnvironmentVariablesSync) {
+            var original = Environment.GetEnvironmentVariable(name);
+            try {
+                Environment.SetEnvironmentVariable(name, value);
+                action();
+            } finally {
+                Environment.SetEnvironmentVariable(name, original);
+            }
         }
     }
 
