@@ -142,7 +142,7 @@ public class ToolDefinitionContractTests {
         var enrichedAgain = ToolSelectionMetadata.Enrich(enriched, toolType: null);
 
         Assert.Same(enriched, enrichedAgain);
-        Assert.Equal(enriched.Tags.OrderBy(static x => x, StringComparer.Ordinal), enriched.Tags);
+        Assert.Equal(enriched.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), enriched.Tags);
     }
 
     [Fact]
