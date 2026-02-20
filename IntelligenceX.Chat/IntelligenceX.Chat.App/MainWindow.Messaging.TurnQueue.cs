@@ -42,6 +42,10 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        if (_modelKickoffInProgress) {
+            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
+        }
+
         if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
             await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
             return;

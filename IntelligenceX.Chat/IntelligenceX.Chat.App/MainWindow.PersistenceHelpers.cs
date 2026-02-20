@@ -367,6 +367,27 @@ public sealed partial class MainWindow : Window {
                || message.Contains(" 429", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsMissingTransportThreadError(Exception ex) {
+        var message = (ex.Message ?? string.Empty).Trim();
+        if (message.Length == 0) {
+            return false;
+        }
+
+        return message.Contains("thread", StringComparison.OrdinalIgnoreCase)
+               && message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+               && message.Contains("transport", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsChatInProgressError(Exception ex) {
+        var message = (ex.Message ?? string.Empty).Trim();
+        if (message.Length == 0) {
+            return false;
+        }
+
+        return message.Contains("chat request is already running", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("chat_in_progress", StringComparison.OrdinalIgnoreCase);
+    }
+
     private bool IsCanceledTurn(string requestId, Exception ex) {
         if (string.IsNullOrWhiteSpace(requestId) || string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId)) {
             return false;

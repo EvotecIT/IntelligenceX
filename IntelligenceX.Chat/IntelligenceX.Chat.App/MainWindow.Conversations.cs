@@ -28,6 +28,10 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private const int KickoffTurnTimeoutSeconds = 25;
+    private const int KickoffToolTimeoutSeconds = 20;
+    private const int KickoffHeartbeatSeconds = 4;
+
     private bool LoadConversationsFromState(ChatAppState state) {
         var repaired = false;
         _conversations.Clear();
@@ -630,6 +634,11 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        // Local/compatible runtimes should stay focused on explicit user turns and avoid background kickoff work.
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            return;
+        }
+
         var conversation = GetActiveConversation();
         if (conversation.Messages.Count > 0 || !IsEffectivelyAuthenticatedForCurrentTransport()) {
             return;
@@ -656,7 +665,7 @@ public sealed partial class MainWindow : Window {
                 RequestId = NextId(),
                 ThreadId = conversation.ThreadId,
                 Text = BuildKickoffRequestText(missingFields),
-                Options = BuildChatRequestOptions()
+                Options = BuildKickoffChatRequestOptions(BuildChatRequestOptions())
             };
             _activeKickoffRequestId = request.RequestId;
 
@@ -687,6 +696,49 @@ public sealed partial class MainWindow : Window {
             _activeKickoffRequestId = null;
             _activeRequestConversationId = null;
             await SetActivityAsync(null).ConfigureAwait(false);
+        }
+    }
+
+    internal static ChatRequestOptions BuildKickoffChatRequestOptions(ChatRequestOptions? options) {
+        var baseOptions = options ?? new ChatRequestOptions();
+        return baseOptions with {
+            // Keep onboarding kickoff short and non-blocking so user turns always take priority.
+            MaxToolRounds = 1,
+            ParallelTools = false,
+            PlanExecuteReviewLoop = false,
+            MaxReviewPasses = 0,
+            TurnTimeoutSeconds = KickoffTurnTimeoutSeconds,
+            ToolTimeoutSeconds = KickoffToolTimeoutSeconds,
+            ModelHeartbeatSeconds = KickoffHeartbeatSeconds
+        };
+    }
+
+    private async Task CancelModelKickoffIfRunningAsync() {
+        if (!_modelKickoffInProgress) {
+            return;
+        }
+
+        var kickoffRequestId = (_activeKickoffRequestId ?? string.Empty).Trim();
+        _modelKickoffInProgress = false;
+        _activeKickoffRequestId = null;
+        _activeRequestConversationId = null;
+
+        var client = _client;
+        if (kickoffRequestId.Length == 0 || client is null) {
+            return;
+        }
+
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var cancelRequest = new CancelChatRequest {
+                RequestId = NextId(),
+                ChatRequestId = kickoffRequestId
+            };
+            _ = await client.RequestAsync<AckMessage>(cancelRequest, cts.Token).ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Kickoff cancel best-effort: " + ex.Message);
+            }
         }
     }
 

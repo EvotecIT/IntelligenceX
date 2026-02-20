@@ -78,25 +78,35 @@ public sealed partial class MainWindow : Window {
             }
 
             try {
-                await ExecuteChatTurnAsync(initialClient, turn).ConfigureAwait(false);
+                await ExecuteChatTurnWithThreadRecoveryAsync(initialClient, turn).ConfigureAwait(false);
                 return;
             } catch (Exception ex) when (IsDisconnectedError(ex)) {
                 await DisposeClientAsync().ConfigureAwait(false);
                 if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } retryClient) {
                     try {
-                        await ExecuteChatTurnAsync(retryClient, turn).ConfigureAwait(false);
+                        await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn).ConfigureAwait(false);
                         return;
                     } catch (Exception retryEx) {
+                        var resolvedRetryEx = retryEx;
+                        if (await TryRecoverChatSlotByCancelingKickoffAsync(retryEx).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
+                            try {
+                                await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn).ConfigureAwait(false);
+                                return;
+                            } catch (Exception kickoffRetryEx) {
+                                resolvedRetryEx = kickoffRetryEx;
+                            }
+                        }
+
                         var promptQueued = false;
-                        if (IsUsageLimitError(retryEx)) {
-                            MarkUsageLimitForActiveAccount(retryEx.Message);
+                        if (IsUsageLimitError(resolvedRetryEx)) {
+                            MarkUsageLimitForActiveAccount(resolvedRetryEx.Message);
                             promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                             await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                             if (promptQueued) {
                                 AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
                             }
                         }
-                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, retryEx, disconnectedFallback: false)).ConfigureAwait(false);
+                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedRetryEx, disconnectedFallback: false)).ConfigureAwait(false);
                         return;
                     }
                 }
@@ -104,21 +114,73 @@ public sealed partial class MainWindow : Window {
                 await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: true)).ConfigureAwait(false);
                 return;
             } catch (Exception ex) {
+                var resolvedEx = ex;
+                if (await TryRecoverChatSlotByCancelingKickoffAsync(ex).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
+                    try {
+                        await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn).ConfigureAwait(false);
+                        return;
+                    } catch (Exception kickoffRetryEx) {
+                        resolvedEx = kickoffRetryEx;
+                    }
+                }
+
                 var promptQueued = false;
-                if (IsUsageLimitError(ex)) {
-                    MarkUsageLimitForActiveAccount(ex.Message);
+                if (IsUsageLimitError(resolvedEx)) {
+                    MarkUsageLimitForActiveAccount(resolvedEx.Message);
                     promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                     await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                     if (promptQueued) {
                         AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
                     }
                 }
-                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: false)).ConfigureAwait(false);
+                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedEx, disconnectedFallback: false)).ConfigureAwait(false);
                 return;
             }
         } finally {
             await SetActivityAsync(null).ConfigureAwait(false);
         }
+    }
+
+    private async Task ExecuteChatTurnWithThreadRecoveryAsync(ChatServiceClient client, ChatTurnContext turn) {
+        try {
+            await ExecuteChatTurnAsync(client, turn).ConfigureAwait(false);
+            return;
+        } catch (Exception ex) {
+            if (!await TryPrepareMissingThreadRecoveryAsync(turn, ex).ConfigureAwait(false)) {
+                throw;
+            }
+        }
+
+        await ExecuteChatTurnAsync(client, turn).ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryPrepareMissingThreadRecoveryAsync(ChatTurnContext turn, Exception ex) {
+        if (!IsMissingTransportThreadError(ex)) {
+            return false;
+        }
+
+        turn.Conversation.ThreadId = null;
+        if (string.Equals(turn.Conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            _threadId = null;
+        }
+
+        await PersistAppStateAsync().ConfigureAwait(false);
+        await SetStatusAsync("Recovered stale runtime thread. Retrying turn...").ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task<bool> TryRecoverChatSlotByCancelingKickoffAsync(Exception ex) {
+        if (!IsChatInProgressError(ex)) {
+            return false;
+        }
+
+        if (!_modelKickoffInProgress && string.IsNullOrWhiteSpace(_activeKickoffRequestId)) {
+            return false;
+        }
+
+        await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
+        await Task.Delay(150).ConfigureAwait(false);
+        return true;
     }
 
     private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn) {
