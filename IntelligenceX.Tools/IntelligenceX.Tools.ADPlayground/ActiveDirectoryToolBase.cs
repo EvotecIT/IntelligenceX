@@ -171,6 +171,17 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Resolves optional domain query hints with shared trimming and option fallback semantics.
+    /// </summary>
+    protected (string? DomainName, string? SearchBaseDnHint, string? DomainControllerHint) ResolveOptionalDomainQueryHints(
+        JsonObject? arguments) {
+        return (
+            DomainName: ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
+            SearchBaseDnHint: ToolArgs.GetOptionalTrimmed(arguments, "search_base_dn") ?? Options.DefaultSearchBaseDn,
+            DomainControllerHint: ToolArgs.GetOptionalTrimmed(arguments, "domain_controller") ?? Options.DomainController);
+    }
+
+    /// <summary>
     /// Resolves tool-requested AD attribute list via ADPlayground policy helper.
     /// </summary>
     protected static List<string> ResolveAttributes(

@@ -46,13 +46,14 @@ public sealed class AdPrivilegedGroupsSummaryTool : ActiveDirectoryToolBase, ITo
         var memberSampleSize = requestedSampleSize.HasValue && requestedSampleSize.Value > 0
             ? (int)Math.Min(requestedSampleSize.Value, MaxMembersSampleSize)
             : DefaultMembersSampleSize;
+        var scopeHints = ResolveOptionalDomainQueryHints(arguments);
 
         var summary = await PrivilegedGroupsSummaryService
             .QueryAsync(
                 new PrivilegedGroupsSummaryQueryOptions {
-                    DomainControllerHint = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller") ?? Options.DomainController,
-                    SearchBaseDnHint = ToolArgs.GetOptionalTrimmed(arguments, "search_base_dn") ?? Options.DefaultSearchBaseDn,
-                    DomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
+                    DomainControllerHint = scopeHints.DomainControllerHint,
+                    SearchBaseDnHint = scopeHints.SearchBaseDnHint,
+                    DomainName = scopeHints.DomainName,
                     IncludeMemberCount = includeMemberCount,
                     IncludeMemberSample = includeMemberSample,
                     MemberSampleSize = memberSampleSize
