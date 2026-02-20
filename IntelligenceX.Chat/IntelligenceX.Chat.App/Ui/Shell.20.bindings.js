@@ -750,16 +750,6 @@
       };
     }
 
-    if (normalizedTransport === "compatible-http") {
-      var preset = detectCompatibleProviderPreset(baseUrl);
-      if (preset === "anthropic-bridge" || preset === "gemini-bridge") {
-        return {
-          supported: false,
-          reason: "Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning."
-        };
-      }
-    }
-
     return {
       supported: true,
       reason: ""
@@ -872,18 +862,18 @@
     }
     if (basicUsername) {
       if (key === "anthropic-bridge") {
-        basicUsername.placeholder = "Anthropic login/email";
+        basicUsername.placeholder = "Anthropic bridge login/email";
       } else if (key === "gemini-bridge") {
-        basicUsername.placeholder = "Gemini login/email";
+        basicUsername.placeholder = "Gemini bridge login/email";
       } else {
         basicUsername.placeholder = "Leave blank to keep current value";
       }
     }
     if (basicPassword) {
       if (key === "anthropic-bridge") {
-        basicPassword.placeholder = "Anthropic password/session secret";
+        basicPassword.placeholder = "Anthropic bridge secret/token";
       } else if (key === "gemini-bridge") {
-        basicPassword.placeholder = "Gemini password/session secret";
+        basicPassword.placeholder = "Gemini bridge secret/token";
       } else {
         basicPassword.placeholder = "Leave blank to keep existing secret";
       }
@@ -1260,6 +1250,8 @@
     if (autoDetectButton) {
       autoDetectButton.hidden = !isCompatible;
     }
+
+    scheduleLocalProviderApply(false);
   });
 
   byId("optLocalProviderPreset").addEventListener("change", function(e) {
@@ -1268,12 +1260,42 @@
       applyCompatiblePresetSelection(preset);
     }
     syncCustomSelect(e.target);
+    scheduleLocalProviderApply(false);
   });
 
   byId("optLocalAuthMode").addEventListener("change", function(e) {
     e.target.value = normalizeCompatibleAuthMode(e.target.value || "bearer");
     syncCustomSelect(e.target);
     byId("optLocalTransport").dispatchEvent(new Event("change"));
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optLocalBaseUrl").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optLocalApiKey").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optLocalModelInput").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optReasoningEffort").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optReasoningSummary").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optTextVerbosity").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
+  });
+
+  byId("optTemperature").addEventListener("change", function() {
+    scheduleLocalProviderApply(false);
   });
 
   byId("optLocalBasicUsername").addEventListener("change", function() {
@@ -1300,6 +1322,7 @@
     if (modelInput) {
       modelInput.value = selected;
     }
+    scheduleLocalProviderApply(false);
   });
 
   byId("optNativeAccountSlot").addEventListener("change", function(e) {
@@ -1372,6 +1395,16 @@
 
   byId("btnLocalPresetAzureOpenAI").addEventListener("click", function() {
     applyCompatiblePresetSelection("azure-openai");
+    applyLocalProviderSettings(true);
+  });
+
+  byId("btnLocalPresetAnthropicBridge").addEventListener("click", function() {
+    applyCompatiblePresetSelection("anthropic-bridge");
+    applyLocalProviderSettings(true);
+  });
+
+  byId("btnLocalPresetGeminiBridge").addEventListener("click", function() {
+    applyCompatiblePresetSelection("gemini-bridge");
     applyLocalProviderSettings(true);
   });
 

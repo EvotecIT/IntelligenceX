@@ -234,8 +234,8 @@
                 <option value="ollama">Ollama (local)</option>
                 <option value="openai">OpenAI API</option>
                 <option value="azure-openai">Azure OpenAI</option>
-                <option value="anthropic-bridge">Anthropic bridge (experimental)</option>
-                <option value="gemini-bridge">Gemini bridge (experimental)</option>
+                <option value="anthropic-bridge">Anthropic subscription bridge</option>
+                <option value="gemini-bridge">Gemini subscription bridge</option>
               </select>
             </div>
             <div class="options-row" id="optLocalTransportRow">
@@ -271,7 +271,7 @@
               <input id="optLocalBasicPassword" type="password" class="options-input options-input-sm" placeholder="Leave blank to keep existing secret" autocomplete="off" />
             </div>
             <div class="options-note" id="optLocalApiKeyHint">Use Clear Saved API Key to remove the currently stored key.</div>
-            <div class="options-note" id="optLocalAuthHint">Compatible HTTP supports Bearer/API key or Basic auth. Anthropic/Gemini subscription bridges are experimental and require a bridge endpoint.</div>
+            <div class="options-note" id="optLocalAuthHint">Compatible HTTP supports Bearer/API key or Basic auth. Anthropic/Gemini subscriptions use a bridge endpoint with bridge-managed credentials.</div>
             <div class="options-note">Auto Detect scans LM Studio/Ollama endpoints. Compatible HTTP also supports API key providers (Azure/OpenAI-compatible endpoints).</div>
             <div class="options-actions options-actions-wrap">
               <button id="btnAutoDetectLocalRuntime" class="options-btn options-btn-sm">Auto Detect Runtime</button>
@@ -279,6 +279,8 @@
               <button id="btnLocalPresetOllama" class="options-btn options-btn-sm options-btn-ghost">Use Ollama Runtime</button>
               <button id="btnLocalPresetOpenAI" class="options-btn options-btn-sm options-btn-ghost">Use OpenAI API</button>
               <button id="btnLocalPresetAzureOpenAI" class="options-btn options-btn-sm options-btn-ghost">Use Azure OpenAI</button>
+              <button id="btnLocalPresetAnthropicBridge" class="options-btn options-btn-sm options-btn-ghost">Use Anthropic Bridge</button>
+              <button id="btnLocalPresetGeminiBridge" class="options-btn options-btn-sm options-btn-ghost">Use Gemini Bridge</button>
               <button id="btnLocalPresetCopilot" class="options-btn options-btn-sm options-btn-ghost">Use Copilot Endpoint (API key)</button>
               <button id="btnClearLocalApiKey" class="options-btn options-btn-sm options-btn-ghost">Clear Saved API Key</button>
               <button id="btnClearLocalBasicAuth" class="options-btn options-btn-sm options-btn-ghost">Clear Saved Basic Auth</button>

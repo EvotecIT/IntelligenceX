@@ -570,30 +570,17 @@ Quick start prompts:
         if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
-
-        if (!string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        var preset = DetectCompatibleProviderPreset(baseUrl);
-        return !string.Equals(preset, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)
-               && !string.Equals(preset, "gemini-bridge", StringComparison.OrdinalIgnoreCase);
+        return true;
     }
 
     private static string DescribeLocalProviderReasoningSupport(string? transport, string? baseUrl) {
         if (SupportsLocalProviderReasoningControls(transport, baseUrl)) {
-            return "enabled (provider may clamp unsupported values)";
+            return "enabled (pass-through; provider may clamp unsupported values)";
         }
 
         var normalizedTransport = NormalizeLocalProviderTransport(transport);
         if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
             return "not exposed by Copilot subscription runtime";
-        }
-
-        var preset = DetectCompatibleProviderPreset(baseUrl);
-        if (string.Equals(preset, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(preset, "gemini-bridge", StringComparison.OrdinalIgnoreCase)) {
-            return "bridge preset uses provider defaults";
         }
 
         return "not exposed by current runtime profile";
