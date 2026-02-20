@@ -271,7 +271,7 @@ internal static partial class Program {
                             return options;
                         }
                         if (!ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(writeGovernanceModeValue, out var writeGovernanceMode)) {
-                            error = "--write-governance-mode must be one of: enforced, yolo.";
+                            error = ToolRuntimePolicyBootstrap.WriteGovernanceModeParseError;
                             return options;
                         }
                         options.WriteGovernanceMode = writeGovernanceMode;
@@ -293,7 +293,7 @@ internal static partial class Program {
                             return options;
                         }
                         if (!ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(writeAuditSinkModeValue, out var writeAuditSinkMode)) {
-                            error = "--write-audit-sink-mode must be one of: none, file, sqlite.";
+                            error = ToolRuntimePolicyBootstrap.WriteAuditSinkModeParseError;
                             return options;
                         }
                         options.WriteAuditSinkMode = writeAuditSinkMode;
@@ -309,7 +309,7 @@ internal static partial class Program {
                             return options;
                         }
                         if (!ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(authRuntimePresetValue, out var authRuntimePreset)) {
-                            error = "--auth-runtime-preset must be one of: default, strict, lab.";
+                            error = ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError;
                             return options;
                         }
                         options.AuthenticationRuntimePreset = authRuntimePreset;

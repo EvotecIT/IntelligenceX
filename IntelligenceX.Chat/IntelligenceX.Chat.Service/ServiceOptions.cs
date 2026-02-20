@@ -396,7 +396,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
                     return options;
                 }
                 if (!ToolRuntimePolicyBootstrap.TryParseWriteGovernanceMode(value, out var mode)) {
-                    error = "--write-governance-mode must be one of: enforced, yolo.";
+                    error = ToolRuntimePolicyBootstrap.WriteGovernanceModeParseError;
                     return options;
                 }
                 options.WriteGovernanceMode = mode;
@@ -423,7 +423,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
                     return options;
                 }
                 if (!ToolRuntimePolicyBootstrap.TryParseWriteAuditSinkMode(value, out var sinkMode)) {
-                    error = "--write-audit-sink-mode must be one of: none, file, sqlite.";
+                    error = ToolRuntimePolicyBootstrap.WriteAuditSinkModeParseError;
                     return options;
                 }
                 options.WriteAuditSinkMode = sinkMode;
@@ -441,7 +441,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
                     return options;
                 }
                 if (!ToolRuntimePolicyBootstrap.TryParseAuthenticationRuntimePreset(value, out var preset)) {
-                    error = "--auth-runtime-preset must be one of: default, strict, lab.";
+                    error = ToolRuntimePolicyBootstrap.AuthenticationRuntimePresetParseError;
                     return options;
                 }
                 options.AuthenticationRuntimePreset = preset;
@@ -594,18 +594,7 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
         Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
-        Console.WriteLine("  --write-governance-mode <MODE>  Write governance mode: enforced|yolo (default: enforced).");
-        Console.WriteLine("  --require-write-governance-runtime  Require configured write runtime for write-intent calls (default: on).");
-        Console.WriteLine("  --no-require-write-governance-runtime Disable runtime requirement for write-intent calls.");
-        Console.WriteLine("  --require-write-audit-sink  Require write audit sink for write-intent calls.");
-        Console.WriteLine("  --no-require-write-audit-sink Disable write audit sink requirement.");
-        Console.WriteLine("  --write-audit-sink-mode <MODE>  Write audit sink mode: none|file|sqlite (default: none).");
-        Console.WriteLine("  --write-audit-sink-path <PATH>  Write audit sink path (JSONL file or SQLite db).");
-        Console.WriteLine("  --auth-runtime-preset <MODE>  Auth runtime preset: default|strict|lab (default: default).");
-        Console.WriteLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
-        Console.WriteLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
-        Console.WriteLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");
-        Console.WriteLine("  --auth-profile-path <PATH>  Authentication profile catalog path for auth-aware packs.");
+        ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
