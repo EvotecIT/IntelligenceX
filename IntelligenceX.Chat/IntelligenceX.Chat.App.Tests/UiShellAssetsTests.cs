@@ -225,6 +225,20 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures visual renderers use theme-aware defaults while preserving payload-level customization paths.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesThemeAwareVisualDefaultsAndNetworkEdgeAliases() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("function ensureMermaidThemeInitialized(themeMode)", html, StringComparison.Ordinal);
+        Assert.Contains("themeVariables: themeVariables", html, StringComparison.Ordinal);
+        Assert.Contains("function applyChartThemeDefaults(config, themeMode, optionsOverride)", html, StringComparison.Ordinal);
+        Assert.Contains("if (from === null && Object.prototype.hasOwnProperty.call(rawEdge, \"source\"))", html, StringComparison.Ordinal);
+        Assert.Contains("if (to === null && Object.prototype.hasOwnProperty.call(rawEdge, \"target\"))", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures code-copy adorners skip Mermaid and chart blocks so rendered visuals do not expose large payload copies.
     /// </summary>
     [Fact]

@@ -2,6 +2,7 @@
     loadPromise: null,
     loadFailed: false,
     initialized: false,
+    lastThemeSignature: "",
     nextRenderId: 1,
     maxBlocksPerMessage: 8,
     maxSourceChars: 12000,
@@ -262,15 +263,56 @@
     ]);
   }
 
+  function resolveMermaidThemeVariables(themeMode) {
+    var palette = resolveVisualExportPalette(themeMode);
+    var accentA = palette.accents[0] || "#4cc3ff";
+    var accentB = palette.accents[1] || "#66d9a8";
+    return {
+      background: palette.background,
+      primaryColor: accentA,
+      primaryTextColor: palette.text,
+      secondaryColor: accentB,
+      tertiaryColor: palette.surface,
+      lineColor: palette.grid,
+      textColor: palette.text,
+      mainBkg: palette.surface,
+      nodeBorder: palette.grid,
+      clusterBkg: palette.background,
+      clusterBorder: palette.grid,
+      edgeLabelBackground: palette.background,
+      actorBorder: palette.grid,
+      actorBkg: palette.surface,
+      actorTextColor: palette.text,
+      labelBoxBkgColor: palette.surface,
+      labelBoxBorderColor: palette.grid
+    };
+  }
+
+  function ensureMermaidThemeInitialized(themeMode) {
+    if (!window.mermaid || typeof window.mermaid.initialize !== "function") {
+      return;
+    }
+
+    var normalizedThemeMode = normalizeVisualExportThemeMode(themeMode);
+    var themeVariables = resolveMermaidThemeVariables(normalizedThemeMode);
+    var signature = normalizedThemeMode + "|" + JSON.stringify(themeVariables);
+    if (ixVisualMermaidState.initialized && ixVisualMermaidState.lastThemeSignature === signature) {
+      return;
+    }
+
+    window.mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "base",
+      themeVariables: themeVariables
+    });
+    ixVisualMermaidState.initialized = true;
+    ixVisualMermaidState.lastThemeSignature = signature;
+  }
+
   function ensureMermaidReady() {
     if (window.mermaid && typeof window.mermaid.render === "function") {
-      if (!ixVisualMermaidState.initialized && typeof window.mermaid.initialize === "function") {
-        window.mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "strict"
-        });
-        ixVisualMermaidState.initialized = true;
-      }
+      ensureMermaidThemeInitialized("preserve_ui_theme");
       return Promise.resolve(true);
     }
 
@@ -294,13 +336,7 @@
           return false;
         }
 
-        if (!ixVisualMermaidState.initialized && typeof window.mermaid.initialize === "function") {
-          window.mermaid.initialize({
-            startOnLoad: false,
-            securityLevel: "strict"
-          });
-          ixVisualMermaidState.initialized = true;
-        }
+        ensureMermaidThemeInitialized("preserve_ui_theme");
 
         return true;
       })
@@ -361,6 +397,8 @@
 
     pre.setAttribute("data-ix-mermaid-pending", "1");
     try {
+      ensureMermaidThemeInitialized("preserve_ui_theme");
+
       if (typeof window.mermaid.parse === "function") {
         var parseResult = window.mermaid.parse(source);
         if (parseResult && typeof parseResult.then === "function") {
@@ -934,7 +972,9 @@
         throw new Error("canvas context unavailable");
       }
 
-      var instance = new window.Chart(context, validation.config);
+      var chartConfig = cloneVisualValue(validation.config) || validation.config;
+      chartConfig = applyChartThemeDefaults(chartConfig, "preserve_ui_theme");
+      var instance = new window.Chart(context, chartConfig);
       pre._ixChartInstance = instance;
       pre.style.display = "none";
       pre.removeAttribute("data-ix-chart-invalid");
@@ -1467,6 +1507,7 @@
       host.appendChild(canvas);
       pre.insertAdjacentElement("afterend", host);
 
+      var runtimePalette = resolveVisualExportPalette("preserve_ui_theme");
       var networkOptions = deepMergeForExport({
         autoResize: true,
         layout: {
@@ -1485,10 +1526,19 @@
         nodes: {
           margin: 10,
           font: {
+            color: runtimePalette.text,
             strokeWidth: 0
+          },
+          color: {
+            background: runtimePalette.surface,
+            border: runtimePalette.grid
           }
         },
         edges: {
+          color: runtimePalette.grid,
+          font: {
+            color: runtimePalette.muted
+          },
           smooth: {
             enabled: true,
             type: "dynamic",
@@ -1921,6 +1971,7 @@
     if (!ready) {
       throw new Error("renderer unavailable");
     }
+    ensureMermaidThemeInitialized("preserve_ui_theme");
 
     if (typeof window.mermaid.parse === "function") {
       var parseResult = window.mermaid.parse(source);
@@ -1965,10 +2016,11 @@
     host.appendChild(canvas);
     visualViewCanvasWrap.appendChild(host);
 
-    var chartConfig = JSON.parse(JSON.stringify(validation.config));
-    chartConfig.options = chartConfig.options || {};
-    chartConfig.options.responsive = true;
-    chartConfig.options.maintainAspectRatio = false;
+    var chartConfig = cloneVisualValue(validation.config) || validation.config;
+    chartConfig = applyChartThemeDefaults(chartConfig, "preserve_ui_theme", {
+      responsive: true,
+      maintainAspectRatio: false
+    });
     visualViewState.chartInstance = new window.Chart(canvas.getContext("2d"), chartConfig);
     try {
       visualViewState.chartInstance.resize();
@@ -1996,6 +2048,7 @@
     host.appendChild(canvas);
     visualViewCanvasWrap.appendChild(host);
 
+    var runtimePalette = resolveVisualExportPalette("preserve_ui_theme");
     var options = deepMergeForExport({
       autoResize: true,
       layout: {
@@ -2014,10 +2067,19 @@
       nodes: {
         margin: 12,
         font: {
+          color: runtimePalette.text,
           strokeWidth: 0
+        },
+        color: {
+          background: runtimePalette.surface,
+          border: runtimePalette.grid
         }
       },
       edges: {
+        color: runtimePalette.grid,
+        font: {
+          color: runtimePalette.muted
+        },
         smooth: {
           enabled: true,
           type: "dynamic",
@@ -2464,16 +2526,84 @@
     return "preserve_ui_theme";
   }
 
+  function normalizeColorToken(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "");
+  }
+
+  function normalizeVisualPalette(palette, themeMode) {
+    var normalizedThemeMode = normalizeVisualExportThemeMode(themeMode);
+    var background = String((palette && palette.background) || "").trim();
+    var surface = String((palette && palette.surface) || "").trim();
+    var text = String((palette && palette.text) || "").trim();
+    var muted = String((palette && palette.muted) || "").trim();
+    var grid = String((palette && palette.grid) || "").trim();
+    var accentInput = palette && Array.isArray(palette.accents) ? palette.accents : [];
+
+    var blocked = {};
+    var bgKey = normalizeColorToken(background);
+    var surfaceKey = normalizeColorToken(surface);
+    if (bgKey) {
+      blocked[bgKey] = true;
+    }
+    if (surfaceKey) {
+      blocked[surfaceKey] = true;
+    }
+
+    var seen = {};
+    var accents = [];
+    for (var i = 0; i < accentInput.length; i++) {
+      var color = String(accentInput[i] || "").trim();
+      if (!color) {
+        continue;
+      }
+      var key = normalizeColorToken(color);
+      if (!key || blocked[key] || seen[key]) {
+        continue;
+      }
+      seen[key] = true;
+      accents.push(color);
+    }
+
+    var fallbackAccents = normalizedThemeMode === "print_friendly"
+      ? ["#2563eb", "#059669", "#ea580c", "#db2777", "#7c3aed", "#0891b2"]
+      : ["#4cc3ff", "#66d9a8", "#ffb86b", "#ff7ea7", "#9e9eff", "#9be7ff"];
+    for (var j = 0; j < fallbackAccents.length && accents.length < 6; j++) {
+      var fallback = fallbackAccents[j];
+      var fallbackKey = normalizeColorToken(fallback);
+      if (!fallbackKey || blocked[fallbackKey] || seen[fallbackKey]) {
+        continue;
+      }
+      seen[fallbackKey] = true;
+      accents.push(fallback);
+    }
+
+    if (accents.length === 0) {
+      accents = fallbackAccents.slice(0, 4);
+    }
+
+    return {
+      background: background || (normalizedThemeMode === "print_friendly" ? "#ffffff" : "#0f172a"),
+      surface: surface || (normalizedThemeMode === "print_friendly" ? "#f8fbff" : "#111f35"),
+      text: text || (normalizedThemeMode === "print_friendly" ? "#1f2933" : "#eaf3ff"),
+      muted: muted || (normalizedThemeMode === "print_friendly" ? "#4b5b6b" : "#a3bad1"),
+      grid: grid || (normalizedThemeMode === "print_friendly" ? "#d8e2ee" : "#35506a"),
+      accents: accents
+    };
+  }
+
   function resolveVisualExportPalette(themeMode) {
     if (themeMode === "print_friendly") {
-      return {
+      return normalizeVisualPalette({
         background: "#ffffff",
         surface: "#f8fbff",
         text: "#1f2933",
         muted: "#4b5b6b",
         grid: "#d8e2ee",
         accents: ["#2563eb", "#059669", "#ea580c", "#db2777", "#7c3aed", "#0891b2"]
-      };
+      }, themeMode);
     }
 
     var rootStyles = window.getComputedStyle ? window.getComputedStyle(document.documentElement) : null;
@@ -2483,14 +2613,14 @@
     var muted = rootStyles ? String(rootStyles.getPropertyValue("--ix-muted") || "").trim() : "";
     var border = rootStyles ? String(rootStyles.getPropertyValue("--ix-border") || "").trim() : "";
     var accent = rootStyles ? String(rootStyles.getPropertyValue("--ix-accent") || "").trim() : "";
-    return {
+    return normalizeVisualPalette({
       background: bg || "#0f172a",
       surface: panel || "#111f35",
       text: text || "#eaf3ff",
       muted: muted || "#a3bad1",
       grid: border || "#35506a",
       accents: [accent || "#4cc3ff", "#66d9a8", "#ffb86b", "#ff7ea7", "#9e9eff", "#9be7ff"]
-    };
+    }, themeMode);
   }
 
   function utf8ToBase64(value) {
@@ -2645,6 +2775,14 @@
     return target;
   }
 
+  function cloneVisualValue(value) {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      return value;
+    }
+  }
+
   function applyChartPalette(config, palette) {
     if (!config || !config.data || !Array.isArray(config.data.datasets)) {
       return;
@@ -2667,6 +2805,35 @@
     }
   }
 
+  function applyChartThemeDefaults(config, themeMode, optionsOverride) {
+    if (!config || !config.data || !Array.isArray(config.data.datasets)) {
+      return config;
+    }
+
+    var palette = resolveVisualExportPalette(themeMode);
+    var defaults = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { labels: { color: palette.text } },
+        title: { color: palette.text },
+        tooltip: { enabled: true }
+      },
+      scales: {
+        x: { ticks: { color: palette.muted }, grid: { color: palette.grid } },
+        y: { ticks: { color: palette.muted }, grid: { color: palette.grid } }
+      }
+    };
+    if (isPlainObject(optionsOverride)) {
+      defaults = deepMergeForExport(defaults, optionsOverride);
+    }
+
+    config.options = deepMergeForExport(defaults, config.options || {});
+    applyChartPalette(config, palette);
+    return config;
+  }
+
   async function renderMermaidForExport(source, imageId, themeMode) {
     var ready = await ensureMermaidReady();
     if (!ready) {
@@ -2677,7 +2844,11 @@
       return null;
     }
 
+    var normalizedThemeMode = normalizeVisualExportThemeMode(themeMode);
+    var restoreUiTheme = normalizedThemeMode !== "preserve_ui_theme";
     try {
+      ensureMermaidThemeInitialized(normalizedThemeMode);
+
       if (typeof window.mermaid.parse === "function") {
         var parseResult = window.mermaid.parse(source);
         if (parseResult && typeof parseResult.then === "function") {
@@ -2715,6 +2886,10 @@
       };
     } catch (_) {
       return null;
+    } finally {
+      if (restoreUiTheme) {
+        ensureMermaidThemeInitialized("preserve_ui_theme");
+      }
     }
   }
 
@@ -2736,29 +2911,17 @@
       return null;
     }
 
-    var palette = resolveVisualExportPalette(themeMode);
     var chartConfig = {
       type: validation.config.type,
       data: validation.config.data,
       options: validation.config.options || {}
     };
-    chartConfig.options = deepMergeForExport({}, chartConfig.options || {});
-    var exportDefaults = {
+    chartConfig = cloneVisualValue(chartConfig) || chartConfig;
+    chartConfig = applyChartThemeDefaults(chartConfig, themeMode, {
       responsive: false,
       maintainAspectRatio: false,
-      animation: false,
-      plugins: {
-        legend: { labels: { color: palette.text } },
-        title: { color: palette.text },
-        tooltip: { enabled: true }
-      },
-      scales: {
-        x: { ticks: { color: palette.muted }, grid: { color: palette.grid } },
-        y: { ticks: { color: palette.muted }, grid: { color: palette.grid } }
-      }
-    };
-    chartConfig.options = deepMergeForExport(exportDefaults, chartConfig.options || {});
-    applyChartPalette(chartConfig, palette);
+      animation: false
+    });
 
     var canvas = document.createElement("canvas");
     canvas.width = ixVisualExportState.chartWidth;
@@ -2845,10 +3008,16 @@
         zoomView: false
       },
       nodes: {
-        font: { color: palette.text }
+        font: { color: palette.text },
+        color: {
+          background: palette.surface,
+          border: palette.grid
+        }
       },
       edges: {
-        color: palette.grid,
+        color: {
+          color: palette.grid
+        },
         font: { color: palette.muted }
       }
     }, options);
