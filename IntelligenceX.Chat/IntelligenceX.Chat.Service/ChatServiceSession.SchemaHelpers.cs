@@ -314,14 +314,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static bool ShouldRecoverMissingTransportThread(Exception ex) {
-        var message = (ex?.Message ?? string.Empty).Trim();
-        if (message.Length == 0) {
-            return false;
-        }
-
-        return message.Contains("thread", StringComparison.OrdinalIgnoreCase)
-               && message.Contains("not found", StringComparison.OrdinalIgnoreCase)
-               && message.Contains("transport", StringComparison.OrdinalIgnoreCase);
+        return ChatThreadRecoveryHeuristics.IsMissingTransportThreadError(ex);
     }
 
 }

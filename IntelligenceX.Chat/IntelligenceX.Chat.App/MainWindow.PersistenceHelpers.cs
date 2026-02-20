@@ -372,14 +372,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static bool IsMissingTransportThreadError(Exception ex) {
-        var message = (ex.Message ?? string.Empty).Trim();
-        if (message.Length == 0) {
-            return false;
-        }
-
-        return message.Contains("thread", StringComparison.OrdinalIgnoreCase)
-               && message.Contains("not found", StringComparison.OrdinalIgnoreCase)
-               && message.Contains("transport", StringComparison.OrdinalIgnoreCase);
+        return ChatThreadRecoveryHeuristics.IsMissingTransportThreadError(ex);
     }
 
     private static bool IsChatInProgressError(Exception ex) {

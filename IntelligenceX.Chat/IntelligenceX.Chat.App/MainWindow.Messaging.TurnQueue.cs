@@ -53,7 +53,12 @@ public sealed partial class MainWindow : Window {
 
         // Keep user bubble rendering immediate, but still validate connectivity
         // before we enter active send state.
-        if (_client is null && !await EnsureConnectedAsync().ConfigureAwait(false)) {
+        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            return;
+        }
+        if (_client is null) {
             await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
             return;

@@ -2176,12 +2176,8 @@
       if (!element) {
         return;
       }
-      if (shouldShow) {
-        element.dataset.ixRuntimePanelHidden = "0";
-        return;
-      }
-      element.hidden = true;
-      element.dataset.ixRuntimePanelHidden = "1";
+      element.hidden = !shouldShow;
+      element.dataset.ixRuntimePanelHidden = shouldShow ? "0" : "1";
     }
 
     resetRuntimePanelManagedVisibility("optNativeAccountSlotRow");

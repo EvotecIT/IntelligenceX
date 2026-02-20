@@ -69,7 +69,9 @@ internal static class TranscriptMarkdownFormatter {
             return string.Empty;
         }
 
-        var safeModel = normalizedModel.Replace("--", "- -", StringComparison.Ordinal);
+        var safeModel = normalizedModel
+            .Replace("--", "- -", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal);
         return "<!-- ix:model: " + safeModel + " -->";
     }
 }

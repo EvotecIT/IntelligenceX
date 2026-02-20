@@ -53,4 +53,17 @@ public sealed class TranscriptMarkdownFormatterTests {
         Assert.Contains("### Assistant (19:12:07)", markdown);
         Assert.Contains("<!-- ix:model: ibm/granite-4-h-tiny -->", markdown);
     }
+
+    /// <summary>
+    /// Ensures model comment text does not terminate the enclosing HTML comment.
+    /// </summary>
+    [Fact]
+    public void Format_EscapesModelCommentTerminators() {
+        var now = new DateTime(2026, 2, 20, 19, 13, 7, DateTimeKind.Local);
+        var markdown = TranscriptMarkdownFormatter.Format(new[] {
+            ("Assistant", "Ready.", now, (string?)"model->beta--x")
+        }, "HH:mm:ss");
+
+        Assert.Contains("<!-- ix:model: model-&gt;beta- -x -->", markdown);
+    }
 }

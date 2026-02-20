@@ -820,9 +820,6 @@ public sealed partial class MainWindow : Window {
             var isSystem = IsSystemConversation(conversation);
             var updatedUtc = conversation.UpdatedUtc == default ? DateTime.UtcNow : conversation.UpdatedUtc;
             var updatedLocal = EnsureUtc(updatedUtc).ToLocalTime();
-            var modelOverride = NormalizeConversationModelOverride(conversation.ModelOverride);
-            var runtimeModelLabel = string.IsNullOrWhiteSpace(_localProviderModel) ? "(runtime default)" : _localProviderModel.Trim();
-            var modelLabel = modelOverride ?? ("Auto (" + runtimeModelLabel + ")");
             var preview = string.Empty;
             for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
                 var text = (conversation.Messages[i].Text ?? string.Empty).Trim();
