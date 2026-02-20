@@ -72,7 +72,7 @@ and can resolve engine sources from configured local roots when needed.
 - Render-oriented projected rows are emitted in `*_view` fields.
 - For pack-level planning, call the corresponding `*_pack_info` tool first.
 - Use `capabilities` + `recommended_flow_steps` for planning strategy.
-- Use `tool_catalog` for runtime-accurate tool descriptions, argument hints, required-argument hints, and structured usage traits.
+- Use `tool_catalog` for runtime-accurate tool descriptions, categories/tags, routing taxonomy (`scope`/`operation`/`entity`/`risk`), argument hints, required-argument hints, and structured usage traits.
 
 ## Adding a new pack
 

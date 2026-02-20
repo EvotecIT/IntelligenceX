@@ -45,6 +45,76 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void RegisteredTools_ShouldExposeCategoryAndSelectionTags() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+        registry.RegisterFileSystemPack(new FileSystemToolOptions());
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
+        registry.RegisterEmailPack(new EmailToolOptions());
+        registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
+
+        var definitions = registry.GetDefinitions();
+        Assert.NotEmpty(definitions);
+
+        foreach (var definition in definitions) {
+            Assert.False(string.IsNullOrWhiteSpace(definition.Category));
+            Assert.Contains(definition.Category!, definition.Tags, StringComparer.OrdinalIgnoreCase);
+
+            if (definition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase)) {
+                Assert.Contains("pack_info", definition.Tags, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        var writeCapable = definitions.Where(static d => d.WriteGovernance?.IsWriteCapable == true).ToArray();
+        Assert.NotEmpty(writeCapable);
+        foreach (var definition in writeCapable) {
+            Assert.Contains("write", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var authAware = definitions.Where(static d => d.Authentication?.IsAuthenticationAware == true).ToArray();
+        Assert.NotEmpty(authAware);
+        foreach (var definition in authAware) {
+            Assert.Contains("auth", definition.Tags, StringComparer.OrdinalIgnoreCase);
+            if (definition.Authentication!.RequiresAuthentication) {
+                Assert.Contains("auth_required", definition.Tags, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void HighPriorityTools_ShouldKeepExplicitSelectionMetadataOverrides() {
+        var required = ToolSelectionMetadata.GetRequiredExplicitOverrideToolNames();
+        Assert.NotEmpty(required);
+
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+        registry.RegisterFileSystemPack(new FileSystemToolOptions());
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
+        registry.RegisterEmailPack(new EmailToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var toolName in required) {
+            Assert.True(definitionsByName.TryGetValue(toolName, out var definition), $"Missing required high-priority tool '{toolName}'.");
+            Assert.True(ToolSelectionMetadata.HasExplicitOverride(toolName), $"Expected explicit override for '{toolName}'.");
+            Assert.Contains("routing:explicit", definition!.Tags, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(definition.Tags, static tag => tag.StartsWith("scope:", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(definition.Tags, static tag => tag.StartsWith("operation:", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(definition.Tags, static tag => tag.StartsWith("entity:", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(definition.Tags, static tag => tag.StartsWith("risk:", StringComparison.OrdinalIgnoreCase));
+
+            if (definition.WriteGovernance?.IsWriteCapable == true) {
+                Assert.Contains("risk:high", definition.Tags, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
     public void CorePackToolNames_ShouldRemainStable() {
         var registry = new ToolRegistry();
         registry.RegisterEventLogPack(new EventLogToolOptions());
