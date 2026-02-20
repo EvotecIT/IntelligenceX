@@ -133,7 +133,7 @@ public sealed class MainWindowBridgeRuntimeStateTests {
             "");
 
         Assert.Equal(
-            "compatible-http:https%3A%2F%2Fbridge.local%2Fv1%7Cacct%3Ain-base|acct:user%3Aone%7Ctwo",
+            "compatible-http:https%3A%2F%2Fbridge.local%2Fv1%257Cacct%3Ain-base|acct:user%3Aone%7Ctwo",
             identity.Key);
     }
 
@@ -173,5 +173,40 @@ public sealed class MainWindowBridgeRuntimeStateTests {
             "");
 
         Assert.NotEqual(upper.Key, lower.Key);
+    }
+
+    /// <summary>
+    /// Ensures semantically equivalent base URLs map to one usage identity key.
+    /// </summary>
+    [Fact]
+    public void BuildCompatibleUsageIdentity_CanonicalizesEquivalentBaseUrls() {
+        var canonical = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local/v1",
+            "bearer",
+            "account",
+            "");
+        var equivalent = MainWindow.BuildCompatibleUsageIdentity(
+            "HTTPS://Bridge.Local:443/v1/",
+            "bearer",
+            "account",
+            "");
+
+        Assert.Equal(canonical.Key, equivalent.Key);
+        Assert.Equal("Compatible HTTP (https://bridge.local/v1 | account)", equivalent.Label);
+    }
+
+    /// <summary>
+    /// Ensures non-default ports stay part of canonical usage identity keys.
+    /// </summary>
+    [Fact]
+    public void BuildCompatibleUsageIdentity_PreservesNonDefaultPortInCanonicalKey() {
+        var identity = MainWindow.BuildCompatibleUsageIdentity(
+            "https://bridge.local:8443/v1/",
+            "bearer",
+            "",
+            "");
+
+        Assert.Equal("compatible-http:https%3A%2F%2Fbridge.local%3A8443%2Fv1", identity.Key);
+        Assert.Equal("Compatible HTTP (https://bridge.local:8443/v1)", identity.Label);
     }
 }

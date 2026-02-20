@@ -65,6 +65,7 @@ public sealed partial class MainWindow : Window {
         string? openAIAccountId,
         string? openAIBasicUsername) {
         var normalizedBaseUrl = (baseUrl ?? string.Empty).Trim();
+        var canonicalBaseUrl = CanonicalizeCompatibleUsageBaseUrl(normalizedBaseUrl);
         var normalizedAccountId = (openAIAccountId ?? string.Empty).Trim();
         var normalizedAuthMode = (openAIAuthMode ?? string.Empty).Trim().ToLowerInvariant();
         var normalizedBasicUsername = (openAIBasicUsername ?? string.Empty).Trim();
@@ -79,7 +80,7 @@ public sealed partial class MainWindow : Window {
             compatibleAccountIdentity = string.Empty;
         }
 
-        if (normalizedBaseUrl.Length == 0) {
+        if (canonicalBaseUrl.Length == 0) {
             if (compatibleAccountIdentity.Length == 0) {
                 return ("compatible-http:unknown", "Compatible HTTP (unconfigured)");
             }
@@ -90,22 +91,58 @@ public sealed partial class MainWindow : Window {
                 "Compatible HTTP (unconfigured | " + compatibleAccountIdentity + ")");
         }
 
-        var encodedBaseUrl = EncodeCompatibleUsageKeyComponent(normalizedBaseUrl);
+        var encodedBaseUrl = EncodeCompatibleUsageKeyComponent(canonicalBaseUrl);
         if (compatibleAccountIdentity.Length == 0) {
             return (
                 "compatible-http:" + encodedBaseUrl,
-                "Compatible HTTP (" + normalizedBaseUrl + ")");
+                "Compatible HTTP (" + canonicalBaseUrl + ")");
         }
 
         var encodedAccount = EncodeCompatibleUsageKeyComponent(compatibleAccountIdentity);
         return (
             "compatible-http:" + encodedBaseUrl + "|acct:" + encodedAccount,
-            "Compatible HTTP (" + normalizedBaseUrl + " | " + compatibleAccountIdentity + ")");
+            "Compatible HTTP (" + canonicalBaseUrl + " | " + compatibleAccountIdentity + ")");
     }
 
     private static string EncodeCompatibleUsageKeyComponent(string value) {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length == 0 ? string.Empty : Uri.EscapeDataString(normalized);
+    }
+
+    private static string CanonicalizeCompatibleUsageBaseUrl(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var parsed) || parsed is null) {
+            return normalized;
+        }
+
+        var path = parsed.AbsolutePath.Length == 0 ? "/" : parsed.AbsolutePath;
+        if (path.Length > 1) {
+            path = path.TrimEnd('/');
+            if (path.Length == 0) {
+                path = "/";
+            }
+        }
+
+        var defaultPort = parsed.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
+            ? 80
+            : (parsed.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? 443 : -1);
+        var includePort = parsed.Port > 0 && parsed.Port != defaultPort;
+        var host = parsed.IdnHost.Length > 0 ? parsed.IdnHost : parsed.Host;
+
+        var canonical = parsed.Scheme.ToLowerInvariant()
+                        + "://"
+                        + host.ToLowerInvariant()
+                        + (includePort ? ":" + parsed.Port.ToString(CultureInfo.InvariantCulture) : string.Empty)
+                        + path;
+        if (!string.IsNullOrEmpty(parsed.Query)) {
+            canonical += parsed.Query;
+        }
+
+        return canonical;
     }
 
     private static ActiveUsageIdentity ResolveNativeUsageIdentity(string? accountId) {
