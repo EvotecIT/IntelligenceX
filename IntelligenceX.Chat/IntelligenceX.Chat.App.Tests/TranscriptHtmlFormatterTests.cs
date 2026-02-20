@@ -385,4 +385,34 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("<li><strong>AD2</strong> eher Secure-Channel/TLS</li>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("—** AD2**", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures live streaming preview plus transcript HTML rendering repairs tight signal-flow labels and overwrapped strong spans.
+    /// </summary>
+    [Fact]
+    public void Format_StreamingPreviewPipelineRepairsSignalTypographyArtifacts() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 20, 11, 8, 0, DateTimeKind.Local);
+        var raw = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules -> **Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**",
+            "- TestimoX rules available ****359****"
+        ]);
+
+        var preview = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(raw);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", preview, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("**Why it matters:** external/custom rules can drift", preview, StringComparison.Ordinal);
+        Assert.Contains("**Next action:** break down `rule_origin`", preview, StringComparison.Ordinal);
+        Assert.Contains("TestimoX rules available **359**", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("****359****", preview, StringComparison.Ordinal);
+
+        Assert.Contains("<strong>Catalog count includes hidden/disabled/deprecated rules</strong>", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Why it matters:</strong> external/custom rules can drift or disappear between hosts", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Next action:</strong> break down <code>rule_origin</code> (<code>builtin</code> vs <code>external</code>)", html, StringComparison.Ordinal);
+        Assert.Contains("TestimoX rules available <strong>359</strong>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("</strong>external/custom", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("</strong>break down", html, StringComparison.Ordinal);
+    }
 }
