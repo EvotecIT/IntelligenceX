@@ -232,6 +232,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _queuedAfterLoginSync = new();
     private readonly Queue<QueuedTurn> _queuedTurnsAfterLogin = new();
     private bool _isAuthenticated;
+    private string? _authenticatedAccountId;
     private bool _loginInProgress;
     private bool _debugMode;
     private bool _isConnected;
@@ -258,6 +259,15 @@ public sealed partial class MainWindow : Window {
     private string _localProviderTransport = TransportNative;
     private string? _localProviderBaseUrl;
     private string _localProviderModel = DefaultLocalModel;
+    private string _localProviderOpenAIAuthMode = "bearer";
+    private string _localProviderOpenAIBasicUsername = string.Empty;
+    private string _localProviderOpenAIAccountId = string.Empty;
+    private int _activeNativeAccountSlot = 1;
+    private readonly string[] _nativeAccountSlots = new string[3];
+    private string _localProviderReasoningEffort = string.Empty;
+    private string _localProviderReasoningSummary = string.Empty;
+    private string _localProviderTextVerbosity = string.Empty;
+    private double? _localProviderTemperature;
     private bool _localRuntimeDetectionRan;
     private bool _localRuntimeLmStudioAvailable;
     private bool _localRuntimeOllamaAvailable;
@@ -308,6 +318,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _turnDiagnosticsSync = new();
     private readonly List<string> _activityTimeline = new();
     private TurnMetricsSnapshot? _lastTurnMetrics;
+    private readonly Dictionary<string, AccountUsageSnapshot> _accountUsageByKey = new(StringComparer.OrdinalIgnoreCase);
     private long? _activeTurnQueueWaitMs;
     private long _activeTurnStartedUtcTicks;
     private readonly object _turnWatchdogSync = new();
@@ -378,7 +389,18 @@ public sealed partial class MainWindow : Window {
         string? Transport,
         string? BaseUrl,
         string? Model,
+        string? OpenAIAuthMode,
+        string? OpenAIBasicUsername,
+        string? OpenAIBasicPassword,
+        string? OpenAIAccountId,
+        int? ActiveNativeAccountSlot,
+        string? ActiveSlotAccountId,
+        string? ReasoningEffort,
+        string? ReasoningSummary,
+        string? TextVerbosity,
+        string? Temperature,
         string? ApiKey,
+        bool ClearBasicAuth,
         bool ClearApiKey,
         bool ForceModelRefresh);
 
@@ -391,7 +413,12 @@ public sealed partial class MainWindow : Window {
         int ToolRounds,
         int ProjectionFallbackCount,
         string Outcome,
-        string? ErrorCode);
+        string? ErrorCode,
+        long? PromptTokens,
+        long? CompletionTokens,
+        long? TotalTokens,
+        long? CachedPromptTokens,
+        long? ReasoningTokens);
 
     private sealed class UserProfileIntent {
         public string? UserName { get; set; }
@@ -414,10 +441,19 @@ public sealed partial class MainWindow : Window {
         public string? Model { get; init; }
         public string? OpenAITransport { get; init; }
         public string? OpenAIBaseUrl { get; init; }
+        public string? OpenAIAuthMode { get; init; }
         public string? OpenAIApiKey { get; init; }
+        public string? OpenAIBasicUsername { get; init; }
+        public string? OpenAIBasicPassword { get; init; }
+        public string? OpenAIAccountId { get; init; }
         public bool ClearOpenAIApiKey { get; init; }
+        public bool ClearOpenAIBasicAuth { get; init; }
         public bool? OpenAIStreaming { get; init; }
         public bool? OpenAIAllowInsecureHttp { get; init; }
+        public string? ReasoningEffort { get; init; }
+        public string? ReasoningSummary { get; init; }
+        public string? TextVerbosity { get; init; }
+        public double? Temperature { get; init; }
         public bool? EnablePowerShellPack { get; init; }
         public bool? EnableTestimoXPack { get; init; }
         public bool? EnableOfficeImoPack { get; init; }
@@ -1300,6 +1336,12 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            ApplyNonNativeAuthenticationStateIfNeeded();
+            _autoSignInAttempted = true;
+            return;
+        }
+
         if (_appState.OnboardingCompleted || AnyConversationHasMessages() || _isAuthenticated || _loginInProgress) {
             return;
         }
@@ -1333,6 +1375,7 @@ public sealed partial class MainWindow : Window {
     private async Task LoadProfileStateAsync(string profileName, bool render) {
         var normalized = ResolveAppProfileName(profileName);
         var loaded = await _stateStore.GetAsync(normalized, CancellationToken.None).ConfigureAwait(false);
+        var previousTransport = _localProviderTransport;
 
         _appProfileName = normalized;
         _knownProfiles.Add(normalized);
@@ -1346,9 +1389,32 @@ public sealed partial class MainWindow : Window {
         _localProviderTransport = NormalizeLocalProviderTransport(_appState.LocalProviderTransport);
         _localProviderBaseUrl = NormalizeLocalProviderBaseUrl(_appState.LocalProviderBaseUrl, _localProviderTransport);
         _localProviderModel = NormalizeLocalProviderModel(_appState.LocalProviderModel, _localProviderTransport);
+        _localProviderOpenAIAuthMode = NormalizeLocalProviderOpenAIAuthMode(_appState.LocalProviderOpenAIAuthMode);
+        _localProviderOpenAIBasicUsername = NormalizeLocalProviderOpenAIBasicUsername(_appState.LocalProviderOpenAIBasicUsername);
+        RestoreNativeAccountSlotsFromAppState();
+        _localProviderReasoningEffort = NormalizeLocalProviderReasoningEffort(_appState.LocalProviderReasoningEffort);
+        _localProviderReasoningSummary = NormalizeLocalProviderReasoningSummary(_appState.LocalProviderReasoningSummary);
+        _localProviderTextVerbosity = NormalizeLocalProviderTextVerbosity(_appState.LocalProviderTextVerbosity);
+        _localProviderTemperature = NormalizeLocalProviderTemperature(_appState.LocalProviderTemperature);
         _appState.LocalProviderTransport = _localProviderTransport;
         _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
         _appState.LocalProviderModel = _localProviderModel;
+        _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
+        _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
+        _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
+        _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
+        _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
+        _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
+        _appState.LocalProviderTemperature = _localProviderTemperature;
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            ApplyNonNativeAuthenticationStateIfNeeded();
+        } else if (!string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
+            _isAuthenticated = false;
+            _authenticatedAccountId = null;
+            _loginInProgress = false;
+        }
+        _authenticatedAccountId = null;
+        RestoreAccountUsageFromAppState();
         _localRuntimeDetectionRan = false;
         _localRuntimeLmStudioAvailable = false;
         _localRuntimeOllamaAvailable = false;

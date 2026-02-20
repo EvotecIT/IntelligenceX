@@ -16,6 +16,58 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class OpenAICompatibleHttpTransportTests {
     [Fact]
+    public async Task ListModelsAsync_BasicAuthMode_SendsBasicAuthorizationHeader() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [{ "id": "local-model", "object": "model" }],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:11434",
+            AllowInsecureHttp = true,
+            AuthMode = OpenAICompatibleHttpAuthMode.Basic,
+            BasicUsername = "alice@example.test",
+            BasicPassword = "secret",
+            Streaming = false
+        }, http);
+
+        _ = await transport.ListModelsAsync(CancellationToken.None);
+
+        var auth = Assert.Single(handler.AuthorizationHeaders);
+        var expectedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes("alice@example.test:secret"));
+        Assert.Equal("Basic " + expectedToken, auth);
+    }
+
+    [Fact]
+    public async Task ListModelsAsync_NoneAuthMode_DoesNotSendAuthorizationHeader() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "data": [{ "id": "local-model", "object": "model" }],
+                  "object": "list"
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:11434",
+            AllowInsecureHttp = true,
+            AuthMode = OpenAICompatibleHttpAuthMode.None,
+            ApiKey = "should-not-be-used",
+            Streaming = false
+        }, http);
+
+        _ = await transport.ListModelsAsync(CancellationToken.None);
+
+        var auth = Assert.Single(handler.AuthorizationHeaders);
+        Assert.Null(auth);
+    }
+
+    [Fact]
     public async Task ListModelsAsync_LmStudioCatalogOverlay_OnlyEnrichesPrimaryModels() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """
@@ -336,6 +388,7 @@ public sealed class OpenAICompatibleHttpTransportTests {
         private readonly Queue<Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>> _responses = new();
         public List<Uri> RequestUris { get; } = new();
         public List<string> RequestBodies { get; } = new();
+        public List<string?> AuthorizationHeaders { get; } = new();
 
         public StubHandler RespondJson(HttpStatusCode status, string json) {
             _responses.Enqueue((req, ct) => Task.FromResult(new HttpResponseMessage(status) {
@@ -360,6 +413,9 @@ public sealed class OpenAICompatibleHttpTransportTests {
             cancellationToken.ThrowIfCancellationRequested();
 
             RequestUris.Add(request.RequestUri ?? new Uri("about:blank"));
+            AuthorizationHeaders.Add(request.Headers.Authorization is null
+                ? null
+                : request.Headers.Authorization.Scheme + " " + request.Headers.Authorization.Parameter);
             if (request.Content is not null) {
                 RequestBodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
             }

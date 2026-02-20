@@ -163,22 +163,22 @@ public static class ToolAuthenticationProbeValidator {
     }
 
     private static bool MatchesExpected(string? actual, string? expected) {
-        if (string.IsNullOrWhiteSpace(expected)) {
+        var normalizedExpected = (expected ?? string.Empty).Trim();
+        if (normalizedExpected.Length == 0) {
             return true;
         }
 
         var normalizedActual = actual?.Trim() ?? string.Empty;
-        var normalizedExpected = expected.Trim();
         return string.Equals(normalizedActual, normalizedExpected, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesExpectedOrdinal(string? actual, string? expected) {
-        if (string.IsNullOrWhiteSpace(expected)) {
+        var normalizedExpected = (expected ?? string.Empty).Trim();
+        if (normalizedExpected.Length == 0) {
             return true;
         }
 
         var normalizedActual = actual?.Trim() ?? string.Empty;
-        var normalizedExpected = expected.Trim();
         return string.Equals(normalizedActual, normalizedExpected, StringComparison.Ordinal);
     }
 

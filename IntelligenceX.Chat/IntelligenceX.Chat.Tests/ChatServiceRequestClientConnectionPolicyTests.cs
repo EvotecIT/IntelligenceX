@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
@@ -12,8 +13,9 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
         yield return new object[] { new CheckToolHealthRequest { RequestId = "req_health" }, false };
         yield return new object[] { new ListProfilesRequest { RequestId = "req_profiles" }, false };
         yield return new object[] { new SetProfileRequest { RequestId = "req_profile_set", ProfileName = "local" }, false };
-        yield return new object[] { new EnsureLoginRequest { RequestId = "req_login" }, true };
-        yield return new object[] { new StartChatGptLoginRequest { RequestId = "req_login_start", TimeoutSeconds = 120 }, true };
+        yield return new object[] { new ApplyRuntimeSettingsRequest { RequestId = "req_runtime_apply", OpenAITransport = "native" }, false };
+        yield return new object[] { new EnsureLoginRequest { RequestId = "req_login" }, false };
+        yield return new object[] { new StartChatGptLoginRequest { RequestId = "req_login_start", TimeoutSeconds = 120 }, false };
         yield return new object[] { new ListModelsRequest { RequestId = "req_models" }, true };
         yield return new object[] { new ChatRequest { RequestId = "req_chat", Text = "hello" }, true };
     }
@@ -24,5 +26,34 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
         var result = ChatServiceSession.RequestRequiresConnectedClient(request);
 
         Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void BuildClientConnectFailureMessage_ForListModels_IncludesContext() {
+        var message = ChatServiceSession.BuildClientConnectFailureMessage(
+            new ListModelsRequest { RequestId = "req_models" },
+            new InvalidOperationException("Copilot CLI not found on PATH."));
+
+        Assert.Contains("listing models", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Copilot CLI not found on PATH.", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildClientConnectFailureMessage_ForChat_IncludesContext() {
+        var message = ChatServiceSession.BuildClientConnectFailureMessage(
+            new ChatRequest { RequestId = "req_chat", Text = "hello" },
+            new InvalidOperationException("Provider unavailable"));
+
+        Assert.Contains("for chat request", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Provider unavailable", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildClientConnectFailureMessage_UsesFallbackDetail_WhenExceptionMessageEmpty() {
+        var message = ChatServiceSession.BuildClientConnectFailureMessage(
+            new ListModelsRequest { RequestId = "req_models" },
+            new Exception(string.Empty));
+
+        Assert.Contains("Runtime provider connection failed.", message, StringComparison.Ordinal);
     }
 }

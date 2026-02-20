@@ -19,7 +19,11 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
     // Provider selection for the underlying IntelligenceXClient used by the service.
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
     public string? OpenAIBaseUrl { get; set; }
+    public OpenAICompatibleHttpAuthMode OpenAIAuthMode { get; set; } = OpenAICompatibleHttpAuthMode.Bearer;
     public string? OpenAIApiKey { get; set; }
+    public string? OpenAIBasicUsername { get; set; }
+    public string? OpenAIBasicPassword { get; set; }
+    public string? OpenAIAccountId { get; set; } = Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_ID");
     public bool OpenAIStreaming { get; set; } = true;
     public bool OpenAIAllowInsecureHttp { get; set; }
     public bool OpenAIAllowInsecureHttpNonLoopback { get; set; }
@@ -183,8 +187,45 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
                 options.OpenAIApiKey = value;
                 continue;
             }
+            if (arg is "--openai-auth-mode") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryParseCompatibleAuthMode(value, out var authMode)) {
+                    error = "--openai-auth-mode must be one of: bearer, basic, none.";
+                    return options;
+                }
+                options.OpenAIAuthMode = authMode;
+                continue;
+            }
+            if (arg is "--openai-basic-username") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.OpenAIBasicUsername = value;
+                continue;
+            }
+            if (arg is "--openai-basic-password") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.OpenAIBasicPassword = value;
+                continue;
+            }
+            if (arg is "--openai-account-id") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.OpenAIAccountId = value;
+                continue;
+            }
             if (arg is "--openai-clear-api-key") {
                 options.OpenAIApiKey = null;
+                continue;
+            }
+            if (arg is "--openai-clear-basic-auth") {
+                options.OpenAIBasicUsername = null;
+                options.OpenAIBasicPassword = null;
                 continue;
             }
             if (arg is "--openai-stream") {
@@ -474,6 +515,15 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
         if (string.IsNullOrWhiteSpace(options.PipeName)) {
             error = "--pipe cannot be empty.";
         }
+        options.OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId)
+            ? null
+            : options.OpenAIAccountId.Trim();
+        options.OpenAIBasicUsername = string.IsNullOrWhiteSpace(options.OpenAIBasicUsername)
+            ? null
+            : options.OpenAIBasicUsername.Trim();
+        options.OpenAIBasicPassword = string.IsNullOrWhiteSpace(options.OpenAIBasicPassword)
+            ? null
+            : options.OpenAIBasicPassword.Trim();
         if (string.IsNullOrWhiteSpace(options.Model)) {
             error = "--model cannot be empty.";
         }
@@ -504,8 +554,13 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
         Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
+        Console.WriteLine("  --openai-auth-mode <MODE>  Compatible-http auth mode: bearer|basic|none (default: bearer).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
+        Console.WriteLine("  --openai-basic-username <NAME>  Optional Basic auth username for compatible-http.");
+        Console.WriteLine("  --openai-basic-password <SECRET>  Optional Basic auth password for compatible-http.");
+        Console.WriteLine("  --openai-account-id <ID>  Native ChatGPT account id to pin when multiple auth bundles exist.");
         Console.WriteLine("  --openai-clear-api-key Clear any saved compatible-http API key when profile overrides are saved.");
+        Console.WriteLine("  --openai-clear-basic-auth Clear any saved compatible-http basic auth username/password when profile overrides are saved.");
         Console.WriteLine("  --openai-stream         Request streaming responses (default: on).");
         Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
         Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");
@@ -587,12 +642,38 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
         }
     }
 
+    private static bool TryParseCompatibleAuthMode(string? value, out OpenAICompatibleHttpAuthMode mode) {
+        mode = OpenAICompatibleHttpAuthMode.Bearer;
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        switch (normalized) {
+            case "":
+            case "bearer":
+            case "api-key":
+            case "apikey":
+            case "token":
+                mode = OpenAICompatibleHttpAuthMode.Bearer;
+                return true;
+            case "basic":
+                mode = OpenAICompatibleHttpAuthMode.Basic;
+                return true;
+            case "none":
+            case "off":
+                mode = OpenAICompatibleHttpAuthMode.None;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static bool TryValidateCompatibleHttpBaseUrl(ServiceOptions options, out string? error) {
         error = null;
         try {
             // Centralize validation behavior on the transport options, so CLI/config/runtime share the same rules.
             var compatible = new OpenAICompatibleHttpOptions {
                 BaseUrl = options.OpenAIBaseUrl,
+                AuthMode = options.OpenAIAuthMode,
+                BasicUsername = options.OpenAIBasicUsername,
+                BasicPassword = options.OpenAIBasicPassword,
                 AllowInsecureHttp = options.OpenAIAllowInsecureHttp,
                 AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback,
                 Streaming = options.OpenAIStreaming,
@@ -623,7 +704,11 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
 
         OpenAITransport = profile.OpenAITransport;
         OpenAIBaseUrl = profile.OpenAIBaseUrl;
+        OpenAIAuthMode = profile.OpenAIAuthMode;
         OpenAIApiKey = profile.OpenAIApiKey;
+        OpenAIBasicUsername = profile.OpenAIBasicUsername;
+        OpenAIBasicPassword = profile.OpenAIBasicPassword;
+        OpenAIAccountId = profile.OpenAIAccountId;
         OpenAIStreaming = profile.OpenAIStreaming;
         OpenAIAllowInsecureHttp = profile.OpenAIAllowInsecureHttp;
         OpenAIAllowInsecureHttpNonLoopback = profile.OpenAIAllowInsecureHttpNonLoopback;
@@ -682,7 +767,11 @@ internal sealed class ServiceOptions : IToolRuntimePolicySettings, IToolPackRunt
             Model = Model,
             OpenAITransport = OpenAITransport,
             OpenAIBaseUrl = OpenAIBaseUrl,
+            OpenAIAuthMode = OpenAIAuthMode,
             OpenAIApiKey = OpenAIApiKey,
+            OpenAIBasicUsername = OpenAIBasicUsername,
+            OpenAIBasicPassword = OpenAIBasicPassword,
+            OpenAIAccountId = OpenAIAccountId,
             OpenAIStreaming = OpenAIStreaming,
             OpenAIAllowInsecureHttp = OpenAIAllowInsecureHttp,
             OpenAIAllowInsecureHttpNonLoopback = OpenAIAllowInsecureHttpNonLoopback,

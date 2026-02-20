@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.CompatibleHttp;
 
 namespace IntelligenceX.Chat.Profiles;
 
@@ -13,7 +14,11 @@ internal sealed class ServiceProfile {
     // Provider transport selection and transport-specific settings.
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
     public string? OpenAIBaseUrl { get; set; }
+    public OpenAICompatibleHttpAuthMode OpenAIAuthMode { get; set; } = OpenAICompatibleHttpAuthMode.Bearer;
     public string? OpenAIApiKey { get; set; }
+    public string? OpenAIBasicUsername { get; set; }
+    public string? OpenAIBasicPassword { get; set; }
+    public string? OpenAIAccountId { get; set; }
     public bool OpenAIStreaming { get; set; } = true;
     public bool OpenAIAllowInsecureHttp { get; set; }
     public bool OpenAIAllowInsecureHttpNonLoopback { get; set; }

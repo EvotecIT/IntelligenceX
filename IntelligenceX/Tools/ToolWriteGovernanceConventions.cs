@@ -16,10 +16,10 @@ public static class ToolWriteGovernanceConventions {
             throw new ArgumentException("Intent argument name is required.", nameof(intentArgumentName));
         }
 
-        string intent = intentArgumentName.Trim();
-        string confirmation = string.IsNullOrWhiteSpace(confirmationArgumentName)
+        var intent = intentArgumentName.Trim();
+        var confirmation = string.IsNullOrWhiteSpace(confirmationArgumentName)
             ? intent
-            : confirmationArgumentName.Trim();
+            : confirmationArgumentName!.Trim();
 
         return new ToolWriteGovernanceContract {
             IsWriteCapable = true,

@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window {
         string RequestText);
 
     private async Task<ChatTurnContext?> PrepareChatTurnAsync(string text) {
-        if (!_isAuthenticated) {
+        if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
             var authenticatedNow = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
             if (authenticatedNow) {
                 _isAuthenticated = true;
@@ -28,7 +28,7 @@ public sealed partial class MainWindow : Window {
         var conversation = GetActiveConversation();
         var conversationId = conversation.Id;
 
-        if (!_isAuthenticated) {
+        if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
             var promptQueued = TryEnqueuePromptAfterLogin(text, conversationId, out var queuedCount);
             var loginStarted = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
             if (loginStarted) {
@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window {
                     } catch (Exception retryEx) {
                         var promptQueued = false;
                         if (IsUsageLimitError(retryEx)) {
+                            MarkUsageLimitForActiveAccount(retryEx.Message);
                             promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                             await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                             if (promptQueued) {
@@ -105,6 +106,7 @@ public sealed partial class MainWindow : Window {
             } catch (Exception ex) {
                 var promptQueued = false;
                 if (IsUsageLimitError(ex)) {
+                    MarkUsageLimitForActiveAccount(ex.Message);
                     promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                     await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                     if (promptQueued) {

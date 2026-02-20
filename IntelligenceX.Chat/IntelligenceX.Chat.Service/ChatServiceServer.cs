@@ -31,10 +31,15 @@ internal sealed class ChatServiceServer {
             Console.WriteLine("Client connected.");
 
             var session = new ChatServiceSession(_options, server);
-            await session.RunAsync(cancellationToken).ConfigureAwait(false);
+            try {
+                await session.RunAsync(cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+                Console.Error.WriteLine("Session canceled unexpectedly.");
+            } catch (Exception ex) {
+                Console.Error.WriteLine("Session failed: " + ex.Message);
+            }
 
             Console.WriteLine("Client disconnected.");
         }
     }
 }
-

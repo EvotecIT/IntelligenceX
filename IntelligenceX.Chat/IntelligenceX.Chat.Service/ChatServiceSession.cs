@@ -32,6 +32,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan StartupToolHealthPrimeBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan StartupToolHealthHelloWaitBudget = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan NativeUsageRefreshInterval = TimeSpan.FromMinutes(1);
     private readonly ServiceOptions _options;
     private readonly Stream _stream;
     private ToolRegistry _registry;
@@ -57,6 +58,10 @@ internal sealed partial class ChatServiceSession {
 
     private readonly object _modelListCacheLock = new();
     private ModelListCacheEntry? _modelListCache;
+    private readonly object _nativeUsageCacheLock = new();
+    private string? _nativeUsageCacheAccountId;
+    private DateTime _nativeUsageCacheUpdatedUtc;
+    private NativeUsageSnapshotDto? _nativeUsageCache;
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -101,10 +106,21 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static bool RequestRequiresConnectedClient(ChatServiceRequest request) {
-        return request is EnsureLoginRequest
-               or StartChatGptLoginRequest
-               or ListModelsRequest
+        return request is ListModelsRequest
                or ChatRequest;
+    }
+
+    internal static string BuildClientConnectFailureMessage(ChatServiceRequest request, Exception exception) {
+        var detail = (exception?.Message ?? string.Empty).Trim();
+        if (detail.Length == 0) {
+            detail = "Runtime provider connection failed.";
+        }
+
+        return request switch {
+            ListModelsRequest => "Couldn't connect to runtime provider while listing models: " + detail,
+            ChatRequest => "Couldn't connect to runtime provider for chat request: " + detail,
+            _ => "Couldn't connect to runtime provider: " + detail
+        };
     }
 
     public async Task RunAsync(CancellationToken cancellationToken) {
@@ -153,9 +169,20 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                var connectedClient = RequestRequiresConnectedClient(request)
-                    ? await GetOrConnectClientAsync().ConfigureAwait(false)
-                    : null;
+                IntelligenceXClient? connectedClient = null;
+                if (RequestRequiresConnectedClient(request)) {
+                    try {
+                        connectedClient = await GetOrConnectClientAsync().ConfigureAwait(false);
+                    } catch (Exception ex) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = BuildClientConnectFailureMessage(request, ex),
+                            Code = "provider_connect_failed"
+                        }, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+                }
 
                 switch (request) {
                     case HelloRequest:
@@ -170,13 +197,45 @@ internal sealed partial class ChatServiceSession {
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 
-                    case EnsureLoginRequest login:
-                        await HandleEnsureLoginAsync(connectedClient!, writer, login, cancellationToken).ConfigureAwait(false);
-                        break;
+                    case EnsureLoginRequest login: {
+                            IntelligenceXClient? loginClient = null;
+                            if (_options.OpenAITransport == OpenAITransportKind.Native) {
+                                try {
+                                    loginClient = await GetOrConnectClientAsync().ConfigureAwait(false);
+                                } catch (Exception ex) {
+                                    await WriteAsync(writer, new ErrorMessage {
+                                        Kind = ChatServiceMessageKind.Response,
+                                        RequestId = login.RequestId,
+                                        Error = $"Failed to probe login state: {ex.Message}",
+                                        Code = "ensure_login_failed"
+                                    }, cancellationToken).ConfigureAwait(false);
+                                    break;
+                                }
+                            }
 
-                    case StartChatGptLoginRequest startLogin:
-                        await HandleStartChatGptLoginAsync(connectedClient!, writer, startLogin, cancellationToken).ConfigureAwait(false);
-                        break;
+                            await HandleEnsureLoginAsync(loginClient, writer, login, cancellationToken).ConfigureAwait(false);
+                            break;
+                        }
+
+                    case StartChatGptLoginRequest startLogin: {
+                            IntelligenceXClient? loginClient = null;
+                            if (_options.OpenAITransport == OpenAITransportKind.Native) {
+                                try {
+                                    loginClient = await GetOrConnectClientAsync().ConfigureAwait(false);
+                                } catch (Exception ex) {
+                                    await WriteAsync(writer, new ErrorMessage {
+                                        Kind = ChatServiceMessageKind.Response,
+                                        RequestId = startLogin.RequestId,
+                                        Error = $"Failed to start ChatGPT login: {ex.Message}",
+                                        Code = "login_start_failed"
+                                    }, cancellationToken).ConfigureAwait(false);
+                                    break;
+                                }
+                            }
+
+                            await HandleStartChatGptLoginAsync(loginClient, writer, startLogin, cancellationToken).ConfigureAwait(false);
+                            break;
+                        }
 
                     case ChatGptLoginPromptResponseRequest promptResponse:
                         await HandleChatGptLoginPromptResponseAsync(writer, promptResponse, cancellationToken).ConfigureAwait(false);
@@ -210,6 +269,19 @@ internal sealed partial class ChatServiceSession {
 
                             if (setProfile.NewThread) {
                                 activeThreadId = null;
+                            }
+
+                            break;
+                        }
+
+                    case ApplyRuntimeSettingsRequest applyRuntime: {
+                            var applyResult = await HandleApplyRuntimeSettingsAsync(writer, applyRuntime, cancellationToken).ConfigureAwait(false);
+                            if (applyResult.ReconnectClient) {
+                                await DisposeClientAsync(client).ConfigureAwait(false);
+                                client = null;
+                            } else if (applyResult.ModelChanged && client is not null) {
+                                // Keep the internal thread model selection consistent with runtime settings.
+                                client.ConfigureDefaults(model: _options.Model);
                             }
 
                             break;

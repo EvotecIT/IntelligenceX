@@ -103,6 +103,118 @@ public sealed record LoginStatusMessage : ChatServiceMessage {
     /// Optional account id when authenticated.
     /// </summary>
     public string? AccountId { get; init; }
+    /// <summary>
+    /// Optional native ChatGPT usage/limit snapshot for the authenticated account.
+    /// </summary>
+    public NativeUsageSnapshotDto? NativeUsage { get; init; }
+}
+
+/// <summary>
+/// Native ChatGPT usage snapshot payload (best-effort).
+/// </summary>
+public sealed record NativeUsageSnapshotDto {
+    /// <summary>
+    /// Account id associated with the snapshot.
+    /// </summary>
+    public string? AccountId { get; init; }
+    /// <summary>
+    /// Account email when available.
+    /// </summary>
+    public string? Email { get; init; }
+    /// <summary>
+    /// Plan identifier (for example Plus/Pro/Team variant names).
+    /// </summary>
+    public string? PlanType { get; init; }
+    /// <summary>
+    /// Primary chat rate-limit status.
+    /// </summary>
+    public NativeRateLimitStatusDto? RateLimit { get; init; }
+    /// <summary>
+    /// Code-review specific rate-limit status.
+    /// </summary>
+    public NativeRateLimitStatusDto? CodeReviewRateLimit { get; init; }
+    /// <summary>
+    /// Credits snapshot when exposed by provider endpoints.
+    /// </summary>
+    public NativeCreditsSnapshotDto? Credits { get; init; }
+    /// <summary>
+    /// UTC timestamp when this snapshot was collected.
+    /// </summary>
+    public DateTime? RetrievedAtUtc { get; init; }
+    /// <summary>
+    /// Snapshot source (for example live or cache).
+    /// </summary>
+    public string? Source { get; init; }
+}
+
+/// <summary>
+/// Native ChatGPT rate-limit status payload.
+/// </summary>
+public sealed record NativeRateLimitStatusDto {
+    /// <summary>
+    /// Whether requests are currently allowed.
+    /// </summary>
+    public bool Allowed { get; init; }
+    /// <summary>
+    /// Whether the provider reports the limit as reached.
+    /// </summary>
+    public bool LimitReached { get; init; }
+    /// <summary>
+    /// Primary rate-limit window details.
+    /// </summary>
+    public NativeRateLimitWindowDto? Primary { get; init; }
+    /// <summary>
+    /// Secondary/auxiliary rate-limit window details.
+    /// </summary>
+    public NativeRateLimitWindowDto? Secondary { get; init; }
+}
+
+/// <summary>
+/// Native ChatGPT rate-limit window.
+/// </summary>
+public sealed record NativeRateLimitWindowDto {
+    /// <summary>
+    /// Consumed percentage for the window.
+    /// </summary>
+    public double? UsedPercent { get; init; }
+    /// <summary>
+    /// Window size in seconds.
+    /// </summary>
+    public long? LimitWindowSeconds { get; init; }
+    /// <summary>
+    /// Seconds remaining until reset.
+    /// </summary>
+    public long? ResetAfterSeconds { get; init; }
+    /// <summary>
+    /// Reset timestamp in Unix seconds.
+    /// </summary>
+    public long? ResetAtUnixSeconds { get; init; }
+}
+
+/// <summary>
+/// Native ChatGPT credits snapshot payload.
+/// </summary>
+public sealed record NativeCreditsSnapshotDto {
+    /// <summary>
+    /// Whether credits are available for the account.
+    /// </summary>
+    public bool HasCredits { get; init; }
+    /// <summary>
+    /// Whether credits are unlimited.
+    /// </summary>
+    public bool Unlimited { get; init; }
+    /// <summary>
+    /// Credit balance when available.
+    /// </summary>
+    public double? Balance { get; init; }
+    /// <summary>
+    /// Approximate local message counters.
+    /// </summary>
+    public int[]? ApproxLocalMessages { get; init; }
+    /// <summary>
+    /// Approximate cloud message counters.
+    /// </summary>
+    public int[]? ApproxCloudMessages { get; init; }
 }
 
 /// <summary>

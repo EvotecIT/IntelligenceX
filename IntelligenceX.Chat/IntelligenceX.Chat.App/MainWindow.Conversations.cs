@@ -526,7 +526,35 @@ public sealed partial class MainWindow : Window {
                     setProfileNewThread: true,
                     appendWarnings: false).ConfigureAwait(false);
                 if (!profileApplied) {
-                    await ReconnectServiceSessionAsync().ConfigureAwait(false);
+                    var liveSynced = await TryApplyRuntimeSettingsLiveAsync(
+                            profileSaved: true,
+                            model: _localProviderModel,
+                            openAITransport: _localProviderTransport,
+                            openAIBaseUrl: _localProviderBaseUrl,
+                            openAIAuthMode: _localProviderOpenAIAuthMode,
+                            openAIApiKey: null,
+                            openAIBasicUsername: _localProviderOpenAIBasicUsername,
+                            openAIBasicPassword: null,
+                            openAIAccountId: _localProviderOpenAIAccountId,
+                            clearOpenAIBasicAuth: false,
+                            clearOpenAIApiKey: false,
+                            openAIStreaming: true,
+                            openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                            reasoningEffort: _localProviderReasoningEffort,
+                            reasoningSummary: _localProviderReasoningSummary,
+                            textVerbosity: _localProviderTextVerbosity,
+                            temperature: _localProviderTemperature,
+                            enablePowerShellPack: ResolveRuntimeManagedPackEnabled("powershell"),
+                            enableTestimoXPack: ResolveRuntimeManagedPackEnabled("testimox"),
+                            enableOfficeImoPack: ResolveRuntimeManagedPackEnabled("officeimo")).ConfigureAwait(false);
+                    if (liveSynced) {
+                        await SyncConnectedServiceProfileAndModelsAsync(
+                            forceModelRefresh: false,
+                            setProfileNewThread: false,
+                            appendWarnings: false).ConfigureAwait(false);
+                    } else if (VerboseServiceLogs || _debugMode) {
+                        AppendSystem("Profile switch runtime sync failed: profile wasn't found and live apply didn't complete.");
+                    }
                 }
             } catch (Exception ex) {
                 if (VerboseServiceLogs || _debugMode) {
@@ -603,7 +631,7 @@ public sealed partial class MainWindow : Window {
         }
 
         var conversation = GetActiveConversation();
-        if (conversation.Messages.Count > 0 || !_isAuthenticated) {
+        if (conversation.Messages.Count > 0 || !IsEffectivelyAuthenticatedForCurrentTransport()) {
             return;
         }
 
@@ -648,6 +676,7 @@ public sealed partial class MainWindow : Window {
             }
 
             if (IsUsageLimitError(ex)) {
+                MarkUsageLimitForActiveAccount(ex.Message);
                 await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                 _modelKickoffAttempted = true;
             } else {

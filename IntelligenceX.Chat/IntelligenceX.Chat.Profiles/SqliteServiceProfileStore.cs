@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using DBAClientX;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.CompatibleHttp;
 
 namespace IntelligenceX.Chat.Profiles;
 
@@ -52,7 +53,11 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   model TEXT NOT NULL,
   transport_kind TEXT NOT NULL,
   openai_base_url TEXT NULL,
+  openai_auth_mode TEXT NOT NULL DEFAULT 'bearer',
   openai_api_key BLOB NULL,
+  openai_basic_username TEXT NULL,
+  openai_basic_password BLOB NULL,
+  openai_account_id TEXT NULL,
   openai_streaming INTEGER NOT NULL,
   openai_allow_insecure_http INTEGER NOT NULL,
   openai_allow_insecure_http_non_loopback INTEGER NOT NULL,
@@ -108,16 +113,21 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_updated_utc ON {ProfileTable}(upd
 CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(transport_kind);
 ");
 
-        EnsureColumnExists(ProfileTable, "enable_officeimo_pack", "INTEGER NOT NULL DEFAULT 1");
-        EnsureColumnExists(ProfileTable, "write_governance_mode", "TEXT NOT NULL DEFAULT 'enforced'");
-        EnsureColumnExists(ProfileTable, "require_write_governance_runtime", "INTEGER NOT NULL DEFAULT 1");
-        EnsureColumnExists(ProfileTable, "require_write_audit_sink", "INTEGER NOT NULL DEFAULT 0");
-        EnsureColumnExists(ProfileTable, "write_audit_sink_mode", "TEXT NOT NULL DEFAULT 'none'");
-        EnsureColumnExists(ProfileTable, "write_audit_sink_path", "TEXT NULL");
-        EnsureColumnExists(ProfileTable, "authentication_runtime_preset", "TEXT NOT NULL DEFAULT 'default'");
-        EnsureColumnExists(ProfileTable, "require_authentication_runtime", "INTEGER NOT NULL DEFAULT 0");
-        EnsureColumnExists(ProfileTable, "run_as_profile_path", "TEXT NULL");
-        EnsureColumnExists(ProfileTable, "authentication_profile_path", "TEXT NULL");
+        var knownProfileColumns = TryGetTableColumns(ProfileTable);
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "enable_officeimo_pack", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "write_governance_mode", "TEXT NOT NULL DEFAULT 'enforced'");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "require_write_governance_runtime", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "require_write_audit_sink", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "write_audit_sink_mode", "TEXT NOT NULL DEFAULT 'none'");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "write_audit_sink_path", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_account_id", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_auth_mode", "TEXT NOT NULL DEFAULT 'bearer'");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_basic_username", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_basic_password", "BLOB NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "authentication_runtime_preset", "TEXT NOT NULL DEFAULT 'default'");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "require_authentication_runtime", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "run_as_profile_path", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "authentication_profile_path", "TEXT NULL");
     }
 
     private bool HasLegacyJsonSchema() {
@@ -139,25 +149,59 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         }
     }
 
-    private void EnsureColumnExists(string tableName, string columnName, string columnDefinition) {
+    private HashSet<string> TryGetTableColumns(string tableName) {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(tableName)) {
+            return columns;
+        }
+
+        try {
+            var schemaProbe = _db.Query(_dbPath, $"SELECT * FROM {tableName} LIMIT 0");
+            if (schemaProbe is DataTable dt && dt.Columns.Count > 0) {
+                foreach (DataColumn col in dt.Columns) {
+                    var name = col.ColumnName;
+                    if (!string.IsNullOrWhiteSpace(name)) {
+                        columns.Add(name);
+                    }
+                }
+            }
+        } catch {
+            // Ignore and fallback to PRAGMA probe below.
+        }
+
+        if (columns.Count > 0) {
+            return columns;
+        }
+
+        try {
+            var pragma = _db.Query(_dbPath, $"PRAGMA table_info('{tableName}')");
+            if (pragma is DataTable dt && dt.Rows.Count > 0) {
+                foreach (DataRow row in dt.Rows) {
+                    var name = row["name"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(name)) {
+                        columns.Add(name);
+                    }
+                }
+            }
+        } catch {
+            // Best-effort metadata probe only.
+        }
+
+        return columns;
+    }
+
+    private void EnsureColumnExists(string tableName, HashSet<string> knownColumns, string columnName, string columnDefinition) {
         if (string.IsNullOrWhiteSpace(tableName) || string.IsNullOrWhiteSpace(columnName) || string.IsNullOrWhiteSpace(columnDefinition)) {
             return;
         }
 
+        if (knownColumns.Contains(columnName)) {
+            return;
+        }
+
         try {
-            var dt = QueryAsTable(_db.Query(_dbPath, $"PRAGMA table_info('{tableName}')"));
-            if (dt is null || dt.Rows.Count == 0) {
-                return;
-            }
-
-            foreach (DataRow row in dt.Rows) {
-                var name = row["name"]?.ToString();
-                if (string.Equals(name, columnName, StringComparison.OrdinalIgnoreCase)) {
-                    return;
-                }
-            }
-
             _db.ExecuteNonQuery(_dbPath, $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};");
+            knownColumns.Add(columnName);
         } catch {
             // Best-effort schema evolution; keep startup resilient.
         }
@@ -173,43 +217,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         var row = QueryAsTable(_db.Query(
             _dbPath,
             $@"
-SELECT
-  model,
-  transport_kind,
-  openai_base_url,
-  openai_api_key,
-  openai_streaming,
-  openai_allow_insecure_http,
-  openai_allow_insecure_http_non_loopback,
-  reasoning_effort,
-  reasoning_summary,
-  text_verbosity,
-  temperature,
-  max_tool_rounds,
-  parallel_tools,
-  turn_timeout_seconds,
-  tool_timeout_seconds,
-  instructions_file,
-  max_table_rows,
-  max_sample,
-  redact,
-  ad_domain_controller,
-  ad_default_search_base_dn,
-  ad_max_results,
-  enable_powershell_pack,
-  powershell_allow_write,
-  enable_testimox_pack,
-  enable_officeimo_pack,
-  enable_default_plugin_paths,
-  write_governance_mode,
-  require_write_governance_runtime,
-  require_write_audit_sink,
-  write_audit_sink_mode,
-  write_audit_sink_path,
-  authentication_runtime_preset,
-  require_authentication_runtime,
-  run_as_profile_path,
-  authentication_profile_path
+SELECT *
 FROM {ProfileTable}
 WHERE name = @name
 LIMIT 1;",
@@ -224,6 +232,10 @@ LIMIT 1;",
         if (!TryParseTransport(transportText, out var transport)) {
             throw new InvalidOperationException($"Profile '{trimmed}' has an invalid transport_kind '{transportText}'.");
         }
+        var authModeText = ReadString(r, "openai_auth_mode") ?? "bearer";
+        if (!TryParseCompatibleAuthMode(authModeText, out var authMode)) {
+            throw new InvalidOperationException($"Profile '{trimmed}' has an invalid openai_auth_mode '{authModeText}'.");
+        }
 
         string? apiKey = null;
         var apiKeyBytes = ReadBytes(r, "openai_api_key");
@@ -234,12 +246,25 @@ LIMIT 1;",
                 throw new InvalidOperationException($"Profile '{trimmed}' contains a protected API key that could not be decrypted.", ex);
             }
         }
+        string? basicPassword = null;
+        var basicPasswordBytes = ReadBytes(r, "openai_basic_password");
+        if (basicPasswordBytes is { Length: > 0 }) {
+            try {
+                basicPassword = DpapiSecretProtector.UnprotectString(basicPasswordBytes);
+            } catch (Exception ex) {
+                throw new InvalidOperationException($"Profile '{trimmed}' contains a protected basic password that could not be decrypted.", ex);
+            }
+        }
 
         var profile = new ServiceProfile {
             Model = ReadString(r, "model") ?? "gpt-5.3-codex",
             OpenAITransport = transport,
             OpenAIBaseUrl = ReadString(r, "openai_base_url"),
+            OpenAIAuthMode = authMode,
             OpenAIApiKey = apiKey,
+            OpenAIBasicUsername = ReadString(r, "openai_basic_username"),
+            OpenAIBasicPassword = basicPassword,
+            OpenAIAccountId = ReadString(r, "openai_account_id"),
             OpenAIStreaming = ReadBool(r, "openai_streaming", defaultValue: true),
             OpenAIAllowInsecureHttp = ReadBool(r, "openai_allow_insecure_http", defaultValue: false),
             OpenAIAllowInsecureHttpNonLoopback = ReadBool(r, "openai_allow_insecure_http_non_loopback", defaultValue: false),
@@ -288,13 +313,20 @@ LIMIT 1;",
         var trimmed = name.Trim();
         var now = DateTime.UtcNow.ToString("O");
         var transportKind = SerializeTransport(profile.OpenAITransport);
+        var authMode = SerializeCompatibleAuthMode(profile.OpenAIAuthMode);
         var apiKeyBytes = string.IsNullOrWhiteSpace(profile.OpenAIApiKey) ? null : DpapiSecretProtector.ProtectString(profile.OpenAIApiKey!.Trim());
+        var basicPasswordBytes = string.IsNullOrWhiteSpace(profile.OpenAIBasicPassword)
+            ? null
+            : DpapiSecretProtector.ProtectString(profile.OpenAIBasicPassword!.Trim());
 
-        _db.ExecuteNonQuery(
-            _dbPath,
-            $@"
-INSERT OR REPLACE INTO {ProfileTable} (
-  name, model, transport_kind, openai_base_url, openai_api_key, openai_streaming,
+        // Keep writes atomic and deterministic: overwrite the scalar row and replace list rows.
+        _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
+        try {
+            _db.ExecuteNonQuery(
+                _dbPath,
+                $@"
+INSERT INTO {ProfileTable} (
+  name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming,
   openai_allow_insecure_http, openai_allow_insecure_http_non_loopback,
   reasoning_effort, reasoning_summary, text_verbosity, temperature,
   max_tool_rounds, parallel_tools, turn_timeout_seconds, tool_timeout_seconds,
@@ -308,7 +340,7 @@ INSERT OR REPLACE INTO {ProfileTable} (
   updated_utc
 )
 VALUES (
-  @name, @model, @transport_kind, @openai_base_url, @openai_api_key, @openai_streaming,
+  @name, @model, @transport_kind, @openai_base_url, @openai_auth_mode, @openai_api_key, @openai_basic_username, @openai_basic_password, @openai_account_id, @openai_streaming,
   @openai_allow_insecure_http, @openai_allow_insecure_http_non_loopback,
   @reasoning_effort, @reasoning_summary, @text_verbosity, @temperature,
   @max_tool_rounds, @parallel_tools, @turn_timeout_seconds, @tool_timeout_seconds,
@@ -320,51 +352,107 @@ VALUES (
   @write_audit_sink_mode, @write_audit_sink_path,
   @authentication_runtime_preset, @require_authentication_runtime, @run_as_profile_path, @authentication_profile_path,
   @updated_utc
-);",
-            parameters: new Dictionary<string, object?> {
-                ["@name"] = trimmed,
-                ["@model"] = string.IsNullOrWhiteSpace(profile.Model) ? "gpt-5.3-codex" : profile.Model.Trim(),
-                ["@transport_kind"] = transportKind,
-                ["@openai_base_url"] = string.IsNullOrWhiteSpace(profile.OpenAIBaseUrl) ? null : profile.OpenAIBaseUrl.Trim(),
-                ["@openai_api_key"] = apiKeyBytes,
-                ["@openai_streaming"] = profile.OpenAIStreaming ? 1 : 0,
-                ["@openai_allow_insecure_http"] = profile.OpenAIAllowInsecureHttp ? 1 : 0,
-                ["@openai_allow_insecure_http_non_loopback"] = profile.OpenAIAllowInsecureHttpNonLoopback ? 1 : 0,
-                // Store stable lowercase tokens; parsing uses ChatEnumParser which tolerates hyphens/underscores.
-                ["@reasoning_effort"] = profile.ReasoningEffort.HasValue ? profile.ReasoningEffort.Value.ToString().ToLowerInvariant() : null,
-                ["@reasoning_summary"] = profile.ReasoningSummary.HasValue ? profile.ReasoningSummary.Value.ToString().ToLowerInvariant() : null,
-                ["@text_verbosity"] = profile.TextVerbosity.HasValue ? profile.TextVerbosity.Value.ToString().ToLowerInvariant() : null,
-                ["@temperature"] = profile.Temperature,
-                ["@max_tool_rounds"] = profile.MaxToolRounds,
-                ["@parallel_tools"] = profile.ParallelTools ? 1 : 0,
-                ["@turn_timeout_seconds"] = profile.TurnTimeoutSeconds,
-                ["@tool_timeout_seconds"] = profile.ToolTimeoutSeconds,
-                ["@instructions_file"] = string.IsNullOrWhiteSpace(profile.InstructionsFile) ? null : profile.InstructionsFile.Trim(),
-                ["@max_table_rows"] = profile.MaxTableRows,
-                ["@max_sample"] = profile.MaxSample,
-                ["@redact"] = profile.Redact ? 1 : 0,
-                ["@ad_domain_controller"] = string.IsNullOrWhiteSpace(profile.AdDomainController) ? null : profile.AdDomainController.Trim(),
-                ["@ad_default_search_base_dn"] = string.IsNullOrWhiteSpace(profile.AdDefaultSearchBaseDn) ? null : profile.AdDefaultSearchBaseDn.Trim(),
-                ["@ad_max_results"] = profile.AdMaxResults,
-                ["@enable_powershell_pack"] = profile.EnablePowerShellPack ? 1 : 0,
-                ["@powershell_allow_write"] = profile.PowerShellAllowWrite ? 1 : 0,
-                ["@enable_testimox_pack"] = profile.EnableTestimoXPack ? 1 : 0,
-                ["@enable_officeimo_pack"] = profile.EnableOfficeImoPack ? 1 : 0,
-                ["@enable_default_plugin_paths"] = profile.EnableDefaultPluginPaths ? 1 : 0,
-                ["@write_governance_mode"] = NormalizeWriteGovernanceMode(profile.WriteGovernanceMode),
-                ["@require_write_governance_runtime"] = profile.RequireWriteGovernanceRuntime ? 1 : 0,
-                ["@require_write_audit_sink"] = profile.RequireWriteAuditSinkForWriteOperations ? 1 : 0,
-                ["@write_audit_sink_mode"] = NormalizeWriteAuditSinkMode(profile.WriteAuditSinkMode),
-                ["@write_audit_sink_path"] = NormalizeOptionalPath(profile.WriteAuditSinkPath),
-                ["@authentication_runtime_preset"] = NormalizeAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset),
-                ["@require_authentication_runtime"] = profile.RequireAuthenticationRuntime ? 1 : 0,
-                ["@run_as_profile_path"] = NormalizeOptionalPath(profile.RunAsProfilePath),
-                ["@authentication_profile_path"] = NormalizeOptionalPath(profile.AuthenticationProfilePath),
-                ["@updated_utc"] = now
-            });
+)
+ON CONFLICT(name) DO UPDATE SET
+  model = excluded.model,
+  transport_kind = excluded.transport_kind,
+  openai_base_url = excluded.openai_base_url,
+  openai_auth_mode = excluded.openai_auth_mode,
+  openai_api_key = excluded.openai_api_key,
+  openai_basic_username = excluded.openai_basic_username,
+  openai_basic_password = excluded.openai_basic_password,
+  openai_account_id = excluded.openai_account_id,
+  openai_streaming = excluded.openai_streaming,
+  openai_allow_insecure_http = excluded.openai_allow_insecure_http,
+  openai_allow_insecure_http_non_loopback = excluded.openai_allow_insecure_http_non_loopback,
+  reasoning_effort = excluded.reasoning_effort,
+  reasoning_summary = excluded.reasoning_summary,
+  text_verbosity = excluded.text_verbosity,
+  temperature = excluded.temperature,
+  max_tool_rounds = excluded.max_tool_rounds,
+  parallel_tools = excluded.parallel_tools,
+  turn_timeout_seconds = excluded.turn_timeout_seconds,
+  tool_timeout_seconds = excluded.tool_timeout_seconds,
+  instructions_file = excluded.instructions_file,
+  max_table_rows = excluded.max_table_rows,
+  max_sample = excluded.max_sample,
+  redact = excluded.redact,
+  ad_domain_controller = excluded.ad_domain_controller,
+  ad_default_search_base_dn = excluded.ad_default_search_base_dn,
+  ad_max_results = excluded.ad_max_results,
+  enable_powershell_pack = excluded.enable_powershell_pack,
+  powershell_allow_write = excluded.powershell_allow_write,
+  enable_testimox_pack = excluded.enable_testimox_pack,
+  enable_officeimo_pack = excluded.enable_officeimo_pack,
+  enable_default_plugin_paths = excluded.enable_default_plugin_paths,
+  write_governance_mode = excluded.write_governance_mode,
+  require_write_governance_runtime = excluded.require_write_governance_runtime,
+  require_write_audit_sink = excluded.require_write_audit_sink,
+  write_audit_sink_mode = excluded.write_audit_sink_mode,
+  write_audit_sink_path = excluded.write_audit_sink_path,
+  authentication_runtime_preset = excluded.authentication_runtime_preset,
+  require_authentication_runtime = excluded.require_authentication_runtime,
+  run_as_profile_path = excluded.run_as_profile_path,
+  authentication_profile_path = excluded.authentication_profile_path,
+  updated_utc = excluded.updated_utc;",
+                parameters: new Dictionary<string, object?> {
+                    ["@name"] = trimmed,
+                    ["@model"] = string.IsNullOrWhiteSpace(profile.Model) ? "gpt-5.3-codex" : profile.Model.Trim(),
+                    ["@transport_kind"] = transportKind,
+                    ["@openai_base_url"] = string.IsNullOrWhiteSpace(profile.OpenAIBaseUrl) ? null : profile.OpenAIBaseUrl.Trim(),
+                    ["@openai_auth_mode"] = authMode,
+                    ["@openai_api_key"] = apiKeyBytes,
+                    ["@openai_basic_username"] = string.IsNullOrWhiteSpace(profile.OpenAIBasicUsername) ? null : profile.OpenAIBasicUsername.Trim(),
+                    ["@openai_basic_password"] = basicPasswordBytes,
+                    ["@openai_account_id"] = string.IsNullOrWhiteSpace(profile.OpenAIAccountId) ? null : profile.OpenAIAccountId.Trim(),
+                    ["@openai_streaming"] = profile.OpenAIStreaming ? 1 : 0,
+                    ["@openai_allow_insecure_http"] = profile.OpenAIAllowInsecureHttp ? 1 : 0,
+                    ["@openai_allow_insecure_http_non_loopback"] = profile.OpenAIAllowInsecureHttpNonLoopback ? 1 : 0,
+                    // Store stable lowercase tokens; parsing uses ChatEnumParser which tolerates hyphens/underscores.
+                    ["@reasoning_effort"] = profile.ReasoningEffort.HasValue ? profile.ReasoningEffort.Value.ToString().ToLowerInvariant() : null,
+                    ["@reasoning_summary"] = profile.ReasoningSummary.HasValue ? profile.ReasoningSummary.Value.ToString().ToLowerInvariant() : null,
+                    ["@text_verbosity"] = profile.TextVerbosity.HasValue ? profile.TextVerbosity.Value.ToString().ToLowerInvariant() : null,
+                    ["@temperature"] = profile.Temperature,
+                    ["@max_tool_rounds"] = profile.MaxToolRounds,
+                    ["@parallel_tools"] = profile.ParallelTools ? 1 : 0,
+                    ["@turn_timeout_seconds"] = profile.TurnTimeoutSeconds,
+                    ["@tool_timeout_seconds"] = profile.ToolTimeoutSeconds,
+                    ["@instructions_file"] = string.IsNullOrWhiteSpace(profile.InstructionsFile) ? null : profile.InstructionsFile.Trim(),
+                    ["@max_table_rows"] = profile.MaxTableRows,
+                    ["@max_sample"] = profile.MaxSample,
+                    ["@redact"] = profile.Redact ? 1 : 0,
+                    ["@ad_domain_controller"] = string.IsNullOrWhiteSpace(profile.AdDomainController) ? null : profile.AdDomainController.Trim(),
+                    ["@ad_default_search_base_dn"] = string.IsNullOrWhiteSpace(profile.AdDefaultSearchBaseDn) ? null : profile.AdDefaultSearchBaseDn.Trim(),
+                    ["@ad_max_results"] = profile.AdMaxResults,
+                    ["@enable_powershell_pack"] = profile.EnablePowerShellPack ? 1 : 0,
+                    ["@powershell_allow_write"] = profile.PowerShellAllowWrite ? 1 : 0,
+                    ["@enable_testimox_pack"] = profile.EnableTestimoXPack ? 1 : 0,
+                    ["@enable_officeimo_pack"] = profile.EnableOfficeImoPack ? 1 : 0,
+                    ["@enable_default_plugin_paths"] = profile.EnableDefaultPluginPaths ? 1 : 0,
+                    ["@write_governance_mode"] = NormalizeWriteGovernanceMode(profile.WriteGovernanceMode),
+                    ["@require_write_governance_runtime"] = profile.RequireWriteGovernanceRuntime ? 1 : 0,
+                    ["@require_write_audit_sink"] = profile.RequireWriteAuditSinkForWriteOperations ? 1 : 0,
+                    ["@write_audit_sink_mode"] = NormalizeWriteAuditSinkMode(profile.WriteAuditSinkMode),
+                    ["@write_audit_sink_path"] = NormalizeOptionalPath(profile.WriteAuditSinkPath),
+                    ["@authentication_runtime_preset"] = NormalizeAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset),
+                    ["@require_authentication_runtime"] = profile.RequireAuthenticationRuntime ? 1 : 0,
+                    ["@run_as_profile_path"] = NormalizeOptionalPath(profile.RunAsProfilePath),
+                    ["@authentication_profile_path"] = NormalizeOptionalPath(profile.AuthenticationProfilePath),
+                    ["@updated_utc"] = now
+                });
 
-        ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots);
-        ReplaceOrderedList(trimmed, PluginPathsTable, profile.PluginPaths);
+            ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots);
+            ReplaceOrderedList(trimmed, PluginPathsTable, profile.PluginPaths);
+
+            _db.ExecuteNonQuery(_dbPath, "COMMIT;");
+        } catch {
+            try {
+                _db.ExecuteNonQuery(_dbPath, "ROLLBACK;");
+            } catch {
+                // Ignore.
+            }
+            throw;
+        }
 
         return Task.CompletedTask;
     }
@@ -442,6 +530,14 @@ VALUES (
         };
     }
 
+    private static string SerializeCompatibleAuthMode(OpenAICompatibleHttpAuthMode mode) {
+        return mode switch {
+            OpenAICompatibleHttpAuthMode.None => "none",
+            OpenAICompatibleHttpAuthMode.Basic => "basic",
+            _ => "bearer"
+        };
+    }
+
     private static bool TryParseTransport(string? value, out OpenAITransportKind kind) {
         kind = OpenAITransportKind.Native;
         if (string.IsNullOrWhiteSpace(value)) {
@@ -470,6 +566,31 @@ VALUES (
             case "github-copilot":
             case "githubcopilot":
                 kind = OpenAITransportKind.CopilotCli;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryParseCompatibleAuthMode(string? value, out OpenAICompatibleHttpAuthMode mode) {
+        mode = OpenAICompatibleHttpAuthMode.Bearer;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return true;
+        }
+
+        switch (value.Trim().ToLowerInvariant()) {
+            case "none":
+            case "off":
+                mode = OpenAICompatibleHttpAuthMode.None;
+                return true;
+            case "basic":
+                mode = OpenAICompatibleHttpAuthMode.Basic;
+                return true;
+            case "bearer":
+            case "api-key":
+            case "apikey":
+            case "token":
+                mode = OpenAICompatibleHttpAuthMode.Bearer;
                 return true;
             default:
                 return false;

@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using DBAClientX;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.Tools;
 using Xunit;
 
@@ -73,6 +76,29 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_LoadsLegacyProfileSchemaWithoutCompatibleHttpColumns() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-legacy-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            SeedLegacyProfileRow(dbPath, profileName: "default", model: "legacy-model");
+
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "default",
+                "--save-profile", "default"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("default", options.ProfileName);
+            Assert.Equal("default", options.SaveProfileName);
+            Assert.Equal(OpenAICompatibleHttpAuthMode.Bearer, options.OpenAIAuthMode);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
     public void Parse_Allows_Disabling_And_Enabling_OfficeImoPack() {
         var disabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack" }, out var disabledError);
         Assert.True(string.IsNullOrWhiteSpace(disabledError));
@@ -132,6 +158,38 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.True(options.RequireAuthenticationRuntime);
         Assert.Equal("C:/temp/runas-profiles.json", options.RunAsProfilePath);
         Assert.Equal("C:/temp/auth-profiles.json", options.AuthenticationProfilePath);
+    }
+
+    [Theory]
+    [InlineData("bearer", OpenAICompatibleHttpAuthMode.Bearer)]
+    [InlineData("token", OpenAICompatibleHttpAuthMode.Bearer)]
+    [InlineData("api-key", OpenAICompatibleHttpAuthMode.Bearer)]
+    [InlineData("basic", OpenAICompatibleHttpAuthMode.Basic)]
+    [InlineData("none", OpenAICompatibleHttpAuthMode.None)]
+    [InlineData("off", OpenAICompatibleHttpAuthMode.None)]
+    public void Parse_AcceptsCompatibleHttpAuthModeAliases(string rawValue, OpenAICompatibleHttpAuthMode expected) {
+        var options = ServiceOptions.Parse(new[] {
+            "--openai-auth-mode", rawValue
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(expected, options.OpenAIAuthMode);
+    }
+
+    [Fact]
+    public void Parse_ClearBasicAuth_WinsOverProvidedBasicCredentials() {
+        var options = ServiceOptions.Parse(new[] {
+            "--openai-auth-mode", "basic",
+            "--openai-basic-username", "user1",
+            "--openai-basic-password", "secret1",
+            "--openai-clear-basic-auth"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Null(options.OpenAIBasicUsername);
+        Assert.Null(options.OpenAIBasicPassword);
     }
 
     [Fact]
@@ -194,5 +252,95 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         } catch {
             // Best-effort cleanup only.
         }
+    }
+
+    private static void SeedLegacyProfileRow(string dbPath, string profileName, string model) {
+        var db = new SQLite();
+        db.ExecuteNonQuery(dbPath, """
+CREATE TABLE IF NOT EXISTS ix_service_profiles (
+  name TEXT PRIMARY KEY,
+  model TEXT NOT NULL,
+  transport_kind TEXT NOT NULL,
+  openai_base_url TEXT NULL,
+  openai_api_key BLOB NULL,
+  openai_streaming INTEGER NOT NULL,
+  openai_allow_insecure_http INTEGER NOT NULL,
+  openai_allow_insecure_http_non_loopback INTEGER NOT NULL,
+  reasoning_effort TEXT NULL,
+  reasoning_summary TEXT NULL,
+  text_verbosity TEXT NULL,
+  temperature REAL NULL,
+  max_tool_rounds INTEGER NOT NULL,
+  parallel_tools INTEGER NOT NULL,
+  turn_timeout_seconds INTEGER NOT NULL,
+  tool_timeout_seconds INTEGER NOT NULL,
+  instructions_file TEXT NULL,
+  max_table_rows INTEGER NOT NULL,
+  max_sample INTEGER NOT NULL,
+  redact INTEGER NOT NULL,
+  ad_domain_controller TEXT NULL,
+  ad_default_search_base_dn TEXT NULL,
+  ad_max_results INTEGER NOT NULL,
+  enable_powershell_pack INTEGER NOT NULL,
+  powershell_allow_write INTEGER NOT NULL,
+  enable_testimox_pack INTEGER NOT NULL,
+  enable_default_plugin_paths INTEGER NOT NULL,
+  updated_utc TEXT NOT NULL
+);
+""");
+
+        db.ExecuteNonQuery(
+            dbPath,
+            """
+INSERT INTO ix_service_profiles (
+  name, model, transport_kind, openai_base_url, openai_api_key,
+  openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback,
+  reasoning_effort, reasoning_summary, text_verbosity, temperature,
+  max_tool_rounds, parallel_tools, turn_timeout_seconds, tool_timeout_seconds,
+  instructions_file, max_table_rows, max_sample, redact,
+  ad_domain_controller, ad_default_search_base_dn, ad_max_results,
+  enable_powershell_pack, powershell_allow_write, enable_testimox_pack, enable_default_plugin_paths,
+  updated_utc
+) VALUES (
+  @name, @model, @transport_kind, @openai_base_url, @openai_api_key,
+  @openai_streaming, @openai_allow_insecure_http, @openai_allow_insecure_http_non_loopback,
+  @reasoning_effort, @reasoning_summary, @text_verbosity, @temperature,
+  @max_tool_rounds, @parallel_tools, @turn_timeout_seconds, @tool_timeout_seconds,
+  @instructions_file, @max_table_rows, @max_sample, @redact,
+  @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
+  @enable_powershell_pack, @powershell_allow_write, @enable_testimox_pack, @enable_default_plugin_paths,
+  @updated_utc
+);
+""",
+            parameters: new Dictionary<string, object?> {
+                ["@name"] = profileName,
+                ["@model"] = model,
+                ["@transport_kind"] = "native",
+                ["@openai_base_url"] = null,
+                ["@openai_api_key"] = null,
+                ["@openai_streaming"] = 1,
+                ["@openai_allow_insecure_http"] = 0,
+                ["@openai_allow_insecure_http_non_loopback"] = 0,
+                ["@reasoning_effort"] = null,
+                ["@reasoning_summary"] = null,
+                ["@text_verbosity"] = null,
+                ["@temperature"] = null,
+                ["@max_tool_rounds"] = 24,
+                ["@parallel_tools"] = 1,
+                ["@turn_timeout_seconds"] = 0,
+                ["@tool_timeout_seconds"] = 0,
+                ["@instructions_file"] = null,
+                ["@max_table_rows"] = 0,
+                ["@max_sample"] = 0,
+                ["@redact"] = 0,
+                ["@ad_domain_controller"] = null,
+                ["@ad_default_search_base_dn"] = null,
+                ["@ad_max_results"] = 1000,
+                ["@enable_powershell_pack"] = 0,
+                ["@powershell_allow_write"] = 0,
+                ["@enable_testimox_pack"] = 1,
+                ["@enable_default_plugin_paths"] = 1,
+                ["@updated_utc"] = DateTime.UtcNow.ToString("O")
+            });
     }
 }

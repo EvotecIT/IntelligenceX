@@ -17,7 +17,9 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.OpenAI.Usage;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -56,7 +58,27 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private async Task HandleEnsureLoginAsync(IntelligenceXClient client, StreamWriter writer, EnsureLoginRequest request, CancellationToken cancellationToken) {
+    private async Task HandleEnsureLoginAsync(IntelligenceXClient? client, StreamWriter writer, EnsureLoginRequest request, CancellationToken cancellationToken) {
+        if (_options.OpenAITransport != OpenAITransportKind.Native) {
+            await WriteAsync(writer, new LoginStatusMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                IsAuthenticated = true,
+                AccountId = null
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (client is null) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "Native runtime client is not connected.",
+                Code = "ensure_login_failed"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (request.ForceLogin) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
@@ -69,11 +91,13 @@ internal sealed partial class ChatServiceSession {
         try {
             var account = await client.GetAccountAsync(cancellationToken).ConfigureAwait(false);
             var accountId = account.AccountId;
+            var nativeUsage = await TryGetNativeUsageSnapshotAsync(accountId, cancellationToken).ConfigureAwait(false);
             await WriteAsync(writer, new LoginStatusMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
                 IsAuthenticated = true,
-                AccountId = accountId
+                AccountId = accountId,
+                NativeUsage = nativeUsage
             }, cancellationToken).ConfigureAwait(false);
         } catch (OpenAIAuthenticationRequiredException) {
             await WriteAsync(writer, new LoginStatusMessage {
@@ -82,11 +106,207 @@ internal sealed partial class ChatServiceSession {
                 IsAuthenticated = false,
                 AccountId = null
             }, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"Failed to probe login state: {ex.Message}",
+                Code = "ensure_login_failed"
+            }, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private async Task HandleStartChatGptLoginAsync(IntelligenceXClient client, StreamWriter writer, StartChatGptLoginRequest request,
+    private async Task<NativeUsageSnapshotDto?> TryGetNativeUsageSnapshotAsync(string? accountId, CancellationToken cancellationToken) {
+        if (_options.OpenAITransport != OpenAITransportKind.Native) {
+            return null;
+        }
+
+        var normalizedAccountId = (accountId ?? string.Empty).Trim();
+        var nowUtc = DateTime.UtcNow;
+        lock (_nativeUsageCacheLock) {
+            if (_nativeUsageCache is not null
+                && string.Equals(_nativeUsageCacheAccountId, normalizedAccountId, StringComparison.OrdinalIgnoreCase)
+                && nowUtc - _nativeUsageCacheUpdatedUtc <= NativeUsageRefreshInterval) {
+                return _nativeUsageCache;
+            }
+        }
+
+        var requestedAccountId = (_options.OpenAIAccountId ?? string.Empty).Trim();
+        if (requestedAccountId.Length == 0) {
+            requestedAccountId = normalizedAccountId;
+        }
+
+        try {
+            var options = new OpenAINativeOptions();
+            if (requestedAccountId.Length > 0) {
+                options.AuthAccountId = requestedAccountId;
+            }
+
+            using var usageService = new ChatGptUsageService(options);
+            var snapshot = await usageService.GetUsageSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            TrySaveUsageCacheSnapshot(snapshot, requestedAccountId, normalizedAccountId);
+
+            var dto = MapNativeUsageSnapshot(snapshot, DateTime.UtcNow, source: "live");
+            lock (_nativeUsageCacheLock) {
+                _nativeUsageCache = dto;
+                _nativeUsageCacheUpdatedUtc = DateTime.UtcNow;
+                _nativeUsageCacheAccountId = normalizedAccountId;
+            }
+            return dto;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch {
+            var cached = TryLoadNativeUsageSnapshotFromCache(requestedAccountId, normalizedAccountId);
+            if (cached is null) {
+                return null;
+            }
+
+            lock (_nativeUsageCacheLock) {
+                _nativeUsageCache = cached;
+                _nativeUsageCacheUpdatedUtc = DateTime.UtcNow;
+                _nativeUsageCacheAccountId = normalizedAccountId;
+            }
+            return cached;
+        }
+    }
+
+    private static void TrySaveUsageCacheSnapshot(ChatGptUsageSnapshot snapshot, string? requestedAccountId, string? fallbackAccountId) {
+        try {
+            var cacheAccountId = ResolveUsageCacheAccountId(snapshot.AccountId, requestedAccountId, fallbackAccountId);
+            var cachePath = ChatGptUsageCache.ResolveCachePath(cacheAccountId);
+            ChatGptUsageCache.Save(snapshot, cachePath);
+        } catch {
+            // Best-effort usage cache update.
+        }
+    }
+
+    private static NativeUsageSnapshotDto? TryLoadNativeUsageSnapshotFromCache(string? requestedAccountId, string? fallbackAccountId) {
+        var candidates = new List<string?>(3);
+        AddCacheAccountCandidate(candidates, requestedAccountId);
+        AddCacheAccountCandidate(candidates, fallbackAccountId);
+        AddCacheAccountCandidate(candidates, null);
+
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidate = candidates[i];
+            try {
+                var cachePath = ChatGptUsageCache.ResolveCachePath(candidate);
+                if (!ChatGptUsageCache.TryLoad(out var entry, cachePath) || entry is null) {
+                    continue;
+                }
+
+                return MapNativeUsageSnapshot(
+                    entry.Snapshot,
+                    entry.UpdatedAt.UtcDateTime,
+                    source: "cache");
+            } catch {
+                // Try next candidate.
+            }
+        }
+
+        return null;
+    }
+
+    private static void AddCacheAccountCandidate(List<string?> candidates, string? accountId) {
+        var normalized = string.IsNullOrWhiteSpace(accountId) ? null : accountId.Trim();
+        for (var i = 0; i < candidates.Count; i++) {
+            if (string.Equals(candidates[i], normalized, StringComparison.OrdinalIgnoreCase)) {
+                return;
+            }
+        }
+
+        candidates.Add(normalized);
+    }
+
+    private static string? ResolveUsageCacheAccountId(string? snapshotAccountId, string? requestedAccountId, string? fallbackAccountId) {
+        var normalizedSnapshot = string.IsNullOrWhiteSpace(snapshotAccountId) ? null : snapshotAccountId.Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedSnapshot)) {
+            return normalizedSnapshot;
+        }
+
+        var normalizedRequested = string.IsNullOrWhiteSpace(requestedAccountId) ? null : requestedAccountId.Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedRequested)) {
+            return normalizedRequested;
+        }
+
+        return string.IsNullOrWhiteSpace(fallbackAccountId) ? null : fallbackAccountId.Trim();
+    }
+
+    private static NativeUsageSnapshotDto MapNativeUsageSnapshot(ChatGptUsageSnapshot snapshot, DateTime retrievedAtUtc, string source) {
+        var normalizedSource = string.IsNullOrWhiteSpace(source) ? null : source.Trim();
+        return new NativeUsageSnapshotDto {
+            AccountId = string.IsNullOrWhiteSpace(snapshot.AccountId) ? null : snapshot.AccountId.Trim(),
+            Email = string.IsNullOrWhiteSpace(snapshot.Email) ? null : snapshot.Email.Trim(),
+            PlanType = string.IsNullOrWhiteSpace(snapshot.PlanType) ? null : snapshot.PlanType.Trim(),
+            RateLimit = MapNativeRateLimit(snapshot.RateLimit),
+            CodeReviewRateLimit = MapNativeRateLimit(snapshot.CodeReviewRateLimit),
+            Credits = MapNativeCredits(snapshot.Credits),
+            RetrievedAtUtc = retrievedAtUtc.Kind == DateTimeKind.Utc ? retrievedAtUtc : retrievedAtUtc.ToUniversalTime(),
+            Source = normalizedSource
+        };
+    }
+
+    private static NativeRateLimitStatusDto? MapNativeRateLimit(ChatGptRateLimitStatus? status) {
+        if (status is null) {
+            return null;
+        }
+
+        return new NativeRateLimitStatusDto {
+            Allowed = status.Allowed,
+            LimitReached = status.LimitReached,
+            Primary = MapNativeRateLimitWindow(status.PrimaryWindow),
+            Secondary = MapNativeRateLimitWindow(status.SecondaryWindow)
+        };
+    }
+
+    private static NativeRateLimitWindowDto? MapNativeRateLimitWindow(ChatGptRateLimitWindow? window) {
+        if (window is null) {
+            return null;
+        }
+
+        return new NativeRateLimitWindowDto {
+            UsedPercent = window.UsedPercent,
+            LimitWindowSeconds = window.LimitWindowSeconds,
+            ResetAfterSeconds = window.ResetAfterSeconds,
+            ResetAtUnixSeconds = window.ResetAtUnixSeconds
+        };
+    }
+
+    private static NativeCreditsSnapshotDto? MapNativeCredits(ChatGptCreditsSnapshot? credits) {
+        if (credits is null) {
+            return null;
+        }
+
+        return new NativeCreditsSnapshotDto {
+            HasCredits = credits.HasCredits,
+            Unlimited = credits.Unlimited,
+            Balance = credits.Balance,
+            ApproxLocalMessages = credits.ApproxLocalMessages,
+            ApproxCloudMessages = credits.ApproxCloudMessages
+        };
+    }
+
+    private async Task HandleStartChatGptLoginAsync(IntelligenceXClient? client, StreamWriter writer, StartChatGptLoginRequest request,
         CancellationToken cancellationToken) {
+        if (_options.OpenAITransport != OpenAITransportKind.Native) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "ChatGPT sign-in is only available for native runtime transport.",
+                Code = "login_not_supported_for_transport"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (client is null) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "Native runtime client is not connected.",
+                Code = "login_start_failed"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (request.TimeoutSeconds <= 0 || request.TimeoutSeconds > 3600) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,

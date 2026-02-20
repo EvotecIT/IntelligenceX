@@ -100,6 +100,10 @@ internal sealed partial class ChatServiceSession {
         var options = new ChatOptions {
             Model = request.Options?.Model ?? _options.Model,
             Instructions = string.IsNullOrWhiteSpace(_instructions) ? null : _instructions,
+            ReasoningEffort = ResolveReasoningEffort(request.Options?.ReasoningEffort, _options.ReasoningEffort),
+            ReasoningSummary = ResolveReasoningSummary(request.Options?.ReasoningSummary, _options.ReasoningSummary),
+            TextVerbosity = ResolveTextVerbosity(request.Options?.TextVerbosity, _options.TextVerbosity),
+            Temperature = request.Options?.Temperature ?? _options.Temperature,
             ParallelToolCalls = parallelTools,
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
@@ -560,6 +564,45 @@ internal sealed partial class ChatServiceSession {
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static ReasoningEffort? ResolveReasoningEffort(string? value, ReasoningEffort? fallback) {
+        if (value is null) {
+            return fallback;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        return ChatEnumParser.ParseReasoningEffort(normalized) ?? fallback;
+    }
+
+    private static ReasoningSummary? ResolveReasoningSummary(string? value, ReasoningSummary? fallback) {
+        if (value is null) {
+            return fallback;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        return ChatEnumParser.ParseReasoningSummary(normalized) ?? fallback;
+    }
+
+    private static TextVerbosity? ResolveTextVerbosity(string? value, TextVerbosity? fallback) {
+        if (value is null) {
+            return fallback;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        return ChatEnumParser.ParseTextVerbosity(normalized) ?? fallback;
     }
 
 }

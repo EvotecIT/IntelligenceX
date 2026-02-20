@@ -165,4 +165,49 @@ public sealed class ServiceLaunchArgumentsTests {
         Assert.True(transportIndex + 1 < args.Count);
         Assert.Equal("copilot-cli", args[transportIndex + 1]);
     }
+
+    /// <summary>
+    /// Ensures compatible-http auth mode + basic credentials are emitted when configured.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesCompatibleHttpAuthModeAndBasicCredentials_WhenConfigured() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                OpenAITransport = "compatible-http",
+                OpenAIBaseUrl = "http://127.0.0.1:1234/v1",
+                OpenAIAuthMode = "basic",
+                OpenAIBasicUsername = "user",
+                OpenAIBasicPassword = "secret"
+            });
+
+        Assert.Contains("--openai-auth-mode", args);
+        Assert.Contains("basic", args);
+        Assert.Contains("--openai-basic-username", args);
+        Assert.Contains("user", args);
+        Assert.Contains("--openai-basic-password", args);
+        Assert.Contains("secret", args);
+    }
+
+    /// <summary>
+    /// Ensures explicit Basic-auth clearing emits a dedicated clear flag.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesClearBasicAuthFlag_WhenRequested() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                OpenAITransport = "compatible-http",
+                OpenAIBaseUrl = "http://127.0.0.1:1234/v1",
+                ClearOpenAIBasicAuth = true
+            });
+
+        Assert.DoesNotContain("--openai-basic-username", args);
+        Assert.DoesNotContain("--openai-basic-password", args);
+        Assert.Contains("--openai-clear-basic-auth", args);
+    }
 }

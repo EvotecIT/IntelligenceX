@@ -86,7 +86,18 @@ public sealed partial class MainWindow : Window {
             TransportCompatibleHttp,
             snapshot.DetectedBaseUrl,
             string.Empty,
+            openAIAuthModeValue: _localProviderOpenAIAuthMode,
+            openAIBasicUsernameValue: _localProviderOpenAIBasicUsername,
+            openAIBasicPasswordValue: null,
+            openAIAccountIdValue: _localProviderOpenAIAccountId,
+            activeNativeAccountSlotValue: _activeNativeAccountSlot,
+            activeSlotAccountIdValue: GetNativeAccountSlotId(_activeNativeAccountSlot),
+            reasoningEffortValue: _localProviderReasoningEffort,
+            reasoningSummaryValue: _localProviderReasoningSummary,
+            textVerbosityValue: _localProviderTextVerbosity,
+            temperatureValue: _localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture),
             apiKeyValue: null,
+            clearBasicAuth: false,
             clearApiKey: false,
             forceModelRefresh: forceModelRefresh).ConfigureAwait(false);
     }
@@ -136,11 +147,9 @@ public sealed partial class MainWindow : Window {
             _modelListWarning = string.IsNullOrWhiteSpace(modelList.Warning) ? null : modelList.Warning.Trim();
 
             var normalizedCurrentModel = (_localProviderModel ?? string.Empty).Trim();
+            // Preserve explicit/manual model selections even when discovery catalogs differ between providers.
             var shouldAutoSelectModel = _availableModels.Length > 0
-                                        && (normalizedCurrentModel.Length == 0
-                                            || ((string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-                                                 || string.Equals(_localProviderTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase))
-                                                && !ContainsModel(_availableModels, normalizedCurrentModel)));
+                                        && normalizedCurrentModel.Length == 0;
             if (shouldAutoSelectModel) {
                 _localProviderModel = _availableModels[0].Model;
                 _appState.LocalProviderModel = _localProviderModel;
@@ -163,12 +172,26 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? apiKeyValue, bool clearApiKey, bool forceModelRefresh) {
+    private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? openAIAuthModeValue,
+        string? openAIBasicUsernameValue, string? openAIBasicPasswordValue, string? openAIAccountIdValue, int? activeNativeAccountSlotValue,
+        string? activeSlotAccountIdValue, string? reasoningEffortValue, string? reasoningSummaryValue, string? textVerbosityValue,
+        string? temperatureValue, string? apiKeyValue, bool clearBasicAuth, bool clearApiKey, bool forceModelRefresh) {
         var request = new LocalProviderApplyRequest(
             Transport: transportValue,
             BaseUrl: baseUrlValue,
             Model: modelValue,
+            OpenAIAuthMode: openAIAuthModeValue,
+            OpenAIBasicUsername: openAIBasicUsernameValue,
+            OpenAIBasicPassword: openAIBasicPasswordValue,
+            OpenAIAccountId: openAIAccountIdValue,
+            ActiveNativeAccountSlot: activeNativeAccountSlotValue,
+            ActiveSlotAccountId: activeSlotAccountIdValue,
+            ReasoningEffort: reasoningEffortValue,
+            ReasoningSummary: reasoningSummaryValue,
+            TextVerbosity: textVerbosityValue,
+            Temperature: temperatureValue,
             ApiKey: apiKeyValue,
+            ClearBasicAuth: clearBasicAuth,
             ClearApiKey: clearApiKey,
             ForceModelRefresh: forceModelRefresh);
 
@@ -211,21 +234,83 @@ public sealed partial class MainWindow : Window {
         var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
         var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(request.BaseUrl, normalizedTransport, rawTransport);
         var normalizedModel = NormalizeLocalProviderModel(request.Model, normalizedTransport);
+        var normalizedOpenAIAuthMode = NormalizeLocalProviderOpenAIAuthMode(request.OpenAIAuthMode);
+        var normalizedOpenAIBasicUsername = NormalizeLocalProviderOpenAIBasicUsername(request.OpenAIBasicUsername);
+        var normalizedOpenAIBasicPassword = NormalizeLocalProviderOpenAIBasicPassword(request.OpenAIBasicPassword, normalizedTransport);
+        var normalizedReasoningEffort = NormalizeLocalProviderReasoningEffort(request.ReasoningEffort);
+        var normalizedReasoningSummary = NormalizeLocalProviderReasoningSummary(request.ReasoningSummary);
+        var normalizedTextVerbosity = NormalizeLocalProviderTextVerbosity(request.TextVerbosity);
+        var normalizedTemperature = NormalizeLocalProviderTemperature(request.Temperature);
+        if (!SupportsLocalProviderReasoningControls(normalizedTransport, normalizedBaseUrl)) {
+            normalizedReasoningEffort = string.Empty;
+            normalizedReasoningSummary = string.Empty;
+            normalizedTextVerbosity = string.Empty;
+        }
         var clearApiKeyRequested = request.ClearApiKey && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
+        var clearBasicAuthRequested = request.ClearBasicAuth && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
         var normalizedApiKey = NormalizeLocalProviderApiKey(request.ApiKey, normalizedTransport);
         var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
+        var hasBasicPasswordUpdate = clearBasicAuthRequested || normalizedOpenAIBasicPassword is not null;
+        var previousTransport = _localProviderTransport;
+        var previousOpenAIAuthMode = _localProviderOpenAIAuthMode;
+        var previousOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
+        var previousOpenAIAccountId = _localProviderOpenAIAccountId;
+        var previousActiveNativeSlot = _activeNativeAccountSlot;
+        var previousNativeSlot1 = _nativeAccountSlots[0];
+        var previousNativeSlot2 = _nativeAccountSlots[1];
+        var previousNativeSlot3 = _nativeAccountSlots[2];
+        ApplyNativeAccountSlotSettings(request.ActiveNativeAccountSlot, request.ActiveSlotAccountId, request.OpenAIAccountId);
+        var nativeAccountSlotsChanged = previousActiveNativeSlot != _activeNativeAccountSlot
+                                        || !string.Equals(previousNativeSlot1, _nativeAccountSlots[0], StringComparison.Ordinal)
+                                        || !string.Equals(previousNativeSlot2, _nativeAccountSlots[1], StringComparison.Ordinal)
+                                        || !string.Equals(previousNativeSlot3, _nativeAccountSlots[2], StringComparison.Ordinal);
+        if (clearBasicAuthRequested) {
+            _localProviderOpenAIBasicUsername = string.Empty;
+        } else if (request.OpenAIBasicUsername is not null) {
+            _localProviderOpenAIBasicUsername = normalizedOpenAIBasicUsername;
+        }
 
-        var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
+        var transportChanged = !string.Equals(previousTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase);
+        var changed = transportChanged
                       || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
                       || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal)
+                      || !string.Equals(previousOpenAIAuthMode, normalizedOpenAIAuthMode, StringComparison.Ordinal)
+                      || !string.Equals(previousOpenAIBasicUsername, _localProviderOpenAIBasicUsername, StringComparison.Ordinal)
+                      || !string.Equals(previousOpenAIAccountId, _localProviderOpenAIAccountId, StringComparison.Ordinal)
+                      || nativeAccountSlotsChanged
+                      || !string.Equals(_localProviderReasoningEffort, normalizedReasoningEffort, StringComparison.Ordinal)
+                      || !string.Equals(_localProviderReasoningSummary, normalizedReasoningSummary, StringComparison.Ordinal)
+                      || !string.Equals(_localProviderTextVerbosity, normalizedTextVerbosity, StringComparison.Ordinal)
+                      || _localProviderTemperature != normalizedTemperature
+                      || hasBasicPasswordUpdate
                       || hasApiKeyUpdate;
 
         _localProviderTransport = normalizedTransport;
         _localProviderBaseUrl = normalizedBaseUrl;
         _localProviderModel = normalizedModel;
+        _localProviderOpenAIAuthMode = normalizedOpenAIAuthMode;
+        _localProviderReasoningEffort = normalizedReasoningEffort;
+        _localProviderReasoningSummary = normalizedReasoningSummary;
+        _localProviderTextVerbosity = normalizedTextVerbosity;
+        _localProviderTemperature = normalizedTemperature;
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            ApplyNonNativeAuthenticationStateIfNeeded();
+        } else if (transportChanged && !string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
+            _isAuthenticated = false;
+            _authenticatedAccountId = null;
+            _loginInProgress = false;
+        }
+        _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
+        _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
+        _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
         _appState.LocalProviderTransport = _localProviderTransport;
         _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
         _appState.LocalProviderModel = _localProviderModel;
+        SyncNativeAccountSlotsToAppState();
+        _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
+        _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
+        _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
+        _appState.LocalProviderTemperature = _localProviderTemperature;
 
         var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
         CaptureModelCatalogCacheIntoAppState();
@@ -240,24 +325,108 @@ public sealed partial class MainWindow : Window {
         ClearConversationThreadIds();
         await PersistAppStateAsync().ConfigureAwait(false);
 
-        _pendingServiceLaunchProfileOptions = new ServiceLaunchProfileOptions {
-            LoadProfileName = profileSaved ? _appProfileName : null,
-            SaveProfileName = _appProfileName,
-            Model = _localProviderModel,
-            OpenAITransport = _localProviderTransport,
-            OpenAIBaseUrl = _localProviderBaseUrl,
-            OpenAIApiKey = normalizedApiKey,
-            ClearOpenAIApiKey = clearApiKeyRequested,
-            OpenAIStreaming = true,
-            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
-        };
+        var liveApply = await TryApplyRuntimeSettingsLiveAsync(
+                // Always persist current runtime options for the active app profile so reconnects
+                // can recover transport/model settings without falling back to defaults.
+                profileSaved: true,
+                model: _localProviderModel,
+                openAITransport: _localProviderTransport,
+                openAIBaseUrl: _localProviderBaseUrl,
+                openAIAuthMode: _localProviderOpenAIAuthMode,
+                openAIApiKey: normalizedApiKey,
+                openAIBasicUsername: _localProviderOpenAIBasicUsername,
+                openAIBasicPassword: normalizedOpenAIBasicPassword,
+                openAIAccountId: _localProviderOpenAIAccountId,
+                clearOpenAIBasicAuth: clearBasicAuthRequested,
+                clearOpenAIApiKey: clearApiKeyRequested,
+                openAIStreaming: true,
+                openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                reasoningEffort: _localProviderReasoningEffort,
+                reasoningSummary: _localProviderReasoningSummary,
+                textVerbosity: _localProviderTextVerbosity,
+                temperature: _localProviderTemperature,
+                enablePowerShellPack: null,
+                enableTestimoXPack: null,
+                enableOfficeImoPack: null).ConfigureAwait(false);
+        if (liveApply) {
+            await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
+            await SyncConnectedServiceProfileAndModelsAsync(
+                forceModelRefresh: true,
+                setProfileNewThread: false,
+                appendWarnings: true).ConfigureAwait(false);
+            return;
+        }
+        await SetStatusAsync(
+                "Runtime settings couldn't be applied live. Session stayed running; verify credentials/settings and apply again.")
+            .ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+    }
 
-        await RestartSidecarAsync().ConfigureAwait(false);
-        await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
-        await SyncConnectedServiceProfileAndModelsAsync(
-            forceModelRefresh: true,
-            setProfileNewThread: false,
-            appendWarnings: true).ConfigureAwait(false);
+    private async Task<bool> TryApplyRuntimeSettingsLiveAsync(
+        bool profileSaved,
+        string? model,
+        string? openAITransport,
+        string? openAIBaseUrl,
+        string? openAIAuthMode,
+        string? openAIApiKey,
+        string? openAIBasicUsername,
+        string? openAIBasicPassword,
+        string? openAIAccountId,
+        bool clearOpenAIBasicAuth,
+        bool clearOpenAIApiKey,
+        bool? openAIStreaming,
+        bool? openAIAllowInsecureHttp,
+        string? reasoningEffort,
+        string? reasoningSummary,
+        string? textVerbosity,
+        double? temperature,
+        bool? enablePowerShellPack,
+        bool? enableTestimoXPack,
+        bool? enableOfficeImoPack) {
+        var client = _client;
+        if (client is null || !await IsClientAliveAsync(client).ConfigureAwait(false)) {
+            if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+                return false;
+            }
+
+            client = _client;
+            if (client is null || !await IsClientAliveAsync(client).ConfigureAwait(false)) {
+                return false;
+            }
+        }
+
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _ = await client.ApplyRuntimeSettingsAsync(
+                    model: model,
+                    openAITransport: openAITransport,
+                    openAIBaseUrl: openAIBaseUrl,
+                    openAIAuthMode: openAIAuthMode,
+                    openAIApiKey: openAIApiKey,
+                    openAIBasicUsername: openAIBasicUsername,
+                    openAIBasicPassword: openAIBasicPassword,
+                    openAIAccountId: openAIAccountId,
+                    clearOpenAIBasicAuth: clearOpenAIBasicAuth,
+                    clearOpenAIApiKey: clearOpenAIApiKey,
+                    openAIStreaming: openAIStreaming,
+                    openAIAllowInsecureHttp: openAIAllowInsecureHttp,
+                    reasoningEffort: reasoningEffort,
+                    reasoningSummary: reasoningSummary,
+                    textVerbosity: textVerbosity,
+                    temperature: temperature,
+                    enablePowerShellPack: enablePowerShellPack,
+                    enableTestimoXPack: enableTestimoXPack,
+                    enableOfficeImoPack: enableOfficeImoPack,
+                    profileName: profileSaved ? _appProfileName : null,
+                    cancellationToken: cts.Token)
+                .ConfigureAwait(false);
+            return true;
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Live runtime apply failed (session kept running). " + ex.Message);
+            }
+            return false;
+        }
     }
 
     private void QueuePendingLocalProviderApply(LocalProviderApplyRequest request) {
@@ -273,7 +442,18 @@ public sealed partial class MainWindow : Window {
                     Transport: null,
                     BaseUrl: null,
                     Model: null,
+                    OpenAIAuthMode: null,
+                    OpenAIBasicUsername: null,
+                    OpenAIBasicPassword: null,
+                    OpenAIAccountId: null,
+                    ActiveNativeAccountSlot: null,
+                    ActiveSlotAccountId: null,
+                    ReasoningEffort: null,
+                    ReasoningSummary: null,
+                    TextVerbosity: null,
+                    Temperature: null,
                     ApiKey: null,
+                    ClearBasicAuth: false,
                     ClearApiKey: false,
                     ForceModelRefresh: false);
                 return false;
@@ -286,9 +466,71 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ReconnectServiceSessionAsync() {
+        QueueServiceLaunchProfileSyncSnapshot();
         StopAutoReconnectLoop();
         await DisposeClientAsync().ConfigureAwait(false);
         await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+    }
+
+    private void QueueServiceLaunchProfileSyncSnapshot() {
+        _pendingServiceLaunchProfileOptions = CaptureCurrentServiceLaunchProfileOptions();
+    }
+
+    private ServiceLaunchProfileOptions CaptureCurrentServiceLaunchProfileOptions() {
+        var profileName = (_appProfileName ?? string.Empty).Trim();
+        if (profileName.Length == 0) {
+            profileName = ResolveAppProfileName("default");
+        }
+
+        var model = (_localProviderModel ?? string.Empty).Trim();
+        var transport = (_localProviderTransport ?? string.Empty).Trim();
+        var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
+        var authMode = (_localProviderOpenAIAuthMode ?? string.Empty).Trim();
+        var basicUsername = (_localProviderOpenAIBasicUsername ?? string.Empty).Trim();
+        var accountId = (_localProviderOpenAIAccountId ?? string.Empty).Trim();
+        var reasoningEffort = (_localProviderReasoningEffort ?? string.Empty).Trim();
+        var reasoningSummary = (_localProviderReasoningSummary ?? string.Empty).Trim();
+        var textVerbosity = (_localProviderTextVerbosity ?? string.Empty).Trim();
+
+        return new ServiceLaunchProfileOptions {
+            LoadProfileName = profileName,
+            SaveProfileName = profileName,
+            Model = model.Length == 0 ? null : model,
+            OpenAITransport = transport.Length == 0 ? null : transport,
+            OpenAIBaseUrl = baseUrl.Length == 0 ? null : baseUrl,
+            OpenAIAuthMode = authMode.Length == 0 ? null : authMode,
+            OpenAIBasicUsername = basicUsername.Length == 0 ? null : basicUsername,
+            OpenAIAccountId = accountId.Length == 0 ? null : accountId,
+            OpenAIStreaming = true,
+            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(transport, baseUrl.Length == 0 ? null : baseUrl),
+            ReasoningEffort = reasoningEffort.Length == 0 ? null : reasoningEffort,
+            ReasoningSummary = reasoningSummary.Length == 0 ? null : reasoningSummary,
+            TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
+            Temperature = _localProviderTemperature,
+            EnablePowerShellPack = ResolveRuntimeManagedPackEnabled("powershell"),
+            EnableTestimoXPack = ResolveRuntimeManagedPackEnabled("testimox"),
+            EnableOfficeImoPack = ResolveRuntimeManagedPackEnabled("officeimo")
+        };
+    }
+
+    private bool? ResolveRuntimeManagedPackEnabled(string packId) {
+        if (_sessionPolicy?.Packs is not { Length: > 0 }) {
+            return null;
+        }
+
+        var normalizedPackId = (packId ?? string.Empty).Trim();
+        if (normalizedPackId.Length == 0) {
+            return null;
+        }
+
+        for (var i = 0; i < _sessionPolicy.Packs.Length; i++) {
+            var pack = _sessionPolicy.Packs[i];
+            if (string.Equals(pack.Id, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                return pack.Enabled;
+            }
+        }
+
+        return null;
     }
 
     private void ClearConversationThreadIds() {

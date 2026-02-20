@@ -186,15 +186,50 @@ public sealed partial class MainWindow : Window {
         var showPowerShellOnboardingHint = enabled
                                            && string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)
                                            && (pack is null || !pack.Enabled);
-        var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
-        _pendingServiceLaunchProfileOptions = BuildRuntimePackLaunchProfileOptions(normalizedPackId, enabled, profileSaved);
+        bool? enablePowerShellPack = null;
+        bool? enableTestimoXPack = null;
+        bool? enableOfficeImoPack = null;
+        if (string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)) {
+            enablePowerShellPack = enabled;
+        } else if (string.Equals(normalizedPackId, "testimox", StringComparison.Ordinal)) {
+            enableTestimoXPack = enabled;
+        } else if (string.Equals(normalizedPackId, "officeimo", StringComparison.Ordinal)) {
+            enableOfficeImoPack = enabled;
+        }
 
-        await RestartSidecarAsync().ConfigureAwait(false);
-        await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
-        await SyncConnectedServiceProfileAndModelsAsync(
-            forceModelRefresh: true,
-            setProfileNewThread: false,
-            appendWarnings: true).ConfigureAwait(false);
+        var liveApply = await TryApplyRuntimeSettingsLiveAsync(
+                profileSaved: true,
+                model: _localProviderModel,
+                openAITransport: _localProviderTransport,
+                openAIBaseUrl: _localProviderBaseUrl,
+                openAIAuthMode: _localProviderOpenAIAuthMode,
+                openAIApiKey: null,
+                openAIBasicUsername: _localProviderOpenAIBasicUsername,
+                openAIBasicPassword: null,
+                openAIAccountId: _localProviderOpenAIAccountId,
+                clearOpenAIBasicAuth: false,
+                clearOpenAIApiKey: false,
+                openAIStreaming: true,
+                openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                reasoningEffort: _localProviderReasoningEffort,
+                reasoningSummary: _localProviderReasoningSummary,
+                textVerbosity: _localProviderTextVerbosity,
+                temperature: _localProviderTemperature,
+                enablePowerShellPack: enablePowerShellPack,
+                enableTestimoXPack: enableTestimoXPack,
+                enableOfficeImoPack: enableOfficeImoPack).ConfigureAwait(false);
+        if (liveApply) {
+            await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
+            await SyncConnectedServiceProfileAndModelsAsync(
+                forceModelRefresh: true,
+                setProfileNewThread: false,
+                appendWarnings: true).ConfigureAwait(false);
+        } else {
+            await SetStatusAsync(
+                    "Runtime pack setting couldn't be applied live. Session stayed running; review the setting and apply again.")
+                .ConfigureAwait(false);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
 
         if (showPowerShellOnboardingHint) {
             AppendPowerShellOnboardingHint();
@@ -219,21 +254,6 @@ Quick start prompts:
 - `Run powershell_run with host=cmd and command='ver' using read_only intent.`
 - `Run powershell_run with host=pwsh and command='Get-Service | Select-Object -First 20' using read_only intent.`
 """);
-    }
-
-    private ServiceLaunchProfileOptions BuildRuntimePackLaunchProfileOptions(string normalizedPackId, bool enabled, bool profileSaved) {
-        return new ServiceLaunchProfileOptions {
-            LoadProfileName = profileSaved ? _appProfileName : null,
-            SaveProfileName = _appProfileName,
-            Model = _localProviderModel,
-            OpenAITransport = _localProviderTransport,
-            OpenAIBaseUrl = _localProviderBaseUrl,
-            OpenAIStreaming = true,
-            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
-            EnablePowerShellPack = string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal) ? enabled : null,
-            EnableTestimoXPack = string.Equals(normalizedPackId, "testimox", StringComparison.Ordinal) ? enabled : null,
-            EnableOfficeImoPack = string.Equals(normalizedPackId, "officeimo", StringComparison.Ordinal) ? enabled : null
-        };
     }
 
     private string ResolveToolPackId(string toolName) {
@@ -334,6 +354,10 @@ Quick start prompts:
 
         return new ChatRequestOptions {
             Model = string.IsNullOrWhiteSpace(_localProviderModel) ? null : _localProviderModel,
+            ReasoningEffort = _localProviderReasoningEffort,
+            ReasoningSummary = _localProviderReasoningSummary,
+            TextVerbosity = _localProviderTextVerbosity,
+            Temperature = _localProviderTemperature,
             DisabledTools = disabled.Count == 0 ? null : disabled.ToArray(),
             MaxToolRounds = effectiveMaxToolRounds,
             ParallelTools = effectiveParallelTools,
@@ -490,6 +514,77 @@ Quick start prompts:
         return normalized;
     }
 
+    private static string DetectCompatibleProviderPreset(string? baseUrl) {
+        var normalized = (baseUrl ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return "manual";
+        }
+
+        if (normalized.Contains("127.0.0.1:1234", StringComparison.Ordinal)
+            || normalized.Contains("localhost:1234", StringComparison.Ordinal)) {
+            return "lmstudio";
+        }
+
+        if (normalized.Contains("127.0.0.1:11434", StringComparison.Ordinal)
+            || normalized.Contains("localhost:11434", StringComparison.Ordinal)) {
+            return "ollama";
+        }
+
+        if (normalized.Contains("api.openai.com", StringComparison.Ordinal)) {
+            return "openai";
+        }
+
+        if (normalized.Contains(".openai.azure.com", StringComparison.Ordinal)) {
+            return "azure-openai";
+        }
+
+        if (normalized.Contains("anthropic", StringComparison.Ordinal)
+            || normalized.Contains("claude", StringComparison.Ordinal)) {
+            return "anthropic-bridge";
+        }
+
+        if (normalized.Contains("gemini", StringComparison.Ordinal)
+            || normalized.Contains("googleapis.com", StringComparison.Ordinal)) {
+            return "gemini-bridge";
+        }
+
+        return "manual";
+    }
+
+    private static bool SupportsLocalProviderReasoningControls(string? transport, string? baseUrl) {
+        var normalizedTransport = NormalizeLocalProviderTransport(transport);
+        if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        var preset = DetectCompatibleProviderPreset(baseUrl);
+        return !string.Equals(preset, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)
+               && !string.Equals(preset, "gemini-bridge", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string DescribeLocalProviderReasoningSupport(string? transport, string? baseUrl) {
+        if (SupportsLocalProviderReasoningControls(transport, baseUrl)) {
+            return "enabled (provider may clamp unsupported values)";
+        }
+
+        var normalizedTransport = NormalizeLocalProviderTransport(transport);
+        if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
+            return "not exposed by Copilot subscription runtime";
+        }
+
+        var preset = DetectCompatibleProviderPreset(baseUrl);
+        if (string.Equals(preset, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(preset, "gemini-bridge", StringComparison.OrdinalIgnoreCase)) {
+            return "bridge preset uses provider defaults";
+        }
+
+        return "not exposed by current runtime profile";
+    }
+
     private static string NormalizeLocalProviderModel(string? value, string transport) {
         var normalized = (value ?? string.Empty).Trim();
         if (normalized.Length > 0) {
@@ -511,6 +606,95 @@ Quick start prompts:
 
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string NormalizeLocalProviderOpenAIAuthMode(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "basic" => "basic",
+            "none" => "none",
+            "off" => "none",
+            "bearer" => "bearer",
+            "api-key" => "bearer",
+            "apikey" => "bearer",
+            "token" => "bearer",
+            _ => "bearer"
+        };
+    }
+
+    private static string NormalizeLocalProviderOpenAIBasicUsername(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? string.Empty : normalized;
+    }
+
+    private static string? NormalizeLocalProviderOpenAIBasicPassword(string? value, string transport) {
+        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string NormalizeLocalProviderReasoningEffort(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "minimal" => "minimal",
+            "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
+            "xhigh" => "xhigh",
+            "x-high" => "xhigh",
+            "x_high" => "xhigh",
+            _ => string.Empty
+        };
+    }
+
+    private static string NormalizeLocalProviderReasoningSummary(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "auto" => "auto",
+            "concise" => "concise",
+            "detailed" => "detailed",
+            "off" => "off",
+            _ => string.Empty
+        };
+    }
+
+    private static string NormalizeLocalProviderTextVerbosity(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
+            _ => string.Empty
+        };
+    }
+
+    private static double? NormalizeLocalProviderTemperature(double? value) {
+        if (!value.HasValue) {
+            return null;
+        }
+
+        var parsed = value.Value;
+        if (double.IsNaN(parsed) || double.IsInfinity(parsed) || parsed < 0d || parsed > 2d) {
+            return null;
+        }
+
+        return parsed;
+    }
+
+    private static double? NormalizeLocalProviderTemperature(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        if (!double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) {
+            return null;
+        }
+
+        return NormalizeLocalProviderTemperature(parsed);
     }
 
     private static bool? ParseAutonomyParallelMode(string? raw) {
@@ -630,6 +814,11 @@ Quick start prompts:
                 : "native";
         var modelLabel = string.IsNullOrWhiteSpace(_localProviderModel) ? "(default)" : _localProviderModel.Trim();
         lines.Add("Runtime transport: " + transportLabel + ", model: " + modelLabel);
+        lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
+                  + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
+                  + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
+                  + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
+        lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
         lines.Add("Tools enabled: " + enabledTools.ToString(CultureInfo.InvariantCulture)
                   + ", disabled: " + disabledTools.ToString(CultureInfo.InvariantCulture));
         if (options is not null) {

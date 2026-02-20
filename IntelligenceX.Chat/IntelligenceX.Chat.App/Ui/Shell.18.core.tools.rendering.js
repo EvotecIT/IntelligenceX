@@ -42,7 +42,13 @@
     ensureCustomSelect("optSidebarMode");
     ensureCustomSelect("optProfileApplyMode");
     ensureCustomSelect("optLocalTransport");
+    ensureCustomSelect("optLocalProviderPreset");
+    ensureCustomSelect("optLocalAuthMode");
+    ensureCustomSelect("optNativeAccountSlot");
     ensureCustomSelect("optLocalModelSelect");
+    ensureCustomSelect("optReasoningEffort");
+    ensureCustomSelect("optReasoningSummary");
+    ensureCustomSelect("optTextVerbosity");
     ensureCustomSelect("optAutonomyParallel");
     ensureCustomSelect("optAutonomyPlanReview");
     ensureCustomSelect("optAutonomyWeightedRouting");
@@ -207,6 +213,9 @@
     }
     if (typeof nextState.authenticated === "boolean") {
       state.authenticated = nextState.authenticated;
+    }
+    if (typeof nextState.accountId === "string") {
+      state.accountId = nextState.accountId;
     }
     if (typeof nextState.loginInProgress === "boolean") {
       state.loginInProgress = nextState.loginInProgress;

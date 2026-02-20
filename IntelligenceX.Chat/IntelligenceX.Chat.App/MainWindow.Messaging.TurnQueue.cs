@@ -43,12 +43,12 @@ public sealed partial class MainWindow : Window {
         }
 
         if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
-            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, _isAuthenticated)).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
             return;
         }
 
         if (_client is null) {
-            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, _isAuthenticated)).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
             return;
         }
 
@@ -214,7 +214,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> TryDispatchQueuedPromptAfterLoginAsync(bool honorAutoDispatch = true) {
-        if (_isSending || !_isAuthenticated || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
+        if (_isSending || !IsEffectivelyAuthenticatedForCurrentTransport() || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
             return false;
         }
 
@@ -240,7 +240,7 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (!honorAutoDispatch && (!_isAuthenticated || _loginInProgress)) {
+        if (!honorAutoDispatch && (!IsEffectivelyAuthenticatedForCurrentTransport() || _loginInProgress)) {
             var started = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
             if (started) {
                 var queuedCount = GetQueuedPromptAfterLoginCount();
@@ -274,7 +274,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        if (!_isAuthenticated && queuedSignIn > 0) {
+        if (!IsEffectivelyAuthenticatedForCurrentTransport() && queuedSignIn > 0) {
             await SetStatusAsync($"Waiting for sign-in... ({queuedSignIn}/{MaxQueuedTurns} queued)").ConfigureAwait(false);
             return;
         }
@@ -378,15 +378,4 @@ public sealed partial class MainWindow : Window {
         AppendSystem("Startup log copied to clipboard.");
     }
 
-    private async Task RestartSidecarAsync() {
-        AppendSystem("Restarting local runtime...");
-        _isConnected = false;
-        _isAuthenticated = false;
-        _loginInProgress = false;
-        StopAutoReconnectLoop();
-        await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(true);
-        await DisposeClientAsync().ConfigureAwait(true);
-        StopServiceIfOwned();
-        await ConnectAsync(fromUserAction: true).ConfigureAwait(true);
-    }
 }

@@ -93,18 +93,23 @@ public sealed partial class MainWindow : Window {
                     _loginInProgress = false;
                     _autoSignInAttempted = true;
                     _isAuthenticated = done.Ok;
+                    if (!done.Ok) {
+                        _authenticatedAccountId = null;
+                    }
                     _isConnected = _client is not null;
                     _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
                     if (!done.Ok && !string.IsNullOrWhiteSpace(done.Error)) {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
+                        _ = RefreshAuthenticationStateAsync(updateStatus: false);
                         _ = HandlePostLoginCompletionAsync();
                     }
                     break;
                 case ErrorMessage err:
                     if (string.Equals(err.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
                         _isAuthenticated = false;
+                        _authenticatedAccountId = null;
                         _ = SetStatusAsync(SessionStatus.SignInRequired());
                     } else if (string.IsNullOrWhiteSpace(err.RequestId)) {
                         AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
@@ -150,8 +155,15 @@ public sealed partial class MainWindow : Window {
                 ToolRounds: Math.Max(0, metrics.ToolRounds),
                 ProjectionFallbackCount: Math.Max(0, metrics.ProjectionFallbackCount),
                 Outcome: outcome,
-                ErrorCode: string.IsNullOrWhiteSpace(metrics.ErrorCode) ? null : metrics.ErrorCode.Trim());
+                ErrorCode: string.IsNullOrWhiteSpace(metrics.ErrorCode) ? null : metrics.ErrorCode.Trim(),
+                PromptTokens: metrics.Usage?.PromptTokens,
+                CompletionTokens: metrics.Usage?.CompletionTokens,
+                TotalTokens: metrics.Usage?.TotalTokens,
+                CachedPromptTokens: metrics.Usage?.CachedPromptTokens,
+                ReasoningTokens: metrics.Usage?.ReasoningTokens);
         }
+
+        UpdateAccountUsageFromMetrics(metrics.Usage);
     }
 
     private static string FormatMetricsTrace(ChatMetricsMessage metrics) {
@@ -159,6 +171,7 @@ public sealed partial class MainWindow : Window {
                + metrics.DurationMs.ToString(CultureInfo.InvariantCulture)
                + "ms"
                + (metrics.TtftMs is null ? string.Empty : " ttft=" + metrics.TtftMs.Value.ToString(CultureInfo.InvariantCulture) + "ms")
+               + (metrics.Usage?.TotalTokens is null ? string.Empty : " tokens=" + metrics.Usage.TotalTokens.Value.ToString(CultureInfo.InvariantCulture))
                + " tools=" + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
                + " rounds=" + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture)
                + " outcome=" + (metrics.Outcome ?? "unknown");
@@ -222,12 +235,12 @@ public sealed partial class MainWindow : Window {
 
             await DisposeClientAsync().ConfigureAwait(false);
             _isAuthenticated = false;
+            _authenticatedAccountId = null;
             _loginInProgress = false;
             _isConnected = false;
             _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
-            if (!DetachedServiceMode) {
-                StopServiceIfOwned();
-            }
+            // Keep the sidecar process alive on transient pipe disconnects.
+            // This avoids unnecessary process churn while the client auto-reconnect loop runs.
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
             EnsureAutoReconnectLoop();
         });

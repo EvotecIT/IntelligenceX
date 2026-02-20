@@ -330,11 +330,11 @@ public sealed partial class MainWindow : Window {
         ClearQueuedPromptsAfterLogin();
         _modelKickoffAttempted = false;
         _modelKickoffInProgress = false;
-        _autoSignInAttempted = _isAuthenticated;
+        _autoSignInAttempted = IsEffectivelyAuthenticatedForCurrentTransport();
         await ApplyThemeFromStateAsync().ConfigureAwait(false);
         await RenderTranscriptAsync().ConfigureAwait(false);
-        await SetStatusAsync(SessionStatus.ForConnection(_isConnected, _isAuthenticated)).ConfigureAwait(false);
-        if (_isConnected && !_isAuthenticated) {
+        await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+        if (_isConnected && RequiresInteractiveSignInForCurrentTransport() && !_isAuthenticated) {
             _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
         }
         await PublishOptionsStateAsync().ConfigureAwait(false);

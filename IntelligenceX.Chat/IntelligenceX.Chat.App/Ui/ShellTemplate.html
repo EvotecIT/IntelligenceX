@@ -170,7 +170,73 @@
         <section class="options-group">
           <div class="options-label">Local Model Selection</div>
           <div class="options-note" id="optLocalSimpleHint">ChatGPT runtime is active. Switch to LM Studio to use local models.</div>
+          <div class="options-row" id="optNativeAccountSlotRow">
+            <label class="options-label-inline" for="optNativeAccountSlot">Native account slot</label>
+            <select id="optNativeAccountSlot" class="options-select">
+              <option value="1">Slot 1</option>
+              <option value="2">Slot 2</option>
+              <option value="3">Slot 3</option>
+            </select>
+          </div>
+          <div class="options-row" id="optNativeAccountIdRow">
+            <label class="options-label-inline" for="optNativeAccountId">Slot account id</label>
+            <input id="optNativeAccountId" class="options-input options-input-sm" placeholder="chatgpt-account-id" />
+          </div>
+          <div class="options-note" id="optNativeAccountHint">Pick slot 1/2/3 to switch ChatGPT accounts quickly. Slot ids are profile-scoped.</div>
+          <div class="options-row" id="optLocalModelInputRow">
+            <label class="options-label-inline" for="optLocalModelInput">Model</label>
+            <input id="optLocalModelInput" class="options-input options-input-sm" placeholder="e.g. gpt-5.3-codex or llama3.2" />
+          </div>
+          <div class="options-row" id="optReasoningEffortRow">
+            <label class="options-label-inline" for="optReasoningEffort">Reasoning effort</label>
+            <select id="optReasoningEffort" class="options-select">
+              <option value="">Provider default</option>
+              <option value="minimal">Minimal</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="xhigh">XHigh</option>
+            </select>
+          </div>
+          <div class="options-row" id="optReasoningSummaryRow">
+            <label class="options-label-inline" for="optReasoningSummary">Reasoning summary</label>
+            <select id="optReasoningSummary" class="options-select">
+              <option value="">Provider default</option>
+              <option value="auto">Auto</option>
+              <option value="concise">Concise</option>
+              <option value="detailed">Detailed</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <div class="options-row" id="optTextVerbosityRow">
+            <label class="options-label-inline" for="optTextVerbosity">Text verbosity</label>
+            <select id="optTextVerbosity" class="options-select">
+              <option value="">Provider default</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="options-row" id="optTemperatureRow">
+            <label class="options-label-inline" for="optTemperature">Temperature</label>
+            <input id="optTemperature" class="options-input options-input-sm" type="number" min="0" max="2" step="0.1" placeholder="Provider default" />
+          </div>
+          <div class="options-note" id="optReasoningHint">Reasoning controls are provider/model dependent. Unsupported values are ignored by some runtimes.</div>
+          <div class="options-note" id="optRuntimeCapabilitiesTitle">Runtime capabilities</div>
+          <div class="options-list options-runtime-capabilities" id="optRuntimeCapabilities"></div>
           <div id="optLocalAdvancedArea" hidden>
+            <div class="options-row" id="optLocalProviderPresetRow">
+              <label class="options-label-inline" for="optLocalProviderPreset">Provider profile</label>
+              <select id="optLocalProviderPreset" class="options-select">
+                <option value="manual">Manual</option>
+                <option value="lmstudio">LM Studio (local)</option>
+                <option value="ollama">Ollama (local)</option>
+                <option value="openai">OpenAI API</option>
+                <option value="azure-openai">Azure OpenAI</option>
+                <option value="anthropic-bridge">Anthropic bridge (experimental)</option>
+                <option value="gemini-bridge">Gemini bridge (experimental)</option>
+              </select>
+            </div>
             <div class="options-row" id="optLocalTransportRow">
               <label class="options-label-inline" for="optLocalTransport">Provider transport</label>
               <select id="optLocalTransport" class="options-select">
@@ -187,18 +253,34 @@
               <label class="options-label-inline" for="optLocalApiKey">API key (optional)</label>
               <input id="optLocalApiKey" type="password" class="options-input options-input-sm" placeholder="Leave blank to keep existing key" autocomplete="off" />
             </div>
-            <div class="options-note" id="optLocalApiKeyHint">Use Clear Saved API Key to remove the currently stored key.</div>
-            <div class="options-row" id="optLocalModelInputRow">
-              <label class="options-label-inline" for="optLocalModelInput">Model</label>
-              <input id="optLocalModelInput" class="options-input options-input-sm" placeholder="e.g. gpt-5.3-codex or llama3.2" />
+            <div class="options-row" id="optLocalAuthModeRow">
+              <label class="options-label-inline" for="optLocalAuthMode">Auth mode</label>
+              <select id="optLocalAuthMode" class="options-select">
+                <option value="bearer">Bearer token (API key)</option>
+                <option value="basic">Basic (username + password)</option>
+                <option value="none">None</option>
+              </select>
             </div>
+            <div class="options-row" id="optLocalBasicUsernameRow">
+              <label class="options-label-inline" for="optLocalBasicUsername">Basic username</label>
+              <input id="optLocalBasicUsername" class="options-input options-input-sm" placeholder="Leave blank to keep current value" autocomplete="off" />
+            </div>
+            <div class="options-row" id="optLocalBasicPasswordRow">
+              <label class="options-label-inline" for="optLocalBasicPassword">Basic password</label>
+              <input id="optLocalBasicPassword" type="password" class="options-input options-input-sm" placeholder="Leave blank to keep existing secret" autocomplete="off" />
+            </div>
+            <div class="options-note" id="optLocalApiKeyHint">Use Clear Saved API Key to remove the currently stored key.</div>
+            <div class="options-note" id="optLocalAuthHint">Compatible HTTP supports Bearer/API key or Basic auth. Anthropic/Gemini subscription bridges are experimental and require a bridge endpoint.</div>
             <div class="options-note">Auto Detect scans LM Studio/Ollama endpoints. Compatible HTTP also supports API key providers (Azure/OpenAI-compatible endpoints).</div>
             <div class="options-actions options-actions-wrap">
               <button id="btnAutoDetectLocalRuntime" class="options-btn options-btn-sm">Auto Detect Runtime</button>
               <button id="btnLocalPresetLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio Runtime</button>
               <button id="btnLocalPresetOllama" class="options-btn options-btn-sm options-btn-ghost">Use Ollama Runtime</button>
+              <button id="btnLocalPresetOpenAI" class="options-btn options-btn-sm options-btn-ghost">Use OpenAI API</button>
+              <button id="btnLocalPresetAzureOpenAI" class="options-btn options-btn-sm options-btn-ghost">Use Azure OpenAI</button>
               <button id="btnLocalPresetCopilot" class="options-btn options-btn-sm options-btn-ghost">Use Copilot Endpoint (API key)</button>
               <button id="btnClearLocalApiKey" class="options-btn options-btn-sm options-btn-ghost">Clear Saved API Key</button>
+              <button id="btnClearLocalBasicAuth" class="options-btn options-btn-sm options-btn-ghost">Clear Saved Basic Auth</button>
             </div>
           </div>
           <div class="options-row" id="optLocalModelSelectRow">
@@ -209,6 +291,9 @@
             <label class="options-label-inline" for="optLocalModelFilter">Filter models</label>
             <input id="optLocalModelFilter" class="options-input options-input-sm" placeholder="Type to filter discovered models" />
           </div>
+          <div class="options-note" id="optLocalModelManualHint"></div>
+          <div class="options-note" id="optAccountUsageTitle">Account usage (tokens + limits)</div>
+          <div class="options-list" id="optAccountUsageList"></div>
           <div class="options-note" id="optLocalModelsState"></div>
         </section>
       </div>
@@ -398,7 +483,6 @@
             <button id="btnDebugToggleEngine" class="options-btn options-btn-sm">Enable Engine Debug</button>
             <button id="btnDebugCopyWheel" class="options-btn options-btn-sm options-btn-ghost">Copy Wheel Diagnostics</button>
             <button id="btnDebugCopyStartupLog" class="options-btn options-btn-sm options-btn-ghost">Copy Startup Log</button>
-            <button id="btnDebugRestartSidecar" class="options-btn options-btn-sm options-btn-ghost">Restart Runtime</button>
           </div>
         </section>
 

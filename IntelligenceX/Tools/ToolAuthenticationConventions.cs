@@ -73,10 +73,11 @@ public static class ToolAuthenticationConventions {
     }
 
     private static string NormalizeProbeName(bool supportsConnectivityProbe, string? probeToolName) {
-        if (!supportsConnectivityProbe || string.IsNullOrWhiteSpace(probeToolName)) {
+        if (!supportsConnectivityProbe) {
             return string.Empty;
         }
 
-        return probeToolName.Trim();
+        var normalized = (probeToolName ?? string.Empty).Trim();
+        return normalized.Length == 0 ? string.Empty : normalized;
     }
 }
