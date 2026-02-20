@@ -78,6 +78,7 @@ public sealed class ToolDefinition {
 
     /// <summary>
     /// Gets optional tags associated with this tool definition.
+    /// Tags are normalized to distinct deterministic ordering (ordinal-ignore-case).
     /// </summary>
     public IReadOnlyList<string> Tags { get; }
 
