@@ -258,12 +258,18 @@ public sealed class UiShellAssetsTests {
         var css = File.ReadAllText(cssPath);
 
         Assert.Contains("function renderRuntimeCapabilities(options)", script, StringComparison.Ordinal);
+        Assert.Contains("function normalizeBridgeSessionState(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function resolveBridgeSessionStatus(state)", script, StringComparison.Ordinal);
+        Assert.Contains("function resolveBridgeSessionValue(state)", script, StringComparison.Ordinal);
         Assert.Contains("appendRuntimeCapabilityRow(", script, StringComparison.Ordinal);
         Assert.Contains("renderRuntimeCapabilities({", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeCapabilities = local.runtimeCapabilities", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeApplyProgress = byId(\"optRuntimeApplyProgress\")", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeApply = local.runtimeApply", script, StringComparison.Ordinal);
         Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
+        Assert.Contains("bridgeSessionState: bridgeSessionState,", script, StringComparison.Ordinal);
+        Assert.Contains("bridgeSessionDetail: bridgeSessionDetail,", script, StringComparison.Ordinal);
+        Assert.Contains("\"Bridge session\"", script, StringComparison.Ordinal);
         Assert.Contains("useOpenAiRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
         Assert.Contains("connectLmStudioButton.disabled = false;", script, StringComparison.Ordinal);
         Assert.Contains("useCopilotRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
