@@ -140,6 +140,8 @@ public sealed class UiShellAssetsTests {
         var script = File.ReadAllText(bindingsPath);
 
         Assert.Contains("function scheduleLocalProviderApply(forceRefresh, clearApiKey, clearBasicAuth)", script, StringComparison.Ordinal);
+        Assert.Contains("pendingLocalProviderApply.clearApiKey = pendingLocalProviderApply.clearApiKey || nextClearApiKey;", script, StringComparison.Ordinal);
+        Assert.Contains("pendingLocalProviderApply.clearBasicAuth = pendingLocalProviderApply.clearBasicAuth || nextClearBasicAuth;", script, StringComparison.Ordinal);
         Assert.Contains("runtimeApply.stage = wasApplying ? \"queued\" : \"applying\";", script, StringComparison.Ordinal);
         Assert.Contains("runtimeApply.detail = wasApplying", script, StringComparison.Ordinal);
         Assert.Contains("state.options.localModel.isApplying = true;", script, StringComparison.Ordinal);

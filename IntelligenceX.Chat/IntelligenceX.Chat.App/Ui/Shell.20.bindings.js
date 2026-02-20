@@ -895,22 +895,44 @@
 
   var scheduledLocalProviderApplyTimer = 0;
   var localProviderAutoApplyDelayMs = 220;
+  var pendingLocalProviderApply = null;
 
   function clearScheduledLocalProviderApply() {
     if (scheduledLocalProviderApplyTimer) {
       clearTimeout(scheduledLocalProviderApplyTimer);
       scheduledLocalProviderApplyTimer = 0;
     }
+    pendingLocalProviderApply = null;
   }
 
   function scheduleLocalProviderApply(forceRefresh, clearApiKey, clearBasicAuth) {
-    clearScheduledLocalProviderApply();
     var nextForceRefresh = forceRefresh !== false;
     var nextClearApiKey = clearApiKey === true;
     var nextClearBasicAuth = clearBasicAuth === true;
-    scheduledLocalProviderApplyTimer = setTimeout(function() {
+    if (!pendingLocalProviderApply) {
+      pendingLocalProviderApply = {
+        forceRefresh: nextForceRefresh,
+        clearApiKey: nextClearApiKey,
+        clearBasicAuth: nextClearBasicAuth
+      };
+    } else {
+      pendingLocalProviderApply.forceRefresh = pendingLocalProviderApply.forceRefresh || nextForceRefresh;
+      pendingLocalProviderApply.clearApiKey = pendingLocalProviderApply.clearApiKey || nextClearApiKey;
+      pendingLocalProviderApply.clearBasicAuth = pendingLocalProviderApply.clearBasicAuth || nextClearBasicAuth;
+    }
+    if (scheduledLocalProviderApplyTimer) {
+      clearTimeout(scheduledLocalProviderApplyTimer);
       scheduledLocalProviderApplyTimer = 0;
-      applyLocalProviderSettings(nextForceRefresh, nextClearApiKey, nextClearBasicAuth);
+    }
+    scheduledLocalProviderApplyTimer = setTimeout(function() {
+      var applyRequest = pendingLocalProviderApply || {
+        forceRefresh: nextForceRefresh,
+        clearApiKey: nextClearApiKey,
+        clearBasicAuth: nextClearBasicAuth
+      };
+      pendingLocalProviderApply = null;
+      scheduledLocalProviderApplyTimer = 0;
+      applyLocalProviderSettings(applyRequest.forceRefresh, applyRequest.clearApiKey, applyRequest.clearBasicAuth);
     }, localProviderAutoApplyDelayMs);
   }
 
