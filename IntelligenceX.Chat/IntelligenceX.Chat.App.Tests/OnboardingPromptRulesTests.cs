@@ -31,10 +31,10 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void PruneDuplicateAskNamePrompts_RemovesOlderPrompt() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now),
-            ("User", "hello", now.AddSeconds(1)),
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now.AddSeconds(2))
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now, null),
+            ("User", "hello", now.AddSeconds(1), null),
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now.AddSeconds(2), null)
         };
 
         var changed = OnboardingPromptRules.PruneDuplicateAskNamePrompts(messages);
@@ -51,9 +51,9 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void PruneDuplicateAssistantLeadPrompts_RemovesOlderAssistantDuplicate() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now),
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now.AddSeconds(1))
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now, null),
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now.AddSeconds(1), null)
         };
 
         var changed = OnboardingPromptRules.PruneDuplicateAssistantLeadPrompts(messages);
@@ -69,10 +69,10 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void PruneDuplicateAssistantLeadPrompts_DoesNotTouchPromptsAfterUserReply() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now),
-            ("User", "Przemek", now.AddSeconds(1)),
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now.AddSeconds(2))
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now, null),
+            ("User", "Przemek", now.AddSeconds(1), null),
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now.AddSeconds(2), null)
         };
 
         var changed = OnboardingPromptRules.PruneDuplicateAssistantLeadPrompts(messages);
@@ -88,8 +88,8 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void HasEquivalentOnboardingIntroPrompt_ReturnsTrueForMatchingPrompt() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now)
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now, null)
         };
 
         var exists = OnboardingPromptRules.HasEquivalentOnboardingIntroPrompt(
@@ -105,8 +105,8 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void HasEquivalentOnboardingIntroPrompt_ReturnsFalseForNonOnboardingText() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now)
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Hi. Let's set this up quickly. What should I call you? (type skip to keep defaults)", now, null)
         };
 
         var exists = OnboardingPromptRules.HasEquivalentOnboardingIntroPrompt(messages, "Can you list top 5 AD users?");
@@ -120,9 +120,9 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void HasAnyUserMessage_ReturnsTrueWhenUserExists() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Welcome", now),
-            ("User", "Hi", now.AddSeconds(1))
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Welcome", now, null),
+            ("User", "Hi", now.AddSeconds(1), null)
         };
 
         Assert.True(OnboardingPromptRules.HasAnyUserMessage(messages));
@@ -134,8 +134,8 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void HasEquivalentAssistantMessage_ReturnsTrueForNormalizedMatch() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("Assistant", "Hi. Let's set this up quickly!", now)
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("Assistant", "Hi. Let's set this up quickly!", now, null)
         };
 
         var exists = OnboardingPromptRules.HasEquivalentAssistantMessage(
@@ -151,8 +151,8 @@ public sealed class OnboardingPromptRulesTests {
     [Fact]
     public void HasEquivalentAssistantMessage_IgnoresUserMessages() {
         var now = DateTime.UtcNow;
-        var messages = new List<(string Role, string Text, DateTime Time)> {
-            ("User", "Hi there", now)
+        var messages = new List<(string Role, string Text, DateTime Time, string? Model)> {
+            ("User", "Hi there", now, null)
         };
 
         var exists = OnboardingPromptRules.HasEquivalentAssistantMessage(messages, "Hi there");

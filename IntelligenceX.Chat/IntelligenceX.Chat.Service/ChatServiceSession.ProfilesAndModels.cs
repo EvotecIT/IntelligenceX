@@ -18,6 +18,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const string DefaultRuntimeModel = "gpt-5.3-codex";
     private sealed record SetProfileResult(bool ReconnectClient, bool ModelChanged);
     private sealed record ModelListCacheEntry(string Key, DateTime ExpiresAtUtc, ModelListResult Result);
 
@@ -37,9 +38,14 @@ internal sealed partial class ChatServiceSession {
     }
 
     private IntelligenceXClientOptions BuildClientOptions() {
+        var defaultModel = (_options.Model ?? string.Empty).Trim();
+        if (defaultModel.Length == 0) {
+            defaultModel = DefaultRuntimeModel;
+        }
+
         var opts = new IntelligenceXClientOptions {
             TransportKind = _options.OpenAITransport,
-            DefaultModel = _options.Model
+            DefaultModel = defaultModel
         };
 
         if (opts.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(_instructions)) {
@@ -384,6 +390,10 @@ internal sealed partial class ChatServiceSession {
                 var normalizedModel = request.Model.Trim();
                 if (normalizedModel.Length > 0) {
                     _options.Model = normalizedModel;
+                } else {
+                    _options.Model = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
+                        ? string.Empty
+                        : DefaultRuntimeModel;
                 }
             }
 

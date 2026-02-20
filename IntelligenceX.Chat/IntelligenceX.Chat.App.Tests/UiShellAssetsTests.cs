@@ -299,11 +299,45 @@ public sealed class UiShellAssetsTests {
 
         Assert.Contains("id=\"optRuntimePanelView\"", html, StringComparison.Ordinal);
         Assert.Contains("id=\"optRuntimePanelHint\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSectionCatalogTitle\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSectionUsageTitle\"", html, StringComparison.Ordinal);
         Assert.Contains("function runtimePanelViewStorageKey()", script, StringComparison.Ordinal);
         Assert.Contains("function setRuntimePanelView(value)", script, StringComparison.Ordinal);
         Assert.Contains("function mergeRuntimePanelVisibility(id, shouldShow)", script, StringComparison.Ordinal);
+        Assert.Contains("mergeRuntimePanelVisibility(\"optRuntimeSectionCatalogTitle\", showModelPanel);", script, StringComparison.Ordinal);
+        Assert.Contains("mergeRuntimePanelVisibility(\"optRuntimeSectionUsageTitle\", showUsagePanel);", script, StringComparison.Ordinal);
         Assert.Contains("mergeRuntimePanelVisibility(\"optAccountUsageList\", showUsagePanel);", script, StringComparison.Ordinal);
         Assert.Contains("ensureCustomSelect(\"optRuntimePanelView\");", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures sidebar and options conversation rows include runtime/model metadata when available.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesConversationRuntimeModelMetaRendering() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("var runtimeLabel = item && item.runtimeLabel ? String(item.runtimeLabel).trim() : \"\";", script, StringComparison.Ordinal);
+        Assert.Contains("var modelLabel = item && item.modelLabel ? String(item.modelLabel).trim() : \"\";", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeSummary += \" | \" + modelLabel;", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures conversation actions include per-chat model override controls using inline selects (without prompt dialogs).
+    /// </summary>
+    [Fact]
+    public void Load_IncludesConversationModelOverrideControlsAndBindings() {
+        var helpersPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpers = File.ReadAllText(helpersPath);
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindings = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("options-conversation-model-select", helpers, StringComparison.Ordinal);
+        Assert.Contains("buildConversationModelChoices(chat)", helpers, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.prompt(\"Conversation model override (blank = auto):\"", bindings, StringComparison.Ordinal);
+        Assert.Contains("post(\"set_conversation_model\", { id: modelId, model: (modelSelect.value || \"\").trim() });", bindings, StringComparison.Ordinal);
+        Assert.Contains("var modelSelect = e.target.closest(\".options-conversation-model-select\");", bindings, StringComparison.Ordinal);
     }
 
     /// <summary>

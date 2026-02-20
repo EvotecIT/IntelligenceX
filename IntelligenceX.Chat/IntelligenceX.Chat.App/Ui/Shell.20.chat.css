@@ -261,6 +261,30 @@
   border: 1px solid rgba(168, 200, 232, 0.52);
 }
 
+.bubble-meta {
+  margin: 5px 2px 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bubble-model-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(108, 151, 197, 0.5);
+  background: rgba(20, 52, 86, 0.5);
+  color: var(--ix-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .msg-actions {
   position: absolute;
   top: 22px;

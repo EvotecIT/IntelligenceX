@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.ToolCalling;
@@ -349,6 +350,71 @@ public sealed class OpenAICompatibleHttpTransportTests {
     }
 
     [Fact]
+    public async Task ChatCompletions_ContentArray_Is_Projected_To_TextOutput() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "id": "chatcmpl_1",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": [
+                          { "type": "output_text", "text": "Hello from LM Studio." }
+                        ]
+                      }
+                    }
+                  ],
+                  "usage": { "prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6 }
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var thread = await transport.StartThreadAsync("openai/gpt-oss-20b", null, null, null, CancellationToken.None);
+        var turn = await transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"), new ChatOptions {
+            Model = "openai/gpt-oss-20b"
+        }, null, null, null, CancellationToken.None);
+
+        var text = EasyChatResult.FromTurn(turn).Text;
+        Assert.Equal("Hello from LM Studio.", text);
+    }
+
+    [Fact]
+    public async Task Streaming_ContentArray_Deltas_Are_Projected_To_TextOutput() {
+        var handler = new StubHandler()
+            .RespondSse("""
+                data: {"choices":[{"delta":{"content":[{"type":"output_text","text":"Hello "}]}}]}
+
+                data: {"choices":[{"delta":{"content":[{"type":"output_text","text":"world"}]}}]}
+
+                data: [DONE]
+
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://127.0.0.1:1234/v1",
+            AllowInsecureHttp = true,
+            Streaming = true
+        }, http);
+
+        var thread = await transport.StartThreadAsync("openai/gpt-oss-20b", null, null, null, CancellationToken.None);
+        var turn = await transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"), new ChatOptions {
+            Model = "openai/gpt-oss-20b"
+        }, null, null, null, CancellationToken.None);
+
+        var text = EasyChatResult.FromTurn(turn).Text;
+        Assert.Equal("Hello world", text);
+    }
+
+    [Fact]
     public async Task Instructions_Are_Sent_As_System_Message_And_Stream_Flag_Respects_Options() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """
@@ -393,6 +459,13 @@ public sealed class OpenAICompatibleHttpTransportTests {
         public StubHandler RespondJson(HttpStatusCode status, string json) {
             _responses.Enqueue((req, ct) => Task.FromResult(new HttpResponseMessage(status) {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
+            }));
+            return this;
+        }
+
+        public StubHandler RespondSse(string payload) {
+            _responses.Enqueue((req, ct) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = new StringContent(payload, Encoding.UTF8, "text/event-stream")
             }));
             return this;
         }

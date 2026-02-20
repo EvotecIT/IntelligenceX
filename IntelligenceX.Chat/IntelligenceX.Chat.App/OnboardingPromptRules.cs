@@ -39,7 +39,7 @@ internal static class OnboardingPromptRules {
                && ThemeContract.ContainsKnownToken(normalized);
     }
 
-    public static bool PruneDuplicateAskNamePrompts(List<(string Role, string Text, DateTime Time)> messages) {
+    public static bool PruneDuplicateAskNamePrompts(List<(string Role, string Text, DateTime Time, string? Model)> messages) {
         var changed = false;
         var seenAskName = false;
 
@@ -65,7 +65,7 @@ internal static class OnboardingPromptRules {
         return changed;
     }
 
-    public static bool PruneDuplicateAssistantLeadPrompts(List<(string Role, string Text, DateTime Time)> messages) {
+    public static bool PruneDuplicateAssistantLeadPrompts(List<(string Role, string Text, DateTime Time, string? Model)> messages) {
         if (messages.Count <= 1) {
             return false;
         }
@@ -112,7 +112,7 @@ internal static class OnboardingPromptRules {
         return changed;
     }
 
-    public static bool HasEquivalentOnboardingIntroPrompt(IReadOnlyList<(string Role, string Text, DateTime Time)> messages, string? candidate) {
+    public static bool HasEquivalentOnboardingIntroPrompt(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages, string? candidate) {
         if (messages is null || messages.Count == 0 || !IsLikelyOnboardingIntroPromptText(candidate)) {
             return false;
         }
@@ -140,7 +140,7 @@ internal static class OnboardingPromptRules {
         return false;
     }
 
-    public static bool HasAnyUserMessage(IReadOnlyList<(string Role, string Text, DateTime Time)> messages) {
+    public static bool HasAnyUserMessage(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages) {
         if (messages is null || messages.Count == 0) {
             return false;
         }
@@ -154,7 +154,7 @@ internal static class OnboardingPromptRules {
         return false;
     }
 
-    public static bool HasEquivalentAssistantMessage(IReadOnlyList<(string Role, string Text, DateTime Time)> messages, string? candidate) {
+    public static bool HasEquivalentAssistantMessage(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages, string? candidate) {
         if (messages is null || messages.Count == 0) {
             return false;
         }

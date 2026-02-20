@@ -45,6 +45,9 @@ public sealed partial class MainWindow : Window {
                     Id = stored.Id.Trim(),
                     Title = string.IsNullOrWhiteSpace(stored.Title) ? DefaultConversationTitle : stored.Title.Trim(),
                     ThreadId = string.IsNullOrWhiteSpace(stored.ThreadId) ? null : stored.ThreadId.Trim(),
+                    RuntimeLabel = string.IsNullOrWhiteSpace(stored.RuntimeLabel) ? null : stored.RuntimeLabel.Trim(),
+                    ModelLabel = string.IsNullOrWhiteSpace(stored.ModelLabel) ? null : stored.ModelLabel.Trim(),
+                    ModelOverride = string.IsNullOrWhiteSpace(stored.ModelOverride) ? null : stored.ModelOverride.Trim(),
                     UpdatedUtc = EnsureUtc(stored.UpdatedUtc)
                 };
                 if (IsSystemConversation(conversation)) {
@@ -64,7 +67,8 @@ public sealed partial class MainWindow : Window {
                         }
 
                         var local = EnsureUtc(message.TimeUtc).ToLocalTime();
-                        conversation.Messages.Add((message.Role ?? "System", repairedText, local));
+                        var messageModel = string.IsNullOrWhiteSpace(message.Model) ? null : message.Model.Trim();
+                        conversation.Messages.Add((message.Role ?? "System", repairedText, local, messageModel));
                     }
                 }
 
@@ -102,7 +106,8 @@ public sealed partial class MainWindow : Window {
                     }
 
                     var local = EnsureUtc(message.TimeUtc).ToLocalTime();
-                    legacy.Messages.Add((message.Role ?? "System", repairedText, local));
+                    var messageModel = string.IsNullOrWhiteSpace(message.Model) ? null : message.Model.Trim();
+                    legacy.Messages.Add((message.Role ?? "System", repairedText, local, messageModel));
                 }
             }
             legacy.Title = ComputeConversationTitle(legacy.Title, legacy.Messages);
@@ -351,6 +356,9 @@ public sealed partial class MainWindow : Window {
             conversation.Messages.Clear();
             conversation.Title = DefaultConversationTitle;
             conversation.ThreadId = null;
+            conversation.RuntimeLabel = null;
+            conversation.ModelLabel = null;
+            conversation.ModelOverride = null;
             conversation.UpdatedUtc = DateTime.UtcNow;
             if (string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
                 _activeRequestConversationId = null;
@@ -384,6 +392,49 @@ public sealed partial class MainWindow : Window {
             _activeRequestConversationId = null;
         }
 
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task SetConversationModelAsync(string conversationId, string? model) {
+        var conversation = FindConversationById(conversationId);
+        if (conversation is null) {
+            return;
+        }
+
+        if (IsSystemConversation(conversation)) {
+            await SetStatusAsync("System conversation cannot override model.", SessionStatusTone.Warn).ConfigureAwait(false);
+            return;
+        }
+
+        var normalized = (model ?? string.Empty).Trim();
+        if (string.Equals(normalized, "(auto)", StringComparison.OrdinalIgnoreCase)) {
+            normalized = string.Empty;
+        }
+
+        conversation.ModelOverride = normalized.Length == 0 ? null : normalized;
+
+        var transport = NormalizeLocalProviderTransport(_localProviderTransport);
+        var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
+        var preset = DetectCompatibleProviderPreset(baseUrl);
+        var copilotConnected = string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                               && baseUrl.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase);
+        conversation.RuntimeLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl);
+
+        var configuredModel = conversation.ModelOverride ?? _localProviderModel;
+        var resolvedModel = ResolveChatRequestModelOverride(
+            _localProviderTransport,
+            _localProviderBaseUrl,
+            configuredModel,
+            _availableModels);
+        conversation.ModelLabel = string.IsNullOrWhiteSpace(resolvedModel) ? "(auto)" : resolvedModel.Trim();
+        conversation.UpdatedUtc = DateTime.UtcNow;
+
+        await SetStatusAsync(
+                conversation.ModelOverride is null
+                    ? "Conversation model override cleared."
+                    : "Conversation model override set to '" + conversation.ModelOverride + "'.")
+            .ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
@@ -475,7 +526,7 @@ public sealed partial class MainWindow : Window {
         _conversations.Sort(CompareConversationsForDisplay);
     }
 
-    private static string ComputeConversationTitle(string currentTitle, List<(string Role, string Text, DateTime Time)> messages) {
+    private static string ComputeConversationTitle(string currentTitle, List<(string Role, string Text, DateTime Time, string? Model)> messages) {
         if (!string.IsNullOrWhiteSpace(currentTitle) && !string.Equals(currentTitle, DefaultConversationTitle, StringComparison.OrdinalIgnoreCase)) {
             return currentTitle;
         }
@@ -661,11 +712,14 @@ public sealed partial class MainWindow : Window {
         _modelKickoffInProgress = true;
         _activeRequestConversationId = conversation.Id;
         try {
+            var requestOptions = BuildKickoffChatRequestOptions(BuildChatRequestOptions(conversation));
+            var kickoffModelLabel = string.IsNullOrWhiteSpace(requestOptions.Model) ? "(auto)" : requestOptions.Model!.Trim();
+            conversation.ModelLabel = kickoffModelLabel;
             var request = new ChatRequest {
                 RequestId = NextId(),
                 ThreadId = conversation.ThreadId,
                 Text = BuildKickoffRequestText(missingFields),
-                Options = BuildKickoffChatRequestOptions(BuildChatRequestOptions())
+                Options = requestOptions
             };
             _activeKickoffRequestId = request.RequestId;
 
@@ -675,7 +729,7 @@ public sealed partial class MainWindow : Window {
                 _threadId = result.ThreadId;
             }
             var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
-            await AddAssistantMessageAsync(conversation, assistantText).ConfigureAwait(false);
+            await AddAssistantMessageAsync(conversation, assistantText, kickoffModelLabel).ConfigureAwait(false);
             conversation.UpdatedUtc = DateTime.UtcNow;
             conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
             await PersistAppStateAsync().ConfigureAwait(false);

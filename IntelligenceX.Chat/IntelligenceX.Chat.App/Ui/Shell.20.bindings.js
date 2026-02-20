@@ -994,11 +994,13 @@
     var openAIAuthMode = normalizeCompatibleAuthMode(byId("optLocalAuthMode").value || "bearer");
     var openAIBasicUsername = (byId("optLocalBasicUsername").value || "").trim();
     var openAIBasicPassword = (byId("optLocalBasicPassword").value || "").trim();
+    var basicPasswordInput = byId("optLocalBasicPassword");
     var shouldClearApiKey = clearApiKey === true;
     var shouldClearBasicAuth = clearBasicAuth === true;
     var apiKey = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
+    var apiKeyInput = byId("optLocalApiKey");
     if (shouldClearApiKey) {
       apiKey = "";
     }
@@ -1012,6 +1014,12 @@
       openAIAuthMode = "bearer";
       openAIBasicUsername = "";
       openAIBasicPassword = "";
+    }
+    if (basicPasswordInput) {
+      basicPasswordInput.value = "";
+    }
+    if (apiKeyInput) {
+      apiKeyInput.value = "";
     }
     if (state.options) {
       if (!state.options.localModel) {
@@ -1332,7 +1340,7 @@
     if (modelInput) {
       modelInput.value = selected;
     }
-    markLocalProviderDraftChanged();
+    applyLocalProviderSettings(true);
   });
 
   byId("optNativeAccountSlot").addEventListener("change", function(e) {
@@ -1359,7 +1367,7 @@
   });
 
   byId("optRuntimePanelView").addEventListener("change", function(e) {
-    var normalized = setRuntimePanelView(e.target.value || "all");
+    var normalized = setRuntimePanelView(e.target.value || "provider");
     e.target.value = normalized;
     syncCustomSelect(e.target);
     renderLocalModelOptions();
@@ -1527,6 +1535,20 @@
           }
         }, 3000);
       }
+    });
+
+    optConversations.addEventListener("change", function(e) {
+      var modelSelect = e.target.closest(".options-conversation-model-select");
+      if (!modelSelect) {
+        return;
+      }
+
+      var modelId = modelSelect.dataset.conversationId || "";
+      if (!modelId) {
+        return;
+      }
+
+      post("set_conversation_model", { id: modelId, model: (modelSelect.value || "").trim() });
     });
   }
 

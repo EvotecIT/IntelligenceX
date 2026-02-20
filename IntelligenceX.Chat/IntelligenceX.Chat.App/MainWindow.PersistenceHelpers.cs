@@ -205,7 +205,7 @@ public sealed partial class MainWindow : Window {
         return BuildDisabledToolsList(_toolStates);
     }
 
-    private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time)> messages) {
+    private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time, string? Model)> messages) {
         var result = new List<ChatMessageState>(Math.Min(messages.Count, MaxMessagesPerConversation));
         var start = Math.Max(0, messages.Count - MaxMessagesPerConversation);
         for (var i = start; i < messages.Count; i++) {
@@ -217,7 +217,8 @@ public sealed partial class MainWindow : Window {
             result.Add(new ChatMessageState {
                 Role = m.Role,
                 Text = m.Text,
-                TimeUtc = m.Time.ToUniversalTime()
+                TimeUtc = m.Time.ToUniversalTime(),
+                Model = string.IsNullOrWhiteSpace(m.Model) ? null : m.Model.Trim()
             });
         }
 
@@ -272,6 +273,9 @@ public sealed partial class MainWindow : Window {
                 Id = conversation.Id,
                 Title = title,
                 ThreadId = conversation.ThreadId,
+                RuntimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
+                ModelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
+                ModelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
                 Messages = BuildMessageStateSnapshot(conversation.Messages),
                 UpdatedUtc = updatedUtc
             });

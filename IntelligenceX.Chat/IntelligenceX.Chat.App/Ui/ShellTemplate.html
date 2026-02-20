@@ -166,22 +166,23 @@
             <button id="btnToggleLocalAdvancedRuntime" class="options-btn options-btn-sm options-btn-ghost">Show Advanced Runtime</button>
           </div>
           <div class="options-note">Quick runtime buttons apply immediately. Use Apply Runtime after manual field edits.</div>
-        </section>
-
-        <section class="options-group">
-          <div class="options-label">Local Model Selection</div>
-          <div class="options-note" id="optLocalSimpleHint">ChatGPT runtime is active. Switch to LM Studio to use local models.</div>
-          <div class="options-note options-runtime-apply-progress" id="optRuntimeApplyProgress" hidden></div>
           <div class="options-row" id="optRuntimePanelRow">
             <label class="options-label-inline" for="optRuntimePanelView">Runtime panel</label>
             <select id="optRuntimePanelView" class="options-select">
-              <option value="all">All</option>
-              <option value="provider">Provider + auth</option>
+              <option value="provider">Provider setup</option>
               <option value="model">Model + reasoning</option>
-              <option value="usage">Usage + limits</option>
+              <option value="usage">Accounts + usage</option>
+              <option value="all">All sections</option>
             </select>
           </div>
           <div class="options-note" id="optRuntimePanelHint">Switch Runtime panel view to focus on provider setup, model tuning, or account usage.</div>
+        </section>
+
+        <section class="options-group">
+          <div class="options-label">Model Selection</div>
+          <div class="options-note" id="optLocalSimpleHint">ChatGPT runtime is active. Switch to LM Studio to use local models.</div>
+          <div class="options-note options-runtime-apply-progress" id="optRuntimeApplyProgress" hidden></div>
+          <div class="options-subsection-title" id="optRuntimeSectionAuthTitle">Authentication &amp; account slots</div>
           <div class="options-row" id="optNativeAccountSlotRow">
             <label class="options-label-inline" for="optNativeAccountSlot">Native account slot</label>
             <select id="optNativeAccountSlot" class="options-select">
@@ -195,10 +196,22 @@
             <input id="optNativeAccountId" class="options-input options-input-sm" placeholder="chatgpt-account-id" />
           </div>
           <div class="options-note" id="optNativeAccountHint">Pick slot 1/2/3 to switch ChatGPT accounts quickly. Slot ids are profile-scoped.</div>
+          <div class="options-subsection-title" id="optRuntimeSectionModelTitle">Model &amp; response controls</div>
           <div class="options-row" id="optLocalModelInputRow">
             <label class="options-label-inline" for="optLocalModelInput">Model</label>
             <input id="optLocalModelInput" class="options-input options-input-sm" placeholder="e.g. gpt-5.3-codex or llama3.2" />
           </div>
+          <div class="options-subsection-title" id="optRuntimeSectionCatalogTitle">Model catalog</div>
+          <div class="options-row" id="optLocalModelSelectRow">
+            <label class="options-label-inline" for="optLocalModelSelect">Discovered models</label>
+            <select id="optLocalModelSelect" class="options-select"></select>
+          </div>
+          <div class="options-row" id="optLocalModelFilterRow">
+            <label class="options-label-inline" for="optLocalModelFilter">Filter models</label>
+            <input id="optLocalModelFilter" class="options-input options-input-sm" placeholder="Type to filter discovered models" />
+          </div>
+          <div class="options-note" id="optLocalModelManualHint"></div>
+          <div class="options-note" id="optLocalModelsState"></div>
           <div class="options-row" id="optReasoningEffortRow">
             <label class="options-label-inline" for="optReasoningEffort">Reasoning effort</label>
             <select id="optReasoningEffort" class="options-select">
@@ -234,8 +247,10 @@
             <input id="optTemperature" class="options-input options-input-sm" type="number" min="0" max="2" step="0.1" placeholder="Provider default" />
           </div>
           <div class="options-note" id="optReasoningHint">Reasoning controls are provider/model dependent. Unsupported values are ignored by some runtimes.</div>
+          <div class="options-subsection-title" id="optRuntimeSectionCapabilitiesTitle">Runtime capabilities</div>
           <div class="options-note" id="optRuntimeCapabilitiesTitle">Runtime capabilities</div>
           <div class="options-list options-runtime-capabilities" id="optRuntimeCapabilities"></div>
+          <div class="options-subsection-title" id="optRuntimeSectionAdvancedTitle">Advanced endpoint settings</div>
           <div id="optLocalAdvancedArea" hidden>
             <div class="options-row" id="optLocalProviderPresetRow">
               <label class="options-label-inline" for="optLocalProviderPreset">Provider profile</label>
@@ -297,18 +312,9 @@
               <button id="btnClearLocalBasicAuth" class="options-btn options-btn-sm options-btn-ghost">Clear Saved Basic Auth</button>
             </div>
           </div>
-          <div class="options-row" id="optLocalModelSelectRow">
-            <label class="options-label-inline" for="optLocalModelSelect">Discovered models</label>
-            <select id="optLocalModelSelect" class="options-select"></select>
-          </div>
-          <div class="options-row" id="optLocalModelFilterRow">
-            <label class="options-label-inline" for="optLocalModelFilter">Filter models</label>
-            <input id="optLocalModelFilter" class="options-input options-input-sm" placeholder="Type to filter discovered models" />
-          </div>
-          <div class="options-note" id="optLocalModelManualHint"></div>
+          <div class="options-subsection-title" id="optRuntimeSectionUsageTitle">Account usage &amp; limits</div>
           <div class="options-note" id="optAccountUsageTitle">Account usage (tokens + limits)</div>
           <div class="options-list" id="optAccountUsageList"></div>
-          <div class="options-note" id="optLocalModelsState"></div>
         </section>
       </div>
 

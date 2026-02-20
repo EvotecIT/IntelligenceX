@@ -153,6 +153,16 @@ body.options-open .options-panel {
   font-weight: 600;
 }
 
+.options-subsection-title {
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(180, 212, 241, 0.88);
+}
+
 .options-select {
   width: 100%;
   border-radius: 8px;
@@ -652,6 +662,26 @@ body.options-open .options-panel {
   margin-top: 2px;
   font-size: 10.5px;
   color: var(--ix-text-muted);
+}
+
+.options-conversation-model-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.options-conversation-model-label {
+  font-size: 10.5px;
+  color: var(--ix-text-muted);
+  min-width: 38px;
+}
+
+.options-conversation-model-select {
+  max-width: 260px;
+  min-height: 28px;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 .options-conversation-preview {

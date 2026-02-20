@@ -15,7 +15,8 @@ public sealed partial class MainWindow : Window {
         ConversationRuntime Conversation,
         string ConversationId,
         string RequestId,
-        string RequestText);
+        string RequestText,
+        string? AssistantModelLabel);
 
     private async Task<ChatTurnContext?> PrepareChatTurnAsync(string text) {
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
@@ -52,9 +53,25 @@ public sealed partial class MainWindow : Window {
 
         _assistantStreaming.Clear();
         _activeTurnReceivedDelta = false;
+        var transport = NormalizeLocalProviderTransport(_localProviderTransport);
+        var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
+        var preset = DetectCompatibleProviderPreset(baseUrl);
+        var copilotConnected = string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                               && baseUrl.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase);
+        conversation.RuntimeLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl);
+        var configuredModel = string.IsNullOrWhiteSpace(conversation.ModelOverride)
+            ? _localProviderModel
+            : conversation.ModelOverride!;
+        var resolvedModel = ResolveChatRequestModelOverride(
+            _localProviderTransport,
+            _localProviderBaseUrl,
+            configuredModel,
+            _availableModels);
+        var assistantModelLabel = string.IsNullOrWhiteSpace(resolvedModel) ? "(auto)" : resolvedModel.Trim();
+        conversation.ModelLabel = assistantModelLabel;
         var now = DateTime.Now;
-        conversation.Messages.Add(("User", text, now));
-        conversation.Messages.Add(("Assistant", string.Empty, now));
+        conversation.Messages.Add(("User", text, now, null));
+        conversation.Messages.Add(("Assistant", string.Empty, now, assistantModelLabel));
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         conversation.UpdatedUtc = now.ToUniversalTime();
         if (string.Equals(conversationId, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
@@ -66,13 +83,24 @@ public sealed partial class MainWindow : Window {
             conversation,
             conversationId,
             NextId(),
-            BuildRequestTextForService(text));
+            BuildRequestTextForService(text),
+            assistantModelLabel);
     }
 
     private async Task ExecuteChatTurnWithReconnectAsync(ChatTurnContext turn) {
         try {
             var initialClient = _client;
             if (initialClient is null) {
+                if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } reconnectClient) {
+                    try {
+                        await ExecuteChatTurnWithThreadRecoveryAsync(reconnectClient, turn).ConfigureAwait(false);
+                        return;
+                    } catch (Exception reconnectEx) {
+                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, reconnectEx, disconnectedFallback: false)).ConfigureAwait(false);
+                        return;
+                    }
+                }
+
                 await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
                 return;
             }
@@ -188,14 +216,15 @@ public sealed partial class MainWindow : Window {
             RequestId = turn.RequestId,
             ThreadId = turn.Conversation.ThreadId,
             Text = turn.RequestText,
-            Options = BuildChatRequestOptions()
+            Options = BuildChatRequestOptions(turn.Conversation)
         };
 
         var result = await client.RequestAsync<ChatResultMessage>(req, CancellationToken.None).ConfigureAwait(false);
-        await ApplyChatResultAsync(turn.Conversation, result).ConfigureAwait(false);
+        await ApplyChatResultAsync(turn, result).ConfigureAwait(false);
     }
 
-    private async Task ApplyChatResultAsync(ConversationRuntime conversation, ChatResultMessage result) {
+    private async Task ApplyChatResultAsync(ChatTurnContext turn, ChatResultMessage result) {
+        var conversation = turn.Conversation;
         conversation.ThreadId = result.ThreadId;
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             _threadId = result.ThreadId;
@@ -206,7 +235,7 @@ public sealed partial class MainWindow : Window {
         ReplaceLastAssistantText(conversation, assistantText);
         _activeTurnReceivedDelta = false;
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
-            conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now));
+            conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now, turn.AssistantModelLabel));
         }
 
         conversation.UpdatedUtc = DateTime.UtcNow;
@@ -220,7 +249,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
         if (TryGetPartialTurnFailureNotice(turn.Conversation, outcome, out var notice)) {
-            turn.Conversation.Messages.Add(("System", notice, DateTime.Now));
+            turn.Conversation.Messages.Add(("System", notice, DateTime.Now, null));
         } else {
             ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
         }

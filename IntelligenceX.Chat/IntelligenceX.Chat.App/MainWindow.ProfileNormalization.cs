@@ -344,10 +344,10 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task AddAssistantMessageAsync(string text) {
-        await AddAssistantMessageAsync(GetActiveConversation(), text).ConfigureAwait(false);
+        await AddAssistantMessageAsync(GetActiveConversation(), text, null).ConfigureAwait(false);
     }
 
-    private async Task AddAssistantMessageAsync(ConversationRuntime conversation, string text) {
+    private async Task AddAssistantMessageAsync(ConversationRuntime conversation, string text, string? modelLabel) {
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return;
@@ -372,7 +372,8 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        conversation.Messages.Add(("Assistant", normalized, DateTime.Now));
+        var normalizedModelLabel = string.IsNullOrWhiteSpace(modelLabel) ? null : modelLabel.Trim();
+        conversation.Messages.Add(("Assistant", normalized, DateTime.Now, normalizedModelLabel));
         conversation.UpdatedUtc = DateTime.UtcNow;
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {

@@ -604,7 +604,10 @@
     if (normalized === "provider" || normalized === "model" || normalized === "usage") {
       return normalized;
     }
-    return "all";
+    if (normalized === "all") {
+      return "all";
+    }
+    return "provider";
   }
 
   function getRuntimePanelView() {
@@ -1265,7 +1268,7 @@
     var runtimePanelView = getRuntimePanelView();
     var runtimePanelViewSelect = byId("optRuntimePanelView");
     if (runtimePanelViewSelect) {
-      runtimePanelView = normalizeRuntimePanelView(runtimePanelViewSelect.value || runtimePanelView);
+      runtimePanelView = setRuntimePanelView(runtimePanelView);
       runtimePanelViewSelect.value = runtimePanelView;
       syncCustomSelect(runtimePanelViewSelect);
     }
@@ -1314,8 +1317,6 @@
     var textVerbosity = normalizeTextVerbosityValue(local.textVerbosity || "");
     var temperatureText = normalizeTemperatureText(local.temperature);
     var models = Array.isArray(local.models) ? local.models : [];
-    var favorites = toStringArray(local.favoriteModels);
-    var recents = toStringArray(local.recentModels);
     var authenticatedAccountId = normalizeModelText(local.authenticatedAccountId || "");
     var accountUsage = Array.isArray(local.accountUsage) ? local.accountUsage : [];
     var activeAccountUsage = local.activeAccountUsage && typeof local.activeAccountUsage === "object"
@@ -1448,13 +1449,13 @@
     var runtimePanelHint = byId("optRuntimePanelHint");
     if (runtimePanelHint) {
       if (runtimePanelView === "provider") {
-        runtimePanelHint.textContent = "Showing provider setup and authentication controls.";
+        runtimePanelHint.textContent = "Showing provider setup and advanced endpoint controls.";
       } else if (runtimePanelView === "model") {
         runtimePanelHint.textContent = "Showing model selection and reasoning controls.";
       } else if (runtimePanelView === "usage") {
         runtimePanelHint.textContent = "Showing account slots and usage/limit tracking.";
       } else {
-        runtimePanelHint.textContent = "Showing all runtime controls.";
+        runtimePanelHint.textContent = "Showing every runtime section.";
       }
     }
 
@@ -1860,12 +1861,6 @@
         selectableOptionCount++;
       }
 
-      for (var r = 0; r < recents.length; r++) {
-        pushModelOption(recents[r], "Recent:", recents[r], "");
-      }
-      for (var f = 0; f < favorites.length; f++) {
-        pushModelOption(favorites[f], "Favorite:", favorites[f], "");
-      }
       for (var i = 0; i < models.length; i++) {
         var item = models[i] || {};
         var modelName = normalizeModelText(item.model || item.Model || item.id || item.Id);
@@ -2165,19 +2160,62 @@
       }
     }
 
+    function resetRuntimePanelManagedVisibility(id) {
+      var element = byId(id);
+      if (!element) {
+        return;
+      }
+      if (element.dataset.ixRuntimePanelHidden === "1") {
+        element.hidden = false;
+        element.dataset.ixRuntimePanelHidden = "0";
+      }
+    }
+
     function mergeRuntimePanelVisibility(id, shouldShow) {
       var element = byId(id);
       if (!element) {
         return;
       }
-      element.hidden = element.hidden || !shouldShow;
+      if (shouldShow) {
+        element.dataset.ixRuntimePanelHidden = "0";
+        return;
+      }
+      element.hidden = true;
+      element.dataset.ixRuntimePanelHidden = "1";
     }
+
+    resetRuntimePanelManagedVisibility("optNativeAccountSlotRow");
+    resetRuntimePanelManagedVisibility("optNativeAccountIdRow");
+    resetRuntimePanelManagedVisibility("optNativeAccountHint");
+    resetRuntimePanelManagedVisibility("optAccountUsageTitle");
+    resetRuntimePanelManagedVisibility("optAccountUsageList");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionAuthTitle");
+    resetRuntimePanelManagedVisibility("optLocalModelInputRow");
+    resetRuntimePanelManagedVisibility("optLocalModelSelectRow");
+    resetRuntimePanelManagedVisibility("optLocalModelFilterRow");
+    resetRuntimePanelManagedVisibility("optLocalModelManualHint");
+    resetRuntimePanelManagedVisibility("optReasoningEffortRow");
+    resetRuntimePanelManagedVisibility("optReasoningSummaryRow");
+    resetRuntimePanelManagedVisibility("optTextVerbosityRow");
+    resetRuntimePanelManagedVisibility("optTemperatureRow");
+    resetRuntimePanelManagedVisibility("optReasoningHint");
+    resetRuntimePanelManagedVisibility("optRuntimeCapabilitiesTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeCapabilities");
+    resetRuntimePanelManagedVisibility("optLocalModelsState");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionModelTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionCatalogTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionCapabilitiesTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionUsageTitle");
+    resetRuntimePanelManagedVisibility("optLocalSimpleHint");
+    resetRuntimePanelManagedVisibility("optLocalAdvancedArea");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionAdvancedTitle");
 
     mergeRuntimePanelVisibility("optNativeAccountSlotRow", showUsagePanel);
     mergeRuntimePanelVisibility("optNativeAccountIdRow", showUsagePanel);
     mergeRuntimePanelVisibility("optNativeAccountHint", showUsagePanel);
     mergeRuntimePanelVisibility("optAccountUsageTitle", showUsagePanel);
     mergeRuntimePanelVisibility("optAccountUsageList", showUsagePanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionAuthTitle", showUsagePanel);
 
     mergeRuntimePanelVisibility("optLocalModelInputRow", showModelPanel);
     mergeRuntimePanelVisibility("optLocalModelSelectRow", showModelPanel);
@@ -2191,9 +2229,14 @@
     mergeRuntimePanelVisibility("optRuntimeCapabilitiesTitle", showModelPanel);
     mergeRuntimePanelVisibility("optRuntimeCapabilities", showModelPanel);
     mergeRuntimePanelVisibility("optLocalModelsState", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionModelTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionCatalogTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionCapabilitiesTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionUsageTitle", showUsagePanel);
 
     mergeRuntimePanelVisibility("optLocalSimpleHint", showProviderPanel);
     mergeRuntimePanelVisibility("optLocalAdvancedArea", showProviderPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionAdvancedTitle", showProviderPanel);
 
     refreshAccountUsageRetryCountdowns();
 
@@ -2203,7 +2246,7 @@
       if (transport === "native") {
         parts.push("ChatGPT runtime active");
         if (models.length > 0) {
-          parts.push(String(models.length) + " local models cached");
+          parts.push(String(models.length) + " models returned by native catalog");
         }
       } else if (isCopilotCli) {
         parts.push("GitHub Copilot subscription runtime active");

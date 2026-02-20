@@ -231,8 +231,10 @@ public sealed partial class MainWindow : Window {
                     lastApplySucceeded = await ApplyLocalProviderCoreAsync(current).ConfigureAwait(false);
                 } catch (Exception ex) {
                     lastApplySucceeded = false;
-                    UpdateRuntimeApplyProgress("failed", "Runtime apply failed: " + ex.Message, active: false, current.RequestId);
-                    await SetStatusAsync("Runtime apply failed. " + ex.Message).ConfigureAwait(false);
+                    var detail = "Runtime apply failed: " + ex.Message;
+                    UpdateRuntimeApplyProgress("failed", detail, active: false, current.RequestId);
+                    AppendSystem(detail);
+                    await SetStatusAsync("Runtime apply failed. See System log.", SessionStatusTone.Warn).ConfigureAwait(false);
                     break;
                 }
 
@@ -414,8 +416,8 @@ public sealed partial class MainWindow : Window {
             "Runtime settings couldn't be applied live. Session stayed running; review credentials/settings and apply again.",
             active: false,
             request.RequestId);
-        await SetStatusAsync(
-                "Runtime settings couldn't be applied live. Session stayed running; verify credentials/settings and apply again.")
+        AppendSystem("Runtime settings couldn't be applied live. Session stayed running; verify credentials/settings and apply again.");
+        await SetStatusAsync("Runtime settings couldn't be applied live. See System log.", SessionStatusTone.Warn)
             .ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
         return false;
@@ -481,9 +483,7 @@ public sealed partial class MainWindow : Window {
                 .ConfigureAwait(false);
             return true;
         } catch (Exception ex) {
-            if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Live runtime apply failed (session kept running). " + ex.Message);
-            }
+            AppendSystem("Live runtime apply failed (session kept running). " + ex.Message);
             return false;
         }
     }

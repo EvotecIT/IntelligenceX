@@ -46,16 +46,6 @@ public sealed partial class MainWindow : Window {
             await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
         }
 
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
-            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
-            return;
-        }
-
-        if (_client is null) {
-            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
-            return;
-        }
-
         var turn = await PrepareChatTurnAsync(text).ConfigureAwait(false);
         if (turn is null) {
             return;
@@ -80,6 +70,7 @@ public sealed partial class MainWindow : Window {
         StartTurnWatchdog();
         _activeRequestConversationId = turn.ConversationId;
         ClearToolRoutingInsights();
+        await SetStatusAsync("Sending request to runtime...").ConfigureAwait(false);
         try {
             await PublishSessionStateAsync().ConfigureAwait(false);
         } finally {

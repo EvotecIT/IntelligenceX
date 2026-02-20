@@ -44,7 +44,7 @@ public sealed partial class MainWindow : Window {
     private static void ReplaceLastAssistantText(ConversationRuntime conversation, string text) {
         for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
             if (string.Equals(conversation.Messages[i].Role, "Assistant", StringComparison.Ordinal)) {
-                conversation.Messages[i] = ("Assistant", text, conversation.Messages[i].Time);
+                conversation.Messages[i] = ("Assistant", text, conversation.Messages[i].Time, conversation.Messages[i].Model);
                 return;
             }
         }
@@ -323,7 +323,7 @@ Quick start prompts:
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
-    private ChatRequestOptions? BuildChatRequestOptions() {
+    private ChatRequestOptions? BuildChatRequestOptions(ConversationRuntime? conversation = null) {
         var disabled = new List<string>();
         if (_toolStates.Count > 0) {
             foreach (var pair in _toolStates) {
@@ -336,9 +336,18 @@ Quick start prompts:
             disabled.Sort(StringComparer.OrdinalIgnoreCase);
         }
 
+        var normalizedTransport = NormalizeLocalProviderTransport(_localProviderTransport);
+        var localPreset = DetectCompatibleProviderPreset(_localProviderBaseUrl);
+        var isLocalCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                                       && IsLocalCompatibleRuntimePreset(localPreset);
+
+        // Local compatible runtimes (LM Studio/Ollama) are much more sensitive to long tool/review loops.
+        // Keep defaults conservative unless the user explicitly overrides autonomy settings.
+        var defaultMaxToolRounds = isLocalCompatibleRuntime ? 8 : SafeDefaultMaxToolRounds;
+
         var effectiveMaxToolRounds = _autonomyMaxToolRounds
             ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 64)
-            ?? SafeDefaultMaxToolRounds;
+            ?? defaultMaxToolRounds;
 
         var serviceDefaultParallelTools = _sessionPolicy?.ParallelTools ?? SafeDefaultParallelTools;
         var parallelToolMode = ResolveParallelToolMode(_autonomyParallelTools);
@@ -351,11 +360,18 @@ Quick start prompts:
         var effectiveToolTimeoutSeconds = _autonomyToolTimeoutSeconds
             ?? NormalizePositiveTimeout(_sessionPolicy?.ToolTimeoutSeconds)
             ?? SafeDefaultToolTimeoutSeconds;
+        var configuredModel = string.IsNullOrWhiteSpace(conversation?.ModelOverride)
+            ? _localProviderModel
+            : conversation!.ModelOverride!;
         var resolvedModel = ResolveChatRequestModelOverride(
             _localProviderTransport,
             _localProviderBaseUrl,
-            _localProviderModel,
+            configuredModel,
             _availableModels);
+        var effectiveWeightedToolRouting = _autonomyWeightedToolRouting ?? (isLocalCompatibleRuntime ? false : null);
+        var effectivePlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop ?? (isLocalCompatibleRuntime ? false : null);
+        var effectiveMaxReviewPasses = _autonomyMaxReviewPasses ?? (isLocalCompatibleRuntime ? 0 : null);
+        var effectiveModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds ?? (isLocalCompatibleRuntime ? 0 : null);
 
         return new ChatRequestOptions {
             Model = string.IsNullOrWhiteSpace(resolvedModel) ? null : resolvedModel,
@@ -369,11 +385,11 @@ Quick start prompts:
             ParallelToolMode = parallelToolMode,
             TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
             ToolTimeoutSeconds = effectiveToolTimeoutSeconds,
-            WeightedToolRouting = _autonomyWeightedToolRouting,
+            WeightedToolRouting = effectiveWeightedToolRouting,
             MaxCandidateTools = _autonomyMaxCandidateTools,
-            PlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop,
-            MaxReviewPasses = _autonomyMaxReviewPasses,
-            ModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds
+            PlanExecuteReviewLoop = effectivePlanExecuteReviewLoop,
+            MaxReviewPasses = effectiveMaxReviewPasses,
+            ModelHeartbeatSeconds = effectiveModelHeartbeatSeconds
         };
     }
 

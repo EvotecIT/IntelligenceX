@@ -84,12 +84,12 @@ public sealed partial class MainWindow : Window {
         Clipboard.Flush();
     }
 
-    private static string BuildTranscriptMarkdown(IEnumerable<(string Role, string Text, DateTime Time)> messages, string timestampFormat) {
+    private static string BuildTranscriptMarkdown(IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages, string timestampFormat) {
         return TranscriptMarkdownFormatter.Format(messages, timestampFormat);
     }
 
     private static string BuildMessagesHtml(
-        IEnumerable<(string Role, string Text, DateTime Time)> messages,
+        IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
         return TranscriptHtmlFormatter.Format(messages, timestampFormat, markdownOptions);
