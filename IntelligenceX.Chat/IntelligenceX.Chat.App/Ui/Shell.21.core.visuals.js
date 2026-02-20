@@ -38,6 +38,7 @@
     visNetworkJsUrl: "https://ixchat.local/vendor/vis-network/vis-network.min.js",
     visNetworkCssUrl: "https://ixchat.local/vendor/vis-network/vis-network.min.css"
   };
+  var ixVisualActionBarState = typeof WeakMap === "function" ? new WeakMap() : new Map();
 
   function isPlainObject(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);
@@ -128,16 +129,38 @@
     }
   }
 
+  function getVisualActionBar(pre) {
+    if (!pre) {
+      return null;
+    }
+
+    return ixVisualActionBarState.get(pre) || null;
+  }
+
+  function setVisualActionBar(pre, bar) {
+    if (!pre) {
+      return;
+    }
+
+    if (!bar) {
+      ixVisualActionBarState.delete(pre);
+      return;
+    }
+
+    ixVisualActionBarState.set(pre, bar);
+  }
+
   function removeVisualActionBar(pre) {
     if (!pre) {
       return;
     }
 
-    var bar = pre._ixVisualActionBar;
+    var bar = getVisualActionBar(pre);
     if (bar && bar.parentElement) {
       bar.remove();
     }
-    pre._ixVisualActionBar = null;
+    setVisualActionBar(pre, null);
+    clearVisualMessageWideWhenEmpty(pre);
   }
 
   function ensureVisualActionBar(pre, kind) {
@@ -145,8 +168,12 @@
       return;
     }
 
-    if (pre._ixVisualActionBar && pre._ixVisualActionBar.parentElement) {
+    var existing = getVisualActionBar(pre);
+    if (existing && existing.parentElement) {
       return;
+    }
+    if (existing && !existing.parentElement) {
+      setVisualActionBar(pre, null);
     }
 
     var anchor = pre;
@@ -169,7 +196,7 @@
 
     bar.appendChild(btnOpen);
     anchor.insertAdjacentElement("afterend", bar);
-    pre._ixVisualActionBar = bar;
+    setVisualActionBar(pre, bar);
     markVisualMessageWide(pre);
   }
 
@@ -1729,10 +1756,10 @@
 
   window.ixRenderTranscriptVisuals = function(root) {
     if (!root || !root.querySelectorAll) {
-      return;
+      return Promise.resolve();
     }
 
-    renderTranscriptCharts(root)
+    return renderTranscriptCharts(root)
       .then(function() {
         return renderTranscriptNetworks(root);
       })

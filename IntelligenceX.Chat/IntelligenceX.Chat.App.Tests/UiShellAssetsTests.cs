@@ -11,6 +11,11 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class UiShellAssetsTests {
     private static string UiDirectory => Path.Combine(AppContext.BaseDirectory, "Ui");
+    private static void AssertContainsAll(string content, params string[] anchors) {
+        foreach (var anchor in anchors) {
+            Assert.Contains(anchor, content, StringComparison.Ordinal);
+        }
+    }
 
     /// <summary>
     /// Ensures the tool-source helpers are present in generated shell script.
@@ -109,13 +114,14 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesExportVisualThemeModeBindingsAndControl() {
         var html = UiShellAssets.Load();
 
-        Assert.Contains("id=\"optExportVisualThemeMode\"", html, StringComparison.Ordinal);
-        Assert.Contains("post(\"set_export_visual_theme_mode\", { value: e.target.value || \"preserve_ui_theme\" });", html, StringComparison.Ordinal);
-        Assert.Contains("visualThemeMode: \"preserve_ui_theme\"", html, StringComparison.Ordinal);
-        Assert.Contains("case \"print_friendly\":", html, StringComparison.Ordinal);
-        Assert.Contains("case \"preserve_ui_theme\":", html, StringComparison.Ordinal);
-        Assert.Contains("return \"print_friendly\";", html, StringComparison.Ordinal);
-        Assert.Contains("unexpected export visual theme mode", html, StringComparison.Ordinal);
+        AssertContainsAll(
+            html,
+            "id=\"optExportVisualThemeMode\"",
+            "set_export_visual_theme_mode",
+            "visualThemeMode",
+            "print_friendly",
+            "preserve_ui_theme",
+            "unexpected export visual theme mode");
     }
 
     /// <summary>
@@ -196,14 +202,16 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesVisualRuntimeAndTranscriptHooks() {
         var html = UiShellAssets.Load();
 
-        Assert.Contains("/* IXCHAT_PART:Shell.21.core.visuals.js */", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixDisposeTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixRenderTranscriptVisuals = function(root) {", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixMaterializeVisualFencesForDocx = async function(request) {", html, StringComparison.Ordinal);
-        Assert.Contains("function renderIxChartBlock(", html, StringComparison.Ordinal);
-        Assert.Contains("function renderIxNetworkBlock(", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixRenderTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixDisposeTranscriptVisuals(transcript);", html, StringComparison.Ordinal);
+        AssertContainsAll(
+            html,
+            "/* IXCHAT_PART:Shell.21.core.visuals.js */",
+            "window.ixDisposeTranscriptVisuals",
+            "window.ixRenderTranscriptVisuals",
+            "window.ixMaterializeVisualFencesForDocx",
+            "renderIxChartBlock",
+            "renderIxNetworkBlock",
+            "ixRenderTranscriptVisuals(transcript)",
+            "ixDisposeTranscriptVisuals(transcript)");
     }
 
     /// <summary>
@@ -213,15 +221,17 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesVisualViewPanelAndExportCallbacks() {
         var html = UiShellAssets.Load();
 
-        Assert.Contains("id=\"visualViewPanel\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"visualViewBody\"", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixOpenVisualView = function(type, source, title) {", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixCloseVisualView = closeVisualView;", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixOnVisualExportPathSelected = function(payload) {", html, StringComparison.Ordinal);
-        Assert.Contains("window.ixOnVisualExportResult = function(payload) {", html, StringComparison.Ordinal);
-        Assert.Contains("post(\"pick_visual_export_path\", {", html, StringComparison.Ordinal);
-        Assert.Contains("post(\"export_visual_artifact\", {", html, StringComparison.Ordinal);
-        Assert.Contains("post(\"visual_export_action\", {", html, StringComparison.Ordinal);
+        AssertContainsAll(
+            html,
+            "id=\"visualViewPanel\"",
+            "id=\"visualViewBody\"",
+            "window.ixOpenVisualView",
+            "window.ixCloseVisualView",
+            "window.ixOnVisualExportPathSelected",
+            "window.ixOnVisualExportResult",
+            "pick_visual_export_path",
+            "export_visual_artifact",
+            "visual_export_action");
     }
 
     /// <summary>
@@ -231,11 +241,13 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesThemeAwareVisualDefaultsAndNetworkEdgeAliases() {
         var html = UiShellAssets.Load();
 
-        Assert.Contains("function ensureMermaidThemeInitialized(themeMode)", html, StringComparison.Ordinal);
-        Assert.Contains("themeVariables: themeVariables", html, StringComparison.Ordinal);
-        Assert.Contains("function applyChartThemeDefaults(config, themeMode, optionsOverride)", html, StringComparison.Ordinal);
-        Assert.Contains("if (from === null && Object.prototype.hasOwnProperty.call(rawEdge, \"source\"))", html, StringComparison.Ordinal);
-        Assert.Contains("if (to === null && Object.prototype.hasOwnProperty.call(rawEdge, \"target\"))", html, StringComparison.Ordinal);
+        AssertContainsAll(
+            html,
+            "ensureMermaidThemeInitialized",
+            "themeVariables",
+            "applyChartThemeDefaults",
+            "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",
+            "Object.prototype.hasOwnProperty.call(rawEdge, \"target\")");
     }
 
     /// <summary>

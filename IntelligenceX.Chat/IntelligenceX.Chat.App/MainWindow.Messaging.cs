@@ -451,6 +451,11 @@ public sealed partial class MainWindow : Window {
                         var outputPath = (TryGetString(root, "outputPath") ?? string.Empty).Trim();
                         var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
                         var dataBase64 = (TryGetString(root, "dataBase64") ?? string.Empty).Trim();
+                        if (dataBase64.Length > MaxVisualExportBase64Chars) {
+                            await NotifyVisualExportResultAsync(exportId, format, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(true);
+                            break;
+                        }
+
                         await ExportVisualArtifactAsync(format, title, dataBase64, mimeType, exportId, outputPath).ConfigureAwait(true);
                         break;
                     }

@@ -66,7 +66,7 @@
   }
 
   function handleTranscriptNavKey(e) {
-    if (document.body.classList.contains("data-view-open") || document.body.classList.contains("visual-view-open")) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_NONE) {
       return false;
     }
 
@@ -74,31 +74,15 @@
       return false;
     }
 
-    var step = Math.max(120, Math.floor(transcript.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        transcript.scrollTop += step;
-        return true;
-      case "PageUp":
-        transcript.scrollTop -= step;
-        return true;
-      case "Home":
-        transcript.scrollTop = 0;
-        return true;
-      case "End":
-        transcript.scrollTop = transcript.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(transcript, e.key, 120);
   }
 
   function handleDataViewNavKey(e) {
-    if (!document.body.classList.contains("data-view-open")) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_DATA_VIEW) {
       return false;
     }
 
-    var target = byId("dataViewBody");
+    var target = getModalPrimaryScrollTarget(IX_MODAL_MODE_DATA_VIEW);
     if (!target) {
       return false;
     }
@@ -107,31 +91,15 @@
       return false;
     }
 
-    var step = Math.max(140, Math.floor(target.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        target.scrollTop += step;
-        return true;
-      case "PageUp":
-        target.scrollTop -= step;
-        return true;
-      case "Home":
-        target.scrollTop = 0;
-        return true;
-      case "End":
-        target.scrollTop = target.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(target, e.key, 140);
   }
 
   function handleVisualViewNavKey(e) {
-    if (!document.body.classList.contains("visual-view-open")) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_VISUAL_VIEW) {
       return false;
     }
 
-    var target = byId("visualViewBody");
+    var target = getModalPrimaryScrollTarget(IX_MODAL_MODE_VISUAL_VIEW);
     if (!target) {
       return false;
     }
@@ -140,31 +108,16 @@
       return false;
     }
 
-    var step = Math.max(140, Math.floor(target.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        target.scrollTop += step;
-        return true;
-      case "PageUp":
-        target.scrollTop -= step;
-        return true;
-      case "Home":
-        target.scrollTop = 0;
-        return true;
-      case "End":
-        target.scrollTop = target.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(target, e.key, 140);
   }
 
   function handleOptionsNavKey(e) {
-    if (!document.body.classList.contains("options-open")) {
+    if (getActiveModalMode() !== IX_MODAL_MODE_OPTIONS) {
       return false;
     }
 
-    if (!optionsBody) {
+    var target = getModalPrimaryScrollTarget(IX_MODAL_MODE_OPTIONS);
+    if (!target) {
       return false;
     }
 
@@ -172,23 +125,7 @@
       return false;
     }
 
-    var step = Math.max(120, Math.floor(optionsBody.clientHeight * 0.9));
-    switch (e.key) {
-      case "PageDown":
-        optionsBody.scrollTop += step;
-        return true;
-      case "PageUp":
-        optionsBody.scrollTop -= step;
-        return true;
-      case "Home":
-        optionsBody.scrollTop = 0;
-        return true;
-      case "End":
-        optionsBody.scrollTop = optionsBody.scrollHeight;
-        return true;
-      default:
-        return false;
-    }
+    return applyPagedScrollKey(target, e.key, 120);
   }
 
   window.ixSetTheme = function(vars) {
@@ -410,8 +347,9 @@
         window.ixWheelDiagRecord("host_forward", { delta: Number(delta) });
       }
 
-      if (document.body.classList.contains("options-open")) {
-        var optionsTarget = optionsBody;
+      var modalMode = getActiveModalMode();
+      if (modalMode === IX_MODAL_MODE_OPTIONS) {
+        var optionsTarget = getModalPrimaryScrollTarget(IX_MODAL_MODE_OPTIONS);
         var selectMenu = openCustomSelect ? openCustomSelect.querySelector(".ix-select-menu") : null;
         if (selectMenu) {
           optionsTarget = selectMenu;
@@ -423,37 +361,37 @@
           if (window.ixWheelDiagRecord) {
             window.ixWheelDiagRecord(optionsTarget.scrollTop !== optionsBefore ? "applied" : "not_applied", {
               deltaY: amount,
-              zone: "options"
+              zone: resolveWheelZoneName(modalMode)
             });
           }
         }
         return;
       }
 
-      if (document.body.classList.contains("data-view-open")) {
-        var dataTarget = dataViewBody;
+      if (modalMode === IX_MODAL_MODE_DATA_VIEW) {
+        var dataTarget = getModalPrimaryScrollTarget(IX_MODAL_MODE_DATA_VIEW);
         if (dataTarget) {
           var dataBefore = dataTarget.scrollTop;
           dataTarget.scrollTop += amount;
           if (window.ixWheelDiagRecord) {
             window.ixWheelDiagRecord(dataTarget.scrollTop !== dataBefore ? "applied" : "not_applied", {
               deltaY: amount,
-              zone: "dataView"
+              zone: resolveWheelZoneName(modalMode)
             });
           }
         }
         return;
       }
 
-      if (document.body.classList.contains("visual-view-open")) {
-        var visualTarget = byId("visualViewBody");
+      if (modalMode === IX_MODAL_MODE_VISUAL_VIEW) {
+        var visualTarget = getModalPrimaryScrollTarget(IX_MODAL_MODE_VISUAL_VIEW);
         if (visualTarget) {
           var visualBefore = visualTarget.scrollTop;
           visualTarget.scrollTop += amount;
           if (window.ixWheelDiagRecord) {
             window.ixWheelDiagRecord(visualTarget.scrollTop !== visualBefore ? "applied" : "not_applied", {
               deltaY: amount,
-              zone: "visualView"
+              zone: resolveWheelZoneName(modalMode)
             });
           }
         }
@@ -597,15 +535,20 @@
     }
   }
 
+  var transcriptRenderRevision = 0;
+
   window.ixSetTranscript = function(html) {
     var shouldStickBottom = isNearBottom(transcript);
     var previousTop = transcript.scrollTop;
+    var stickAnchorTop = -1;
+    var renderRevision = ++transcriptRenderRevision;
+    var visualRenderTask = null;
     if (window.ixDisposeTranscriptVisuals) {
       window.ixDisposeTranscriptVisuals(transcript);
     }
     transcript.innerHTML = html || "";
     if (window.ixRenderTranscriptVisuals) {
-      window.ixRenderTranscriptVisuals(transcript);
+      visualRenderTask = window.ixRenderTranscriptVisuals(transcript);
     }
     if (window.ixEnhanceTranscriptTables) {
       window.ixEnhanceTranscriptTables(transcript);
@@ -616,8 +559,26 @@
     setupCodeCopyButtons();
     setupTableCopyButtons();
     if (shouldStickBottom) {
-      transcript.scrollTop = transcript.scrollHeight;
+      scrollToBottom(transcript);
+      stickAnchorTop = transcript.scrollTop;
     } else {
       transcript.scrollTop = previousTop;
+    }
+
+    if (shouldStickBottom && visualRenderTask && typeof visualRenderTask.then === "function") {
+      visualRenderTask.then(function() {
+        if (renderRevision !== transcriptRenderRevision) {
+          return;
+        }
+
+        // If user intentionally scrolled away from the follow position, do not force-pin.
+        if (stickAnchorTop >= 0 && transcript.scrollTop < (stickAnchorTop - 40)) {
+          return;
+        }
+
+        scrollToBottom(transcript);
+      }).catch(function() {
+        // Ignore visual rendering failures; transcript already has raw fallback blocks.
+      });
     }
   };

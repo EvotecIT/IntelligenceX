@@ -13,6 +13,9 @@ using Windows.Storage.Pickers;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
+    private const int MaxVisualExportBase64Chars = 16 * 1024 * 1024;
+    private const int MaxVisualExportBytes = 12 * 1024 * 1024;
+
     private async Task ExportTableArtifactAsync(string format, string title, JsonElement rowsElement, string exportId = "", string? outputPath = null) {
         if (!ExportPreferencesContract.TryNormalizeFormat(format, out var normalizedFormat)) {
             await ReportExportNoticeAsync(exportId, ExportNotice.Failed(ExportNoticeKind.InvalidFormat, normalizedFormat)).ConfigureAwait(false);
@@ -424,9 +427,15 @@ public sealed partial class MainWindow {
             return;
         }
 
+        var payload = dataBase64.Trim();
+        if (payload.Length > MaxVisualExportBase64Chars) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(false);
+            return;
+        }
+
         byte[] bytes;
         try {
-            bytes = Convert.FromBase64String(dataBase64.Trim());
+            bytes = Convert.FromBase64String(payload);
         } catch (Exception ex) {
             await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Invalid export payload: " + ex.Message).ConfigureAwait(false);
             return;
@@ -434,6 +443,10 @@ public sealed partial class MainWindow {
 
         if (bytes.Length == 0) {
             await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload is empty.").ConfigureAwait(false);
+            return;
+        }
+        if (bytes.Length > MaxVisualExportBytes) {
+            await NotifyVisualExportResultAsync(exportId, normalizedFormat, ok: false, filePath: null, message: "Export payload exceeds maximum allowed size.").ConfigureAwait(false);
             return;
         }
 

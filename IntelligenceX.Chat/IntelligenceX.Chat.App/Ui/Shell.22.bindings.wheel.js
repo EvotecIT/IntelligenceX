@@ -48,44 +48,28 @@
     }
 
     var targetEl = resolveWheelEventTargetElement(e);
-    var inTranscript = targetEl && targetEl.closest ? targetEl.closest("#transcript") : null;
-    var inOptions = targetEl && targetEl.closest ? targetEl.closest(".options-panel") : null;
-    var inSelect = targetEl && targetEl.closest ? targetEl.closest(".ix-select-menu") : null;
-    var inDataView = targetEl && targetEl.closest ? targetEl.closest(".data-view-panel") : null;
-    var inVisualView = targetEl && targetEl.closest ? targetEl.closest(".visual-view-panel") : null;
+    var modalMode = getActiveModalMode();
+    var zone = (modalMode === IX_MODAL_MODE_NONE && !transcript)
+      ? ""
+      : resolveWheelZoneName(modalMode);
 
-    // WebView2 can sometimes produce non-element or unusual wheel targets.
-    // Fall back to composedPath to avoid dropping valid wheel input.
+    var inTranscript = targetEl && targetEl.closest ? targetEl.closest("#transcript") : null;
     if (!inTranscript) {
       inTranscript = eventPathContainsSelector(e, "#transcript");
     }
-    if (!inOptions) {
-      inOptions = eventPathContainsSelector(e, ".options-panel");
-    }
-    if (!inSelect) {
-      inSelect = eventPathContainsSelector(e, ".ix-select-menu");
-    }
-    if (!inDataView) {
-      inDataView = eventPathContainsSelector(e, ".data-view-panel");
-    }
-    if (!inVisualView) {
-      inVisualView = eventPathContainsSelector(e, ".visual-view-panel");
-    }
 
-    // If no area was detected but we're in the main shell, route to transcript.
-    if (!inTranscript && !inOptions && !inSelect && !inDataView && !inVisualView && transcript) {
-      inTranscript = transcript;
+    if (modalMode === IX_MODAL_MODE_NONE && zone === "transcript" && !inTranscript && transcript) {
       wheelDiag.counters.fallbackTranscript++;
       recordWheelDiag("fallback_transcript", { deltaY: Number(deltaY) });
     }
 
-    if (!inTranscript && !inOptions && !inSelect && !inDataView && !inVisualView) {
+    if (!zone) {
       wheelDiag.counters.noZone++;
       recordWheelDiag("no_zone", { deltaY: Number(deltaY) });
       return;
     }
 
-    if (isEditableElement(targetEl) && !inOptions && !inTranscript && !inDataView && !inVisualView && !inSelect) {
+    if (modalMode === IX_MODAL_MODE_NONE && isEditableElement(targetEl) && !inTranscript) {
       wheelDiag.counters.skippedEditable++;
       recordWheelDiag("editable_skip", { deltaY: Number(deltaY) });
       return;
@@ -97,7 +81,7 @@
       wheelDiag.counters.applied++;
       recordWheelDiag("applied", {
         deltaY: Number(deltaY),
-        zone: inVisualView ? "visualView" : (inDataView ? "dataView" : (inOptions ? "options" : "transcript"))
+        zone: zone
       });
       e.preventDefault();
       return;
@@ -106,7 +90,7 @@
     wheelDiag.counters.notApplied++;
     recordWheelDiag("not_applied", {
       deltaY: Number(deltaY),
-      zone: inVisualView ? "visualView" : (inDataView ? "dataView" : (inOptions ? "options" : "transcript"))
+      zone: zone
     });
   }
 
