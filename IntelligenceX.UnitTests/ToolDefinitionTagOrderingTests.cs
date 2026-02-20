@@ -195,6 +195,35 @@ public sealed class ToolDefinitionTagOrderingTests {
         AssertSingleTaxonomyTag(alias.Tags, "routing:");
     }
 
+    [Fact]
+    public void CreateAliasDefinition_ShouldBeDeterministic_ForNonTaxonomyOverrideInputOrder() {
+        var canonical = ToolSelectionMetadata.Enrich(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: null,
+                tags: new[] { "beta", "alpha", "scope:general", "operation:probe" }),
+            toolType: null);
+
+        var aliasA = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias_a",
+            tags: new[] { "delta", "gamma", "risk:high", "routing:explicit" });
+        var aliasB = canonical.CreateAliasDefinition(
+            aliasName: "custom_probe_alias_b",
+            tags: new[] { "gamma", "delta", "routing:explicit", "risk:high" });
+
+        Assert.True(aliasA.Tags.SequenceEqual(aliasB.Tags, StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(aliasA.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), aliasA.Tags);
+        Assert.Contains("alpha", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("beta", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("delta", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("gamma", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(aliasA.Tags, "scope:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "operation:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "risk:");
+        AssertSingleTaxonomyTag(aliasA.Tags, "routing:");
+    }
+
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
         Assert.Equal(
             1,

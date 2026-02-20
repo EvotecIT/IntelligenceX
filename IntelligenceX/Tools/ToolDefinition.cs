@@ -285,6 +285,7 @@ public sealed class ToolDefinition {
             return Array.Empty<string>();
         }
 
+        merged.Sort(StringComparer.OrdinalIgnoreCase);
         return merged.ToArray();
     }
 }
