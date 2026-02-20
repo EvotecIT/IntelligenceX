@@ -65,37 +65,68 @@ internal static partial class AnalyzeRunCommand {
         GeneratedHeaderLinesTagPrefix,
         ExcludedDirectoryTagPrefix
     };
+    private static readonly Func<AnalysisRule, bool> NeverMatchInternalRule = static _ => false;
     // Handler order defines first-match precedence when predicates overlap.
     private static readonly InternalMaintainabilityRuleHandler[] InternalMaintainabilityRuleHandlers = {
-        new(IsMaxLinesRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+        new(
+            "max-lines",
+            new[] { InternalMaxLinesRuleId },
+            IsMaxLinesRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunMaxLinesChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
-        new(IsDuplicationRule, static (rules, sourceFiles, excludedOutputPath, warnings) => {
+        new(
+            "duplication",
+            new[] { InternalDuplicationRuleId },
+            IsDuplicationRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) => {
             var result = RunDuplicationChecks(rules, sourceFiles, excludedOutputPath, warnings);
             return new InternalMaintainabilityResult(result.Findings, result.RuleMetrics);
         }),
-        new(IsWriteToolSchemaRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+        new(
+            "write-tool-schema",
+            new[] { InternalWriteToolSchemaRuleId },
+            NeverMatchInternalRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunWriteToolSchemaChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
-        new(IsAdRequiredDomainHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+        new(
+            "ad-required-domain-helper",
+            new[] { InternalAdRequiredDomainHelperRuleId },
+            NeverMatchInternalRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunAdRequiredDomainHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
-        new(IsMaxResultsMetaHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+        new(
+            "max-results-meta-helper",
+            new[] { InternalMaxResultsMetaHelperRuleId },
+            NeverMatchInternalRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunMaxResultsMetaHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
-        new(IsCanonicalBoundedIntHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+        new(
+            "canonical-bounded-int-helper",
+            new[] { InternalCanonicalBoundedIntHelperRuleId },
+            NeverMatchInternalRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunCanonicalBoundedIntHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>())),
-        new(IsEventLogMaxResultsHelperRule, static (rules, sourceFiles, excludedOutputPath, warnings) =>
+        new(
+            "eventlog-max-results-helper",
+            new[] { InternalEventLogMaxResultsHelperRuleId },
+            NeverMatchInternalRule,
+            static (rules, sourceFiles, excludedOutputPath, warnings) =>
             new InternalMaintainabilityResult(
                 RunEventLogMaxResultsHelperChecks(rules, sourceFiles, excludedOutputPath, warnings),
                 Array.Empty<DuplicationRuleMetrics>()))
     };
+    private static readonly IReadOnlyDictionary<string, int> InternalMaintainabilityRuleIdToHandlerIndex =
+        BuildInternalMaintainabilityRuleIdToHandlerIndex();
     private static readonly Regex PowerShellTokenRegex = new(
         "\"(?:`.|[^\"])*\"|'(?:''|[^'])*'|\\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_-]*|\\d+(?:\\.\\d+)?|==|!=|<=|>=|\\+=|-=|\\*=|/=|%=|&&|\\|\\||::|=>|\\+\\+|--|[-+*/%=!<>|&.:?]+|[()\\[\\]{};,]",
         RegexOptions.Compiled);
@@ -229,18 +260,7 @@ internal static partial class AnalyzeRunCommand {
         var mappedRulesByHandler = new List<AnalysisPolicyRule>[InternalMaintainabilityRuleHandlers.Length];
         var mappedRuleCount = 0;
         foreach (var policyRule in rules.Where(static rule => rule?.Rule is not null)) {
-            var firstMatchIndex = -1;
-            var matchCount = 0;
-            for (var i = 0; i < InternalMaintainabilityRuleHandlers.Length; i++) {
-                if (!InternalMaintainabilityRuleHandlers[i].Matches(policyRule.Rule)) {
-                    continue;
-                }
-
-                if (firstMatchIndex < 0) {
-                    firstMatchIndex = i;
-                }
-                matchCount++;
-            }
+            var (firstMatchIndex, matchCount) = ResolveInternalMaintainabilityHandler(policyRule.Rule);
 
             if (firstMatchIndex < 0) {
                 warnings.Add(
@@ -706,39 +726,56 @@ internal static partial class AnalyzeRunCommand {
             HasTagWithPrefix(rule.Tags, MaxDuplicationPercentByLanguageTagPrefix);
     }
 
-    private static bool IsWriteToolSchemaRule(AnalysisRule rule) {
+    private static (int FirstMatchIndex, int MatchCount) ResolveInternalMaintainabilityHandler(AnalysisRule rule) {
         if (rule is null) {
-            return false;
+            return (-1, 0);
         }
-        return rule.Id.Equals(InternalWriteToolSchemaRuleId, StringComparison.OrdinalIgnoreCase);
+
+        var firstMatchIndex = -1;
+        var matchCount = 0;
+        if (!string.IsNullOrWhiteSpace(rule.Id) &&
+            InternalMaintainabilityRuleIdToHandlerIndex.TryGetValue(rule.Id, out var canonicalHandlerIndex)) {
+            firstMatchIndex = canonicalHandlerIndex;
+            matchCount = 1;
+        }
+
+        for (var i = 0; i < InternalMaintainabilityRuleHandlers.Length; i++) {
+            if (i == firstMatchIndex) {
+                continue;
+            }
+
+            if (!InternalMaintainabilityRuleHandlers[i].MatchesFallback(rule)) {
+                continue;
+            }
+
+            if (firstMatchIndex < 0) {
+                firstMatchIndex = i;
+            }
+            matchCount++;
+        }
+
+        return (firstMatchIndex, matchCount);
     }
 
-    private static bool IsAdRequiredDomainHelperRule(AnalysisRule rule) {
-        if (rule is null) {
-            return false;
-        }
-        return rule.Id.Equals(InternalAdRequiredDomainHelperRuleId, StringComparison.OrdinalIgnoreCase);
-    }
+    private static IReadOnlyDictionary<string, int> BuildInternalMaintainabilityRuleIdToHandlerIndex() {
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < InternalMaintainabilityRuleHandlers.Length; i++) {
+            var ruleIds = InternalMaintainabilityRuleHandlers[i].CanonicalRuleIds;
+            if (ruleIds is null || ruleIds.Count == 0) {
+                continue;
+            }
 
-    private static bool IsMaxResultsMetaHelperRule(AnalysisRule rule) {
-        if (rule is null) {
-            return false;
-        }
-        return rule.Id.Equals(InternalMaxResultsMetaHelperRuleId, StringComparison.OrdinalIgnoreCase);
-    }
+            foreach (var ruleId in ruleIds.Where(static id => !string.IsNullOrWhiteSpace(id))) {
+                if (map.TryAdd(ruleId, i)) {
+                    continue;
+                }
 
-    private static bool IsCanonicalBoundedIntHelperRule(AnalysisRule rule) {
-        if (rule is null) {
-            return false;
+                throw new InvalidOperationException(
+                    $"Internal maintainability rule id '{ruleId}' is registered by multiple handlers.");
+            }
         }
-        return rule.Id.Equals(InternalCanonicalBoundedIntHelperRuleId, StringComparison.OrdinalIgnoreCase);
-    }
 
-    private static bool IsEventLogMaxResultsHelperRule(AnalysisRule rule) {
-        if (rule is null) {
-            return false;
-        }
-        return rule.Id.Equals(InternalEventLogMaxResultsHelperRuleId, StringComparison.OrdinalIgnoreCase);
+        return map;
     }
 
     private sealed class SourceFileEntry {
@@ -747,7 +784,9 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private sealed record InternalMaintainabilityRuleHandler(
-        Func<AnalysisRule, bool> Matches,
+        string Name,
+        IReadOnlyList<string> CanonicalRuleIds,
+        Func<AnalysisRule, bool> MatchesFallback,
         Func<IReadOnlyList<AnalysisPolicyRule>, IReadOnlyList<SourceFileEntry>, string?, List<string>,
             InternalMaintainabilityResult> Run);
 

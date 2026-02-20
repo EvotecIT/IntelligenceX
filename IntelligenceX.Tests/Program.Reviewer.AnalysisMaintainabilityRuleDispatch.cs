@@ -62,6 +62,46 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalMaintainabilityResolvesCanonicalRuleIdRegistration() {
+        var temp = Path.Combine(Path.GetTempPath(),
+            "ix-analyze-internal-dispatch-canonical-rule-id-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            SetupInternalMaintainabilityDispatchWorkspace(temp, "IXTOOL005", new[] {
+                "include-ext:cs"
+            });
+
+            var eventLogDir = Path.Combine(temp, "IntelligenceX.Tools", "IntelligenceX.Tools.EventLog");
+            Directory.CreateDirectory(eventLogDir);
+            File.WriteAllText(Path.Combine(eventLogDir, "SampleDispatchEventLogTool.cs"), """
+using IntelligenceX.Json;
+
+namespace IntelligenceX.Tools.EventLog;
+
+public sealed class SampleDispatchEventLogTool {
+    public int Read(JsonObject? arguments) {
+        return ResolveMaxResults(arguments);
+    }
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var result = RunAnalyzeWithConsoleOutput(temp, Path.Combine(temp, ".intelligencex", "reviewer.json"), output);
+
+            AssertEqual(0, result.ExitCode, "analyze run internal dispatch canonical rule-id registration exit");
+            AssertEqual(false, result.Output.Contains("no registered handler", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal dispatch canonical rule-id registration no unmapped warning");
+            var findings = ReadFindingsRulePathPairs(Path.Combine(output, "intelligencex.findings.json"));
+            AssertEqual(true, findings.Any(item =>
+                    item.RuleId.Equals("IXTOOL005", StringComparison.OrdinalIgnoreCase) &&
+                    item.Path.Equals("IntelligenceX.Tools/IntelligenceX.Tools.EventLog/SampleDispatchEventLogTool.cs",
+                        StringComparison.OrdinalIgnoreCase)),
+                "analyze run internal dispatch canonical rule-id registration finding");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
     private static void SetupInternalMaintainabilityDispatchWorkspace(string workspacePath, string ruleId,
         IReadOnlyList<string> tags) {
         Directory.CreateDirectory(Path.Combine(workspacePath, ".intelligencex"));
