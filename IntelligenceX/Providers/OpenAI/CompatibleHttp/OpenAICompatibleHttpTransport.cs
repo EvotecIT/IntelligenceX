@@ -296,7 +296,10 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             throw new ArgumentException("API key cannot be empty.", nameof(apiKey));
         }
         // Keep the API key in-memory for this instance. This is primarily for callers reusing the same client.
+        _options.AuthMode = OpenAICompatibleHttpAuthMode.Bearer;
         _options.ApiKey = apiKey.Trim();
+        _options.BasicUsername = null;
+        _options.BasicPassword = null;
         LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
         LoginCompleted?.Invoke(this, new LoginEventArgs("apikey"));
         return Task.CompletedTask;
@@ -840,10 +843,29 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         if (request is null) {
             return;
         }
-        if (string.IsNullOrWhiteSpace(_options.ApiKey)) {
-            return;
+        switch (_options.AuthMode) {
+            case OpenAICompatibleHttpAuthMode.None:
+                return;
+            case OpenAICompatibleHttpAuthMode.Basic: {
+                    var username = (_options.BasicUsername ?? string.Empty).Trim();
+                    var password = (_options.BasicPassword ?? string.Empty).Trim();
+                    if (username.Length == 0 && password.Length == 0) {
+                        return;
+                    }
+
+                    var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(username + ":" + password));
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Basic", token);
+                    return;
+                }
+            case OpenAICompatibleHttpAuthMode.Bearer:
+            default: {
+                    if (string.IsNullOrWhiteSpace(_options.ApiKey)) {
+                        return;
+                    }
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey!.Trim());
+                    return;
+                }
         }
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey!.Trim());
     }
 
     private static Uri NormalizeBaseUrl(string baseUrl) {

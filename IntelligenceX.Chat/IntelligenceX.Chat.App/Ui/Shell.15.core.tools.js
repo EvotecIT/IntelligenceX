@@ -459,7 +459,7 @@
       if (packUnavailable && packUnavailableReason) {
         packToggle.title = packUnavailableReason;
       } else if (packRuntimeDisabledByConfig) {
-        packToggle.title = "Disabled by runtime configuration. Toggle to apply and restart runtime.";
+        packToggle.title = "Disabled by runtime configuration. Toggle to apply this pack setting live.";
       } else if (!packHasTools) {
         packToggle.title = "No tools are currently registered for this pack.";
       }
@@ -497,7 +497,7 @@
         var emptyBody = document.createElement("div");
         emptyBody.className = "options-item-sub";
         emptyBody.textContent = packRuntimeDisabledByConfig
-          ? "Pack is disabled by runtime configuration. Enable the toggle to restart runtime with this pack enabled."
+          ? "Pack is disabled by runtime configuration. Enable the toggle to apply this pack setting live."
           : packUnavailableReason
           ? packUnavailableReason
           : "This pack is present in policy metadata but did not register any tool definitions.";
@@ -783,19 +783,452 @@
     return String(value || "").trim().toLowerCase();
   }
 
+  function normalizeReasoningEffortValue(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "x-high" || normalized === "x_high") {
+      normalized = "xhigh";
+    }
+    if (normalized === "minimal" || normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "xhigh") {
+      return normalized;
+    }
+    return "";
+  }
+
+  function normalizeReasoningSummaryValue(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "auto" || normalized === "concise" || normalized === "detailed" || normalized === "off") {
+      return normalized;
+    }
+    return "";
+  }
+
+  function normalizeTextVerbosityValue(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "low" || normalized === "medium" || normalized === "high") {
+      return normalized;
+    }
+    return "";
+  }
+
+  function resolveReasoningSupport(transport, compatiblePreset) {
+    var normalizedTransport = normalizeLocalTransport(transport);
+    var preset = String(compatiblePreset || "manual").trim().toLowerCase();
+    if (normalizedTransport === "copilot-cli") {
+      return {
+        supported: false,
+        reason: "GitHub Copilot subscription runtime currently does not expose reasoning controls."
+      };
+    }
+    if (normalizedTransport === "compatible-http"
+      && (preset === "anthropic-bridge" || preset === "gemini-bridge")) {
+      return {
+        supported: false,
+        reason: "Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning."
+      };
+    }
+    return {
+      supported: true,
+      reason: ""
+    };
+  }
+
+  function resolveRuntimeProviderLabel(transport, compatiblePreset, copilotConnected) {
+    var normalizedTransport = normalizeLocalTransport(transport);
+    var preset = String(compatiblePreset || "manual").trim().toLowerCase();
+    if (normalizedTransport === "copilot-cli") {
+      return "GitHub Copilot subscription runtime";
+    }
+    if (normalizedTransport !== "compatible-http") {
+      return "ChatGPT runtime (OpenAI native)";
+    }
+    if (preset === "lmstudio") {
+      return "LM Studio runtime";
+    }
+    if (preset === "ollama") {
+      return "Ollama runtime";
+    }
+    if (preset === "openai") {
+      return "OpenAI API runtime";
+    }
+    if (preset === "azure-openai") {
+      return "Azure OpenAI runtime";
+    }
+    if (preset === "anthropic-bridge") {
+      return "Anthropic bridge runtime";
+    }
+    if (preset === "gemini-bridge") {
+      return "Gemini bridge runtime";
+    }
+    if (copilotConnected) {
+      return "GitHub Copilot runtime";
+    }
+    return "Compatible HTTP runtime";
+  }
+
+  function appendRuntimeCapabilityRow(listEl, name, status, value, note) {
+    if (!listEl) {
+      return;
+    }
+    var normalizedStatus = String(status || "limited").trim().toLowerCase();
+    if (normalizedStatus !== "supported" && normalizedStatus !== "limited" && normalizedStatus !== "unavailable") {
+      normalizedStatus = "limited";
+    }
+
+    var row = document.createElement("div");
+    row.className = "options-runtime-capability";
+
+    var head = document.createElement("div");
+    head.className = "options-runtime-capability-head";
+
+    var nameEl = document.createElement("div");
+    nameEl.className = "options-runtime-capability-name";
+    nameEl.textContent = String(name || "Capability");
+    head.appendChild(nameEl);
+
+    var valueEl = document.createElement("span");
+    valueEl.className = "options-runtime-capability-value options-runtime-capability-value-" + normalizedStatus;
+    valueEl.textContent = String(value || "");
+    head.appendChild(valueEl);
+
+    row.appendChild(head);
+
+    var noteText = normalizeModelText(note || "");
+    if (noteText) {
+      var noteEl = document.createElement("div");
+      noteEl.className = "options-runtime-capability-note";
+      noteEl.textContent = noteText;
+      row.appendChild(noteEl);
+    }
+
+    listEl.appendChild(row);
+  }
+
+  function renderRuntimeCapabilities(options) {
+    var listEl = byId("optRuntimeCapabilities");
+    var titleEl = byId("optRuntimeCapabilitiesTitle");
+    if (!listEl) {
+      if (titleEl) {
+        titleEl.hidden = true;
+      }
+      return;
+    }
+
+    var data = options && typeof options === "object" ? options : {};
+    var usage = Array.isArray(data.accountUsage) ? data.accountUsage : [];
+    var usageWithRetry = 0;
+    for (var u = 0; u < usage.length; u++) {
+      var usageItem = usage[u] || {};
+      var retryAfterMinutes = Number(usageItem.retryAfterMinutes);
+      var windowResetMinutes = Number(usageItem.rateLimitWindowResetMinutes);
+      var retryAfterUtc = normalizeModelText(usageItem.usageLimitRetryAfterUtc || "");
+      if ((Number.isFinite(retryAfterMinutes) && retryAfterMinutes >= 0)
+          || (Number.isFinite(windowResetMinutes) && windowResetMinutes >= 0)
+          || retryAfterUtc.length > 0) {
+        usageWithRetry++;
+      }
+    }
+
+    var trackedAccounts = Number(data.trackedAccounts);
+    if (!Number.isFinite(trackedAccounts) || trackedAccounts < 0) {
+      trackedAccounts = usage.length;
+    }
+    var usageWithRetrySignals = Number(data.accountsWithRetrySignals);
+    if (!Number.isFinite(usageWithRetrySignals) || usageWithRetrySignals < 0) {
+      usageWithRetrySignals = usageWithRetry;
+    }
+    var providerLabel = normalizeModelText(data.providerLabel || "");
+    if (!providerLabel) {
+      providerLabel = resolveRuntimeProviderLabel(
+        data.transport || "native",
+        data.compatiblePreset || "manual",
+        data.copilotConnected === true);
+    }
+    var supportsReasoning = data.supportsReasoningControls === true;
+    var supportedReasoningEfforts = Array.isArray(data.supportedReasoningEfforts)
+      ? data.supportedReasoningEfforts
+      : [];
+    var reasoningSupportReason = normalizeModelText(data.reasoningSupportReason || "");
+    var openAIAuthMode = normalizeOpenAIAuthModeValue(data.openAIAuthMode || "bearer");
+    var basicUsername = normalizeModelText(data.openAIBasicUsername || "");
+
+    listEl.innerHTML = "";
+
+    var supportsLiveApply = data.supportsLiveApply !== false;
+    var requiresProcessRestart = data.requiresProcessRestart === true;
+    var activeRuntimeNote = data.isApplying === true
+      ? "Applying runtime settings now. The current session remains active while settings update."
+      : (supportsLiveApply && !requiresProcessRestart
+          ? "Switching runtime updates the active provider profile without forcing a process restart."
+          : "Runtime changes may require reconnecting the runtime process.");
+
+    appendRuntimeCapabilityRow(
+      listEl,
+      "Active runtime",
+      "supported",
+      providerLabel,
+      activeRuntimeNote);
+
+    appendRuntimeCapabilityRow(
+      listEl,
+      "Model selection",
+      data.supportsModelCatalog ? "supported" : "limited",
+      data.supportsModelCatalog ? "Catalog + manual model ID" : "Manual model ID",
+      data.supportsModelCatalog
+        ? "Use discovered models from the list, or keep \"Manual model input\" selected and type an exact model ID."
+        : "Type an exact model ID in the Model field and click Apply Runtime.");
+
+    appendRuntimeCapabilityRow(
+      listEl,
+      "Reasoning controls",
+      supportsReasoning ? "supported" : "limited",
+      supportsReasoning ? "Effort, summary, and verbosity" : "Provider defaults only",
+      supportsReasoning
+        ? (supportedReasoningEfforts.length > 0
+            ? ("Reported efforts: " + supportedReasoningEfforts.join(", ") + ".")
+            : (reasoningSupportReason
+                ? reasoningSupportReason
+                : "Current provider supports reasoning fields; model metadata may refine available efforts."))
+        : (reasoningSupportReason || "Current provider profile does not expose reasoning controls."));
+
+    if (data.isNativeTransport === true) {
+      appendRuntimeCapabilityRow(
+        listEl,
+        "Authentication",
+        "supported",
+        "ChatGPT sign-in",
+        "Use native account slot switching to move between ChatGPT accounts quickly.");
+    } else if (data.isCopilotCli === true) {
+      appendRuntimeCapabilityRow(
+        listEl,
+        "Authentication",
+        "supported",
+        "GitHub Copilot sign-in",
+        "Copilot subscription runtime uses GitHub authentication and does not require an API key.");
+    } else {
+      var compatiblePreset = String(data.compatiblePreset || "manual").trim().toLowerCase();
+      var authStatus = openAIAuthMode === "none" ? "limited" : "supported";
+      var authValue = openAIAuthMode === "basic"
+        ? "Basic auth"
+        : (openAIAuthMode === "none" ? "No auth header" : "Bearer token");
+      var authNote = openAIAuthMode === "basic"
+        ? (basicUsername ? ("Username: " + basicUsername + ". Password is stored securely.") : "Username/password are used for requests.")
+        : (openAIAuthMode === "none"
+            ? "No Authorization header will be sent."
+            : "Use API key for Bearer authentication.");
+      if (compatiblePreset === "anthropic-bridge" || compatiblePreset === "gemini-bridge") {
+        authStatus = "limited";
+        if (openAIAuthMode === "basic") {
+          authValue = "Bridge credentials (Basic)";
+        }
+        authNote = "Bridge presets use endpoint credentials managed by the bridge service. Browser subscription session reuse is not wired yet.";
+      }
+      appendRuntimeCapabilityRow(listEl, "Authentication", authStatus, authValue, authNote);
+    }
+
+    var nativeAccountSlots = Number(data.nativeAccountSlots);
+    if (!Number.isFinite(nativeAccountSlots) || nativeAccountSlots <= 0) {
+      nativeAccountSlots = 3;
+    }
+
+    appendRuntimeCapabilityRow(
+      listEl,
+      "Native account slots",
+      data.isNativeTransport === true ? "supported" : "unavailable",
+      data.isNativeTransport === true ? (String(nativeAccountSlots) + " slots available") : "Native runtime only",
+      data.isNativeTransport === true
+        ? ("Active slot: " + String(data.activeNativeAccountSlot || 1) + ". Slot IDs are profile-scoped.")
+        : "Account slot switching is available only in ChatGPT native runtime.");
+
+    appendRuntimeCapabilityRow(
+      listEl,
+      "Usage + limits",
+      trackedAccounts > 0 ? "supported" : "limited",
+      trackedAccounts > 0
+        ? (String(trackedAccounts) + (trackedAccounts === 1 ? " account tracked" : " accounts tracked"))
+        : "Waiting for usage signal",
+      trackedAccounts > 0
+        ? (usageWithRetrySignals > 0
+            ? "Token counters and retry/renew timing are visible for accounts that expose limit metadata."
+            : "Token counters are active. Retry/renew timing appears once providers return limit metadata.")
+        : "Usage appears after the provider returns token metrics.");
+
+    listEl.hidden = listEl.children.length === 0;
+    if (titleEl) {
+      titleEl.hidden = listEl.hidden;
+    }
+  }
+
+  function normalizeTemperatureText(value) {
+    if (value == null) {
+      return "";
+    }
+
+    if (typeof value === "number" && isFinite(value)) {
+      return String(value);
+    }
+
+    var normalized = String(value || "").trim();
+    if (!normalized) {
+      return "";
+    }
+
+    var parsed = Number(normalized);
+    if (!isFinite(parsed) || parsed < 0 || parsed > 2) {
+      return "";
+    }
+
+    return normalized;
+  }
+
+  function normalizeOpenAIAuthModeValue(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "basic") {
+      return "basic";
+    }
+    if (normalized === "none" || normalized === "off") {
+      return "none";
+    }
+    return "bearer";
+  }
+
+  function detectCompatibleProviderPreset(baseUrl) {
+    var normalized = String(baseUrl || "").trim().toLowerCase();
+    if (!normalized) {
+      return "manual";
+    }
+    if (normalized.indexOf("127.0.0.1:1234") >= 0 || normalized.indexOf("localhost:1234") >= 0) {
+      return "lmstudio";
+    }
+    if (normalized.indexOf("127.0.0.1:11434") >= 0 || normalized.indexOf("localhost:11434") >= 0) {
+      return "ollama";
+    }
+    if (normalized.indexOf("api.openai.com") >= 0) {
+      return "openai";
+    }
+    if (normalized.indexOf(".openai.azure.com") >= 0) {
+      return "azure-openai";
+    }
+    if (normalized.indexOf("anthropic") >= 0 || normalized.indexOf("claude") >= 0) {
+      return "anthropic-bridge";
+    }
+    if (normalized.indexOf("gemini") >= 0 || normalized.indexOf("googleapis.com") >= 0) {
+      return "gemini-bridge";
+    }
+    return "manual";
+  }
+
+  function formatUtcDateTime(value) {
+    var text = String(value || "").trim();
+    if (!text) {
+      return "";
+    }
+    var parsed = new Date(text);
+    if (isNaN(parsed.getTime())) {
+      return "";
+    }
+    return parsed.toLocaleString();
+  }
+
+  function formatTokenCount(value) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return "0";
+    }
+    return Math.floor(numeric).toLocaleString();
+  }
+
+  function formatRetryMinutes(minutes) {
+    var numeric = Number(minutes);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return "now";
+    }
+    if (numeric < 60) {
+      return Math.ceil(numeric) + "m";
+    }
+    var hours = Math.floor(numeric / 60);
+    var remainder = Math.ceil(numeric % 60);
+    if (remainder <= 0) {
+      return hours + "h";
+    }
+    return hours + "h " + remainder + "m";
+  }
+
+  function refreshAccountUsageRetryCountdowns() {
+    var usageList = byId("optAccountUsageList");
+    if (!usageList) {
+      return;
+    }
+
+    var retryRows = usageList.querySelectorAll(".options-usage-retry[data-retry-after-utc]");
+    if (!retryRows || retryRows.length === 0) {
+      return;
+    }
+
+    var nowUtc = Date.now();
+    for (var i = 0; i < retryRows.length; i++) {
+      var row = retryRows[i];
+      var retryAfterText = String(row.getAttribute("data-retry-after-utc") || "").trim();
+      if (!retryAfterText) {
+        continue;
+      }
+      var retryAfter = new Date(retryAfterText);
+      if (isNaN(retryAfter.getTime())) {
+        continue;
+      }
+
+      var remainingMinutes = Math.ceil((retryAfter.getTime() - nowUtc) / 60000);
+      if (!Number.isFinite(remainingMinutes) || remainingMinutes < 0) {
+        remainingMinutes = 0;
+      }
+      var renewAt = String(row.getAttribute("data-renew-at-text") || "").trim();
+      row.textContent = "limit retry: " + formatRetryMinutes(remainingMinutes) + (renewAt ? " (" + renewAt + ")" : "");
+    }
+  }
+
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
+    var runtimeCapabilities = local.runtimeCapabilities && typeof local.runtimeCapabilities === "object"
+      ? local.runtimeCapabilities
+      : {};
     var isApplying = local.isApplying === true;
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
     var isCopilotCli = transport === "copilot-cli";
-    var supportsRuntimeModels = isCompatible || isCopilotCli;
+    var supportsModelCatalog = isCompatible || isCopilotCli || transport === "native";
+    if (typeof runtimeCapabilities.supportsModelCatalog === "boolean") {
+      supportsModelCatalog = runtimeCapabilities.supportsModelCatalog;
+    }
     var baseUrl = String(local.baseUrl || "");
+    var openAIAuthMode = normalizeOpenAIAuthModeValue(local.openAIAuthMode || "bearer");
+    var openAIBasicUsername = normalizeModelText(local.openAIBasicUsername || "");
+    var compatiblePreset = isCompatible ? detectCompatibleProviderPreset(baseUrl) : "manual";
+    var runtimePreset = normalizeModelText(runtimeCapabilities.compatiblePreset || "").toLowerCase();
+    if (isCompatible && runtimePreset) {
+      compatiblePreset = runtimePreset;
+    }
+    var runtimeProviderLabel = normalizeModelText(runtimeCapabilities.providerLabel || "");
     var modelsEndpoint = normalizeModelText(local.modelsEndpoint || "");
     var model = normalizeModelText(local.model || "");
+    var openAIAccountId = normalizeModelText(local.openAIAccountId || "");
+    var activeNativeAccountSlot = Number(local.activeNativeAccountSlot);
+    if (!Number.isFinite(activeNativeAccountSlot) || activeNativeAccountSlot < 1 || activeNativeAccountSlot > 3) {
+      activeNativeAccountSlot = 1;
+    } else {
+      activeNativeAccountSlot = Math.floor(activeNativeAccountSlot);
+    }
+    var nativeAccountSlots = Array.isArray(local.nativeAccountSlots) ? local.nativeAccountSlots : [];
+    var reasoningEffort = normalizeReasoningEffortValue(local.reasoningEffort || "");
+    var reasoningSummary = normalizeReasoningSummaryValue(local.reasoningSummary || "");
+    var textVerbosity = normalizeTextVerbosityValue(local.textVerbosity || "");
+    var temperatureText = normalizeTemperatureText(local.temperature);
     var models = Array.isArray(local.models) ? local.models : [];
     var favorites = toStringArray(local.favoriteModels);
     var recents = toStringArray(local.recentModels);
+    var authenticatedAccountId = normalizeModelText(local.authenticatedAccountId || "");
+    var accountUsage = Array.isArray(local.accountUsage) ? local.accountUsage : [];
+    var activeAccountUsage = local.activeAccountUsage && typeof local.activeAccountUsage === "object"
+      ? local.activeAccountUsage
+      : null;
     var warning = normalizeModelText(local.warning || "");
     var isStale = local.isStale === true;
     var profileSaved = local.profileSaved === true;
@@ -815,9 +1248,10 @@
         runtimeSummary.textContent = "Current: GitHub Copilot subscription runtime (CLI transport).";
       } else if (isCompatible) {
         var endpoint = baseUrl ? baseUrl : "(base URL not set)";
-        runtimeSummary.textContent = copilotConnected
-          ? "Current: GitHub Copilot runtime (Compatible HTTP) via " + endpoint + "."
-          : "Current: Local runtime (Compatible HTTP) via " + endpoint + ".";
+        var providerLabel = runtimeProviderLabel
+          ? runtimeProviderLabel
+          : resolveRuntimeProviderLabel(transport, compatiblePreset, copilotConnected);
+        runtimeSummary.textContent = "Current: " + providerLabel + " via " + endpoint + ".";
       } else {
         runtimeSummary.textContent = "Current: ChatGPT runtime (OpenAI native).";
       }
@@ -830,7 +1264,7 @@
       } else if (copilotConnected) {
         runtimeAuthHint.textContent = "Copilot runtime uses a GitHub token in API key. ChatGPT sign-in remains separate.";
       } else if (isCompatible) {
-        runtimeAuthHint.textContent = "You can stay signed in to ChatGPT while running local models.";
+        runtimeAuthHint.textContent = "Compatible HTTP auth mode: " + openAIAuthMode + ". You can stay signed in to ChatGPT while running other providers.";
       } else {
         runtimeAuthHint.textContent = "ChatGPT sign-in and runtime provider are separate. You can switch to LM Studio any time.";
       }
@@ -851,13 +1285,20 @@
         runtimeName = "Compatible HTTP";
       }
       var activeModel = model ? model : "(auto)";
-      runtimeBadge.textContent = "Active runtime: " + runtimeName + " | Active model: " + activeModel;
+      var runtimeText = "Active runtime: " + runtimeName + " | Active model: " + activeModel;
+      if (transport === "native" && authenticatedAccountId) {
+        runtimeText += " | Account: " + authenticatedAccountId;
+      }
+      if (transport === "native") {
+        runtimeText += " | Slot " + String(activeNativeAccountSlot);
+      }
+      runtimeBadge.textContent = runtimeText;
     }
 
     var simpleHint = byId("optLocalSimpleHint");
     if (simpleHint) {
       if (isApplying) {
-        simpleHint.textContent = "Applying runtime settings. Please wait for the runtime to restart.";
+        simpleHint.textContent = "Applying runtime settings. Please wait while the runtime updates.";
       } else if (transport === "native") {
         simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
       } else if (isCopilotCli) {
@@ -867,10 +1308,103 @@
       } else if (lmStudioConnected) {
         simpleHint.textContent = "LM Studio runtime is active for this profile.";
       } else if (runtimeDetectionHasRun && !lmStudioAvailable) {
-        simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio and reconnect, or configure Advanced Runtime.";
+        simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio and click Apply Runtime, or configure Advanced Runtime.";
       } else {
         simpleHint.textContent = "Local runtime is active. Use LM Studio Runtime for the default LM Studio endpoint.";
       }
+    }
+
+    function resolveNativeSlotState(slotNumber) {
+      for (var s = 0; s < nativeAccountSlots.length; s++) {
+        var slot = nativeAccountSlots[s] || {};
+        var currentSlot = Number(slot.slot);
+        if (Number.isFinite(currentSlot) && Math.floor(currentSlot) === slotNumber) {
+          return slot;
+        }
+      }
+      return null;
+    }
+
+    var nativeSlotSelectRow = byId("optNativeAccountSlotRow");
+    var nativeAccountIdRow = byId("optNativeAccountIdRow");
+    var nativeAccountHint = byId("optNativeAccountHint");
+    var nativeSlotSelect = byId("optNativeAccountSlot");
+    var nativeAccountIdInput = byId("optNativeAccountId");
+    var isNativeTransport = transport === "native";
+    if (nativeSlotSelectRow) {
+      nativeSlotSelectRow.hidden = !isNativeTransport;
+    }
+    if (nativeAccountIdRow) {
+      nativeAccountIdRow.hidden = !isNativeTransport;
+    }
+    if (nativeAccountHint) {
+      nativeAccountHint.hidden = !isNativeTransport;
+    }
+    if (nativeSlotSelect) {
+      nativeSlotSelect.innerHTML = "";
+      for (var slotIndex = 1; slotIndex <= 3; slotIndex++) {
+        var slotState = resolveNativeSlotState(slotIndex) || {};
+        var slotAccountId = normalizeModelText(slotState.accountId || "");
+        var slotLabel = "Slot " + String(slotIndex);
+        if (slotAccountId) {
+          slotLabel += " | " + slotAccountId;
+          var slotUsageTokens = Number(slotState.usageTotalTokens);
+          if (Number.isFinite(slotUsageTokens) && slotUsageTokens > 0) {
+            slotLabel += " | " + formatTokenCount(slotUsageTokens) + " tok";
+          }
+        } else {
+          slotLabel += " | unassigned";
+        }
+        var slotOption = document.createElement("option");
+        slotOption.value = String(slotIndex);
+        slotOption.textContent = slotLabel;
+        nativeSlotSelect.appendChild(slotOption);
+      }
+      nativeSlotSelect.value = String(activeNativeAccountSlot);
+      syncCustomSelect(nativeSlotSelect);
+      nativeSlotSelect.disabled = !isNativeTransport || isApplying;
+    }
+    var selectedSlotState = resolveNativeSlotState(activeNativeAccountSlot) || null;
+    var selectedSlotAccountId = selectedSlotState
+      ? normalizeModelText(selectedSlotState.accountId || "")
+      : "";
+    if (!selectedSlotAccountId) {
+      selectedSlotAccountId = openAIAccountId;
+    }
+    if (nativeAccountIdInput) {
+      nativeAccountIdInput.value = selectedSlotAccountId;
+      nativeAccountIdInput.disabled = !isNativeTransport || isApplying;
+    }
+    if (nativeAccountHint) {
+      var hintParts = ["Select slot 1/2/3 to switch accounts quickly."];
+      if (selectedSlotAccountId) {
+        hintParts.push("Selected slot account: " + selectedSlotAccountId + ".");
+      }
+      if (authenticatedAccountId) {
+        hintParts.push("Authenticated now: " + authenticatedAccountId + ".");
+      }
+      if (selectedSlotState) {
+        var slotPlanType = normalizeModelText(selectedSlotState.planType || "");
+        if (slotPlanType) {
+          hintParts.push("Plan: " + slotPlanType + ".");
+        }
+        var slotUsedPercent = Number(selectedSlotState.usedPercent);
+        if (Number.isFinite(slotUsedPercent) && slotUsedPercent >= 0) {
+          hintParts.push("Window used: " + Math.round(slotUsedPercent) + "%.");
+        }
+        var slotWindowResetMinutes = Number(selectedSlotState.windowResetMinutes);
+        if (Number.isFinite(slotWindowResetMinutes) && slotWindowResetMinutes >= 0) {
+          hintParts.push("Window reset: " + formatRetryMinutes(slotWindowResetMinutes) + ".");
+        }
+        var retryAfterMinutes = Number(selectedSlotState.retryAfterMinutes);
+        if (Number.isFinite(retryAfterMinutes) && retryAfterMinutes >= 0) {
+          hintParts.push("Limit retry: " + formatRetryMinutes(retryAfterMinutes) + ".");
+        }
+        if (selectedSlotState.limitReached === true) {
+          hintParts.push("Limit currently reached.");
+        }
+      }
+      nativeAccountHint.textContent = hintParts.join(" ");
     }
 
     var useOpenAiRuntimeButton = byId("btnUseOpenAiRuntime");
@@ -928,6 +1462,16 @@
       syncCustomSelect(transportSelect);
     }
 
+    var providerPresetSelect = byId("optLocalProviderPreset");
+    if (providerPresetSelect) {
+      providerPresetSelect.value = compatiblePreset;
+      if (providerPresetSelect.value !== compatiblePreset) {
+        providerPresetSelect.value = "manual";
+      }
+      syncCustomSelect(providerPresetSelect);
+      providerPresetSelect.disabled = !isCompatible || isApplying;
+    }
+
     var btnAutoDetect = byId("btnAutoDetectLocalRuntime");
     if (btnAutoDetect) {
       btnAutoDetect.hidden = !isCompatible;
@@ -941,6 +1485,18 @@
     var btnPresetOllama = byId("btnLocalPresetOllama");
     if (btnPresetOllama) {
       btnPresetOllama.hidden = runtimeDetectionHasRun && !ollamaAvailable;
+    }
+
+    var btnPresetOpenAI = byId("btnLocalPresetOpenAI");
+    if (btnPresetOpenAI) {
+      btnPresetOpenAI.hidden = !isCompatible;
+      btnPresetOpenAI.disabled = isApplying;
+    }
+
+    var btnPresetAzureOpenAI = byId("btnLocalPresetAzureOpenAI");
+    if (btnPresetAzureOpenAI) {
+      btnPresetAzureOpenAI.hidden = !isCompatible;
+      btnPresetAzureOpenAI.disabled = isApplying;
     }
 
     var baseUrlRow = byId("optLocalBaseUrlRow");
@@ -959,10 +1515,47 @@
       apiKeyRow.hidden = !isCompatible;
     }
 
+    var authModeRow = byId("optLocalAuthModeRow");
+    if (authModeRow) {
+      authModeRow.hidden = !isCompatible;
+    }
+    var authModeSelect = byId("optLocalAuthMode");
+    if (authModeSelect) {
+      authModeSelect.value = openAIAuthMode;
+      if (authModeSelect.value !== openAIAuthMode) {
+        authModeSelect.value = "bearer";
+      }
+      syncCustomSelect(authModeSelect);
+      authModeSelect.disabled = !isCompatible || isApplying;
+    }
+
+    var basicUsernameRow = byId("optLocalBasicUsernameRow");
+    if (basicUsernameRow) {
+      basicUsernameRow.hidden = !isCompatible || openAIAuthMode !== "basic";
+    }
+    var basicPasswordRow = byId("optLocalBasicPasswordRow");
+    if (basicPasswordRow) {
+      basicPasswordRow.hidden = !isCompatible || openAIAuthMode !== "basic";
+    }
+    var basicUsernameInput = byId("optLocalBasicUsername");
+    if (basicUsernameInput) {
+      basicUsernameInput.value = openAIBasicUsername;
+      basicUsernameInput.disabled = !isCompatible || openAIAuthMode !== "basic" || isApplying;
+    }
+    var basicPasswordInput = byId("optLocalBasicPassword");
+    if (basicPasswordInput) {
+      basicPasswordInput.disabled = !isCompatible || openAIAuthMode !== "basic" || isApplying;
+      if (!isCompatible || openAIAuthMode !== "basic") {
+        basicPasswordInput.value = "";
+      }
+    }
+
     var apiKeyHint = byId("optLocalApiKeyHint");
     if (apiKeyHint) {
       apiKeyHint.hidden = !isCompatible;
-      if (isCompatible && copilotConnected) {
+      if (isCompatible && openAIAuthMode === "basic") {
+        apiKeyHint.textContent = "Bearer API key is ignored while auth mode is Basic.";
+      } else if (isCompatible && copilotConnected) {
         apiKeyHint.textContent = "Required for Copilot endpoint. Use a GitHub OAuth app token or fine-grained PAT with Copilot Chat access.";
       } else {
         apiKeyHint.textContent = "Use Clear Saved API Key to remove the currently stored key.";
@@ -971,9 +1564,31 @@
 
     var apiKeyInput = byId("optLocalApiKey");
     if (apiKeyInput) {
-      apiKeyInput.disabled = !isCompatible;
+      apiKeyInput.disabled = !isCompatible || openAIAuthMode !== "bearer";
       if (!isCompatible) {
         apiKeyInput.value = "";
+      }
+    }
+
+    var clearBasicAuthButton = byId("btnClearLocalBasicAuth");
+    if (clearBasicAuthButton) {
+      clearBasicAuthButton.disabled = !isCompatible || isApplying;
+      clearBasicAuthButton.hidden = !isCompatible;
+    }
+
+    var authHint = byId("optLocalAuthHint");
+    if (authHint) {
+      authHint.hidden = !isCompatible;
+      if (!isCompatible) {
+        authHint.textContent = "";
+      } else if (compatiblePreset === "anthropic-bridge" || compatiblePreset === "gemini-bridge") {
+        authHint.textContent = "Subscription bridges are experimental. Configure the bridge endpoint and usually set auth mode to Basic.";
+      } else if (compatiblePreset === "azure-openai") {
+        authHint.textContent = "Azure OpenAI typically uses Bearer auth and deployment-specific base URLs.";
+      } else if (compatiblePreset === "openai") {
+        authHint.textContent = "OpenAI API uses Bearer auth. Enter API key and choose a model.";
+      } else {
+        authHint.textContent = "Compatible HTTP supports Bearer/API key or Basic auth.";
       }
     }
 
@@ -1056,8 +1671,7 @@
     var modelSelectRow = byId("optLocalModelSelectRow");
     var modelFilterRow = byId("optLocalModelFilterRow");
     var hasSelectableModels = selectableOptionCount > 0;
-    var usingManualInput = !modelSelect || !hasSelectableModels || modelSelect.value === "";
-    var showModelSelect = supportsRuntimeModels && (hasSelectableModels || modelFilterQuery.length > 0);
+    var showModelSelect = supportsModelCatalog && (hasSelectableModels || modelFilterQuery.length > 0);
     if (modelSelectRow) {
       modelSelectRow.hidden = !showModelSelect;
     }
@@ -1065,11 +1679,267 @@
       modelFilterRow.hidden = !showModelSelect;
     }
     if (modelInputRow) {
-      modelInputRow.hidden = !supportsRuntimeModels || (showModelSelect && !usingManualInput);
+      modelInputRow.hidden = false;
     }
     if (modelInput) {
-      modelInput.disabled = !supportsRuntimeModels || (showModelSelect && !usingManualInput);
+      modelInput.disabled = isApplying;
     }
+
+    var selectedModelInfo = null;
+    if (model) {
+      for (var sm = 0; sm < models.length; sm++) {
+        var modelItem = models[sm] || {};
+        var modelNameCandidate = normalizeModelText(modelItem.model || modelItem.Model || modelItem.id || modelItem.Id);
+        if (modelNameCandidate.toLowerCase() === model.toLowerCase()) {
+          selectedModelInfo = modelItem;
+          break;
+        }
+      }
+    }
+
+    var manualHint = byId("optLocalModelManualHint");
+    if (manualHint) {
+      if (!showModelSelect) {
+        manualHint.hidden = false;
+        manualHint.textContent = "Type an exact model ID in Model and click Apply Runtime.";
+      } else if (!model || !selectedModelInfo) {
+        manualHint.hidden = false;
+        manualHint.textContent = "Keep \"Manual model input\" selected, then type the exact model ID in the Model field above this list.";
+      } else {
+        manualHint.hidden = true;
+        manualHint.textContent = "";
+      }
+    }
+
+    var supportedReasoningEfforts = [];
+    var reasoningSupport = resolveReasoningSupport(transport, compatiblePreset);
+    var supportsReasoningControls = reasoningSupport.supported;
+    var runtimeReasoningSupport = normalizeModelText(runtimeCapabilities.reasoningSupport || "");
+    if (typeof runtimeCapabilities.supportsReasoningControls === "boolean") {
+      supportsReasoningControls = runtimeCapabilities.supportsReasoningControls;
+      if (runtimeReasoningSupport) {
+        reasoningSupport = {
+          supported: supportsReasoningControls,
+          reason: runtimeReasoningSupport
+        };
+      }
+    } else if (runtimeReasoningSupport && !reasoningSupport.reason) {
+      reasoningSupport = {
+        supported: reasoningSupport.supported,
+        reason: runtimeReasoningSupport
+      };
+    }
+    if (selectedModelInfo && Array.isArray(selectedModelInfo.supportedReasoningEfforts || selectedModelInfo.SupportedReasoningEfforts)) {
+      var supported = selectedModelInfo.supportedReasoningEfforts || selectedModelInfo.SupportedReasoningEfforts;
+      for (var sr = 0; sr < supported.length; sr++) {
+        var effortItem = supported[sr] || {};
+        var effortName = normalizeReasoningEffortValue(effortItem.reasoningEffort || effortItem.ReasoningEffort || effortItem.value || effortItem.Value);
+        if (!effortName) {
+          continue;
+        }
+        if (supportedReasoningEfforts.indexOf(effortName) >= 0) {
+          continue;
+        }
+        supportedReasoningEfforts.push(effortName);
+      }
+    }
+
+    var effortSelect = byId("optReasoningEffort");
+    if (effortSelect) {
+      var optionsEfforts = supportedReasoningEfforts.length > 0
+        ? supportedReasoningEfforts
+        : ["minimal", "low", "medium", "high", "xhigh"];
+      var effortLabels = {
+        minimal: "Minimal",
+        low: "Low",
+        medium: "Medium",
+        high: "High",
+        xhigh: "XHigh"
+      };
+      effortSelect.innerHTML = "";
+      var providerDefaultOption = document.createElement("option");
+      providerDefaultOption.value = "";
+      providerDefaultOption.textContent = "Provider default";
+      effortSelect.appendChild(providerDefaultOption);
+      for (var oe = 0; oe < optionsEfforts.length; oe++) {
+        var effort = optionsEfforts[oe];
+        var effortOption = document.createElement("option");
+        effortOption.value = effort;
+        effortOption.textContent = effortLabels[effort] || effort;
+        effortSelect.appendChild(effortOption);
+      }
+      effortSelect.value = reasoningEffort;
+      if (effortSelect.value !== reasoningEffort) {
+        effortSelect.value = "";
+      }
+      syncCustomSelect(effortSelect);
+      effortSelect.disabled = isApplying || !supportsReasoningControls;
+    }
+
+    var summarySelect = byId("optReasoningSummary");
+    if (summarySelect) {
+      summarySelect.value = reasoningSummary;
+      if (summarySelect.value !== reasoningSummary) {
+        summarySelect.value = "";
+      }
+      syncCustomSelect(summarySelect);
+      summarySelect.disabled = isApplying || !supportsReasoningControls;
+    }
+
+    var verbositySelect = byId("optTextVerbosity");
+    if (verbositySelect) {
+      verbositySelect.value = textVerbosity;
+      if (verbositySelect.value !== textVerbosity) {
+        verbositySelect.value = "";
+      }
+      syncCustomSelect(verbositySelect);
+      verbositySelect.disabled = isApplying || !supportsReasoningControls;
+    }
+
+    var temperatureInput = byId("optTemperature");
+    if (temperatureInput) {
+      temperatureInput.value = temperatureText;
+      temperatureInput.disabled = isApplying;
+    }
+
+    var reasoningHint = byId("optReasoningHint");
+    if (reasoningHint) {
+      var hintParts = ["Reasoning controls are provider/model dependent."];
+      if (selectedModelInfo) {
+        var modelDefaultEffort = normalizeReasoningEffortValue(
+          selectedModelInfo.defaultReasoningEffort || selectedModelInfo.DefaultReasoningEffort || "");
+        if (modelDefaultEffort) {
+          hintParts.push("Model default effort: " + modelDefaultEffort + ".");
+        }
+      }
+      if (supportedReasoningEfforts.length > 0) {
+        hintParts.push("Supported efforts: " + supportedReasoningEfforts.join(", ") + ".");
+      } else if (!supportsReasoningControls) {
+        hintParts.push(reasoningSupport.reason || "Current provider profile does not expose reasoning controls.");
+      } else {
+        hintParts.push("Supported efforts were not reported by runtime metadata.");
+      }
+      reasoningHint.textContent = hintParts.join(" ");
+    }
+    renderRuntimeCapabilities({
+      isApplying: isApplying,
+      transport: transport,
+      compatiblePreset: compatiblePreset,
+      providerLabel: runtimeProviderLabel,
+      supportsModelCatalog: supportsModelCatalog,
+      supportsReasoningControls: supportsReasoningControls,
+      reasoningSupportReason: reasoningSupport.reason || "",
+      supportedReasoningEfforts: supportedReasoningEfforts,
+      openAIAuthMode: openAIAuthMode,
+      openAIBasicUsername: openAIBasicUsername,
+      copilotConnected: copilotConnected,
+      isNativeTransport: isNativeTransport,
+      isCopilotCli: isCopilotCli,
+      supportsLiveApply: runtimeCapabilities.supportsLiveApply,
+      requiresProcessRestart: runtimeCapabilities.requiresProcessRestart,
+      nativeAccountSlots: runtimeCapabilities.nativeAccountSlots,
+      trackedAccounts: runtimeCapabilities.trackedAccounts,
+      accountsWithRetrySignals: runtimeCapabilities.accountsWithRetrySignals,
+      activeNativeAccountSlot: activeNativeAccountSlot,
+      accountUsage: accountUsage
+    });
+
+    var usageTitle = byId("optAccountUsageTitle");
+    var usageList = byId("optAccountUsageList");
+    if (usageTitle) {
+      usageTitle.hidden = accountUsage.length === 0;
+    }
+    if (usageList) {
+      usageList.innerHTML = "";
+      usageList.classList.add("options-usage-list");
+      if (accountUsage.length === 0) {
+        usageList.hidden = true;
+      } else {
+        usageList.hidden = false;
+        var activeUsageKey = activeAccountUsage ? normalizeModelText(activeAccountUsage.key || "") : "";
+        for (var usageIndex = 0; usageIndex < accountUsage.length; usageIndex++) {
+          var usage = accountUsage[usageIndex] || {};
+          var usageKey = normalizeModelText(usage.key || "");
+          var usageItem = document.createElement("div");
+          usageItem.className = "options-usage-item";
+          if (activeUsageKey && usageKey && usageKey.toLowerCase() === activeUsageKey.toLowerCase()) {
+            usageItem.classList.add("active");
+          }
+
+          var usageHead = document.createElement("div");
+          usageHead.className = "options-usage-head";
+
+          var usageLabel = document.createElement("div");
+          usageLabel.className = "options-usage-label";
+          usageLabel.textContent = normalizeModelText(usage.label || usage.key || "account");
+          usageHead.appendChild(usageLabel);
+
+          var usageTurns = Number(usage.turns);
+          var turnsLabel = Number.isFinite(usageTurns) ? String(Math.max(0, Math.floor(usageTurns))) : "0";
+          var usagePill = document.createElement("span");
+          usagePill.className = "options-pill options-pill-category";
+          usagePill.textContent = turnsLabel + " turns";
+          usageHead.appendChild(usagePill);
+          usageItem.appendChild(usageHead);
+
+          var usageMetrics = document.createElement("div");
+          usageMetrics.className = "options-usage-metrics";
+          usageMetrics.textContent =
+            "total " + formatTokenCount(usage.totalTokens)
+            + " | prompt " + formatTokenCount(usage.promptTokens)
+            + " | completion " + formatTokenCount(usage.completionTokens)
+            + " | reasoning " + formatTokenCount(usage.reasoningTokens);
+          usageItem.appendChild(usageMetrics);
+
+          var usagePlanType = normalizeModelText(usage.planType || "");
+          var usageUsedPercent = Number(usage.rateLimitUsedPercent);
+          var usageWindowResetMinutes = Number(usage.rateLimitWindowResetMinutes);
+          var usageMetaParts = [];
+          if (usagePlanType) {
+            usageMetaParts.push("plan " + usagePlanType);
+          }
+          if (Number.isFinite(usageUsedPercent) && usageUsedPercent >= 0) {
+            usageMetaParts.push("window used " + Math.round(usageUsedPercent) + "%");
+          }
+          if (Number.isFinite(usageWindowResetMinutes) && usageWindowResetMinutes >= 0) {
+            usageMetaParts.push("window reset " + formatRetryMinutes(usageWindowResetMinutes));
+          }
+          if (usage.rateLimitReached === true) {
+            usageMetaParts.push("limit reached");
+          }
+          if (usage.codeReviewLimitReached === true) {
+            usageMetaParts.push("code review limit reached");
+          }
+          if (usage.creditsUnlimited === true) {
+            usageMetaParts.push("credits unlimited");
+          } else if (typeof usage.creditsBalance === "number" && isFinite(usage.creditsBalance)) {
+            usageMetaParts.push("credits " + usage.creditsBalance);
+          }
+          if (usageMetaParts.length > 0) {
+            var usageMeta = document.createElement("div");
+            usageMeta.className = "options-item-sub";
+            usageMeta.textContent = usageMetaParts.join(" | ");
+            usageItem.appendChild(usageMeta);
+          }
+
+          var retryAfterMinutes = Number(usage.retryAfterMinutes);
+          if (Number.isFinite(retryAfterMinutes) && retryAfterMinutes >= 0) {
+            var usageRetry = document.createElement("div");
+            usageRetry.className = "options-usage-retry";
+            var renewAt = formatUtcDateTime(usage.usageLimitRetryAfterUtc || "");
+            usageRetry.setAttribute("data-retry-after-utc", normalizeModelText(usage.usageLimitRetryAfterUtc || ""));
+            if (renewAt) {
+              usageRetry.setAttribute("data-renew-at-text", renewAt);
+            }
+            usageRetry.textContent = "limit retry: " + formatRetryMinutes(retryAfterMinutes) + (renewAt ? " (" + renewAt + ")" : "");
+            usageItem.appendChild(usageRetry);
+          }
+
+          usageList.appendChild(usageItem);
+        }
+      }
+    }
+    refreshAccountUsageRetryCountdowns();
 
     var stateNote = byId("optLocalModelsState");
     if (stateNote) {
@@ -1121,6 +1991,77 @@
           } else if (copilotConnected) {
             parts.push("Set a GitHub token in API key, then click Refresh Models");
           }
+        }
+      }
+      if (reasoningEffort || reasoningSummary || textVerbosity || temperatureText) {
+        parts.push(
+          "reasoning: "
+          + (reasoningEffort || "default")
+          + ", summary: "
+          + (reasoningSummary || "default")
+          + ", verbosity: "
+          + (textVerbosity || "default")
+          + ", temperature: "
+          + (temperatureText || "default"));
+      }
+      if (isCompatible) {
+        var authText = "auth: " + openAIAuthMode;
+        if (openAIAuthMode === "basic" && openAIBasicUsername) {
+          authText += " (" + openAIBasicUsername + ")";
+        }
+        parts.push(authText);
+      }
+      if (activeAccountUsage) {
+        var activeUsageLabel = normalizeModelText(activeAccountUsage.label || "");
+        var activeUsageTotal = formatTokenCount(activeAccountUsage.totalTokens);
+        var activeUsagePrompt = formatTokenCount(activeAccountUsage.promptTokens);
+        var activeUsageCompletion = formatTokenCount(activeAccountUsage.completionTokens);
+        var activeTurns = Number(activeAccountUsage.turns);
+        var activeTurnsText = Number.isFinite(activeTurns) ? String(Math.max(0, Math.floor(activeTurns))) : "0";
+        parts.push(
+          "usage (" + (activeUsageLabel || "active account") + "): "
+          + activeUsageTotal + " total"
+          + " (prompt " + activeUsagePrompt + ", completion " + activeUsageCompletion + ")"
+          + ", turns " + activeTurnsText);
+        var retryAfterMinutes = Number(activeAccountUsage.retryAfterMinutes);
+        if (Number.isFinite(retryAfterMinutes) && retryAfterMinutes >= 0) {
+          parts.push("limit retry: " + formatRetryMinutes(retryAfterMinutes));
+        }
+        var activeWindowResetMinutes = Number(activeAccountUsage.rateLimitWindowResetMinutes);
+        if (Number.isFinite(activeWindowResetMinutes) && activeWindowResetMinutes >= 0) {
+          parts.push("window reset: " + formatRetryMinutes(activeWindowResetMinutes));
+        }
+        var activeUsedPercent = Number(activeAccountUsage.rateLimitUsedPercent);
+        if (Number.isFinite(activeUsedPercent) && activeUsedPercent >= 0) {
+          parts.push("window used: " + Math.round(activeUsedPercent) + "%");
+        }
+        var activePlanType = normalizeModelText(activeAccountUsage.planType || "");
+        if (activePlanType) {
+          parts.push("plan: " + activePlanType);
+        }
+        if (activeAccountUsage.creditsUnlimited === true) {
+          parts.push("credits: unlimited");
+        } else if (typeof activeAccountUsage.creditsBalance === "number" && isFinite(activeAccountUsage.creditsBalance)) {
+          parts.push("credits: " + activeAccountUsage.creditsBalance);
+        }
+      } else if (transport === "native" && authenticatedAccountId) {
+        parts.push("usage: no token metrics reported yet for this account");
+      }
+      if (transport === "native") {
+        var selectedAccount = selectedSlotAccountId || openAIAccountId || authenticatedAccountId || "(unassigned)";
+        parts.push("native slot " + String(activeNativeAccountSlot) + ": " + selectedAccount);
+      }
+      if (accountUsage.length > 1) {
+        var accountLabels = [];
+        for (var au = 0; au < accountUsage.length && accountLabels.length < 3; au++) {
+          var item = accountUsage[au] || {};
+          var label = normalizeModelText(item.label || item.key || "");
+          if (label) {
+            accountLabels.push(label);
+          }
+        }
+        if (accountLabels.length > 0) {
+          parts.push("tracked accounts: " + accountLabels.join(", "));
         }
       }
       if (profileApplyMode === "session" || !profileSaved) {
@@ -1460,6 +2401,9 @@
       parts.push(normalizeBool(state.debugMode)
         ? "Engine debug is enabled."
         : "Engine debug is disabled.");
+      if (state.accountId) {
+        parts.push("Account: " + String(state.accountId) + ".");
+      }
 
       var metrics = state.lastTurnMetrics;
       if (metrics && typeof metrics === "object") {
@@ -1474,7 +2418,11 @@
           ? " queue " + Math.floor(queueWait) + "ms"
           : "";
         var callsText = Number.isFinite(toolCalls) ? String(Math.max(0, Math.floor(toolCalls))) : "0";
-        parts.push("Last turn: " + outcome + " in " + durationText + ", tools " + callsText + queueWaitText + ".");
+        var totalTokens = Number(metrics.totalTokens);
+        var tokenText = Number.isFinite(totalTokens) && totalTokens > 0
+          ? ", tokens " + formatTokenCount(totalTokens)
+          : "";
+        parts.push("Last turn: " + outcome + " in " + durationText + ", tools " + callsText + queueWaitText + tokenText + ".");
       }
 
       var queuedTurnCount = Number(state.queuedTurnCount);
@@ -1508,11 +2456,6 @@
     var startup = byId("btnDebugCopyStartupLog");
     if (startup) {
       startup.disabled = !enabled;
-    }
-
-    var restart = byId("btnDebugRestartSidecar");
-    if (restart) {
-      restart.disabled = !enabled;
     }
 
     var memState = byId("optMemoryDebugState");

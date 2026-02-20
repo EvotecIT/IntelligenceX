@@ -37,6 +37,7 @@
     queuedTurnCount: 0,
     connected: false,
     authenticated: false,
+    accountId: "",
     loginInProgress: false,
     sending: false,
     cancelable: false,
@@ -91,12 +92,24 @@
         baseUrl: "",
         modelsEndpoint: "",
         model: "gpt-5.3-codex",
+        openAIAuthMode: "bearer",
+        openAIBasicUsername: "",
+        openAIAccountId: "",
+        activeNativeAccountSlot: 1,
+        nativeAccountSlots: [],
+        reasoningEffort: "",
+        reasoningSummary: "",
+        textVerbosity: "",
+        temperature: null,
         models: [],
         favoriteModels: [],
         recentModels: [],
         isStale: false,
         warning: "",
         profileSaved: false,
+        authenticatedAccountId: "",
+        accountUsage: [],
+        activeAccountUsage: null,
         runtimeDetection: {
           hasRun: false,
           lmStudioAvailable: false,
@@ -504,8 +517,10 @@
     var hasQueuedPrompts = queuedPromptCount > 0 || normalizeBool(state.queuedPromptPending);
     var switchRecommended = normalizeBool(state.usageLimitSwitchRecommended) || hasQueuedPrompts;
     var debugToolsEnabled = normalizeBool(state.options.debugToolsEnabled);
+    var transport = (state.options && state.options.localModel && state.options.localModel.transport) || "native";
+    var isNativeTransport = String(transport).trim().toLowerCase() === "native";
 
-    signIn.hidden = false;
+    signIn.hidden = !isNativeTransport;
     signIn.disabled = loginInProgress;
     if (authenticated) {
       signIn.textContent = loginInProgress ? "Signing In..." : "Sign In Again";
@@ -520,14 +535,14 @@
     }
 
     if (switchAccount) {
-      switchAccount.hidden = false;
+      switchAccount.hidden = !isNativeTransport;
       switchAccount.disabled = loginInProgress;
       switchAccount.textContent = switchRecommended
         ? (queuedPromptCount > 0 ? ("Switch Account (" + queuedPromptCount + " queued)") : "Switch Account (Recommended)")
         : "Switch Account";
     }
 
-    reconnect.textContent = normalizeBool(state.connected) ? "Reconnect runtime" : "Start runtime";
+    reconnect.textContent = normalizeBool(state.connected) ? "Reconnect session" : "Start runtime";
     if (debug) {
       debug.hidden = !debugToolsEnabled;
       debug.textContent = normalizeBool(state.debugMode) ? "Disable Debug" : "Enable Debug";

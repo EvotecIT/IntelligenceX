@@ -76,7 +76,7 @@ Inside the app:
    - **Use Copilot Subscription**
 3. Wait for model discovery to populate and choose a discovered model if needed.
 4. Use **Show Advanced Runtime** only when you need custom transport/base URL/API key/manual model options (LM Studio/Ollama/Azure/other compatible endpoints).
-5. If you see **Applying Runtime...**, wait for restart and model refresh to complete before clicking runtime buttons again.
+5. If you see **Applying Runtime...**, wait for runtime apply + model refresh to complete before clicking runtime buttons again (runtime switching is live apply/reconnect, no auto-restart).
 6. Use **Refresh Models** to force model re-discovery after runtime changes.
 
 Troubleshooting:

@@ -161,6 +161,8 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        var effectiveAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
+        var effectiveLoginInProgress = RequiresInteractiveSignInForCurrentTransport() && _loginInProgress;
         var queuedPromptCount = GetQueuedPromptAfterLoginCount();
         var queuedTurnCount = GetQueuedTurnCount();
         var json = JsonSerializer.Serialize(new {
@@ -171,8 +173,9 @@ public sealed partial class MainWindow : Window {
             queuedPromptCount,
             queuedTurnCount,
             connected = _isConnected,
-            authenticated = _isAuthenticated,
-            loginInProgress = _loginInProgress,
+            authenticated = effectiveAuthenticated,
+            accountId = _authenticatedAccountId ?? string.Empty,
+            loginInProgress = effectiveLoginInProgress,
             sending = _isSending,
             cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId),
             cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId),
@@ -233,6 +236,101 @@ public sealed partial class MainWindow : Window {
                || normalized.Contains("switch account", StringComparison.OrdinalIgnoreCase);
     }
 
+    private object BuildLocalRuntimeCapabilitiesState() {
+        var transport = NormalizeLocalProviderTransport(_localProviderTransport);
+        var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
+        var preset = DetectCompatibleProviderPreset(baseUrl);
+        var isNative = string.Equals(transport, TransportNative, StringComparison.OrdinalIgnoreCase);
+        var isCopilotCli = string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
+        var isCompatible = string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
+        var copilotConnected = isCompatible
+            && baseUrl.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase);
+        var supportsReasoningControls = SupportsLocalProviderReasoningControls(transport, baseUrl);
+        var reasoningSupport = DescribeLocalProviderReasoningSupport(transport, baseUrl);
+        var (trackedAccounts, accountsWithRetrySignals) = GetRuntimeUsageCapabilityCounts();
+
+        return new {
+            providerLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl),
+            compatiblePreset = preset,
+            supportsModelCatalog = isNative || isCopilotCli || isCompatible,
+            supportsReasoningControls,
+            reasoningSupport,
+            supportsNativeAccountSlots = isNative,
+            nativeAccountSlots = isNative ? 3 : 0,
+            supportsLiveApply = true,
+            requiresProcessRestart = false,
+            trackedAccounts,
+            accountsWithRetrySignals
+        };
+    }
+
+    private (int TrackedAccounts, int AccountsWithRetrySignals) GetRuntimeUsageCapabilityCounts() {
+        lock (_turnDiagnosticsSync) {
+            if (_accountUsageByKey.Count == 0) {
+                return (0, 0);
+            }
+
+            var tracked = 0;
+            var retrySignals = 0;
+            foreach (var snapshot in _accountUsageByKey.Values) {
+                tracked++;
+                if (snapshot.UsageLimitRetryAfterUtc.HasValue
+                    || snapshot.RateLimitWindowResetUtc.HasValue
+                    || snapshot.RateLimitReached == true) {
+                    retrySignals++;
+                }
+            }
+
+            return (tracked, retrySignals);
+        }
+    }
+
+    private static string ResolveRuntimeProviderLabelForState(
+        string transport,
+        string compatiblePreset,
+        bool copilotConnected,
+        string baseUrl) {
+        if (string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
+            return "GitHub Copilot subscription runtime";
+        }
+
+        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return "ChatGPT runtime (OpenAI native)";
+        }
+
+        if (string.Equals(compatiblePreset, "lmstudio", StringComparison.OrdinalIgnoreCase)) {
+            return "LM Studio runtime";
+        }
+
+        if (string.Equals(compatiblePreset, "ollama", StringComparison.OrdinalIgnoreCase)) {
+            return "Ollama runtime";
+        }
+
+        if (string.Equals(compatiblePreset, "openai", StringComparison.OrdinalIgnoreCase)) {
+            return "OpenAI API runtime";
+        }
+
+        if (string.Equals(compatiblePreset, "azure-openai", StringComparison.OrdinalIgnoreCase)) {
+            return "Azure OpenAI runtime";
+        }
+
+        if (string.Equals(compatiblePreset, "anthropic-bridge", StringComparison.OrdinalIgnoreCase)) {
+            return "Anthropic bridge runtime";
+        }
+
+        if (string.Equals(compatiblePreset, "gemini-bridge", StringComparison.OrdinalIgnoreCase)) {
+            return "Gemini bridge runtime";
+        }
+
+        if (copilotConnected) {
+            return "GitHub Copilot runtime";
+        }
+
+        return baseUrl.Length == 0
+            ? "Compatible HTTP runtime"
+            : "Compatible HTTP runtime (" + DescribeRuntimeFromBaseUrl(baseUrl) + ")";
+    }
+
     private async Task PublishOptionsStateAsync() {
         await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
     }
@@ -249,6 +347,9 @@ public sealed partial class MainWindow : Window {
         var tools = BuildToolState();
         var toolsLoading = _isConnected && _sessionPolicy is null;
         var conversations = BuildConversationState();
+        var accountUsageState = BuildAccountUsageState();
+        var activeAccountUsageState = BuildActiveAccountUsageState();
+        var runtimeCapabilitiesState = BuildLocalRuntimeCapabilitiesState();
         var json = JsonSerializer.Serialize(new {
             timestampMode = _timestampMode,
             timestampFormat = _timestampFormat,
@@ -297,12 +398,25 @@ public sealed partial class MainWindow : Window {
                     ? BuildModelsProbeUrl(_localProviderBaseUrl ?? string.Empty)
                     : string.Empty,
                 model = _localProviderModel,
+                openAIAuthMode = _localProviderOpenAIAuthMode,
+                openAIBasicUsername = _localProviderOpenAIBasicUsername,
+                openAIAccountId = _localProviderOpenAIAccountId,
+                activeNativeAccountSlot = _activeNativeAccountSlot,
+                nativeAccountSlots = BuildNativeAccountSlotState(),
+                reasoningEffort = _localProviderReasoningEffort,
+                reasoningSummary = _localProviderReasoningSummary,
+                textVerbosity = _localProviderTextVerbosity,
+                temperature = _localProviderTemperature,
                 models = _availableModels,
                 favoriteModels = _favoriteModels,
                 recentModels = _recentModels,
                 isStale = _modelListIsStale,
                 warning = _modelListWarning,
                 profileSaved = Array.Exists(_serviceProfileNames, name => string.Equals(name, _appProfileName, StringComparison.OrdinalIgnoreCase)),
+                authenticatedAccountId = RequiresInteractiveSignInForCurrentTransport() ? (_authenticatedAccountId ?? string.Empty) : string.Empty,
+                accountUsage = accountUsageState,
+                activeAccountUsage = activeAccountUsageState,
+                runtimeCapabilities = runtimeCapabilitiesState,
                 runtimeDetection = new {
                     hasRun = _localRuntimeDetectionRan,
                     lmStudioAvailable = _localRuntimeLmStudioAvailable,
@@ -990,7 +1104,12 @@ public sealed partial class MainWindow : Window {
             toolRounds = snapshot.ToolRounds,
             projectionFallbacks = snapshot.ProjectionFallbackCount,
             outcome = snapshot.Outcome,
-            errorCode = snapshot.ErrorCode ?? string.Empty
+            errorCode = snapshot.ErrorCode ?? string.Empty,
+            promptTokens = snapshot.PromptTokens,
+            completionTokens = snapshot.CompletionTokens,
+            totalTokens = snapshot.TotalTokens,
+            cachedPromptTokens = snapshot.CachedPromptTokens,
+            reasoningTokens = snapshot.ReasoningTokens
         };
     }
 

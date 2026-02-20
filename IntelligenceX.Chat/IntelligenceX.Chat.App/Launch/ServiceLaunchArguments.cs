@@ -13,10 +13,19 @@ internal static class ServiceLaunchArguments {
         public string? Model { get; init; }
         public string? OpenAITransport { get; init; }
         public string? OpenAIBaseUrl { get; init; }
+        public string? OpenAIAuthMode { get; init; }
         public string? OpenAIApiKey { get; init; }
+        public string? OpenAIBasicUsername { get; init; }
+        public string? OpenAIBasicPassword { get; init; }
+        public string? OpenAIAccountId { get; init; }
         public bool ClearOpenAIApiKey { get; init; }
+        public bool ClearOpenAIBasicAuth { get; init; }
         public bool? OpenAIStreaming { get; init; }
         public bool? OpenAIAllowInsecureHttp { get; init; }
+        public string? ReasoningEffort { get; init; }
+        public string? ReasoningSummary { get; init; }
+        public string? TextVerbosity { get; init; }
+        public double? Temperature { get; init; }
         public bool? EnablePowerShellPack { get; init; }
         public bool? EnableTestimoXPack { get; init; }
         public bool? EnableOfficeImoPack { get; init; }
@@ -62,11 +71,19 @@ internal static class ServiceLaunchArguments {
         }
 
         AddKeyValueArg(args, "--openai-base-url", profileOptions.OpenAIBaseUrl);
+        AddKeyValueArg(args, "--openai-auth-mode", NormalizeCompatibleAuthMode(profileOptions.OpenAIAuthMode));
         if (profileOptions.ClearOpenAIApiKey) {
             args.Add("--openai-clear-api-key");
         } else {
             AddKeyValueArg(args, "--openai-api-key", profileOptions.OpenAIApiKey);
         }
+        if (profileOptions.ClearOpenAIBasicAuth) {
+            args.Add("--openai-clear-basic-auth");
+        } else {
+            AddKeyValueArg(args, "--openai-basic-username", profileOptions.OpenAIBasicUsername);
+            AddKeyValueArg(args, "--openai-basic-password", profileOptions.OpenAIBasicPassword);
+        }
+        AddKeyValueArg(args, "--openai-account-id", profileOptions.OpenAIAccountId);
 
         if (profileOptions.OpenAIStreaming.HasValue) {
             args.Add(profileOptions.OpenAIStreaming.Value ? "--openai-stream" : "--openai-no-stream");
@@ -74,6 +91,14 @@ internal static class ServiceLaunchArguments {
 
         if (profileOptions.OpenAIAllowInsecureHttp == true) {
             args.Add("--openai-allow-insecure-http");
+        }
+
+        AddKeyValueArg(args, "--reasoning-effort", profileOptions.ReasoningEffort);
+        AddKeyValueArg(args, "--reasoning-summary", profileOptions.ReasoningSummary);
+        AddKeyValueArg(args, "--text-verbosity", profileOptions.TextVerbosity);
+        if (profileOptions.Temperature.HasValue) {
+            args.Add("--temperature");
+            args.Add(profileOptions.Temperature.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         if (profileOptions.EnablePowerShellPack.HasValue) {
@@ -117,6 +142,24 @@ internal static class ServiceLaunchArguments {
             "github-copilot" => "copilot-cli",
             "githubcopilot" => "copilot-cli",
             _ => throw new ArgumentException($"Unsupported OpenAI transport '{value}'.", nameof(value))
+        };
+    }
+
+    private static string? NormalizeCompatibleAuthMode(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        return normalized switch {
+            "bearer" => "bearer",
+            "api-key" => "bearer",
+            "apikey" => "bearer",
+            "token" => "bearer",
+            "basic" => "basic",
+            "none" => "none",
+            "off" => "none",
+            _ => throw new ArgumentException($"Unsupported compatible-http auth mode '{value}'.", nameof(value))
         };
     }
 }

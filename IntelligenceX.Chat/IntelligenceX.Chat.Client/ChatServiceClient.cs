@@ -279,6 +279,56 @@ public sealed class ChatServiceClient : IAsyncDisposable {
     }
 
     /// <summary>
+    /// Applies runtime/provider settings live in the connected service session.
+    /// </summary>
+    public Task<AckMessage> ApplyRuntimeSettingsAsync(
+        string? model = null,
+        string? openAITransport = null,
+        string? openAIBaseUrl = null,
+        string? openAIApiKey = null,
+        string? openAIAuthMode = null,
+        string? openAIBasicUsername = null,
+        string? openAIBasicPassword = null,
+        string? openAIAccountId = null,
+        bool clearOpenAIApiKey = false,
+        bool clearOpenAIBasicAuth = false,
+        bool? openAIStreaming = null,
+        bool? openAIAllowInsecureHttp = null,
+        string? reasoningEffort = null,
+        string? reasoningSummary = null,
+        string? textVerbosity = null,
+        double? temperature = null,
+        bool? enablePowerShellPack = null,
+        bool? enableTestimoXPack = null,
+        bool? enableOfficeImoPack = null,
+        string? profileName = null,
+        CancellationToken cancellationToken = default) {
+        return RequestAsync<AckMessage>(new ApplyRuntimeSettingsRequest {
+            RequestId = NewRequestId(),
+            Model = model,
+            OpenAITransport = openAITransport,
+            OpenAIBaseUrl = openAIBaseUrl,
+            OpenAIApiKey = openAIApiKey,
+            OpenAIAuthMode = openAIAuthMode,
+            OpenAIBasicUsername = openAIBasicUsername,
+            OpenAIBasicPassword = openAIBasicPassword,
+            OpenAIAccountId = openAIAccountId,
+            ClearOpenAIApiKey = clearOpenAIApiKey,
+            ClearOpenAIBasicAuth = clearOpenAIBasicAuth,
+            OpenAIStreaming = openAIStreaming,
+            OpenAIAllowInsecureHttp = openAIAllowInsecureHttp,
+            ReasoningEffort = reasoningEffort,
+            ReasoningSummary = reasoningSummary,
+            TextVerbosity = textVerbosity,
+            Temperature = temperature,
+            EnablePowerShellPack = enablePowerShellPack,
+            EnableTestimoXPack = enableTestimoXPack,
+            EnableOfficeImoPack = enableOfficeImoPack,
+            ProfileName = profileName
+        }, cancellationToken);
+    }
+
+    /// <summary>
     /// Requests the list of models from the active provider/transport.
     /// </summary>
     public Task<ModelListMessage> ListModelsAsync(bool forceRefresh = false, CancellationToken cancellationToken = default) {

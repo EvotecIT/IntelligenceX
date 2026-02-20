@@ -145,6 +145,20 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures runtime apply payload carries reasoning controls so model + reasoning configuration travels together.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesReasoningFieldsInApplyLocalProviderPayload() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("reasoningEffort: reasoningEffort,", script, StringComparison.Ordinal);
+        Assert.Contains("reasoningSummary: reasoningSummary,", script, StringComparison.Ordinal);
+        Assert.Contains("textVerbosity: textVerbosity,", script, StringComparison.Ordinal);
+        Assert.Contains("temperature: temperature,", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures Data View plain-table fallback preserves falsy scalar values like 0/false.
     /// </summary>
     [Fact]
@@ -168,7 +182,6 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("if (pending && pending.sessionId && pending.sessionId !== activeDataViewSessionId) {", script, StringComparison.Ordinal);
     }
 
-    /// <summary>
     /// Ensures visual runtime script is part of the shell composition and transcript hook.
     /// </summary>
     [Fact]
@@ -196,5 +209,49 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
         Assert.Contains("pre.querySelector(\"code.language-ix-chart, code.language-chart\")", script, StringComparison.Ordinal);
         Assert.Contains("pre.querySelector(\"code.language-ix-network\")", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures runtime UI keeps explicit manual model guidance and does not regress to legacy restart commands.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesManualModelHint_AndOmitsLegacyRestartRuntimeCommand() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("id=\"optLocalModelManualHint\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeCapabilities\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("restart_runtime", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Restarting local runtime...", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures runtime options include capability matrix rendering for model, reasoning, auth, and usage transparency.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesRuntimeCapabilitiesRendererAndStyles() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+        var cssPath = Path.Combine(UiDirectory, "Shell.30.options.css");
+        var css = File.ReadAllText(cssPath);
+
+        Assert.Contains("function renderRuntimeCapabilities(options)", script, StringComparison.Ordinal);
+        Assert.Contains("appendRuntimeCapabilityRow(", script, StringComparison.Ordinal);
+        Assert.Contains("renderRuntimeCapabilities({", script, StringComparison.Ordinal);
+        Assert.Contains("var runtimeCapabilities = local.runtimeCapabilities", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
+        Assert.Contains(".options-runtime-capability", css, StringComparison.Ordinal);
+        Assert.Contains(".options-runtime-capability-value-supported", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures account usage retry countdowns refresh while options stay open.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesAccountUsageRetryCountdownRefreshTicker() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.22.bindings.wheel.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("refreshAccountUsageRetryCountdowns();", script, StringComparison.Ordinal);
+        Assert.Contains("setInterval(function()", script, StringComparison.Ordinal);
     }
 }

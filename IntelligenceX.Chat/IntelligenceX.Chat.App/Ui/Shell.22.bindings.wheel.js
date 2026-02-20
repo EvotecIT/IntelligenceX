@@ -189,5 +189,13 @@
   setSidebarHoverMode(sidebarPrefs.mode);
   setSidebarWidth(sidebarPrefs.width);
   setSidebarCollapsed(sidebarPrefs.collapsed);
+  setInterval(function() {
+    if (!document.body.classList.contains("options-open")) {
+      return;
+    }
+    if (typeof refreshAccountUsageRetryCountdowns === "function") {
+      refreshAccountUsageRetryCountdowns();
+    }
+  }, 15000);
   renderOptions();
 })();

@@ -14,10 +14,25 @@ public sealed class OpenAICompatibleHttpOptions {
     public string? BaseUrl { get; set; }
 
     /// <summary>
-    /// Optional API key to send as a Bearer token.
+    /// Auth mode for compatible-http requests.
+    /// </summary>
+    public OpenAICompatibleHttpAuthMode AuthMode { get; set; } = OpenAICompatibleHttpAuthMode.Bearer;
+
+    /// <summary>
+    /// Optional API key used with <see cref="OpenAICompatibleHttpAuthMode.Bearer"/>.
     /// Local providers often ignore this.
     /// </summary>
     public string? ApiKey { get; set; }
+
+    /// <summary>
+    /// Optional username used with <see cref="OpenAICompatibleHttpAuthMode.Basic"/>.
+    /// </summary>
+    public string? BasicUsername { get; set; }
+
+    /// <summary>
+    /// Optional password used with <see cref="OpenAICompatibleHttpAuthMode.Basic"/>.
+    /// </summary>
+    public string? BasicPassword { get; set; }
 
     /// <summary>
     /// Whether to request streaming responses when supported by the provider.
@@ -78,5 +93,27 @@ public sealed class OpenAICompatibleHttpOptions {
                     nameof(BaseUrl));
             }
         }
+
+        // Normalize auth values and validate mode-specific inputs.
+        ApiKey = NormalizeOptionalValue(ApiKey);
+        BasicUsername = NormalizeOptionalValue(BasicUsername);
+        BasicPassword = NormalizeOptionalValue(BasicPassword);
+
+        if (AuthMode == OpenAICompatibleHttpAuthMode.Basic
+            && string.IsNullOrWhiteSpace(BasicUsername)
+            && string.IsNullOrWhiteSpace(BasicPassword)) {
+            throw new ArgumentException(
+                "Basic auth mode requires basic username or password.",
+                nameof(BasicUsername));
+        }
+    }
+
+    private static string? NormalizeOptionalValue(string? value) {
+        if (value is null) {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 }

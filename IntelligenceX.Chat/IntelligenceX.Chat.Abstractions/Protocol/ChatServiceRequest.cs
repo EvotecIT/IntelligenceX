@@ -16,6 +16,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(CheckToolHealthRequest), "check_tool_health")]
 [JsonDerivedType(typeof(ListProfilesRequest), "list_profiles")]
 [JsonDerivedType(typeof(SetProfileRequest), "set_profile")]
+[JsonDerivedType(typeof(ApplyRuntimeSettingsRequest), "apply_runtime_settings")]
 [JsonDerivedType(typeof(ListModelsRequest), "list_models")]
 [JsonDerivedType(typeof(ListModelFavoritesRequest), "list_model_favorites")]
 [JsonDerivedType(typeof(SetModelFavoriteRequest), "set_model_favorite")]
@@ -133,6 +134,93 @@ public sealed record SetProfileRequest : ChatServiceRequest {
 }
 
 /// <summary>
+/// Applies runtime/provider settings in-process without restarting the service sidecar.
+/// </summary>
+public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
+    /// <summary>
+    /// Optional model override to persist/apply.
+    /// </summary>
+    public string? Model { get; init; }
+    /// <summary>
+    /// Optional provider transport override (native|compatible-http|copilot-cli|appserver).
+    /// </summary>
+    public string? OpenAITransport { get; init; }
+    /// <summary>
+    /// Optional compatible-http base URL override.
+    /// </summary>
+    public string? OpenAIBaseUrl { get; init; }
+    /// <summary>
+    /// Optional compatible-http API key update.
+    /// </summary>
+    public string? OpenAIApiKey { get; init; }
+    /// <summary>
+    /// Optional compatible-http auth mode override (bearer|basic|none).
+    /// </summary>
+    public string? OpenAIAuthMode { get; init; }
+    /// <summary>
+    /// Optional compatible-http basic auth username update.
+    /// </summary>
+    public string? OpenAIBasicUsername { get; init; }
+    /// <summary>
+    /// Optional compatible-http basic auth password update.
+    /// </summary>
+    public string? OpenAIBasicPassword { get; init; }
+    /// <summary>
+    /// Optional native transport account id override.
+    /// Empty value clears account pinning and lets runtime pick the default bundle.
+    /// </summary>
+    public string? OpenAIAccountId { get; init; }
+    /// <summary>
+    /// When true, clears any stored compatible-http API key.
+    /// </summary>
+    public bool ClearOpenAIApiKey { get; init; }
+    /// <summary>
+    /// When true, clears any stored compatible-http basic auth username/password.
+    /// </summary>
+    public bool ClearOpenAIBasicAuth { get; init; }
+    /// <summary>
+    /// Optional streaming flag override.
+    /// </summary>
+    public bool? OpenAIStreaming { get; init; }
+    /// <summary>
+    /// Optional insecure-http allowance override.
+    /// </summary>
+    public bool? OpenAIAllowInsecureHttp { get; init; }
+    /// <summary>
+    /// Optional reasoning effort override (minimal|low|medium|high|xhigh). Empty clears override.
+    /// </summary>
+    public string? ReasoningEffort { get; init; }
+    /// <summary>
+    /// Optional reasoning summary override (auto|concise|detailed|off). Empty clears override.
+    /// </summary>
+    public string? ReasoningSummary { get; init; }
+    /// <summary>
+    /// Optional text verbosity override (low|medium|high). Empty clears override.
+    /// </summary>
+    public string? TextVerbosity { get; init; }
+    /// <summary>
+    /// Optional temperature override (0..2). Null keeps prior value.
+    /// </summary>
+    public double? Temperature { get; init; }
+    /// <summary>
+    /// Optional runtime pack toggle for PowerShell pack.
+    /// </summary>
+    public bool? EnablePowerShellPack { get; init; }
+    /// <summary>
+    /// Optional runtime pack toggle for TestimoX pack.
+    /// </summary>
+    public bool? EnableTestimoXPack { get; init; }
+    /// <summary>
+    /// Optional runtime pack toggle for OfficeIMO pack.
+    /// </summary>
+    public bool? EnableOfficeImoPack { get; init; }
+    /// <summary>
+    /// Optional profile name to persist updated settings into.
+    /// </summary>
+    public string? ProfileName { get; init; }
+}
+
+/// <summary>
 /// Requests the list of available models for the current provider/profile.
 /// </summary>
 public sealed record ListModelsRequest : ChatServiceRequest {
@@ -217,6 +305,22 @@ public sealed record ChatRequestOptions {
     /// Optional model override.
     /// </summary>
     public string? Model { get; init; }
+    /// <summary>
+    /// Optional reasoning effort override for this request (minimal|low|medium|high|xhigh). Empty clears override.
+    /// </summary>
+    public string? ReasoningEffort { get; init; }
+    /// <summary>
+    /// Optional reasoning summary override for this request (auto|concise|detailed|off). Empty clears override.
+    /// </summary>
+    public string? ReasoningSummary { get; init; }
+    /// <summary>
+    /// Optional text verbosity override for this request (low|medium|high). Empty clears override.
+    /// </summary>
+    public string? TextVerbosity { get; init; }
+    /// <summary>
+    /// Optional temperature override for this request (0..2).
+    /// </summary>
+    public double? Temperature { get; init; }
     /// <summary>
     /// Max tool-call rounds per user message.
     /// </summary>

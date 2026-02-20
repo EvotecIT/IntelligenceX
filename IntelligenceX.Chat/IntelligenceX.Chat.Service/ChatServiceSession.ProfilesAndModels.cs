@@ -10,6 +10,7 @@ using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -45,10 +46,17 @@ internal sealed partial class ChatServiceSession {
             // Native transport can take the session instructions as a startup hint.
             opts.NativeOptions.Instructions = _instructions!;
         }
+        if (opts.TransportKind == OpenAITransportKind.Native) {
+            var accountId = (_options.OpenAIAccountId ?? string.Empty).Trim();
+            opts.NativeOptions.AuthAccountId = accountId.Length == 0 ? null : accountId;
+        }
 
         if (opts.TransportKind == OpenAITransportKind.CompatibleHttp) {
             opts.CompatibleHttpOptions.BaseUrl = _options.OpenAIBaseUrl;
+            opts.CompatibleHttpOptions.AuthMode = _options.OpenAIAuthMode;
             opts.CompatibleHttpOptions.ApiKey = _options.OpenAIApiKey;
+            opts.CompatibleHttpOptions.BasicUsername = _options.OpenAIBasicUsername;
+            opts.CompatibleHttpOptions.BasicPassword = _options.OpenAIBasicPassword;
             opts.CompatibleHttpOptions.Streaming = _options.OpenAIStreaming;
             opts.CompatibleHttpOptions.AllowInsecureHttp = _options.OpenAIAllowInsecureHttp;
             opts.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = _options.OpenAIAllowInsecureHttpNonLoopback;
@@ -193,7 +201,11 @@ internal sealed partial class ChatServiceSession {
         var previousClientSettings = (
             Transport: _options.OpenAITransport,
             BaseUrl: _options.OpenAIBaseUrl,
+            AuthMode: _options.OpenAIAuthMode,
             ApiKey: _options.OpenAIApiKey,
+            BasicUsername: _options.OpenAIBasicUsername,
+            BasicPassword: _options.OpenAIBasicPassword,
+            AccountId: _options.OpenAIAccountId,
             Streaming: _options.OpenAIStreaming,
             InsecureHttp: _options.OpenAIAllowInsecureHttp,
             InsecureHttpNonLoopback: _options.OpenAIAllowInsecureHttpNonLoopback,
@@ -214,7 +226,11 @@ internal sealed partial class ChatServiceSession {
 
             var reconnect = previousClientSettings.Transport != _options.OpenAITransport
                             || !string.Equals(previousClientSettings.BaseUrl, _options.OpenAIBaseUrl, StringComparison.Ordinal)
+                            || previousClientSettings.AuthMode != _options.OpenAIAuthMode
                             || !string.Equals(previousClientSettings.ApiKey, _options.OpenAIApiKey, StringComparison.Ordinal)
+                            || !string.Equals(previousClientSettings.BasicUsername, _options.OpenAIBasicUsername, StringComparison.Ordinal)
+                            || !string.Equals(previousClientSettings.BasicPassword, _options.OpenAIBasicPassword, StringComparison.Ordinal)
+                            || !string.Equals(previousClientSettings.AccountId, _options.OpenAIAccountId, StringComparison.Ordinal)
                             || previousClientSettings.Streaming != _options.OpenAIStreaming
                             || previousClientSettings.InsecureHttp != _options.OpenAIAllowInsecureHttp
                             || previousClientSettings.InsecureHttpNonLoopback != _options.OpenAIAllowInsecureHttpNonLoopback;
@@ -244,6 +260,265 @@ internal sealed partial class ChatServiceSession {
                 RequestId = request.RequestId,
                 Error = $"Failed to apply profile '{name}': {ex.Message}",
                 Code = "profile_apply_failed"
+            }, cancellationToken).ConfigureAwait(false);
+
+            return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+        }
+    }
+
+    private async Task<SetProfileResult> HandleApplyRuntimeSettingsAsync(StreamWriter writer, ApplyRuntimeSettingsRequest request,
+        CancellationToken cancellationToken) {
+        if (request is null) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = null,
+                Error = "Request payload is required.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+        }
+
+        if (HasActiveLoginOrChat(out var busyCode, out var busyError)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = busyError ?? "Session is busy.",
+                Code = busyCode ?? "busy"
+            }, cancellationToken).ConfigureAwait(false);
+            return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+        }
+
+        var previous = _options.ToProfile();
+        var previousProfileName = _options.ProfileName;
+        var previousClientSettings = (
+            Transport: _options.OpenAITransport,
+            BaseUrl: _options.OpenAIBaseUrl,
+            AuthMode: _options.OpenAIAuthMode,
+            ApiKey: _options.OpenAIApiKey,
+            BasicUsername: _options.OpenAIBasicUsername,
+            BasicPassword: _options.OpenAIBasicPassword,
+            AccountId: _options.OpenAIAccountId,
+            Streaming: _options.OpenAIStreaming,
+            InsecureHttp: _options.OpenAIAllowInsecureHttp,
+            InsecureHttpNonLoopback: _options.OpenAIAllowInsecureHttpNonLoopback,
+            Model: _options.Model
+        );
+
+        try {
+            if (!string.IsNullOrWhiteSpace(request.OpenAITransport)) {
+                if (!TryParseTransport(request.OpenAITransport, out var parsedTransport)) {
+                    await WriteAsync(writer, new ErrorMessage {
+                        Kind = ChatServiceMessageKind.Response,
+                        RequestId = request.RequestId,
+                        Error = "openAITransport must be one of: native, appserver, compatible-http, copilot-cli.",
+                        Code = "invalid_argument"
+                    }, cancellationToken).ConfigureAwait(false);
+                    return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                }
+
+                _options.OpenAITransport = parsedTransport;
+            }
+
+            if (request.OpenAIBaseUrl is not null) {
+                var normalizedBaseUrl = request.OpenAIBaseUrl.Trim();
+                _options.OpenAIBaseUrl = normalizedBaseUrl.Length == 0 ? null : normalizedBaseUrl;
+            }
+
+            if (request.ClearOpenAIApiKey) {
+                _options.OpenAIApiKey = null;
+            } else if (request.OpenAIApiKey is not null) {
+                var normalizedApiKey = request.OpenAIApiKey.Trim();
+                _options.OpenAIApiKey = normalizedApiKey.Length == 0 ? null : normalizedApiKey;
+            }
+            if (request.OpenAIAuthMode is not null) {
+                if (!TryParseCompatibleAuthMode(request.OpenAIAuthMode, out var authMode)) {
+                    await WriteAsync(writer, new ErrorMessage {
+                        Kind = ChatServiceMessageKind.Response,
+                        RequestId = request.RequestId,
+                        Error = "openAIAuthMode must be one of: bearer, basic, none.",
+                        Code = "invalid_argument"
+                    }, cancellationToken).ConfigureAwait(false);
+                    return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                }
+
+                _options.OpenAIAuthMode = authMode;
+            }
+            if (request.ClearOpenAIBasicAuth) {
+                _options.OpenAIBasicUsername = null;
+                _options.OpenAIBasicPassword = null;
+            } else {
+                if (request.OpenAIBasicUsername is not null) {
+                    var normalizedBasicUser = request.OpenAIBasicUsername.Trim();
+                    _options.OpenAIBasicUsername = normalizedBasicUser.Length == 0 ? null : normalizedBasicUser;
+                }
+                if (request.OpenAIBasicPassword is not null) {
+                    var normalizedBasicPassword = request.OpenAIBasicPassword.Trim();
+                    _options.OpenAIBasicPassword = normalizedBasicPassword.Length == 0 ? null : normalizedBasicPassword;
+                }
+            }
+            if (request.OpenAIAccountId is not null) {
+                var normalizedAccountId = request.OpenAIAccountId.Trim();
+                _options.OpenAIAccountId = normalizedAccountId.Length == 0 ? null : normalizedAccountId;
+            }
+
+            if (request.OpenAIStreaming.HasValue) {
+                _options.OpenAIStreaming = request.OpenAIStreaming.Value;
+            }
+
+            if (request.OpenAIAllowInsecureHttp.HasValue) {
+                _options.OpenAIAllowInsecureHttp = request.OpenAIAllowInsecureHttp.Value;
+            }
+
+            if (request.Model is not null) {
+                var normalizedModel = request.Model.Trim();
+                if (normalizedModel.Length > 0) {
+                    _options.Model = normalizedModel;
+                }
+            }
+
+            if (request.ReasoningEffort is not null) {
+                var normalized = request.ReasoningEffort.Trim();
+                if (normalized.Length == 0) {
+                    _options.ReasoningEffort = null;
+                } else {
+                    var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(normalized);
+                    if (!parsed.HasValue) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = "reasoningEffort must be one of: minimal, low, medium, high, xhigh.",
+                            Code = "invalid_argument"
+                        }, cancellationToken).ConfigureAwait(false);
+                        return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                    }
+
+                    _options.ReasoningEffort = parsed.Value;
+                }
+            }
+
+            if (request.ReasoningSummary is not null) {
+                var normalized = request.ReasoningSummary.Trim();
+                if (normalized.Length == 0) {
+                    _options.ReasoningSummary = null;
+                } else {
+                    var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningSummary(normalized);
+                    if (!parsed.HasValue) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = "reasoningSummary must be one of: auto, concise, detailed, off.",
+                            Code = "invalid_argument"
+                        }, cancellationToken).ConfigureAwait(false);
+                        return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                    }
+
+                    _options.ReasoningSummary = parsed.Value;
+                }
+            }
+
+            if (request.TextVerbosity is not null) {
+                var normalized = request.TextVerbosity.Trim();
+                if (normalized.Length == 0) {
+                    _options.TextVerbosity = null;
+                } else {
+                    var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseTextVerbosity(normalized);
+                    if (!parsed.HasValue) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = "textVerbosity must be one of: low, medium, high.",
+                            Code = "invalid_argument"
+                        }, cancellationToken).ConfigureAwait(false);
+                        return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                    }
+
+                    _options.TextVerbosity = parsed.Value;
+                }
+            }
+
+            if (request.Temperature.HasValue) {
+                var temperature = request.Temperature.Value;
+                if (double.IsNaN(temperature) || double.IsInfinity(temperature) || temperature < 0d || temperature > 2d) {
+                    await WriteAsync(writer, new ErrorMessage {
+                        Kind = ChatServiceMessageKind.Response,
+                        RequestId = request.RequestId,
+                        Error = "temperature must be between 0 and 2.",
+                        Code = "invalid_argument"
+                    }, cancellationToken).ConfigureAwait(false);
+                    return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                }
+
+                _options.Temperature = temperature;
+            }
+
+            if (request.EnablePowerShellPack.HasValue) {
+                _options.EnablePowerShellPack = request.EnablePowerShellPack.Value;
+            }
+            if (request.EnableTestimoXPack.HasValue) {
+                _options.EnableTestimoXPack = request.EnableTestimoXPack.Value;
+            }
+            if (request.EnableOfficeImoPack.HasValue) {
+                _options.EnableOfficeImoPack = request.EnableOfficeImoPack.Value;
+            }
+
+            var saveProfileName = (request.ProfileName ?? string.Empty).Trim();
+            if (saveProfileName.Length == 0) {
+                saveProfileName = (_options.ProfileName ?? string.Empty).Trim();
+            }
+
+            if (!_options.NoStateDb && saveProfileName.Length > 0) {
+                using var store = new SqliteServiceProfileStore(ResolveStateDbPath());
+                await store.UpsertAsync(saveProfileName, _options.ToProfile(), cancellationToken).ConfigureAwait(false);
+                _options.ProfileName = saveProfileName;
+            }
+
+            _instructions = LoadInstructions(_options);
+            RebuildToolingFromOptions();
+            lock (_modelListCacheLock) {
+                _modelListCache = null;
+            }
+
+            var nextClientOptions = BuildClientOptions();
+            nextClientOptions.Validate();
+
+            var reconnect = previousClientSettings.Transport != _options.OpenAITransport
+                            || !string.Equals(previousClientSettings.BaseUrl, _options.OpenAIBaseUrl, StringComparison.Ordinal)
+                            || previousClientSettings.AuthMode != _options.OpenAIAuthMode
+                            || !string.Equals(previousClientSettings.ApiKey, _options.OpenAIApiKey, StringComparison.Ordinal)
+                            || !string.Equals(previousClientSettings.BasicUsername, _options.OpenAIBasicUsername, StringComparison.Ordinal)
+                            || !string.Equals(previousClientSettings.BasicPassword, _options.OpenAIBasicPassword, StringComparison.Ordinal)
+                            || !string.Equals(previousClientSettings.AccountId, _options.OpenAIAccountId, StringComparison.Ordinal)
+                            || previousClientSettings.Streaming != _options.OpenAIStreaming
+                            || previousClientSettings.InsecureHttp != _options.OpenAIAllowInsecureHttp
+                            || previousClientSettings.InsecureHttpNonLoopback != _options.OpenAIAllowInsecureHttpNonLoopback;
+
+            var modelChanged = !string.Equals(previousClientSettings.Model, _options.Model, StringComparison.Ordinal);
+
+            await WriteAsync(writer, new AckMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Ok = true,
+                Message = reconnect
+                    ? "Runtime settings applied. Provider client will reconnect."
+                    : "Runtime settings applied."
+            }, cancellationToken).ConfigureAwait(false);
+
+            return new SetProfileResult(ReconnectClient: reconnect, ModelChanged: modelChanged);
+        } catch (Exception ex) {
+            try {
+                _options.ApplyProfile(previous);
+                _options.ProfileName = previousProfileName;
+                _instructions = LoadInstructions(_options);
+                RebuildToolingFromOptions();
+            } catch {
+                // Ignore rollback failures.
+            }
+
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"Failed to apply runtime settings: {ex.Message}",
+                Code = "runtime_apply_failed"
             }, cancellationToken).ConfigureAwait(false);
 
             return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
@@ -517,5 +792,60 @@ internal sealed partial class ChatServiceSession {
         _lastUserIntentSeenUtcTicks.Clear();
         _pendingActionsByThreadId.Clear();
         _pendingActionsSeenUtcTicks.Clear();
+    }
+
+    private static bool TryParseTransport(string? value, out OpenAITransportKind kind) {
+        kind = OpenAITransportKind.Native;
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        switch (normalized) {
+            case "native":
+                kind = OpenAITransportKind.Native;
+                return true;
+            case "appserver":
+            case "app-server":
+            case "codex":
+                kind = OpenAITransportKind.AppServer;
+                return true;
+            case "compatible-http":
+            case "compatiblehttp":
+            case "http":
+            case "local":
+            case "ollama":
+            case "lmstudio":
+            case "lm-studio":
+                kind = OpenAITransportKind.CompatibleHttp;
+                return true;
+            case "copilot":
+            case "copilot-cli":
+            case "github-copilot":
+            case "githubcopilot":
+                kind = OpenAITransportKind.CopilotCli;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryParseCompatibleAuthMode(string? value, out OpenAICompatibleHttpAuthMode mode) {
+        mode = OpenAICompatibleHttpAuthMode.Bearer;
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        switch (normalized) {
+            case "":
+            case "bearer":
+            case "api-key":
+            case "apikey":
+            case "token":
+                mode = OpenAICompatibleHttpAuthMode.Bearer;
+                return true;
+            case "basic":
+                mode = OpenAICompatibleHttpAuthMode.Basic;
+                return true;
+            case "none":
+            case "off":
+                mode = OpenAICompatibleHttpAuthMode.None;
+                return true;
+            default:
+                return false;
+        }
     }
 }

@@ -52,6 +52,14 @@ public sealed partial class MainWindow : Window {
             _appState.LocalProviderTransport = _localProviderTransport;
             _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
             _appState.LocalProviderModel = _localProviderModel;
+            _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
+            _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
+            _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
+            SyncNativeAccountSlotsToAppState();
+            _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
+            _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
+            _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
+            _appState.LocalProviderTemperature = _localProviderTemperature;
             CaptureModelCatalogCacheIntoAppState();
             _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
             _appState.ActiveConversationId = _activeConversationId;
@@ -62,6 +70,9 @@ public sealed partial class MainWindow : Window {
             _appState.DisabledTools = BuildDisabledToolsList();
             _appState.Messages = BuildMessageStateSnapshot(activeConversation.Messages);
             _appState.Conversations = BuildConversationStateSnapshot();
+            lock (_turnDiagnosticsSync) {
+                SyncAccountUsageToAppStateLocked();
+            }
             await _stateStore.UpsertAsync(_appProfileName, _appState, CancellationToken.None).ConfigureAwait(false);
             _knownProfiles.Add(_appProfileName);
         } catch (Exception ex) {
@@ -427,6 +438,23 @@ public sealed partial class MainWindow : Window {
 
         if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var parsed)) {
             return parsed;
+        }
+
+        return null;
+    }
+
+    private static int? TryGetInt32(JsonElement obj, string name) {
+        if (obj.ValueKind != JsonValueKind.Object || !obj.TryGetProperty(name, out var el)) {
+            return null;
+        }
+
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var parsedNumber)) {
+            return parsedNumber;
+        }
+
+        if (el.ValueKind == JsonValueKind.String
+            && int.TryParse(el.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedString)) {
+            return parsedString;
         }
 
         return null;

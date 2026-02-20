@@ -196,6 +196,17 @@ internal sealed class ChatAppState {
     public string LocalProviderTransport { get; set; } = "native";
     public string? LocalProviderBaseUrl { get; set; }
     public string LocalProviderModel { get; set; } = "gpt-5.3-codex";
+    public string LocalProviderOpenAIAuthMode { get; set; } = "bearer";
+    public string LocalProviderOpenAIBasicUsername { get; set; } = string.Empty;
+    public string LocalProviderOpenAIAccountId { get; set; } = string.Empty;
+    public int ActiveNativeAccountSlot { get; set; } = 1;
+    public string NativeAccountSlot1 { get; set; } = string.Empty;
+    public string NativeAccountSlot2 { get; set; } = string.Empty;
+    public string NativeAccountSlot3 { get; set; } = string.Empty;
+    public string LocalProviderReasoningEffort { get; set; } = string.Empty;
+    public string LocalProviderReasoningSummary { get; set; } = string.Empty;
+    public string LocalProviderTextVerbosity { get; set; } = string.Empty;
+    public double? LocalProviderTemperature { get; set; }
     public string TimestampMode { get; set; } = "seconds";
     public int? AutonomyMaxToolRounds { get; set; }
     public bool? AutonomyParallelTools { get; set; }
@@ -219,6 +230,7 @@ internal sealed class ChatAppState {
     public List<ModelInfoDto> CachedModels { get; set; } = new();
     public List<string> CachedFavoriteModels { get; set; } = new();
     public List<string> CachedRecentModels { get; set; } = new();
+    public List<ChatAccountUsageState> AccountUsage { get; set; } = new();
     public bool CachedModelListIsStale { get; set; }
     public string? CachedModelListWarning { get; set; }
     public DateTime? CachedModelsUpdatedUtc { get; set; }
@@ -251,4 +263,30 @@ internal sealed class ChatMemoryFactState {
     public int Weight { get; set; } = 3;
     public string[] Tags { get; set; } = Array.Empty<string>();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+internal sealed class ChatAccountUsageState {
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public long PromptTokens { get; set; }
+    public long CompletionTokens { get; set; }
+    public long TotalTokens { get; set; }
+    public long CachedPromptTokens { get; set; }
+    public long ReasoningTokens { get; set; }
+    public int Turns { get; set; }
+    public DateTime? LastSeenUtc { get; set; }
+    public DateTime? UsageLimitHitUtc { get; set; }
+    public DateTime? UsageLimitRetryAfterUtc { get; set; }
+    public string? PlanType { get; set; }
+    public string? Email { get; set; }
+    public bool? RateLimitAllowed { get; set; }
+    public bool? RateLimitReached { get; set; }
+    public double? RateLimitUsedPercent { get; set; }
+    public DateTime? RateLimitWindowResetUtc { get; set; }
+    public DateTime? UsageSnapshotRetrievedAtUtc { get; set; }
+    public string? UsageSnapshotSource { get; set; }
+    public bool? CreditsHasCredits { get; set; }
+    public bool? CreditsUnlimited { get; set; }
+    public double? CreditsBalance { get; set; }
+    public bool? CodeReviewLimitReached { get; set; }
 }

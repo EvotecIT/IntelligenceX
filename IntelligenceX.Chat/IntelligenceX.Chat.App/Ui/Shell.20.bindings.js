@@ -594,13 +594,6 @@
     post("debug_copy_startup_log");
   });
 
-  byId("btnDebugRestartSidecar").addEventListener("click", function() {
-    if (!normalizeBool(state.options.debugToolsEnabled)) {
-      return;
-    }
-    post("debug_restart_runtime");
-  });
-
   byId("optSidebarMode").addEventListener("change", function(e) {
     var mode = (e.target.value || "manual");
     setSidebarHoverMode(mode);
@@ -711,10 +704,109 @@
     return normalizeLocalTransportValue(transport) === "compatible-http";
   }
 
+  function normalizeCompatibleAuthMode(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "basic") {
+      return "basic";
+    }
+    if (normalized === "none" || normalized === "off") {
+      return "none";
+    }
+    return "bearer";
+  }
+
+  function detectCompatibleProviderPreset(baseUrl) {
+    var normalized = String(baseUrl || "").trim().toLowerCase();
+    if (!normalized) {
+      return "manual";
+    }
+    if (normalized.indexOf("127.0.0.1:1234") >= 0 || normalized.indexOf("localhost:1234") >= 0) {
+      return "lmstudio";
+    }
+    if (normalized.indexOf("127.0.0.1:11434") >= 0 || normalized.indexOf("localhost:11434") >= 0) {
+      return "ollama";
+    }
+    if (normalized.indexOf("api.openai.com") >= 0) {
+      return "openai";
+    }
+    if (normalized.indexOf(".openai.azure.com") >= 0) {
+      return "azure-openai";
+    }
+    if (normalized.indexOf("anthropic") >= 0 || normalized.indexOf("claude") >= 0) {
+      return "anthropic-bridge";
+    }
+    if (normalized.indexOf("gemini") >= 0 || normalized.indexOf("googleapis.com") >= 0) {
+      return "gemini-bridge";
+    }
+    return "manual";
+  }
+
+  function resolveReasoningSupportForDraft(transport, baseUrl) {
+    var normalizedTransport = normalizeLocalTransportValue(transport);
+    if (normalizedTransport === "copilot-cli") {
+      return {
+        supported: false,
+        reason: "GitHub Copilot subscription runtime currently does not expose reasoning controls."
+      };
+    }
+
+    if (normalizedTransport === "compatible-http") {
+      var preset = detectCompatibleProviderPreset(baseUrl);
+      if (preset === "anthropic-bridge" || preset === "gemini-bridge") {
+        return {
+          supported: false,
+          reason: "Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning."
+        };
+      }
+    }
+
+    return {
+      supported: true,
+      reason: ""
+    };
+  }
+
+  function normalizeNativeSlot(value) {
+    var parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return 1;
+    }
+
+    var normalized = Math.floor(parsed);
+    if (normalized < 1) {
+      return 1;
+    }
+    if (normalized > 3) {
+      return 3;
+    }
+    return normalized;
+  }
+
+  function resolveNativeSlotAccountId(local, slot) {
+    if (!local || !Array.isArray(local.nativeAccountSlots)) {
+      return "";
+    }
+
+    var selectedSlot = normalizeNativeSlot(slot);
+    for (var i = 0; i < local.nativeAccountSlots.length; i++) {
+      var item = local.nativeAccountSlots[i] || {};
+      var itemSlot = normalizeNativeSlot(item.slot);
+      if (itemSlot === selectedSlot) {
+        return String(item.accountId || "").trim();
+      }
+    }
+
+    return "";
+  }
+
   function applyCompatiblePresetSelection(preset) {
     var key = String(preset || "").toLowerCase();
     var transport = byId("optLocalTransport");
     var baseUrl = byId("optLocalBaseUrl");
+    var providerPreset = byId("optLocalProviderPreset");
+    var authMode = byId("optLocalAuthMode");
+    var basicUsername = byId("optLocalBasicUsername");
+    var basicPassword = byId("optLocalBasicPassword");
     var modelInput = byId("optLocalModelInput");
     var baseUrlRow = byId("optLocalBaseUrlRow");
     var apiKeyRow = byId("optLocalApiKeyRow");
@@ -730,10 +822,33 @@
 
     if (key === "lmstudio") {
       baseUrl.value = "http://127.0.0.1:1234/v1";
+      if (authMode) authMode.value = "none";
     } else if (key === "ollama") {
       baseUrl.value = "http://127.0.0.1:11434";
+      if (authMode) authMode.value = "none";
     } else if (key === "copilot") {
       baseUrl.value = "https://api.githubcopilot.com/v1";
+      if (authMode) authMode.value = "bearer";
+    } else if (key === "openai") {
+      baseUrl.value = "https://api.openai.com/v1";
+      if (authMode) authMode.value = "bearer";
+    } else if (key === "azure-openai") {
+      baseUrl.value = "https://your-resource.openai.azure.com/openai/deployments/your-deployment";
+      if (authMode) authMode.value = "bearer";
+    } else if (key === "anthropic-bridge") {
+      baseUrl.value = "http://127.0.0.1:4000/v1";
+      if (authMode) authMode.value = "basic";
+    } else if (key === "gemini-bridge") {
+      baseUrl.value = "http://127.0.0.1:5001/v1";
+      if (authMode) authMode.value = "basic";
+    }
+    if (authMode) {
+      authMode.value = normalizeCompatibleAuthMode(authMode.value);
+      syncCustomSelect(authMode);
+    }
+    if (providerPreset) {
+      providerPreset.value = key;
+      syncCustomSelect(providerPreset);
     }
 
     if (baseUrlRow) {
@@ -749,12 +864,36 @@
     if (apiKeyInput) {
       apiKeyInput.disabled = false;
     }
+    if (basicUsername && key !== "manual") {
+      basicUsername.value = "";
+    }
+    if (basicPassword && key !== "manual") {
+      basicPassword.value = "";
+    }
+    if (basicUsername) {
+      if (key === "anthropic-bridge") {
+        basicUsername.placeholder = "Anthropic login/email";
+      } else if (key === "gemini-bridge") {
+        basicUsername.placeholder = "Gemini login/email";
+      } else {
+        basicUsername.placeholder = "Leave blank to keep current value";
+      }
+    }
+    if (basicPassword) {
+      if (key === "anthropic-bridge") {
+        basicPassword.placeholder = "Anthropic password/session secret";
+      } else if (key === "gemini-bridge") {
+        basicPassword.placeholder = "Gemini password/session secret";
+      } else {
+        basicPassword.placeholder = "Leave blank to keep existing secret";
+      }
+    }
     if (modelInput) {
       modelInput.value = "";
     }
   }
 
-  function applyLocalProviderSettings(forceRefresh, clearApiKey) {
+  function applyLocalProviderSettings(forceRefresh, clearApiKey, clearBasicAuth) {
     var local = ((state.options || {}).localModel || {});
     if (local.isApplying === true) {
       return;
@@ -764,12 +903,55 @@
       ? (byId("optLocalBaseUrl").value || "").trim()
       : "";
     var model = (byId("optLocalModelInput").value || "").trim();
+    var activeNativeAccountSlot = normalizeNativeSlot(byId("optNativeAccountSlot").value || "1");
+    var activeSlotAccountId = (byId("optNativeAccountId").value || "").trim();
+    var openAIAccountId = activeSlotAccountId;
+    var reasoningEffort = (byId("optReasoningEffort").value || "").trim();
+    var reasoningSummary = (byId("optReasoningSummary").value || "").trim();
+    var textVerbosity = (byId("optTextVerbosity").value || "").trim();
+    var temperature = (byId("optTemperature").value || "").trim();
+    var reasoningSupport = resolveReasoningSupportForDraft(transport, baseUrl);
+    if (!reasoningSupport.supported) {
+      reasoningEffort = "";
+      reasoningSummary = "";
+      textVerbosity = "";
+      var effortSelect = byId("optReasoningEffort");
+      var summarySelect = byId("optReasoningSummary");
+      var verbositySelect = byId("optTextVerbosity");
+      if (effortSelect) {
+        effortSelect.value = "";
+        syncCustomSelect(effortSelect);
+      }
+      if (summarySelect) {
+        summarySelect.value = "";
+        syncCustomSelect(summarySelect);
+      }
+      if (verbositySelect) {
+        verbositySelect.value = "";
+        syncCustomSelect(verbositySelect);
+      }
+    }
+    var openAIAuthMode = normalizeCompatibleAuthMode(byId("optLocalAuthMode").value || "bearer");
+    var openAIBasicUsername = (byId("optLocalBasicUsername").value || "").trim();
+    var openAIBasicPassword = (byId("optLocalBasicPassword").value || "").trim();
     var shouldClearApiKey = clearApiKey === true;
+    var shouldClearBasicAuth = clearBasicAuth === true;
     var apiKey = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
     if (shouldClearApiKey) {
       apiKey = "";
+    }
+    if (shouldClearBasicAuth) {
+      openAIBasicUsername = "";
+      openAIBasicPassword = "";
+      byId("optLocalBasicUsername").value = "";
+      byId("optLocalBasicPassword").value = "";
+    }
+    if (!transportUsesCompatibleHttp(transport)) {
+      openAIAuthMode = "bearer";
+      openAIBasicUsername = "";
+      openAIBasicPassword = "";
     }
     if (state.options) {
       if (!state.options.localModel) {
@@ -778,6 +960,31 @@
       state.options.localModel.transport = transport;
       state.options.localModel.baseUrl = baseUrl;
       state.options.localModel.model = model;
+      state.options.localModel.openAIAuthMode = openAIAuthMode;
+      state.options.localModel.openAIBasicUsername = openAIBasicUsername;
+      state.options.localModel.openAIAccountId = openAIAccountId;
+      state.options.localModel.activeNativeAccountSlot = activeNativeAccountSlot;
+      if (!Array.isArray(state.options.localModel.nativeAccountSlots)) {
+        state.options.localModel.nativeAccountSlots = [];
+      }
+      var updatedSlot = false;
+      for (var slotIndex = 0; slotIndex < state.options.localModel.nativeAccountSlots.length; slotIndex++) {
+        var slotItem = state.options.localModel.nativeAccountSlots[slotIndex] || {};
+        if (normalizeNativeSlot(slotItem.slot) === activeNativeAccountSlot) {
+          slotItem.slot = activeNativeAccountSlot;
+          slotItem.accountId = activeSlotAccountId;
+          state.options.localModel.nativeAccountSlots[slotIndex] = slotItem;
+          updatedSlot = true;
+          break;
+        }
+      }
+      if (!updatedSlot) {
+        state.options.localModel.nativeAccountSlots.push({ slot: activeNativeAccountSlot, accountId: activeSlotAccountId });
+      }
+      state.options.localModel.reasoningEffort = reasoningEffort;
+      state.options.localModel.reasoningSummary = reasoningSummary;
+      state.options.localModel.textVerbosity = textVerbosity;
+      state.options.localModel.temperature = temperature;
       state.options.localModel.isApplying = true;
       renderLocalModelOptions();
     }
@@ -785,7 +992,18 @@
       transport: transport,
       baseUrl: baseUrl,
       model: model,
+      openAIAuthMode: openAIAuthMode,
+      openAIBasicUsername: openAIBasicUsername,
+      openAIBasicPassword: openAIBasicPassword,
+      openAIAccountId: openAIAccountId,
+      activeNativeAccountSlot: activeNativeAccountSlot,
+      activeSlotAccountId: activeSlotAccountId,
+      reasoningEffort: reasoningEffort,
+      reasoningSummary: reasoningSummary,
+      textVerbosity: textVerbosity,
+      temperature: temperature,
       apiKey: apiKey,
+      clearBasicAuth: shouldClearBasicAuth,
       clearApiKey: shouldClearApiKey,
       forceRefresh: forceRefresh !== false
     });
@@ -798,19 +1016,69 @@
       ? String(local.baseUrl || "").trim().toLowerCase()
       : "";
     var currentModel = String(local.model || "").trim();
+    var currentOpenAIAuthMode = normalizeCompatibleAuthMode(local.openAIAuthMode || "bearer");
+    var currentOpenAIBasicUsername = String(local.openAIBasicUsername || "").trim();
+    var currentOpenAIAccountId = String(local.openAIAccountId || "").trim();
+    var currentActiveNativeAccountSlot = normalizeNativeSlot(local.activeNativeAccountSlot || 1);
+    var currentSlotAccountId = resolveNativeSlotAccountId(local, currentActiveNativeAccountSlot);
 
     var draftTransport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
     var draftBaseUrl = transportUsesCompatibleHttp(draftTransport)
       ? (byId("optLocalBaseUrl").value || "").trim().toLowerCase()
       : "";
     var draftModel = (byId("optLocalModelInput").value || "").trim();
+    var draftActiveNativeAccountSlot = normalizeNativeSlot(byId("optNativeAccountSlot").value || "1");
+    var draftSlotAccountId = (byId("optNativeAccountId").value || "").trim();
+    var draftOpenAIAccountId = draftSlotAccountId;
+    var draftReasoningEffort = (byId("optReasoningEffort").value || "").trim().toLowerCase();
+    var draftReasoningSummary = (byId("optReasoningSummary").value || "").trim().toLowerCase();
+    var draftTextVerbosity = (byId("optTextVerbosity").value || "").trim().toLowerCase();
+    var draftReasoningSupport = resolveReasoningSupportForDraft(draftTransport, draftBaseUrl);
+    if (!draftReasoningSupport.supported) {
+      draftReasoningEffort = "";
+      draftReasoningSummary = "";
+      draftTextVerbosity = "";
+    }
+    var currentReasoningSupport = resolveReasoningSupportForDraft(currentTransport, currentBaseUrl);
+    var currentReasoningEffort = currentReasoningSupport.supported
+      ? String(local.reasoningEffort || "").trim().toLowerCase()
+      : "";
+    var currentReasoningSummary = currentReasoningSupport.supported
+      ? String(local.reasoningSummary || "").trim().toLowerCase()
+      : "";
+    var currentTextVerbosity = currentReasoningSupport.supported
+      ? String(local.textVerbosity || "").trim().toLowerCase()
+      : "";
+    var draftTemperature = (byId("optTemperature").value || "").trim();
+    var draftOpenAIAuthMode = transportUsesCompatibleHttp(draftTransport)
+      ? normalizeCompatibleAuthMode(byId("optLocalAuthMode").value || "bearer")
+      : "bearer";
+    var draftOpenAIBasicUsername = transportUsesCompatibleHttp(draftTransport)
+      ? (byId("optLocalBasicUsername").value || "").trim()
+      : "";
+    var draftOpenAIBasicPassword = transportUsesCompatibleHttp(draftTransport)
+      ? (byId("optLocalBasicPassword").value || "").trim()
+      : "";
     var draftApiKey = transportUsesCompatibleHttp(draftTransport)
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
+    var compareNativeAccountState = draftTransport === "native" || currentTransport === "native";
 
     return draftTransport !== currentTransport
       || draftBaseUrl !== currentBaseUrl
       || draftModel !== currentModel
+      || (compareNativeAccountState && draftOpenAIAccountId !== currentOpenAIAccountId)
+      || (compareNativeAccountState && draftActiveNativeAccountSlot !== currentActiveNativeAccountSlot)
+      || (compareNativeAccountState
+        && draftActiveNativeAccountSlot === currentActiveNativeAccountSlot
+        && draftSlotAccountId !== currentSlotAccountId)
+      || draftReasoningEffort !== currentReasoningEffort
+      || draftReasoningSummary !== currentReasoningSummary
+      || draftTextVerbosity !== currentTextVerbosity
+      || draftTemperature !== String(local.temperature == null ? "" : local.temperature).trim()
+      || draftOpenAIAuthMode !== currentOpenAIAuthMode
+      || draftOpenAIBasicUsername !== currentOpenAIBasicUsername
+      || draftOpenAIBasicPassword.length > 0
       || draftApiKey.length > 0;
   }
 
@@ -822,12 +1090,32 @@
 
     var baseRow = byId("optLocalBaseUrlRow");
     var baseInput = byId("optLocalBaseUrl");
+    var providerPresetRow = byId("optLocalProviderPresetRow");
+    var providerPresetSelect = byId("optLocalProviderPreset");
     var apiKeyRow = byId("optLocalApiKeyRow");
     var apiKeyHint = byId("optLocalApiKeyHint");
     var apiKeyInput = byId("optLocalApiKey");
+    var authModeRow = byId("optLocalAuthModeRow");
+    var authModeSelect = byId("optLocalAuthMode");
+    var basicUsernameRow = byId("optLocalBasicUsernameRow");
+    var basicUsernameInput = byId("optLocalBasicUsername");
+    var basicPasswordRow = byId("optLocalBasicPasswordRow");
+    var basicPasswordInput = byId("optLocalBasicPassword");
+    var authHint = byId("optLocalAuthHint");
     var autoDetectButton = byId("btnAutoDetectLocalRuntime");
+    var clearBasicButton = byId("btnClearLocalBasicAuth");
     if (baseRow) {
       baseRow.hidden = !isCompatible;
+    }
+    if (providerPresetRow) {
+      providerPresetRow.hidden = !isCompatible;
+    }
+    if (providerPresetSelect) {
+      if (isCompatible) {
+        providerPresetSelect.value = detectCompatibleProviderPreset(baseInput ? baseInput.value : "");
+        syncCustomSelect(providerPresetSelect);
+      }
+      providerPresetSelect.disabled = !isCompatible;
     }
     if (baseInput) {
       baseInput.disabled = !isCompatible;
@@ -845,37 +1133,113 @@
     if (apiKeyRow) {
       apiKeyRow.hidden = !isCompatible;
     }
+    if (authModeRow) {
+      authModeRow.hidden = !isCompatible;
+    }
+    if (authModeSelect) {
+      authModeSelect.disabled = !isCompatible;
+      if (!isCompatible) {
+        authModeSelect.value = "bearer";
+      } else {
+        authModeSelect.value = normalizeCompatibleAuthMode(authModeSelect.value || "bearer");
+      }
+      syncCustomSelect(authModeSelect);
+    }
+    var authMode = authModeSelect ? normalizeCompatibleAuthMode(authModeSelect.value || "bearer") : "bearer";
+    if (basicUsernameRow) {
+      basicUsernameRow.hidden = !isCompatible || authMode !== "basic";
+    }
+    if (basicPasswordRow) {
+      basicPasswordRow.hidden = !isCompatible || authMode !== "basic";
+    }
+    if (basicUsernameInput) {
+      basicUsernameInput.disabled = !isCompatible || authMode !== "basic";
+    }
+    if (basicPasswordInput) {
+      basicPasswordInput.disabled = !isCompatible || authMode !== "basic";
+      if (!isCompatible || authMode !== "basic") {
+        basicPasswordInput.value = "";
+      }
+    }
     if (apiKeyHint) {
       apiKeyHint.hidden = !isCompatible;
+      if (isCompatible && authMode === "basic") {
+        apiKeyHint.textContent = "Bearer API key is ignored while auth mode is Basic.";
+      } else {
+        apiKeyHint.textContent = "Use Clear Saved API Key to remove the currently stored key.";
+      }
     }
     if (apiKeyInput) {
-      apiKeyInput.disabled = !isCompatible;
+      apiKeyInput.disabled = !isCompatible || authMode !== "bearer";
+    }
+    if (authHint) {
+      authHint.hidden = !isCompatible;
+    }
+    if (clearBasicButton) {
+      clearBasicButton.hidden = !isCompatible;
+      clearBasicButton.disabled = !isCompatible;
     }
     if (autoDetectButton) {
       autoDetectButton.hidden = !isCompatible;
     }
   });
 
+  byId("optLocalProviderPreset").addEventListener("change", function(e) {
+    var preset = String(e.target.value || "manual").trim().toLowerCase();
+    if (preset && preset !== "manual") {
+      applyCompatiblePresetSelection(preset);
+    }
+    syncCustomSelect(e.target);
+  });
+
+  byId("optLocalAuthMode").addEventListener("change", function(e) {
+    e.target.value = normalizeCompatibleAuthMode(e.target.value || "bearer");
+    syncCustomSelect(e.target);
+    byId("optLocalTransport").dispatchEvent(new Event("change"));
+  });
+
+  byId("optLocalBasicUsername").addEventListener("change", function() {
+    applyLocalProviderSettings(false);
+  });
+
+  byId("optLocalBasicPassword").addEventListener("change", function() {
+    applyLocalProviderSettings(false);
+  });
+
   byId("optLocalModelSelect").addEventListener("change", function(e) {
     var selected = (e.target.value || "").trim();
     var modelInput = byId("optLocalModelInput");
-    var modelInputRow = byId("optLocalModelInputRow");
     if (!selected) {
       if (modelInput) {
-        modelInput.disabled = false;
-      }
-      if (modelInputRow) {
-        modelInputRow.hidden = false;
+        if (typeof modelInput.scrollIntoView === "function") {
+          modelInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        modelInput.focus();
+        modelInput.select();
       }
       return;
     }
     if (modelInput) {
       modelInput.value = selected;
-      modelInput.disabled = true;
     }
-    if (modelInputRow) {
-      modelInputRow.hidden = true;
+  });
+
+  byId("optNativeAccountSlot").addEventListener("change", function(e) {
+    var slot = normalizeNativeSlot(e.target.value || "1");
+    e.target.value = String(slot);
+    syncCustomSelect(e.target);
+
+    var local = (state.options || {}).localModel || {};
+    var accountIdInput = byId("optNativeAccountId");
+    if (accountIdInput) {
+      accountIdInput.value = resolveNativeSlotAccountId(local, slot);
     }
+
+    applyLocalProviderSettings(false);
+  });
+
+  byId("optNativeAccountId").addEventListener("change", function() {
+    applyLocalProviderSettings(false);
   });
 
   byId("optLocalModelFilter").addEventListener("input", function(e) {
@@ -923,6 +1287,16 @@
     applyLocalProviderSettings(true);
   });
 
+  byId("btnLocalPresetOpenAI").addEventListener("click", function() {
+    applyCompatiblePresetSelection("openai");
+    applyLocalProviderSettings(true);
+  });
+
+  byId("btnLocalPresetAzureOpenAI").addEventListener("click", function() {
+    applyCompatiblePresetSelection("azure-openai");
+    applyLocalProviderSettings(true);
+  });
+
   byId("btnLocalPresetCopilot").addEventListener("click", function() {
     applyCompatiblePresetSelection("copilot");
     applyLocalProviderSettings(true);
@@ -946,6 +1320,15 @@
     }
     byId("optLocalApiKey").value = "";
     applyLocalProviderSettings(true, true);
+  });
+
+  byId("btnClearLocalBasicAuth").addEventListener("click", function() {
+    if (!transportUsesCompatibleHttp(byId("optLocalTransport").value || "native")) {
+      return;
+    }
+    byId("optLocalBasicUsername").value = "";
+    byId("optLocalBasicPassword").value = "";
+    applyLocalProviderSettings(true, false, true);
   });
 
   var btnNewConversation = byId("btnNewConversation");

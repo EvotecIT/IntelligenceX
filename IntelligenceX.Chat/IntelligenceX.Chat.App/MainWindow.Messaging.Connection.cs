@@ -235,7 +235,7 @@ public sealed partial class MainWindow : Window {
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 _isConnected = true;
                 StopAutoReconnectLoop();
-                await SetStatusAsync(SessionStatus.ForConnectedAuth(_isAuthenticated)).ConfigureAwait(false);
+                await SetStatusAsync(SessionStatus.ForConnectedAuth(IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
                 return;
             }
 
@@ -243,7 +243,11 @@ public sealed partial class MainWindow : Window {
             await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             _isAuthenticated = false;
+            _authenticatedAccountId = null;
             _loginInProgress = false;
+            if (!RequiresInteractiveSignInForCurrentTransport()) {
+                ApplyNonNativeAuthenticationStateIfNeeded();
+            }
 
             var pipeName = _pipeName;
             if (_serviceProcess is not null && !_serviceProcess.HasExited && !string.Equals(_servicePipeName, pipeName, StringComparison.OrdinalIgnoreCase)) {

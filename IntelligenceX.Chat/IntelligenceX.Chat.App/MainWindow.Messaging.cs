@@ -101,7 +101,7 @@ public sealed partial class MainWindow : Window {
                     }
                 case "toggle_debug":
                     _debugMode = !_debugMode;
-                    await SetStatusAsync(_debugMode ? SessionStatus.DebugModeOn() : SessionStatus.ForConnection(_isConnected, _isAuthenticated)).ConfigureAwait(true);
+                    await SetStatusAsync(_debugMode ? SessionStatus.DebugModeOn() : SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(true);
                     await PublishOptionsStateAsync().ConfigureAwait(true);
                     break;
                 case "options_refresh":
@@ -122,10 +122,6 @@ public sealed partial class MainWindow : Window {
                     }
                 case "debug_copy_startup_log":
                     CopyStartupLogToClipboard();
-                    break;
-                case "debug_restart_runtime":
-                case "debug_restart_sidecar":
-                    await RestartSidecarAsync().ConfigureAwait(true);
                     break;
                 case "debug_memory_recompute":
                     await ForceRecomputeMemoryCacheAsync().ConfigureAwait(true);
@@ -315,10 +311,39 @@ public sealed partial class MainWindow : Window {
                         var transport = TryGetString(root, "transport");
                         var baseUrl = TryGetString(root, "baseUrl");
                         var model = TryGetString(root, "model");
+                        var openAIAuthMode = TryGetString(root, "openAIAuthMode");
+                        var openAIBasicUsername = TryGetString(root, "openAIBasicUsername");
+                        var openAIBasicPassword = TryGetString(root, "openAIBasicPassword");
+                        var openAIAccountId = TryGetString(root, "openAIAccountId");
+                        var activeNativeAccountSlot = TryGetInt32(root, "activeNativeAccountSlot");
+                        var activeSlotAccountId = TryGetString(root, "activeSlotAccountId");
+                        var reasoningEffort = TryGetString(root, "reasoningEffort");
+                        var reasoningSummary = TryGetString(root, "reasoningSummary");
+                        var textVerbosity = TryGetString(root, "textVerbosity");
+                        var temperature = TryGetString(root, "temperature");
                         var apiKey = TryGetString(root, "apiKey");
+                        var clearBasicAuth = TryGetBoolean(root, "clearBasicAuth");
                         var clearApiKey = TryGetBoolean(root, "clearApiKey");
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
-                        await ApplyLocalProviderAsync(transport, baseUrl, model, apiKey, clearApiKey ?? false, forceRefresh ?? true).ConfigureAwait(true);
+                        await ApplyLocalProviderAsync(
+                                transport,
+                                baseUrl,
+                                model,
+                                openAIAuthMode,
+                                openAIBasicUsername,
+                                openAIBasicPassword,
+                                openAIAccountId,
+                                activeNativeAccountSlot,
+                                activeSlotAccountId,
+                                reasoningEffort,
+                                reasoningSummary,
+                                textVerbosity,
+                                temperature,
+                                apiKey,
+                                clearBasicAuth ?? false,
+                                clearApiKey ?? false,
+                                forceRefresh ?? true)
+                            .ConfigureAwait(true);
                         break;
                     }
                 case "restart_onboarding":

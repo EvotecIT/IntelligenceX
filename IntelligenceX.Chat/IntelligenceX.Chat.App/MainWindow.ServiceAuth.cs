@@ -28,6 +28,28 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private bool IsNativeRuntimeTransport() {
+        return string.Equals(_localProviderTransport, TransportNative, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool RequiresInteractiveSignInForCurrentTransport() {
+        return IsNativeRuntimeTransport();
+    }
+
+    private bool IsEffectivelyAuthenticatedForCurrentTransport() {
+        return !RequiresInteractiveSignInForCurrentTransport() || _isAuthenticated;
+    }
+
+    private void ApplyNonNativeAuthenticationStateIfNeeded() {
+        if (RequiresInteractiveSignInForCurrentTransport()) {
+            return;
+        }
+
+        _isAuthenticated = true;
+        _authenticatedAccountId = null;
+        _loginInProgress = false;
+    }
+
     private async Task<bool> IsClientAliveAsync(ChatServiceClient client) {
         var nowTicks = DateTime.UtcNow.Ticks;
         lock (_aliveProbeSync) {
@@ -128,9 +150,20 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> RefreshAuthenticationStateAsync(bool updateStatus) {
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            ApplyNonNativeAuthenticationStateIfNeeded();
+            if (updateStatus) {
+                await SetStatusAsync(SessionStatus.ForConnection(_isConnected, isAuthenticated: true)).ConfigureAwait(false);
+                await PublishOptionsStateAsync().ConfigureAwait(false);
+            }
+
+            return true;
+        }
+
         var client = _client;
         if (client is null) {
             _isAuthenticated = false;
+            _authenticatedAccountId = null;
             if (updateStatus) {
                 await PublishSessionStateAsync().ConfigureAwait(false);
             }
@@ -140,6 +173,12 @@ public sealed partial class MainWindow : Window {
         try {
             var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
             _isAuthenticated = login.IsAuthenticated;
+            _authenticatedAccountId = login.IsAuthenticated ? (login.AccountId ?? string.Empty).Trim() : null;
+            if (login.IsAuthenticated) {
+                CaptureAuthenticatedAccountIntoActiveSlot();
+                UpdateAccountUsageFromNativeLoginStatus(login);
+                QueuePersistAppState();
+            }
 
             if (updateStatus) {
                 await SetStatusAsync(SessionStatus.ForConnectedAuth(login.IsAuthenticated)).ConfigureAwait(false);
@@ -162,6 +201,17 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false) {
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            ApplyNonNativeAuthenticationStateIfNeeded();
+            if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+                return false;
+            }
+
+            _isConnected = _client is not null;
+            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, isAuthenticated: true)).ConfigureAwait(false);
+            return _isConnected;
+        }
+
         if (!forceInteractive && _isAuthenticated) {
             _isConnected = _client is not null;
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
@@ -206,6 +256,7 @@ public sealed partial class MainWindow : Window {
             _loginInProgress = true;
             _isConnected = true;
             _isAuthenticated = false;
+            _authenticatedAccountId = null;
             await SetStatusAsync(SessionStatus.OpeningSignIn()).ConfigureAwait(false);
             await client.RequestAsync<ChatGptLoginStartedMessage>(new StartChatGptLoginRequest {
                 RequestId = NextId(),
@@ -216,6 +267,7 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             _loginInProgress = false;
             _isConnected = _client is not null;
+            _authenticatedAccountId = null;
             await SetStatusAsync(SessionStatus.SignInFailed()).ConfigureAwait(false);
             AppendSystem(SystemNotice.SignInFailed(ex.Message));
             return false;
@@ -227,6 +279,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> SwitchAccountAsync() {
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            await SetStatusAsync("Account switching is only available for ChatGPT native runtime.").ConfigureAwait(false);
+            return false;
+        }
+
         var authPath = ResolveAuthPath();
         if (!TryDeleteAuthStore(authPath, out var existed, out var error)) {
             AppendSystem("Couldn't clear the local sign-in cache. We'll still try to sign in again.");
@@ -238,7 +295,10 @@ public sealed partial class MainWindow : Window {
             AppendSystem("Sign-in cache cleared. You can now choose another account.");
         }
 
-        await RestartSidecarAsync().ConfigureAwait(false);
+        _isAuthenticated = false;
+        _authenticatedAccountId = null;
+        _loginInProgress = false;
+        await SetStatusAsync("Starting sign-in for another account...").ConfigureAwait(false);
         return await StartLoginFlowIfNeededAsync(forceInteractive: true).ConfigureAwait(false);
     }
 
@@ -338,6 +398,7 @@ public sealed partial class MainWindow : Window {
 
         try {
             var pending = _pendingServiceLaunchProfileOptions;
+            pending ??= CaptureCurrentServiceLaunchProfileOptions();
             var launchArgs = ServiceLaunchArguments.Build(
                 pipeName,
                 DetachedServiceMode,
@@ -348,10 +409,19 @@ public sealed partial class MainWindow : Window {
                     Model = pending.Model,
                     OpenAITransport = pending.OpenAITransport,
                     OpenAIBaseUrl = pending.OpenAIBaseUrl,
+                    OpenAIAuthMode = pending.OpenAIAuthMode,
                     OpenAIApiKey = pending.OpenAIApiKey,
+                    OpenAIBasicUsername = pending.OpenAIBasicUsername,
+                    OpenAIBasicPassword = pending.OpenAIBasicPassword,
+                    OpenAIAccountId = pending.OpenAIAccountId,
                     ClearOpenAIApiKey = pending.ClearOpenAIApiKey,
+                    ClearOpenAIBasicAuth = pending.ClearOpenAIBasicAuth,
                     OpenAIStreaming = pending.OpenAIStreaming,
                     OpenAIAllowInsecureHttp = pending.OpenAIAllowInsecureHttp,
+                    ReasoningEffort = pending.ReasoningEffort,
+                    ReasoningSummary = pending.ReasoningSummary,
+                    TextVerbosity = pending.TextVerbosity,
+                    Temperature = pending.Temperature,
                     EnablePowerShellPack = pending.EnablePowerShellPack,
                     EnableTestimoXPack = pending.EnableTestimoXPack,
                     EnableOfficeImoPack = pending.EnableOfficeImoPack
@@ -404,6 +474,7 @@ public sealed partial class MainWindow : Window {
                     }
                     _isConnected = false;
                     _isAuthenticated = false;
+                    _authenticatedAccountId = null;
                     _loginInProgress = false;
                     _ = SetStatusAsync(SessionStatus.Disconnected());
                     EnsureAutoReconnectLoop();
