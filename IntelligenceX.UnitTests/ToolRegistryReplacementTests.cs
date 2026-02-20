@@ -75,6 +75,67 @@ public sealed class ToolRegistryReplacementTests {
         AssertSingleTaxonomyTag(aliasAfter.Tags, "routing:");
     }
 
+    [Fact]
+    public async Task RegisterAlias_WithReplaceExisting_ShouldRebindAliasToNewCanonicalTool() {
+        var registry = new ToolRegistry();
+
+        var probeTool = new StubTool(
+            new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: null),
+            output: "probe");
+        var searchTool = new StubTool(
+            new ToolDefinition(
+                name: "custom_search",
+                description: "Search",
+                parameters: null),
+            output: "search");
+
+        registry.Register(probeTool);
+        registry.Register(searchTool);
+
+        registry.RegisterAlias(
+            aliasName: "shared_alias",
+            targetToolName: "custom_probe",
+            tags: new[] { "routing:explicit", "risk:high" });
+
+        Assert.True(registry.TryGetDefinition("shared_alias", out var aliasBefore));
+        Assert.NotNull(aliasBefore);
+        Assert.Equal("custom_probe", aliasBefore!.CanonicalName);
+        Assert.Contains("operation:probe", aliasBefore.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:high", aliasBefore.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", aliasBefore.Tags, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(registry.TryGet("shared_alias", out var aliasToolBefore));
+        Assert.NotNull(aliasToolBefore);
+        var beforeOutput = await aliasToolBefore!.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        Assert.Equal("probe", beforeOutput);
+
+        registry.RegisterAlias(
+            aliasName: "shared_alias",
+            targetToolName: "custom_search",
+            tags: new[] { "routing:explicit", "risk:high" },
+            replaceExisting: true);
+
+        Assert.True(registry.TryGetDefinition("shared_alias", out var aliasAfter));
+        Assert.NotNull(aliasAfter);
+        Assert.Equal("custom_search", aliasAfter!.CanonicalName);
+        Assert.Contains("operation:search", aliasAfter.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("risk:high", aliasAfter.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("routing:explicit", aliasAfter.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(aliasAfter.Tags, "scope:");
+        AssertSingleTaxonomyTag(aliasAfter.Tags, "operation:");
+        AssertSingleTaxonomyTag(aliasAfter.Tags, "entity:");
+        AssertSingleTaxonomyTag(aliasAfter.Tags, "risk:");
+        AssertSingleTaxonomyTag(aliasAfter.Tags, "routing:");
+
+        Assert.True(registry.TryGet("shared_alias", out var aliasToolAfter));
+        Assert.NotNull(aliasToolAfter);
+        var afterOutput = await aliasToolAfter!.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        Assert.Equal("search", afterOutput);
+    }
+
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
         Assert.Equal(
             1,
@@ -82,14 +143,19 @@ public sealed class ToolRegistryReplacementTests {
     }
 
     private sealed class StubTool : ITool {
-        public StubTool(ToolDefinition definition) {
+        private readonly string _output;
+
+        public StubTool(ToolDefinition definition, string output = "{}") {
             Definition = definition ?? throw new ArgumentNullException(nameof(definition));
+            _output = output ?? string.Empty;
         }
 
         public ToolDefinition Definition { get; }
 
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-            return Task.FromResult("{}");
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult(_output);
         }
     }
 }
