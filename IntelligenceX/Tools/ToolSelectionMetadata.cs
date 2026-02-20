@@ -343,8 +343,8 @@ public static class ToolSelectionMetadata {
     }
 
     private static string? InferCategory(string? toolName, Type? toolType) {
-        if (!string.IsNullOrWhiteSpace(toolName)) {
-            var normalized = toolName.Trim();
+        var normalized = toolName?.Trim() ?? string.Empty;
+        if (normalized.Length > 0) {
             var separator = normalized.IndexOf('_');
             if (separator > 0) {
                 var prefix = normalized.Substring(0, separator);

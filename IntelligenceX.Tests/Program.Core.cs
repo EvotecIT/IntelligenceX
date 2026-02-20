@@ -252,8 +252,10 @@ internal static partial class Program {
             aliasDef.Tags.Count,
             aliasDef.Tags.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             "alias merged tags unique");
+        var sortedTags = aliasDef.Tags.ToArray();
+        Array.Sort(sortedTags, StringComparer.OrdinalIgnoreCase);
         AssertSequenceEqual(
-            aliasDef.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            sortedTags,
             aliasDef.Tags.ToArray(),
             "alias merged tags deterministic order");
         AssertEqual(true, aliasDef.Tags.Contains("system", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical tag");
