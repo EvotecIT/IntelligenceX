@@ -182,6 +182,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("if (pending && pending.sessionId && pending.sessionId !== activeDataViewSessionId) {", script, StringComparison.Ordinal);
     }
 
+    /// <summary>
     /// Ensures visual runtime script is part of the shell composition and transcript hook.
     /// </summary>
     [Fact]

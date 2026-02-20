@@ -200,17 +200,6 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         }
 
         try {
-            var dt = QueryAsTable(_db.Query(_dbPath, $"PRAGMA table_info('{tableName}')"));
-            if (dt is null || dt.Rows.Count == 0) {
-                return;
-            }
-
-            foreach (DataRow row in dt.Rows) {
-                var name = row["name"]?.ToString();
-                if (string.Equals(name, columnName, StringComparison.OrdinalIgnoreCase)) {
-                    return;
-                }
-            }
             _db.ExecuteNonQuery(_dbPath, $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};");
             knownColumns.Add(columnName);
         } catch {
