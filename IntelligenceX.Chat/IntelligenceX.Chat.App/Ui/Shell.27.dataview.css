@@ -340,8 +340,8 @@ body.data-view-open .data-view-panel {
   position: fixed;
   left: 50%;
   top: 50%;
-  width: min(2300px, 98vw);
-  height: min(96vh, 1320px);
+  width: min(3400px, calc(100vw - 18px));
+  height: min(97vh, 1920px);
   transform: translate(-50%, -48%);
   border: 1px solid var(--ix-border-subtle);
   border-radius: 12px;
@@ -365,6 +365,12 @@ body.visual-view-open .visual-view-panel {
   opacity: 1;
   pointer-events: auto;
   transform: translate(-50%, -50%);
+}
+
+body.visual-view-maximized .visual-view-panel {
+  width: calc(100vw - 8px);
+  height: calc(100vh - 8px);
+  border-radius: 10px;
 }
 
 .visual-view-header {
@@ -502,7 +508,8 @@ body.visual-view-open .visual-view-panel {
 
 .visual-view-canvas-wrap {
   width: 100%;
-  min-height: calc(100vh - 320px);
+  min-height: max(420px, calc(100vh - 300px));
+  max-height: 100%;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
@@ -520,20 +527,20 @@ body.visual-view-open .visual-view-panel {
 }
 
 .visual-view-canvas-wrap .ix-chart-host {
-  min-height: calc(100vh - 370px);
+  min-height: max(360px, calc(100vh - 340px));
 }
 
 .visual-view-canvas-wrap .ix-chart-host .ix-chart-canvas {
-  height: calc(100vh - 390px) !important;
+  height: max(340px, calc(100vh - 360px)) !important;
   min-height: 320px;
 }
 
 .visual-view-canvas-wrap .ix-network-host {
-  min-height: calc(100vh - 370px);
+  min-height: max(360px, calc(100vh - 340px));
 }
 
 .visual-view-canvas-wrap .ix-network-host .ix-network-canvas {
-  height: calc(100vh - 390px);
+  height: max(340px, calc(100vh - 360px));
   min-height: 320px;
 }
 

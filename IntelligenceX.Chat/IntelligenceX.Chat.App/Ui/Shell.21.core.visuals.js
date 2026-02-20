@@ -1768,6 +1768,8 @@
   var btnVisualViewClose = byId("btnVisualViewClose");
   var btnVisualViewExportPng = byId("btnVisualViewExportPng");
   var btnVisualViewExportSvg = byId("btnVisualViewExportSvg");
+  var btnVisualViewPopout = byId("btnVisualViewPopout");
+  var btnVisualViewToggleSize = byId("btnVisualViewToggleSize");
   var btnVisualViewOpenExport = byId("btnVisualViewOpenExport");
   var btnVisualViewRevealExport = byId("btnVisualViewRevealExport");
   var btnVisualViewCopyExportPath = byId("btnVisualViewCopyExportPath");
@@ -1781,7 +1783,10 @@
     networkInstance: null,
     networkResizeCleanup: null,
     lastExportPath: "",
-    lastExportFormat: ""
+    lastExportFormat: "",
+    isMaximized: false,
+    popoutInFlight: false,
+    lifecycleGuardInitialized: false
   };
   var visualViewFeedbackClearTimer = 0;
   var visualViewRelayoutTimer = 0;
@@ -1913,6 +1918,72 @@
       btnVisualViewExportSvg.disabled = busy;
       btnVisualViewExportSvg.classList.toggle("busy", busy);
     }
+  }
+
+  function setVisualViewPopoutBusy(busy) {
+    var isBusy = busy === true;
+    visualViewState.popoutInFlight = isBusy;
+    if (btnVisualViewPopout) {
+      btnVisualViewPopout.disabled = isBusy;
+      btnVisualViewPopout.classList.toggle("busy", isBusy);
+    }
+  }
+
+  function renderVisualViewSizeToggle() {
+    if (!btnVisualViewToggleSize) {
+      return;
+    }
+
+    var isMaximized = visualViewState.isMaximized === true;
+    btnVisualViewToggleSize.textContent = isMaximized ? "Restore" : "Maximize";
+    btnVisualViewToggleSize.setAttribute("aria-pressed", isMaximized ? "true" : "false");
+    btnVisualViewToggleSize.title = isMaximized ? "Restore visual view size" : "Maximize visual view size";
+  }
+
+  function setVisualViewMaximized(enabled) {
+    visualViewState.isMaximized = enabled === true;
+    document.body.classList.toggle("visual-view-maximized", visualViewState.isMaximized);
+    renderVisualViewSizeToggle();
+    scheduleVisualViewRelayout();
+  }
+
+  function ensureVisualViewClosedState() {
+    if (document.body.classList.contains("visual-view-open")) {
+      return;
+    }
+
+    if (visualViewState.isMaximized || document.body.classList.contains("visual-view-maximized")) {
+      visualViewState.isMaximized = false;
+      document.body.classList.remove("visual-view-maximized");
+      renderVisualViewSizeToggle();
+    }
+
+    if (visualViewState.popoutInFlight) {
+      setVisualViewPopoutBusy(false);
+    }
+  }
+
+  function initializeVisualViewLifecycleGuards() {
+    if (visualViewState.lifecycleGuardInitialized) {
+      return;
+    }
+    visualViewState.lifecycleGuardInitialized = true;
+
+    if (typeof MutationObserver === "function" && document.body) {
+      var visualViewBodyClassObserver = new MutationObserver(function() {
+        ensureVisualViewClosedState();
+      });
+      try {
+        visualViewBodyClassObserver.observe(document.body, {
+          attributes: true,
+          attributeFilter: ["class"]
+        });
+      } catch (_) {
+        // Ignore observer initialization failures.
+      }
+    }
+
+    ensureVisualViewClosedState();
   }
 
   function setVisualViewExportPath(path, format) {
@@ -2184,6 +2255,7 @@
 
   function closeVisualView() {
     document.body.classList.remove("visual-view-open");
+    ensureVisualViewClosedState();
     if (visualViewPanel) {
       visualViewPanel.setAttribute("aria-hidden", "true");
     }
@@ -2192,6 +2264,8 @@
   }
 
   function openVisualView(type, source, title) {
+    initializeVisualViewLifecycleGuards();
+
     var normalizedType = normalizeVisualType(type);
     var normalizedSource = normalizeText(source || "");
     if (!normalizedSource) {
@@ -2211,7 +2285,9 @@
     visualViewState.title = String(title || getVisualKindLabel(normalizedType)).trim() || getVisualKindLabel(normalizedType);
     pendingVisualExports = Object.create(null);
     setVisualViewExportButtonsBusy();
+    setVisualViewPopoutBusy(false);
     setVisualViewExportPath("", "");
+    setVisualViewMaximized(false);
 
     if (visualViewTitle) {
       visualViewTitle.textContent = visualViewState.title;
@@ -2407,6 +2483,39 @@
     });
   }
 
+  function startVisualPopout() {
+    if (visualViewState.popoutInFlight) {
+      return;
+    }
+
+    var source = String(visualViewState.source || "").trim();
+    var type = normalizeVisualType(visualViewState.type);
+    if (!source || !type) {
+      setVisualViewFeedback("No active visual to popout.", "warn", 2600);
+      return;
+    }
+
+    var preferredFormat = type === "mermaid" ? "svg" : "png";
+    setVisualViewPopoutBusy(true);
+    setVisualViewFeedback("Opening visual in external viewer...", "info", 0);
+    buildVisualExportPayload(type, source, preferredFormat)
+      .then(function(payload) {
+        if (!payload || !payload.dataBase64) {
+          throw new Error("render payload missing");
+        }
+
+        post("open_visual_popout", {
+          title: visualViewState.title || getVisualKindLabel(type),
+          mimeType: payload.mimeType || (preferredFormat === "svg" ? "image/svg+xml" : "image/png"),
+          dataBase64: payload.dataBase64
+        });
+      })
+      .catch(function() {
+        setVisualViewPopoutBusy(false);
+        setVisualViewFeedback("Failed to prepare visual popout.", "bad", 0);
+      });
+  }
+
   window.ixOnVisualExportPathSelected = function(payload) {
     payload = payload || {};
     var requestId = String(payload.requestId || "");
@@ -2505,10 +2614,22 @@
     setVisualViewFeedback(message, ok ? "ok" : "bad", ok ? 3500 : 0);
   };
 
+  window.ixOnVisualPopoutResult = function(payload) {
+    payload = payload || {};
+    var ok = payload.ok === true;
+    var message = String(payload.message || "").trim();
+    setVisualViewPopoutBusy(false);
+    if (!message) {
+      message = ok ? "Opened visual popout." : "Visual popout failed.";
+    }
+    setVisualViewFeedback(message, ok ? "ok" : "bad", ok ? 4200 : 0);
+  };
+
   window.ixCloseVisualView = closeVisualView;
   window.ixOpenVisualView = function(type, source, title) {
     openVisualView(type, source, title);
   };
+  initializeVisualViewLifecycleGuards();
 
   if (visualViewBackdrop) {
     visualViewBackdrop.addEventListener("click", closeVisualView);
@@ -2526,6 +2647,16 @@
       startVisualExport("svg");
     });
   }
+  if (btnVisualViewPopout) {
+    btnVisualViewPopout.addEventListener("click", function() {
+      startVisualPopout();
+    });
+  }
+  if (btnVisualViewToggleSize) {
+    btnVisualViewToggleSize.addEventListener("click", function() {
+      setVisualViewMaximized(!visualViewState.isMaximized);
+    });
+  }
   if (btnVisualViewOpenExport) {
     btnVisualViewOpenExport.addEventListener("click", function() {
       triggerVisualExportAction("open");
@@ -2541,6 +2672,7 @@
       triggerVisualExportAction("copy_path");
     });
   }
+  renderVisualViewSizeToggle();
 
   var ixVisualExportState = {
     maxImages: 24,

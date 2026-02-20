@@ -487,6 +487,35 @@ public sealed partial class MainWindow : Window {
                         await HandleVisualExportActionAsync(action, path).ConfigureAwait(true);
                         break;
                     }
+                case "open_visual_popout":
+                    {
+                        try {
+                            var popoutDirectory = GetVisualPopoutDirectoryPath();
+                            CleanupStaleVisualPopoutFiles(popoutDirectory);
+
+                            var title = TryGetString(root, "title");
+                            var mimeType = (TryGetString(root, "mimeType") ?? string.Empty).Trim();
+                            var dataBase64 = TryGetString(root, "dataBase64");
+                            if (!TryPrepareVisualPopoutRequest(
+                                    title,
+                                    mimeType,
+                                    dataBase64,
+                                    out var normalizedTitle,
+                                    out var normalizedFormat,
+                                    out var payloadBytes,
+                                    out var requestErrorMessage)) {
+                                await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: requestErrorMessage).ConfigureAwait(true);
+                                break;
+                            }
+
+                            var popoutResult = await OpenVisualPopoutAsync(normalizedTitle, normalizedFormat, payloadBytes).ConfigureAwait(true);
+                            await NotifyVisualPopoutResultAsync(popoutResult.Ok, popoutResult.FilePath, popoutResult.Message).ConfigureAwait(true);
+                        } catch (Exception ex) {
+                            StartupLog.Write("open_visual_popout dispatch failed: " + ex);
+                            await NotifyVisualPopoutResultAsync(ok: false, filePath: null, message: "Popout failed. Please try again.").ConfigureAwait(true);
+                        }
+                        break;
+                    }
             }
         } catch (Exception ex) {
             AppendSystem(SystemNotice.UiMessageError(ex.Message));

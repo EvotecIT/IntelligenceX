@@ -226,14 +226,23 @@ public sealed class UiShellAssetsTests {
             "id=\"visualViewPanel\"",
             "id=\"visualViewBody\"",
             "id=\"btnVisualViewClose\"",
+            "id=\"btnVisualViewPopout\"",
+            "id=\"btnVisualViewToggleSize\"",
             "aria-label=\"Close visual view\"",
             "window.ixOpenVisualView",
             "window.ixCloseVisualView",
             "window.ixOnVisualExportPathSelected",
             "window.ixOnVisualExportResult",
+            "window.ixOnVisualPopoutResult",
+            "function initializeVisualViewLifecycleGuards()",
+            "initializeVisualViewLifecycleGuards();",
+            "function ensureVisualViewClosedState()",
+            "visualViewBodyClassObserver.observe(document.body",
+            "attributeFilter: [\"class\"]",
             "pick_visual_export_path",
             "export_visual_artifact",
-            "visual_export_action");
+            "visual_export_action",
+            "open_visual_popout");
     }
 
     /// <summary>
