@@ -44,6 +44,47 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalMaintainabilityHelpersFailureIncludesMatchCountForPathAndSuffix() {
+        var findings = new List<(string RuleId, string Path)> {
+            ("IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/OnlyTool.cs"),
+            ("IXDUP001", "src/check.py")
+        };
+
+        try {
+            AssertHasFinding(findings, "IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/MissingTool.cs",
+                "missing path should fail");
+            throw new InvalidOperationException("Expected missing-path helper assertion to fail.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "missing path should fail (matches=0)",
+                "analyze run internal maintainability helper match-count message for missing path");
+        }
+
+        try {
+            AssertNoFinding(findings, "IXTOOL003", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/OnlyTool.cs",
+                "existing path should fail");
+            throw new InvalidOperationException("Expected existing-path helper assertion to fail.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "existing path should fail (matches=1)",
+                "analyze run internal maintainability helper match-count message for existing path");
+        }
+
+        try {
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".cs", "missing suffix should fail");
+            throw new InvalidOperationException("Expected missing-suffix helper assertion to fail.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "missing suffix should fail (matches=0)",
+                "analyze run internal maintainability helper match-count message for missing suffix");
+        }
+
+        try {
+            AssertNoFindingWithPathSuffix(findings, "IXDUP001", ".py", "existing suffix should fail");
+            throw new InvalidOperationException("Expected existing-suffix helper assertion to fail.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "existing suffix should fail (matches=1)",
+                "analyze run internal maintainability helper match-count message for existing suffix");
+        }
+    }
+
     private static void TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyRuleId() {
         var findings = new List<(string RuleId, string Path)> {
             ("IXTOOL001", "IntelligenceX.Tools/IntelligenceX.Tools.Sample/SampleBadTool.cs")
