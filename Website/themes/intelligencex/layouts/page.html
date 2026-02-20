@@ -37,6 +37,10 @@
 {{ content }}
         </div>
         {{ if items && items.size > 0 }}
+        {{ if page.collection == "blog" && page.kind == "Section" }}
+        {{ pf.editorial_cards 0 160 true true true true "16/9" "" "featured" "ix-editorial-list ix-editorial-list-blog" "ix-editorial-card ix-editorial-card-blog" }}
+        {{ pf.editorial_pager "Newer posts" "Older posts" "ix-editorial-pager ix-editorial-pager-blog" }}
+        {{ else }}
         <section class="ix-editorial-list{{ if page.collection == "blog" && page.kind == "Section" }} ix-editorial-list-blog{{ end }}" aria-label="Blog entries">
           {{ for item in items }}
           <article class="ix-editorial-card{{ if page.collection == "blog" && page.kind == "Section" }} ix-editorial-card-blog{{ end }}">
@@ -69,6 +73,7 @@
           <span class="ix-editorial-pager-link is-disabled">Older posts</span>
           {{ end }}
         </nav>
+        {{ end }}
         {{ end }}
         {{ end }}
         {{ if page.collection == "blog" && page.kind == "Page" }}

@@ -39,7 +39,16 @@
     },
     "blog": {
       "requiredLayouts": ["page"],
-      "requiredSurfaces": ["blog"]
+      "requiredSurfaces": ["blog"],
+      "cssHrefs": ["/css/main.css"],
+      "requiredCssSelectors": [
+        ".ix-editorial-list",
+        ".ix-editorial-list-blog",
+        ".ix-editorial-card",
+        ".ix-editorial-card-blog",
+        ".pf-editorial-grid--featured",
+        ".pf-editorial-card--featured"
+      ]
     },
     "notFound": {
       "requiredSurfaces": ["notFound"]
