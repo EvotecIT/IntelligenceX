@@ -64,10 +64,9 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
         var identityContains = ToolArgs.GetOptionalTrimmed(arguments, "identity_contains");
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -144,4 +143,3 @@ public sealed class AdDnsDelegationTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

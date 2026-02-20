@@ -64,10 +64,9 @@ public sealed class AdDcShadowIndicatorsTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var includeFindings = ToolArgs.GetBoolean(arguments, "include_findings", defaultValue: true);
         var maxFindingsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_findings_per_domain", 100, 1, Options.MaxResults);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -132,4 +131,3 @@ public sealed class AdDcShadowIndicatorsTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

@@ -157,6 +157,20 @@ public abstract class ActiveDirectoryToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Resolves optional domain/forest scope plus normalized max-results using shared semantics.
+    /// </summary>
+    protected (string? DomainName, string? ForestName, int MaxResults) ResolveDomainAndForestScopeWithMaxResults(
+        JsonObject? arguments,
+        string maxResultsArgumentName = "max_results",
+        MaxResultsNonPositiveBehavior nonPositiveBehavior = MaxResultsNonPositiveBehavior.ClampToOne) {
+        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        return (
+            DomainName: domainName,
+            ForestName: forestName,
+            MaxResults: ResolveMaxResults(arguments, maxResultsArgumentName, nonPositiveBehavior));
+    }
+
+    /// <summary>
     /// Resolves tool-requested AD attribute list via ADPlayground policy helper.
     /// </summary>
     protected static List<string> ResolveAttributes(

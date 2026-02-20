@@ -84,12 +84,11 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var exposedOnly = ToolArgs.GetBoolean(arguments, "exposed_only", defaultValue: false);
         var broadWriteMin = ToolArgs.GetCappedInt32(arguments, "broad_write_min", 0, 0, 100000);
         var includeOffendingPrincipals = ToolArgs.GetBoolean(arguments, "include_offending_principals", defaultValue: false);
         var maxOffendingRows = ToolArgs.GetCappedInt32(arguments, "max_offending_rows", 500, 1, 50000);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -198,4 +197,3 @@ public sealed class AdDnsZoneSecurityTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

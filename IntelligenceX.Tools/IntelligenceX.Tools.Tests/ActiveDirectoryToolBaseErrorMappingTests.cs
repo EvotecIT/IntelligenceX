@@ -261,6 +261,34 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
     }
 
     [Fact]
+    public void ResolveDomainAndForestScopeWithMaxResults_ShouldReturnScopeAndClampMax() {
+        var tool = new HarnessTool();
+
+        var resolved = tool.ResolveDomainAndForestScopeWithMax(
+            new JsonObject()
+                .Add("domain_name", "contoso.local")
+                .Add("forest_name", "contoso.local")
+                .Add("max_results", 0));
+
+        Assert.Equal("contoso.local", resolved.DomainName);
+        Assert.Equal("contoso.local", resolved.ForestName);
+        Assert.Equal(1, resolved.MaxResults);
+    }
+
+    [Fact]
+    public void ResolveDomainAndForestScopeWithMaxResults_ShouldUseOptionCapWhenRequested() {
+        var tool = new HarnessTool();
+
+        var resolved = tool.ResolveDomainAndForestScopeWithMax(
+            new JsonObject().Add("max_results", 0),
+            useOptionCapDefaultForNonPositive: true);
+
+        Assert.Null(resolved.DomainName);
+        Assert.Null(resolved.ForestName);
+        Assert.Equal(1000, resolved.MaxResults);
+    }
+
+    [Fact]
     public void AddDomainAndForestMeta_ShouldAddOnlyNonEmptyValues() {
         var tool = new HarnessTool();
 
@@ -504,6 +532,16 @@ public class ActiveDirectoryToolBaseErrorMappingTests {
 
         public int ResolveClampedMaxResults(JsonObject? arguments) {
             return ResolveMaxResults(arguments);
+        }
+
+        public (string? DomainName, string? ForestName, int MaxResults) ResolveDomainAndForestScopeWithMax(
+            JsonObject? arguments,
+            bool useOptionCapDefaultForNonPositive = false) {
+            return ResolveDomainAndForestScopeWithMaxResults(
+                arguments,
+                nonPositiveBehavior: useOptionCapDefaultForNonPositive
+                    ? MaxResultsNonPositiveBehavior.DefaultToOptionCap
+                    : MaxResultsNonPositiveBehavior.ClampToOne);
         }
 
         public JsonObject CreateScopeMeta(string? domainName, string? forestName) {

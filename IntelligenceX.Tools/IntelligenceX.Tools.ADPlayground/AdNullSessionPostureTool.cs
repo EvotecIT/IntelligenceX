@@ -63,12 +63,12 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var explicitDcs = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("domain_controllers"));
         var anonymousSamOnly = ToolArgs.GetBoolean(arguments, "anonymous_sam_only", defaultValue: false);
         var nullSessionOnly = ToolArgs.GetBoolean(arguments, "null_session_only", defaultValue: false);
         var maxDomainControllers = ToolArgs.GetCappedInt32(arguments, "max_domain_controllers", 200, 1, 2000);
-        var maxResults = ResolveMaxResults(arguments);
+
 
         var dcRows = new List<(string DomainName, string DomainController)>();
         if (explicitDcs.Count > 0) {
@@ -169,4 +169,3 @@ public sealed class AdNullSessionPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

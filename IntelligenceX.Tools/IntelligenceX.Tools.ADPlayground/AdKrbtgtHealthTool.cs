@@ -54,9 +54,8 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var ageThresholdDays = ToolArgs.GetCappedInt32(arguments, "age_threshold_days", 180, 1, 3650);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -107,4 +106,3 @@ public sealed class AdKrbtgtHealthTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

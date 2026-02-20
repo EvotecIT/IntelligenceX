@@ -82,13 +82,12 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var dnsFailedOnly = ToolArgs.GetBoolean(arguments, "dns_failed_only", defaultValue: false);
         var missingSiteOnly = ToolArgs.GetBoolean(arguments, "missing_site_only", defaultValue: false);
         var missingSubnetOnly = ToolArgs.GetBoolean(arguments, "missing_subnet_only", defaultValue: false);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 5000);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -192,4 +191,3 @@ public sealed class AdRegistrationPostureTool : ActiveDirectoryToolBase, ITool {
             HasMatchingSubnet: item.HasMatchingSubnet);
     }
 }
-

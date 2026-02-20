@@ -75,10 +75,9 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
         var maxDetailRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_detail_rows_per_domain", 100, 1, 2000);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -155,4 +154,3 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

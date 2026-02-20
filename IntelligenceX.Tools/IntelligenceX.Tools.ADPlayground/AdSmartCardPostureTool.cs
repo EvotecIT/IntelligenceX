@@ -71,11 +71,10 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: true);
         var maxPrivilegedRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_privileged_rows_per_domain", 100, 1, Options.MaxResults);
         var maxFindingRowsPerDomain = ToolArgs.GetCappedInt32(arguments, "max_finding_rows_per_domain", 100, 1, Options.MaxResults);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -152,4 +151,3 @@ public sealed class AdSmartCardPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

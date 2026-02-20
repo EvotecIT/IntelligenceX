@@ -76,10 +76,9 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var onlyFindings = ToolArgs.GetBoolean(arguments, "only_findings", defaultValue: false);
         var includeDetails = ToolArgs.GetBoolean(arguments, "include_details", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -171,4 +170,3 @@ public sealed class AdLapsSchemaPostureTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

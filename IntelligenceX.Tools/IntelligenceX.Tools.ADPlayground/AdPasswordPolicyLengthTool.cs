@@ -56,10 +56,9 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadDomainAndForestScope(arguments, out var domainName, out var forestName);
+        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
         var recommendedMinimumLength = ToolArgs.GetCappedInt32(arguments, "recommended_minimum_length", 12, 1, 512);
         var belowRecommendedOnly = ToolArgs.GetBoolean(arguments, "below_recommended_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -124,4 +123,3 @@ public sealed class AdPasswordPolicyLengthTool : ActiveDirectoryToolBase, ITool 
             }));
     }
 }
-
