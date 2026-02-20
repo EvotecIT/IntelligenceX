@@ -247,6 +247,9 @@ internal sealed class ChatConversationState {
     public string Id { get; set; } = string.Empty;
     public string Title { get; set; } = "New Chat";
     public string? ThreadId { get; set; }
+    public string? RuntimeLabel { get; set; }
+    public string? ModelLabel { get; set; }
+    public string? ModelOverride { get; set; }
     public List<ChatMessageState> Messages { get; set; } = new();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -255,6 +258,7 @@ internal sealed class ChatMessageState {
     public string Role { get; set; } = "System";
     public string Text { get; set; } = string.Empty;
     public DateTime TimeUtc { get; set; } = DateTime.UtcNow;
+    public string? Model { get; set; }
 }
 
 internal sealed class ChatMemoryFactState {

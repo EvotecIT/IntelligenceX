@@ -107,6 +107,22 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures assistant responses render an inline model badge when model metadata is available.
+    /// </summary>
+    [Fact]
+    public void Format_RendersAssistantModelBadgeWhenProvided() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 20, 20, 31, 6, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("User", "hello", now, null),
+            ("Assistant", "hi", now.AddSeconds(1), "openai/gpt-oss-20b")
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("bubble-model-chip", html, StringComparison.Ordinal);
+        Assert.Contains(">openai/gpt-oss-20b</span>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures repeated system rows never collapse metadata visibility.
     /// </summary>
     [Fact]

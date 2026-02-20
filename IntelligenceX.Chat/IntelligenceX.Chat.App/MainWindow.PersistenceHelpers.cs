@@ -205,7 +205,7 @@ public sealed partial class MainWindow : Window {
         return BuildDisabledToolsList(_toolStates);
     }
 
-    private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time)> messages) {
+    private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time, string? Model)> messages) {
         var result = new List<ChatMessageState>(Math.Min(messages.Count, MaxMessagesPerConversation));
         var start = Math.Max(0, messages.Count - MaxMessagesPerConversation);
         for (var i = start; i < messages.Count; i++) {
@@ -217,7 +217,8 @@ public sealed partial class MainWindow : Window {
             result.Add(new ChatMessageState {
                 Role = m.Role,
                 Text = m.Text,
-                TimeUtc = m.Time.ToUniversalTime()
+                TimeUtc = m.Time.ToUniversalTime(),
+                Model = string.IsNullOrWhiteSpace(m.Model) ? null : m.Model.Trim()
             });
         }
 
@@ -272,6 +273,9 @@ public sealed partial class MainWindow : Window {
                 Id = conversation.Id,
                 Title = title,
                 ThreadId = conversation.ThreadId,
+                RuntimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
+                ModelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
+                ModelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
                 Messages = BuildMessageStateSnapshot(conversation.Messages),
                 UpdatedUtc = updatedUtc
             });
@@ -365,6 +369,20 @@ public sealed partial class MainWindow : Window {
                || message.Contains("quota", StringComparison.OrdinalIgnoreCase)
                || message.Contains("(429)", StringComparison.OrdinalIgnoreCase)
                || message.Contains(" 429", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMissingTransportThreadError(Exception ex) {
+        return ChatThreadRecoveryHeuristics.IsMissingTransportThreadError(ex);
+    }
+
+    private static bool IsChatInProgressError(Exception ex) {
+        var message = (ex.Message ?? string.Empty).Trim();
+        if (message.Length == 0) {
+            return false;
+        }
+
+        return message.Contains("chat request is already running", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("chat_in_progress", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsCanceledTurn(string requestId, Exception ex) {

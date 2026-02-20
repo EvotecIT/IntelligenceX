@@ -11,13 +11,58 @@
     var isSystem = conversationIsSystem(item);
     var count = item && typeof item.messageCount === "number" ? item.messageCount : 0;
     var updated = item && item.updatedLocal ? String(item.updatedLocal) : "";
+    var runtimeLabel = item && item.runtimeLabel ? String(item.runtimeLabel).trim() : "";
+    var modelLabel = item && item.modelLabel ? String(item.modelLabel).trim() : "";
     var base = isSystem
       ? (String(count) + (count === 1 ? " event" : " events"))
       : (String(count) + (count === 1 ? " message" : " messages"));
     if (isSystem) {
       base = "System log · " + base;
+    } else if (runtimeLabel || modelLabel) {
+      var runtimeSummary = runtimeLabel || "runtime";
+      if (modelLabel) {
+        runtimeSummary += " | " + modelLabel;
+      }
+      base = runtimeSummary + " · " + base;
     }
     return updated ? (base + " · " + updated) : base;
+  }
+
+  function normalizeConversationModelValue(value) {
+    var normalized = String(value || "").trim();
+    if (!normalized || normalized === "(auto)") {
+      return "";
+    }
+    return normalized;
+  }
+
+  function buildConversationModelChoices(chat) {
+    var local = ((state.options || {}).localModel || {});
+    var models = Array.isArray(local.models) ? local.models : [];
+    var seen = {};
+    var list = [];
+
+    function push(value) {
+      var normalized = normalizeConversationModelValue(value);
+      if (!normalized) {
+        return;
+      }
+      var key = normalized.toLowerCase();
+      if (seen[key]) {
+        return;
+      }
+      seen[key] = true;
+      list.push(normalized);
+    }
+
+    push(chat && chat.modelOverride ? chat.modelOverride : "");
+    push(local.model || "");
+    for (var i = 0; i < models.length; i++) {
+      var item = models[i] || {};
+      push(item.model || item.Model || item.id || item.Id || "");
+    }
+
+    return list;
   }
 
   function renderSidebarConversations() {
@@ -141,6 +186,50 @@
       meta.textContent = conversationMeta(chat);
       main.appendChild(meta);
 
+      if (!isSystem) {
+        var currentOverride = normalizeConversationModelValue(chat && chat.modelOverride ? chat.modelOverride : "");
+        var choices = buildConversationModelChoices(chat);
+        var modelRow = document.createElement("div");
+        modelRow.className = "options-conversation-model-row";
+
+        var modelRowLabel = document.createElement("span");
+        modelRowLabel.className = "options-conversation-model-label";
+        modelRowLabel.textContent = "Model";
+        modelRow.appendChild(modelRowLabel);
+
+        var modelSelect = document.createElement("select");
+        modelSelect.className = "options-select options-select-sm options-conversation-model-select";
+        modelSelect.dataset.conversationId = id;
+
+        var autoOption = document.createElement("option");
+        autoOption.value = "";
+        autoOption.textContent = "Auto (runtime default)";
+        modelSelect.appendChild(autoOption);
+
+        for (var m = 0; m < choices.length; m++) {
+          var modelOption = document.createElement("option");
+          modelOption.value = choices[m];
+          modelOption.textContent = choices[m];
+          modelSelect.appendChild(modelOption);
+        }
+
+        if (currentOverride) {
+          modelSelect.value = currentOverride;
+          if (modelSelect.value !== currentOverride) {
+            var currentOption = document.createElement("option");
+            currentOption.value = currentOverride;
+            currentOption.textContent = currentOverride;
+            modelSelect.appendChild(currentOption);
+            modelSelect.value = currentOverride;
+          }
+        } else {
+          modelSelect.value = "";
+        }
+
+        modelRow.appendChild(modelSelect);
+        main.appendChild(modelRow);
+      }
+
       if (chat.preview) {
         var preview = document.createElement("div");
         preview.className = "options-conversation-preview";
@@ -249,18 +338,24 @@
       maxHeight = Math.max(32, availableHeight);
     }
 
-    menu.style.position = "fixed";
-    menu.style.left = rect.left + "px";
+    // Anchor menu to the select wrapper to avoid detached/floating dropdowns while the
+    // options pane updates or scrolls.
+    menu.style.position = "absolute";
+    menu.style.left = "0";
+    menu.style.width = "100%";
+    menu.style.right = "";
+    menu.style.maxHeight = Math.max(32, maxHeight) + "px";
+
+    var offsetTop = Math.max(4, button.offsetHeight + 4);
     if (openUpwards) {
       menu.classList.add("ix-select-menu-up");
-      menu.style.top = Math.max(edgePadding, rect.top - maxHeight - 4) + "px";
+      menu.style.top = "auto";
+      menu.style.bottom = offsetTop + "px";
     } else {
       menu.classList.remove("ix-select-menu-up");
-      menu.style.top = (rect.bottom + 4) + "px";
+      menu.style.bottom = "auto";
+      menu.style.top = offsetTop + "px";
     }
-    menu.style.width = rect.width + "px";
-    menu.style.right = "auto";
-    menu.style.maxHeight = Math.max(32, maxHeight) + "px";
   }
 
   function clearSelectMenuPosition(wrap) {
@@ -271,6 +366,7 @@
     menu.style.position = "";
     menu.style.left = "";
     menu.style.top = "";
+    menu.style.bottom = "";
     menu.style.width = "";
     menu.style.right = "";
     menu.style.maxHeight = "";

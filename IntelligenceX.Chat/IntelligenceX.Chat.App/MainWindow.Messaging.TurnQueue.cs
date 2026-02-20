@@ -42,18 +42,25 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
-            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
-            return;
-        }
-
-        if (_client is null) {
-            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
-            return;
+        if (_modelKickoffInProgress) {
+            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
         }
 
         var turn = await PrepareChatTurnAsync(text).ConfigureAwait(false);
         if (turn is null) {
+            return;
+        }
+
+        // Keep user bubble rendering immediate, but still validate connectivity
+        // before we enter active send state.
+        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            return;
+        }
+        if (_client is null) {
+            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
             return;
         }
 
@@ -76,6 +83,7 @@ public sealed partial class MainWindow : Window {
         StartTurnWatchdog();
         _activeRequestConversationId = turn.ConversationId;
         ClearToolRoutingInsights();
+        await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
         try {
             await PublishSessionStateAsync().ConfigureAwait(false);
         } finally {
@@ -104,9 +112,29 @@ public sealed partial class MainWindow : Window {
                 var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
                 if (!_queueAutoDispatchEnabled && queuedTotal > 0) {
                     await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
+                } else {
+                    await RestoreHeaderStatusAfterTurnIfNeededAsync(requestId).ConfigureAwait(false);
                 }
             }
         }
+    }
+
+    private async Task RestoreHeaderStatusAfterTurnIfNeededAsync(string completedRequestId) {
+        if (string.IsNullOrWhiteSpace(completedRequestId) || !IsLatestTurnRequest(completedRequestId)) {
+            return;
+        }
+
+        var status = (_statusText ?? string.Empty).Trim();
+        if (status.Length == 0) {
+            return;
+        }
+
+        if (!string.Equals(status, "Sending request to runtime...", StringComparison.OrdinalIgnoreCase)
+            && !status.StartsWith("Last turn failed:", StringComparison.OrdinalIgnoreCase)) {
+            return;
+        }
+
+        await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
     }
 
     private async Task SendPromptToConversationAsync(string text, string? conversationId, DateTime? queuedAtUtc = null) {

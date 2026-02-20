@@ -72,7 +72,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private void AppendSystem(ConversationRuntime conversation, string text) {
-        conversation.Messages.Add(("System", text, DateTime.Now));
+        conversation.Messages.Add(("System", text, DateTime.Now, null));
         conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             _ = RenderTranscriptAsync();
@@ -131,11 +131,11 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private static (string Role, string Text, DateTime Time)[] SnapshotMessagesForRender(IReadOnlyList<(string Role, string Text, DateTime Time)> messages) {
-        var snapshot = new (string Role, string Text, DateTime Time)[messages.Count];
+    private static (string Role, string Text, DateTime Time, string? Model)[] SnapshotMessagesForRender(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages) {
+        var snapshot = new (string Role, string Text, DateTime Time, string? Model)[messages.Count];
         for (var i = 0; i < messages.Count; i++) {
             var message = messages[i];
-            snapshot[i] = (message.Role ?? string.Empty, message.Text ?? string.Empty, message.Time);
+            snapshot[i] = (message.Role ?? string.Empty, message.Text ?? string.Empty, message.Time, string.IsNullOrWhiteSpace(message.Model) ? null : message.Model.Trim());
         }
 
         return snapshot;
@@ -842,6 +842,9 @@ public sealed partial class MainWindow : Window {
                 preview,
                 isActive = string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase),
                 isSystem,
+                runtimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
+                modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
+                modelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
                 updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
             });
         }

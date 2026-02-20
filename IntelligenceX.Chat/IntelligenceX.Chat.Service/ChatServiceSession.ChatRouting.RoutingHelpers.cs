@@ -217,13 +217,13 @@ internal sealed partial class ChatServiceSession {
         }
 
         var userRequest = ExtractPrimaryUserRequest(requestText);
-        if (ShouldSkipWeightedRouting(userRequest)) {
-            return (definitions, new List<ToolRoutingInsight>());
-        }
-
         var limit = ResolveMaxCandidateToolsLimit(maxCandidateTools, definitions.Count);
         if (limit >= definitions.Count) {
             return (definitions, new List<ToolRoutingInsight>());
+        }
+
+        if (ShouldSkipWeightedRouting(userRequest)) {
+            return (SelectDeterministicToolSubset(definitions, limit), new List<ToolRoutingInsight>());
         }
 
         var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, userRequest, definitions, limit, cancellationToken).ConfigureAwait(false);
@@ -247,13 +247,13 @@ internal sealed partial class ChatServiceSession {
         }
 
         var userRequest = ExtractPrimaryUserRequest(requestText);
-        if (ShouldSkipWeightedRouting(userRequest)) {
-            return definitions;
-        }
-
         var limit = ResolveMaxCandidateToolsLimit(maxCandidateTools, definitions.Count);
         if (limit >= definitions.Count) {
             return definitions;
+        }
+
+        if (ShouldSkipWeightedRouting(userRequest)) {
+            return SelectDeterministicToolSubset(definitions, limit);
         }
 
         var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);
@@ -333,7 +333,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (!hasSignal) {
-            return definitions;
+            return SelectDeterministicToolSubset(definitions, limit);
         }
 
         scored.Sort(static (a, b) => {
@@ -346,7 +346,7 @@ internal sealed partial class ChatServiceSession {
         });
 
         if (scored[0].Score < 1d) {
-            return definitions;
+            return SelectDeterministicToolSubset(definitions, limit);
         }
 
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -360,7 +360,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (selectedDefs.Count == 0) {
-            return definitions;
+            return SelectDeterministicToolSubset(definitions, limit);
         }
 
         var minSelection = Math.Min(definitions.Count, Math.Max(8, Math.Min(limit, 12)));
@@ -380,6 +380,34 @@ internal sealed partial class ChatServiceSession {
 
         insights = BuildRoutingInsights(scored, selectedDefs);
         return selectedDefs;
+    }
+
+    private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
+        if (definitions.Count == 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        if (limit >= definitions.Count) {
+            return definitions;
+        }
+
+        var selected = new List<ToolDefinition>(Math.Max(1, limit));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count && selected.Count < limit; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var name = (definition.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || !seen.Add(name)) {
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
     }
 
     private static List<ToolRoutingInsight> BuildRoutingInsights(IReadOnlyList<ToolScore> scored, IReadOnlyList<ToolDefinition> selectedDefs) {

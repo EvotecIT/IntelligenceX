@@ -15,7 +15,8 @@ public sealed partial class MainWindow : Window {
         ConversationRuntime Conversation,
         string ConversationId,
         string RequestId,
-        string RequestText);
+        string RequestText,
+        string? AssistantModelLabel);
 
     private async Task<ChatTurnContext?> PrepareChatTurnAsync(string text) {
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
@@ -48,13 +49,27 @@ public sealed partial class MainWindow : Window {
             return null;
         }
 
-        await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
-
         _assistantStreaming.Clear();
         _activeTurnReceivedDelta = false;
+        var transport = NormalizeLocalProviderTransport(_localProviderTransport);
+        var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
+        var preset = DetectCompatibleProviderPreset(baseUrl);
+        var copilotConnected = string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                               && baseUrl.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase);
+        conversation.RuntimeLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl);
+        var configuredModel = string.IsNullOrWhiteSpace(conversation.ModelOverride)
+            ? _localProviderModel
+            : conversation.ModelOverride!;
+        var resolvedModel = ResolveChatRequestModelOverride(
+            _localProviderTransport,
+            _localProviderBaseUrl,
+            configuredModel,
+            _availableModels);
+        var assistantModelLabel = string.IsNullOrWhiteSpace(resolvedModel) ? "(auto)" : resolvedModel.Trim();
+        conversation.ModelLabel = assistantModelLabel;
         var now = DateTime.Now;
-        conversation.Messages.Add(("User", text, now));
-        conversation.Messages.Add(("Assistant", string.Empty, now));
+        conversation.Messages.Add(("User", text, now, null));
+        conversation.Messages.Add(("Assistant", string.Empty, now, assistantModelLabel));
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         conversation.UpdatedUtc = now.ToUniversalTime();
         if (string.Equals(conversationId, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
@@ -62,41 +77,70 @@ public sealed partial class MainWindow : Window {
         }
 
         await PersistAppStateAsync().ConfigureAwait(false);
+        try {
+            await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Profile intent update skipped for this turn: " + ex.Message);
+            }
+        }
+
         return new ChatTurnContext(
             conversation,
             conversationId,
             NextId(),
-            BuildRequestTextForService(text));
+            BuildRequestTextForService(text),
+            assistantModelLabel);
     }
 
     private async Task ExecuteChatTurnWithReconnectAsync(ChatTurnContext turn) {
         try {
             var initialClient = _client;
             if (initialClient is null) {
+                if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } reconnectClient) {
+                    try {
+                        await ExecuteChatTurnWithThreadRecoveryAsync(reconnectClient, turn).ConfigureAwait(false);
+                        return;
+                    } catch (Exception reconnectEx) {
+                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, reconnectEx, disconnectedFallback: false)).ConfigureAwait(false);
+                        return;
+                    }
+                }
+
                 await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
                 return;
             }
 
             try {
-                await ExecuteChatTurnAsync(initialClient, turn).ConfigureAwait(false);
+                await ExecuteChatTurnWithThreadRecoveryAsync(initialClient, turn).ConfigureAwait(false);
                 return;
             } catch (Exception ex) when (IsDisconnectedError(ex)) {
                 await DisposeClientAsync().ConfigureAwait(false);
                 if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } retryClient) {
                     try {
-                        await ExecuteChatTurnAsync(retryClient, turn).ConfigureAwait(false);
+                        await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn).ConfigureAwait(false);
                         return;
                     } catch (Exception retryEx) {
+                        var resolvedRetryEx = retryEx;
+                        if (await TryRecoverChatSlotByCancelingKickoffAsync(retryEx).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
+                            try {
+                                await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn).ConfigureAwait(false);
+                                return;
+                            } catch (Exception kickoffRetryEx) {
+                                resolvedRetryEx = kickoffRetryEx;
+                            }
+                        }
+
                         var promptQueued = false;
-                        if (IsUsageLimitError(retryEx)) {
-                            MarkUsageLimitForActiveAccount(retryEx.Message);
+                        if (IsUsageLimitError(resolvedRetryEx)) {
+                            MarkUsageLimitForActiveAccount(resolvedRetryEx.Message);
                             promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                             await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                             if (promptQueued) {
                                 AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
                             }
                         }
-                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, retryEx, disconnectedFallback: false)).ConfigureAwait(false);
+                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedRetryEx, disconnectedFallback: false)).ConfigureAwait(false);
                         return;
                     }
                 }
@@ -104,16 +148,26 @@ public sealed partial class MainWindow : Window {
                 await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: true)).ConfigureAwait(false);
                 return;
             } catch (Exception ex) {
+                var resolvedEx = ex;
+                if (await TryRecoverChatSlotByCancelingKickoffAsync(ex).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
+                    try {
+                        await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn).ConfigureAwait(false);
+                        return;
+                    } catch (Exception kickoffRetryEx) {
+                        resolvedEx = kickoffRetryEx;
+                    }
+                }
+
                 var promptQueued = false;
-                if (IsUsageLimitError(ex)) {
-                    MarkUsageLimitForActiveAccount(ex.Message);
+                if (IsUsageLimitError(resolvedEx)) {
+                    MarkUsageLimitForActiveAccount(resolvedEx.Message);
                     promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                     await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                     if (promptQueued) {
                         AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
                     }
                 }
-                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: false)).ConfigureAwait(false);
+                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedEx, disconnectedFallback: false)).ConfigureAwait(false);
                 return;
             }
         } finally {
@@ -121,19 +175,62 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private async Task ExecuteChatTurnWithThreadRecoveryAsync(ChatServiceClient client, ChatTurnContext turn) {
+        try {
+            await ExecuteChatTurnAsync(client, turn).ConfigureAwait(false);
+            return;
+        } catch (Exception ex) {
+            if (!await TryPrepareMissingThreadRecoveryAsync(turn, ex).ConfigureAwait(false)) {
+                throw;
+            }
+        }
+
+        await ExecuteChatTurnAsync(client, turn).ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryPrepareMissingThreadRecoveryAsync(ChatTurnContext turn, Exception ex) {
+        if (!IsMissingTransportThreadError(ex)) {
+            return false;
+        }
+
+        turn.Conversation.ThreadId = null;
+        if (string.Equals(turn.Conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            _threadId = null;
+        }
+
+        await PersistAppStateAsync().ConfigureAwait(false);
+        await SetStatusAsync("Recovered stale runtime thread. Retrying turn...").ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task<bool> TryRecoverChatSlotByCancelingKickoffAsync(Exception ex) {
+        if (!IsChatInProgressError(ex)) {
+            return false;
+        }
+
+        if (!_modelKickoffInProgress && string.IsNullOrWhiteSpace(_activeKickoffRequestId)) {
+            return false;
+        }
+
+        await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
+        await Task.Delay(150).ConfigureAwait(false);
+        return true;
+    }
+
     private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn) {
         var req = new ChatRequest {
             RequestId = turn.RequestId,
             ThreadId = turn.Conversation.ThreadId,
             Text = turn.RequestText,
-            Options = BuildChatRequestOptions()
+            Options = BuildChatRequestOptions(turn.Conversation)
         };
 
         var result = await client.RequestAsync<ChatResultMessage>(req, CancellationToken.None).ConfigureAwait(false);
-        await ApplyChatResultAsync(turn.Conversation, result).ConfigureAwait(false);
+        await ApplyChatResultAsync(turn, result).ConfigureAwait(false);
     }
 
-    private async Task ApplyChatResultAsync(ConversationRuntime conversation, ChatResultMessage result) {
+    private async Task ApplyChatResultAsync(ChatTurnContext turn, ChatResultMessage result) {
+        var conversation = turn.Conversation;
         conversation.ThreadId = result.ThreadId;
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             _threadId = result.ThreadId;
@@ -141,10 +238,18 @@ public sealed partial class MainWindow : Window {
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
-        ReplaceLastAssistantText(conversation, assistantText);
+        if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
+                _activeTurnReceivedDelta,
+                assistantText,
+                TryGetLastAssistantText(conversation, out var streamedAssistantText) ? streamedAssistantText : string.Empty,
+                out var runtimeWarningNotice)) {
+            conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
+        } else {
+            ReplaceLastAssistantText(conversation, assistantText);
+        }
         _activeTurnReceivedDelta = false;
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
-            conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now));
+            conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now, turn.AssistantModelLabel));
         }
 
         conversation.UpdatedUtc = DateTime.UtcNow;
@@ -158,7 +263,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
         if (TryGetPartialTurnFailureNotice(turn.Conversation, outcome, out var notice)) {
-            turn.Conversation.Messages.Add(("System", notice, DateTime.Now));
+            turn.Conversation.Messages.Add(("System", notice, DateTime.Now, null));
         } else {
             ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
         }
@@ -217,6 +322,39 @@ public sealed partial class MainWindow : Window {
 
         text = string.Empty;
         return false;
+    }
+
+    internal static bool ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
+        bool activeTurnReceivedDelta,
+        string? finalAssistantText,
+        string? streamedAssistantText,
+        out string notice) {
+        notice = string.Empty;
+        if (!activeTurnReceivedDelta) {
+            return false;
+        }
+
+        var finalText = (finalAssistantText ?? string.Empty).Trim();
+        if (!IsNoTextWarningText(finalText)) {
+            return false;
+        }
+
+        var streamed = (streamedAssistantText ?? string.Empty).Trim();
+        if (streamed.Length == 0 || StartsWithOutcomeMarker(streamed) || IsNoTextWarningText(streamed)) {
+            return false;
+        }
+
+        notice = "Runtime warning: no final response envelope was produced. Kept the partial streamed response shown above.";
+        return true;
+    }
+
+    internal static bool IsNoTextWarningText(string? text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.StartsWith("[warning] No response text was produced", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {

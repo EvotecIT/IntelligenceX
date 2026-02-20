@@ -44,7 +44,7 @@ public sealed partial class MainWindow : Window {
     private static void ReplaceLastAssistantText(ConversationRuntime conversation, string text) {
         for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
             if (string.Equals(conversation.Messages[i].Role, "Assistant", StringComparison.Ordinal)) {
-                conversation.Messages[i] = ("Assistant", text, conversation.Messages[i].Time);
+                conversation.Messages[i] = ("Assistant", text, conversation.Messages[i].Time, conversation.Messages[i].Model);
                 return;
             }
         }
@@ -323,7 +323,7 @@ Quick start prompts:
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
-    private ChatRequestOptions? BuildChatRequestOptions() {
+    private ChatRequestOptions? BuildChatRequestOptions(ConversationRuntime? conversation = null) {
         var disabled = new List<string>();
         if (_toolStates.Count > 0) {
             foreach (var pair in _toolStates) {
@@ -336,9 +336,18 @@ Quick start prompts:
             disabled.Sort(StringComparer.OrdinalIgnoreCase);
         }
 
+        var normalizedTransport = NormalizeLocalProviderTransport(_localProviderTransport);
+        var localPreset = DetectCompatibleProviderPreset(_localProviderBaseUrl);
+        var isLocalCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                                       && IsLocalCompatibleRuntimePreset(localPreset);
+
+        // Local compatible runtimes (LM Studio/Ollama) are much more sensitive to long tool/review loops.
+        // Keep defaults conservative unless the user explicitly overrides autonomy settings.
+        var defaultMaxToolRounds = isLocalCompatibleRuntime ? 8 : SafeDefaultMaxToolRounds;
+
         var effectiveMaxToolRounds = _autonomyMaxToolRounds
             ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 64)
-            ?? SafeDefaultMaxToolRounds;
+            ?? defaultMaxToolRounds;
 
         var serviceDefaultParallelTools = _sessionPolicy?.ParallelTools ?? SafeDefaultParallelTools;
         var parallelToolMode = ResolveParallelToolMode(_autonomyParallelTools);
@@ -351,9 +360,21 @@ Quick start prompts:
         var effectiveToolTimeoutSeconds = _autonomyToolTimeoutSeconds
             ?? NormalizePositiveTimeout(_sessionPolicy?.ToolTimeoutSeconds)
             ?? SafeDefaultToolTimeoutSeconds;
+        var configuredModel = string.IsNullOrWhiteSpace(conversation?.ModelOverride)
+            ? _localProviderModel
+            : conversation!.ModelOverride!;
+        var resolvedModel = ResolveChatRequestModelOverride(
+            _localProviderTransport,
+            _localProviderBaseUrl,
+            configuredModel,
+            _availableModels);
+        var effectiveWeightedToolRouting = _autonomyWeightedToolRouting ?? (isLocalCompatibleRuntime ? false : null);
+        var effectivePlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop ?? (isLocalCompatibleRuntime ? false : null);
+        var effectiveMaxReviewPasses = _autonomyMaxReviewPasses ?? (isLocalCompatibleRuntime ? 0 : null);
+        var effectiveModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds ?? (isLocalCompatibleRuntime ? 0 : null);
 
         return new ChatRequestOptions {
-            Model = string.IsNullOrWhiteSpace(_localProviderModel) ? null : _localProviderModel,
+            Model = string.IsNullOrWhiteSpace(resolvedModel) ? null : resolvedModel,
             ReasoningEffort = _localProviderReasoningEffort,
             ReasoningSummary = _localProviderReasoningSummary,
             TextVerbosity = _localProviderTextVerbosity,
@@ -364,11 +385,11 @@ Quick start prompts:
             ParallelToolMode = parallelToolMode,
             TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
             ToolTimeoutSeconds = effectiveToolTimeoutSeconds,
-            WeightedToolRouting = _autonomyWeightedToolRouting,
+            WeightedToolRouting = effectiveWeightedToolRouting,
             MaxCandidateTools = _autonomyMaxCandidateTools,
-            PlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop,
-            MaxReviewPasses = _autonomyMaxReviewPasses,
-            ModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds
+            PlanExecuteReviewLoop = effectivePlanExecuteReviewLoop,
+            MaxReviewPasses = effectiveMaxReviewPasses,
+            ModelHeartbeatSeconds = effectiveModelHeartbeatSeconds
         };
     }
 
@@ -563,6 +584,106 @@ Quick start prompts:
         }
 
         return "manual";
+    }
+
+    internal static string? ResolveChatRequestModelOverride(string? transport, string? baseUrl, string? configuredModel,
+        IReadOnlyList<ModelInfoDto>? availableModels) {
+        var normalizedTransport = NormalizeLocalProviderTransport(transport);
+        var normalizedConfiguredModel = (configuredModel ?? string.Empty).Trim();
+        var localCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            && IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl));
+        var supportsCatalogFallback =
+            string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
+        if (!supportsCatalogFallback) {
+            return normalizedConfiguredModel.Length == 0 ? null : normalizedConfiguredModel;
+        }
+
+        var preferredModel = ResolvePreferredCatalogModel(availableModels);
+        if (normalizedConfiguredModel.Length == 0) {
+            return preferredModel.Length == 0 ? null : preferredModel;
+        }
+
+        if (CatalogContainsModel(availableModels, normalizedConfiguredModel)) {
+            return normalizedConfiguredModel;
+        }
+
+        if (preferredModel.Length == 0) {
+            if (localCompatibleRuntime && IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
+                return null;
+            }
+            return normalizedConfiguredModel;
+        }
+
+        if (localCompatibleRuntime || IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
+            return preferredModel;
+        }
+
+        return normalizedConfiguredModel;
+    }
+
+    private static bool IsLocalCompatibleRuntimePreset(string preset) {
+        return string.Equals(preset, "lmstudio", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(preset, "ollama", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyCloudHostedModelName(string? modelName) {
+        var normalized = (modelName ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.StartsWith("gpt-", StringComparison.Ordinal)
+               || string.Equals(normalized, "gpt5", StringComparison.Ordinal)
+               || normalized.StartsWith("chatgpt", StringComparison.Ordinal)
+               || normalized.StartsWith("o1", StringComparison.Ordinal)
+               || normalized.StartsWith("o3", StringComparison.Ordinal)
+               || normalized.StartsWith("o4", StringComparison.Ordinal);
+    }
+
+    private static bool CatalogContainsModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {
+        if (availableModels is null || availableModels.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < availableModels.Count; i++) {
+            var entry = availableModels[i];
+            var candidate = (entry.Model ?? string.Empty).Trim();
+            if (candidate.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(candidate, model, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ResolvePreferredCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels) {
+        if (availableModels is null || availableModels.Count == 0) {
+            return string.Empty;
+        }
+
+        var first = string.Empty;
+        for (var i = 0; i < availableModels.Count; i++) {
+            var entry = availableModels[i];
+            var model = (entry.Model ?? string.Empty).Trim();
+            if (model.Length == 0) {
+                continue;
+            }
+
+            if (first.Length == 0) {
+                first = model;
+            }
+
+            if (entry.IsDefault == true) {
+                return model;
+            }
+        }
+
+        return first;
     }
 
     private static bool SupportsLocalProviderReasoningControls(string? transport, string? baseUrl) {
@@ -798,30 +919,32 @@ Quick start prompts:
     private IReadOnlyList<string> BuildRuntimeCapabilityContextLines() {
         var lines = new List<string>();
         var options = BuildChatRequestOptions();
-        var enabledTools = 0;
-        var disabledTools = 0;
-        foreach (var pair in _toolStates) {
-            if (pair.Value) {
-                enabledTools++;
-            } else {
-                disabledTools++;
-            }
-        }
+        var selectedModel = options?.Model;
+        CountKnownToolStates(out var knownToolCount, out var enabledTools, out var disabledTools);
 
         var transportLabel = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
             ? "compatible-http"
             : string.Equals(_localProviderTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)
                 ? "copilot-cli"
                 : "native";
-        var modelLabel = string.IsNullOrWhiteSpace(_localProviderModel) ? "(default)" : _localProviderModel.Trim();
-        lines.Add("Runtime transport: " + transportLabel + ", model: " + modelLabel);
+        var modelLabel = string.IsNullOrWhiteSpace(selectedModel) ? "(provider default)" : selectedModel.Trim();
+        lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
         lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
                   + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
                   + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
                   + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
         lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
-        lines.Add("Tools enabled: " + enabledTools.ToString(CultureInfo.InvariantCulture)
-                  + ", disabled: " + disabledTools.ToString(CultureInfo.InvariantCulture));
+        lines.Add("Tool availability for this turn: "
+                  + DescribeTurnToolAvailability(
+                      _localProviderTransport,
+                      _localProviderBaseUrl,
+                      selectedModel,
+                      _availableModels,
+                      knownToolCount,
+                      enabledTools,
+                      disabledTools));
+        lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
+                  + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));
         if (options is not null) {
             lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
                       + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
@@ -843,7 +966,109 @@ Quick start prompts:
         lines.Add("Queued turn auto-dispatch: " + (_queueAutoDispatchEnabled ? "enabled" : "paused"));
 
         lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
+        lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
         return lines;
+    }
+
+    private void CountKnownToolStates(out int knownToolCount, out int enabledTools, out int disabledTools) {
+        var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in _toolDescriptions.Keys) {
+            if (!string.IsNullOrWhiteSpace(key)) {
+                knownNames.Add(key.Trim());
+            }
+        }
+
+        if (knownNames.Count == 0) {
+            foreach (var key in _toolStates.Keys) {
+                if (!string.IsNullOrWhiteSpace(key)) {
+                    knownNames.Add(key.Trim());
+                }
+            }
+        }
+
+        knownToolCount = knownNames.Count;
+        enabledTools = 0;
+        disabledTools = 0;
+        if (knownToolCount == 0) {
+            return;
+        }
+
+        foreach (var toolName in knownNames) {
+            if (_toolStates.TryGetValue(toolName, out var enabled) && !enabled) {
+                disabledTools++;
+            } else {
+                enabledTools++;
+            }
+        }
+    }
+
+    internal static string DescribeTurnToolAvailability(string? transport, string? baseUrl, string? selectedModel,
+        IReadOnlyList<ModelInfoDto>? availableModels, int knownToolCount, int enabledTools, int disabledTools) {
+        if (knownToolCount <= 0) {
+            return "unknown (tool catalog is still loading for this session).";
+        }
+
+        if (enabledTools <= 0) {
+            return "unavailable (all tool packs are disabled by runtime settings).";
+        }
+
+        var normalizedTransport = NormalizeLocalProviderTransport(transport);
+        if (!string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return "available (enabled tools: "
+                   + enabledTools.ToString(CultureInfo.InvariantCulture)
+                   + ", disabled: "
+                   + disabledTools.ToString(CultureInfo.InvariantCulture)
+                   + ").";
+        }
+
+        if (!IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl))) {
+            return "available (enabled tools: "
+                   + enabledTools.ToString(CultureInfo.InvariantCulture)
+                   + "; remote/provider runtime may enforce additional limits).";
+        }
+
+        var normalizedModel = (selectedModel ?? string.Empty).Trim();
+        if (normalizedModel.Length == 0) {
+            return "unknown until a concrete model is selected from the discovered catalog.";
+        }
+
+        var modelInfo = FindCatalogModel(availableModels, normalizedModel);
+        if (modelInfo is null) {
+            return "unknown for model '" + normalizedModel + "' (not present in discovered local catalog).";
+        }
+
+        var capabilities = modelInfo.Capabilities ?? Array.Empty<string>();
+        if (capabilities.Length == 0) {
+            return "unavailable (model '" + normalizedModel + "' does not advertise tool_use capability).";
+        }
+
+        for (var i = 0; i < capabilities.Length; i++) {
+            if (string.Equals((capabilities[i] ?? string.Empty).Trim(), "tool_use", StringComparison.OrdinalIgnoreCase)) {
+                return "available (model '" + normalizedModel + "' advertises tool_use; enabled tools: "
+                       + enabledTools.ToString(CultureInfo.InvariantCulture)
+                       + ").";
+            }
+        }
+
+        return "unavailable (model '" + normalizedModel + "' does not advertise tool_use capability).";
+    }
+
+    private static ModelInfoDto? FindCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {
+        if (availableModels is null || availableModels.Count == 0 || string.IsNullOrWhiteSpace(model)) {
+            return null;
+        }
+
+        for (var i = 0; i < availableModels.Count; i++) {
+            var entry = availableModels[i];
+            var candidateModel = (entry.Model ?? string.Empty).Trim();
+            var candidateId = (entry.Id ?? string.Empty).Trim();
+            if (string.Equals(candidateModel, model, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateId, model, StringComparison.OrdinalIgnoreCase)) {
+                return entry;
+            }
+        }
+
+        return null;
     }
 
 }

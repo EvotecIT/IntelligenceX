@@ -341,7 +341,7 @@ public sealed partial class MainWindow : Window {
     private string? _activeRequestConversationId;
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
-    private List<(string Role, string Text, DateTime Time)> _messages = new();
+    private List<(string Role, string Text, DateTime Time, string? Model)> _messages = new();
     private readonly StringBuilder _assistantStreaming = new();
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
     private long _transcriptRenderGeneration;
@@ -386,7 +386,10 @@ public sealed partial class MainWindow : Window {
         public required string Id { get; init; }
         public string Title { get; set; } = DefaultConversationTitle;
         public string? ThreadId { get; set; }
-        public List<(string Role, string Text, DateTime Time)> Messages { get; } = new();
+        public string? RuntimeLabel { get; set; }
+        public string? ModelLabel { get; set; }
+        public string? ModelOverride { get; set; }
+        public List<(string Role, string Text, DateTime Time, string? Model)> Messages { get; } = new();
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     }
 

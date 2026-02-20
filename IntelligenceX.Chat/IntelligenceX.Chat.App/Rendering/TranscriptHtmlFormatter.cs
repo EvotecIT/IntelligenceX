@@ -32,6 +32,17 @@ internal static class TranscriptHtmlFormatter {
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
+    /// Backward-compatible overload for transcript entries without model metadata.
+    /// </summary>
+    public static string Format(
+        IEnumerable<(string Role, string Text, DateTime Time)> messages,
+        string timestampFormat,
+        MarkdownRendererOptions markdownOptions) {
+        ArgumentNullException.ThrowIfNull(messages);
+        return Format(ProjectLegacyMessages(messages), timestampFormat, markdownOptions);
+    }
+
+    /// <summary>
     /// Builds transcript HTML for the chat shell.
     /// </summary>
     /// <param name="messages">Role/text/time transcript entries.</param>
@@ -39,7 +50,7 @@ internal static class TranscriptHtmlFormatter {
     /// <param name="markdownOptions">Markdown renderer options.</param>
     /// <returns>HTML fragment.</returns>
     public static string Format(
-        IEnumerable<(string Role, string Text, DateTime Time)> messages,
+        IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(messages);
@@ -77,6 +88,8 @@ internal static class TranscriptHtmlFormatter {
                 bubbleClass = "bubble bubble-callout";
             }
             var time = message.Time.ToString(format, CultureInfo.InvariantCulture);
+            var modelLabel = BuildModelBadgeLabel(message.Role, message.Model);
+            var showModelBadge = modelLabel.Length > 0;
 
             html.Append("<div class='msg-row ").Append(role.RoleClass);
             if (isContinuation) {
@@ -90,7 +103,13 @@ internal static class TranscriptHtmlFormatter {
                 html.Append(" hidden");
             }
             html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time)).Append("</div>")
-                .Append("<div class='").Append(bubbleClass).Append("'>").Append(bodyHtml).Append("</div>")
+                .Append("<div class='").Append(bubbleClass).Append("'>").Append(bodyHtml).Append("</div>");
+            if (showModelBadge) {
+                html.Append("<div class='bubble-meta'><span class='bubble-model-chip' title='Model used for this response'>")
+                    .Append(encoder.Encode(modelLabel))
+                    .Append("</span></div>");
+            }
+            html
                 .Append("<div class='msg-actions'><button class='msg-copy-btn' data-msg-index='").Append(messageIndex).Append("' title='Copy message'>")
                 .Append(CopyButtonIconSvg)
                 .Append("</button></div>")
@@ -102,6 +121,27 @@ internal static class TranscriptHtmlFormatter {
         }
 
         return html.ToString();
+    }
+
+    private static IEnumerable<(string Role, string Text, DateTime Time, string? Model)> ProjectLegacyMessages(IEnumerable<(string Role, string Text, DateTime Time)> messages) {
+        foreach (var message in messages) {
+            yield return (message.Role, message.Text, message.Time, null);
+        }
+    }
+
+    private static string BuildModelBadgeLabel(string role, string? model) {
+        var normalizedRole = (role ?? string.Empty).Trim();
+        if (!normalizedRole.Equals("Assistant", StringComparison.OrdinalIgnoreCase)
+            && !normalizedRole.Equals("Tools", StringComparison.OrdinalIgnoreCase)) {
+            return string.Empty;
+        }
+
+        var normalizedModel = (model ?? string.Empty).Trim();
+        if (normalizedModel.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalizedModel;
     }
 
     private static bool TryRenderOutcomeCallout(

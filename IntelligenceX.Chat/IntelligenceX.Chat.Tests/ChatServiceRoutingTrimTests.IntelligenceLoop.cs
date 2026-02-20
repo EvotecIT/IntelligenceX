@@ -1,6 +1,9 @@
 using System;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using Xunit;
@@ -44,6 +47,51 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ChatServiceSession.ResolveModelHeartbeatSeconds(options);
         Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void SelectLocalCompatibleModel_PrefersLoadedDefaultEntry() {
+        var models = new[] {
+            CreateModel("m1", "model-a", isDefault: false, runtimeState: "loaded"),
+            CreateModel("m2", "model-b", isDefault: true, runtimeState: "loaded"),
+            CreateModel("m3", "model-c", isDefault: true, runtimeState: "not-loaded")
+        };
+
+        var selected = ChatServiceSession.SelectLocalCompatibleModel(models);
+        Assert.Equal("model-b", selected);
+    }
+
+    [Fact]
+    public void IsLoopbackEndpoint_DetectsLocalhostUrls() {
+        Assert.True(ChatServiceSession.IsLoopbackEndpoint("http://127.0.0.1:1234/v1"));
+        Assert.True(ChatServiceSession.IsLoopbackEndpoint("http://localhost:11434/v1"));
+        Assert.False(ChatServiceSession.IsLoopbackEndpoint("https://api.openai.com/v1"));
+    }
+
+    [Fact]
+    public void BuildNoTextResponseFallbackText_IncludesModelAndEndpointForCompatibleTransport() {
+        var text = ChatServiceSession.BuildNoTextResponseFallbackText(
+            model: "local-model",
+            transport: OpenAITransportKind.CompatibleHttp,
+            baseUrl: "http://127.0.0.1:1234/v1");
+
+        Assert.Contains("No response text was produced", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("local-model", text, StringComparison.Ordinal);
+        Assert.Contains("127.0.0.1:1234", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LooksLikeRuntimeControlPayloadArtifact_DetectsChannelEnvelopeShape() {
+        var payload = "<|channel|>commentary to=ad_pack_info\n<|constrain|>json<|message|>{}";
+        var result = ChatServiceSession.LooksLikeRuntimeControlPayloadArtifact(payload);
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void LooksLikeRuntimeControlPayloadArtifact_DoesNotFlagRegularAssistantText() {
+        var payload = "Sure - I can check replication health. Please share the domain or forest name.";
+        var result = ChatServiceSession.LooksLikeRuntimeControlPayloadArtifact(payload);
+        Assert.False(result);
     }
 
     [Theory]
@@ -218,5 +266,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(source.NewThread);
         Assert.Equal(ToolChoice.Auto, source.ToolChoice);
         Assert.True(source.ParallelToolCalls);
+    }
+
+    private static ModelInfo CreateModel(string id, string model, bool isDefault, string runtimeState) {
+        return new ModelInfo(
+            id: id,
+            model: model,
+            displayName: model,
+            description: string.Empty,
+            supportedReasoningEfforts: Array.Empty<ReasoningEffortOption>(),
+            defaultReasoningEffort: null,
+            isDefault: isDefault,
+            raw: new JsonObject(),
+            additional: null,
+            ownedBy: null,
+            publisher: null,
+            architecture: null,
+            quantization: null,
+            compatibilityType: null,
+            runtimeState: runtimeState,
+            modelType: null,
+            maxContextLength: null,
+            loadedContextLength: null,
+            capabilities: Array.Empty<string>());
     }
 }

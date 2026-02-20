@@ -262,6 +262,7 @@ internal sealed partial class ChatServiceSession {
                             if (setResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
                                 client = null;
+                                activeThreadId = null;
                             } else if (setResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with the active profile.
                                 client.ConfigureDefaults(model: _options.Model);
@@ -279,6 +280,7 @@ internal sealed partial class ChatServiceSession {
                             if (applyResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
                                 client = null;
+                                activeThreadId = null;
                             } else if (applyResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with runtime settings.
                                 client.ConfigureDefaults(model: _options.Model);

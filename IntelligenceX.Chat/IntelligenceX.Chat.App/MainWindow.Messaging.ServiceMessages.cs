@@ -111,14 +111,45 @@ public sealed partial class MainWindow : Window {
                         _isAuthenticated = false;
                         _authenticatedAccountId = null;
                         _ = SetStatusAsync(SessionStatus.SignInRequired());
-                    } else if (string.IsNullOrWhiteSpace(err.RequestId)) {
+                    } else if (!string.IsNullOrWhiteSpace(err.RequestId)) {
+                        var requestId = err.RequestId.Trim();
+                        var isRelevantRequestError = ShouldProcessLiveRequestMessage(requestId) || IsLatestTurnRequest(requestId);
+                        if (!isRelevantRequestError) {
+                            break;
+                        }
+
+                        _ = SetStatusAsync(
+                            "Last turn failed: " + SummarizeErrorForStatus(err.Error),
+                            SessionStatusTone.Warn);
                         AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
-                    } else if (VerboseServiceLogs || _debugMode) {
+                    } else {
+                        _ = SetStatusAsync("Service warning. See System log for details.", SessionStatusTone.Warn);
                         AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
                     }
                     break;
             }
         });
+    }
+
+    private static string SummarizeErrorForStatus(string? message) {
+        var normalized = (message ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "Unknown error.";
+        }
+
+        // Keep top status compact and single-line while preserving the key failure reason.
+        normalized = normalized.Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal);
+        while (normalized.Contains("  ", StringComparison.Ordinal)) {
+            normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        const int maxLen = 140;
+        if (normalized.Length <= maxLen) {
+            return normalized;
+        }
+
+        return normalized[..maxLen].TrimEnd() + "...";
     }
 
     private async Task HandlePostLoginCompletionAsync() {

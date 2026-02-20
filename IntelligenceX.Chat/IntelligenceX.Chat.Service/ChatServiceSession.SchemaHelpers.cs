@@ -288,16 +288,33 @@ internal sealed partial class ChatServiceSession {
 
     private static async Task<string> EnsureThreadAsync(IntelligenceXClient client, string? requestThreadId, string? activeThreadId, string? model,
         CancellationToken cancellationToken) {
+        var normalizedModel = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
         if (!string.IsNullOrWhiteSpace(requestThreadId)) {
-            await client.UseThreadAsync(requestThreadId!, cancellationToken).ConfigureAwait(false);
-            return requestThreadId!;
+            var normalizedRequestThreadId = requestThreadId.Trim();
+            try {
+                await client.UseThreadAsync(normalizedRequestThreadId, cancellationToken).ConfigureAwait(false);
+                return normalizedRequestThreadId;
+            } catch (Exception ex) when (ShouldRecoverMissingTransportThread(ex)) {
+                var recoveredThread = await client.StartNewThreadAsync(normalizedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                return recoveredThread.Id;
+            }
         }
         if (string.IsNullOrWhiteSpace(activeThreadId)) {
-            var thread = await client.StartNewThreadAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var thread = await client.StartNewThreadAsync(normalizedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
             return thread.Id;
         }
-        await client.UseThreadAsync(activeThreadId!, cancellationToken).ConfigureAwait(false);
-        return activeThreadId!;
+        var normalizedActiveThreadId = activeThreadId.Trim();
+        try {
+            await client.UseThreadAsync(normalizedActiveThreadId, cancellationToken).ConfigureAwait(false);
+            return normalizedActiveThreadId;
+        } catch (Exception ex) when (ShouldRecoverMissingTransportThread(ex)) {
+            var recoveredThread = await client.StartNewThreadAsync(normalizedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return recoveredThread.Id;
+        }
+    }
+
+    internal static bool ShouldRecoverMissingTransportThread(Exception ex) {
+        return ChatThreadRecoveryHeuristics.IsMissingTransportThreadError(ex);
     }
 
 }

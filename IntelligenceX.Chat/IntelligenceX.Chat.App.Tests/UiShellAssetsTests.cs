@@ -172,6 +172,36 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures options conversations expose inline model override selection (without prompt dialogs)
+    /// and post explicit set_conversation_model events.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesConversationModelOverrideSelectorAndBinding() {
+        var helpersPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpers = File.ReadAllText(helpersPath);
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindings = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("options-conversation-model-select", helpers, StringComparison.Ordinal);
+        Assert.Contains("Auto (runtime default)", helpers, StringComparison.Ordinal);
+        Assert.Contains("set_conversation_model", bindings, StringComparison.Ordinal);
+        Assert.Contains("optConversations.addEventListener(\"change\"", bindings, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures discovered runtime model dropdown stays provider-catalog focused and avoids
+    /// prefixing list entries with recents/favorites labels.
+    /// </summary>
+    [Fact]
+    public void Load_RuntimeDiscoveredModelDropdown_OmitsRecentAndFavoritePrefixedEntries() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.DoesNotContain("pushModelOption(recents[r], \"Recent:\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("pushModelOption(favorites[f], \"Favorite:\"", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures Data View plain-table fallback preserves falsy scalar values like 0/false.
     /// </summary>
     [Fact]
@@ -336,16 +366,90 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("var runtimeApplyProgress = byId(\"optRuntimeApplyProgress\")", script, StringComparison.Ordinal);
         Assert.Contains("var runtimeApply = local.runtimeApply", script, StringComparison.Ordinal);
         Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
+        Assert.Contains("Switching runtime updates the active provider profile without forcing a process restart.", script, StringComparison.Ordinal);
         Assert.Contains("bridgeSessionState: bridgeSessionState,", script, StringComparison.Ordinal);
         Assert.Contains("bridgeSessionDetail: bridgeSessionDetail,", script, StringComparison.Ordinal);
         Assert.Contains("\"Bridge session\"", script, StringComparison.Ordinal);
-        Assert.Contains("useOpenAiRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
-        Assert.Contains("connectLmStudioButton.disabled = false;", script, StringComparison.Ordinal);
-        Assert.Contains("useCopilotRuntimeButton.disabled = false;", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.classList.toggle(\"options-btn-active\", isNative);", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.classList.toggle(\"options-btn-ghost\", !isNative);", script, StringComparison.Ordinal);
+        Assert.Contains("useOpenAiRuntimeButton.disabled = turnBusy;", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.classList.toggle(\"options-btn-active\", lmStudioConnected);", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.classList.toggle(\"options-btn-ghost\", !lmStudioConnected);", script, StringComparison.Ordinal);
+        Assert.Contains("connectLmStudioButton.disabled = turnBusy;", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.classList.toggle(\"options-btn-active\", isCopilotCli);", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.classList.toggle(\"options-btn-ghost\", !isCopilotCli);", script, StringComparison.Ordinal);
+        Assert.Contains("useCopilotRuntimeButton.disabled = turnBusy;", script, StringComparison.Ordinal);
         Assert.Contains("applyStage === \"queued\"", script, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-capability-value-supported", css, StringComparison.Ordinal);
         Assert.Contains(".options-runtime-apply-progress", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures runtime UI supports focused provider/model/usage panel views so long settings pages stay navigable.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesRuntimePanelViewSelectorAndVisibilityGuards() {
+        var html = UiShellAssets.Load();
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("id=\"optRuntimePanelView\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimePanelHint\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSectionCatalogTitle\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSectionUsageTitle\"", html, StringComparison.Ordinal);
+        Assert.Contains("function runtimePanelViewStorageKey()", script, StringComparison.Ordinal);
+        Assert.Contains("function setRuntimePanelView(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function mergeRuntimePanelVisibility(id, shouldShow)", script, StringComparison.Ordinal);
+        Assert.Contains("mergeRuntimePanelVisibility(\"optRuntimeSectionCatalogTitle\", showModelPanel);", script, StringComparison.Ordinal);
+        Assert.Contains("mergeRuntimePanelVisibility(\"optRuntimeSectionUsageTitle\", showUsagePanel);", script, StringComparison.Ordinal);
+        Assert.Contains("mergeRuntimePanelVisibility(\"optAccountUsageList\", showUsagePanel);", script, StringComparison.Ordinal);
+        Assert.Contains("ensureCustomSelect(\"optRuntimePanelView\");", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures sidebar and options conversation rows include runtime/model metadata when available.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesConversationRuntimeModelMetaRendering() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("var runtimeLabel = item && item.runtimeLabel ? String(item.runtimeLabel).trim() : \"\";", script, StringComparison.Ordinal);
+        Assert.Contains("var modelLabel = item && item.modelLabel ? String(item.modelLabel).trim() : \"\";", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeSummary += \" | \" + modelLabel;", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures conversation actions include per-chat model override controls using inline selects (without prompt dialogs).
+    /// </summary>
+    [Fact]
+    public void Load_IncludesConversationModelOverrideControlsAndBindings() {
+        var helpersPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpers = File.ReadAllText(helpersPath);
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindings = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("options-conversation-model-select", helpers, StringComparison.Ordinal);
+        Assert.Contains("buildConversationModelChoices(chat)", helpers, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.prompt(\"Conversation model override (blank = auto):\"", bindings, StringComparison.Ordinal);
+        Assert.Contains("post(\"set_conversation_model\", { id: modelId, model: (modelSelect.value || \"\").trim() });", bindings, StringComparison.Ordinal);
+        Assert.Contains("var modelSelect = e.target.closest(\".options-conversation-model-select\");", bindings, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures switching away from compatible runtimes clears stale model IDs to avoid native/copilot mismatch confusion.
+    /// </summary>
+    [Fact]
+    public void Load_ClearsStaleModelInputWhenTransportSwitchesAwayFromCompatible() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("var previousTransport = normalizeLocalTransportValue((((state.options || {}).localModel || {}).transport || \"native\"));", script, StringComparison.Ordinal);
+        Assert.Contains("if (modelInput && previousTransport !== next && !isCompatible) {", script, StringComparison.Ordinal);
+        Assert.Contains("modelInput.value = \"\";", script, StringComparison.Ordinal);
     }
 
     /// <summary>

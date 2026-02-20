@@ -595,6 +595,31 @@
     return "ixchat.runtime.model.filter";
   }
 
+  function runtimePanelViewStorageKey() {
+    return "ixchat.runtime.panel.view";
+  }
+
+  function normalizeRuntimePanelView(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "provider" || normalized === "model" || normalized === "usage") {
+      return normalized;
+    }
+    if (normalized === "all") {
+      return "all";
+    }
+    return "provider";
+  }
+
+  function getRuntimePanelView() {
+    return normalizeRuntimePanelView(readStorage(runtimePanelViewStorageKey()));
+  }
+
+  function setRuntimePanelView(value) {
+    var normalized = normalizeRuntimePanelView(value);
+    writeStorage(runtimePanelViewStorageKey(), normalized);
+    return normalized;
+  }
+
   function isRuntimeAdvancedOpen() {
     return readStorage(runtimeAdvancedStorageKey()) === "1";
   }
@@ -1240,10 +1265,21 @@
 
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
+    var runtimePanelView = getRuntimePanelView();
+    var runtimePanelViewSelect = byId("optRuntimePanelView");
+    if (runtimePanelViewSelect) {
+      runtimePanelView = setRuntimePanelView(runtimePanelView);
+      runtimePanelViewSelect.value = runtimePanelView;
+      syncCustomSelect(runtimePanelViewSelect);
+    }
+    var showProviderPanel = runtimePanelView === "all" || runtimePanelView === "provider";
+    var showModelPanel = runtimePanelView === "all" || runtimePanelView === "model";
+    var showUsagePanel = runtimePanelView === "all" || runtimePanelView === "usage";
     var runtimeCapabilities = local.runtimeCapabilities && typeof local.runtimeCapabilities === "object"
       ? local.runtimeCapabilities
       : {};
     var isApplying = local.isApplying === true;
+    var turnBusy = state.sending === true || state.cancelRequested === true;
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
     var isCopilotCli = transport === "copilot-cli";
@@ -1281,8 +1317,6 @@
     var textVerbosity = normalizeTextVerbosityValue(local.textVerbosity || "");
     var temperatureText = normalizeTemperatureText(local.temperature);
     var models = Array.isArray(local.models) ? local.models : [];
-    var favorites = toStringArray(local.favoriteModels);
-    var recents = toStringArray(local.recentModels);
     var authenticatedAccountId = normalizeModelText(local.authenticatedAccountId || "");
     var accountUsage = Array.isArray(local.accountUsage) ? local.accountUsage : [];
     var activeAccountUsage = local.activeAccountUsage && typeof local.activeAccountUsage === "object"
@@ -1294,6 +1328,9 @@
     var runtimeApply = local.runtimeApply && typeof local.runtimeApply === "object"
       ? local.runtimeApply
       : {};
+    var hasPendingRuntimeDraft = typeof hasPendingLocalProviderChanges === "function"
+      ? hasPendingLocalProviderChanges()
+      : false;
     var profileApplyMode = normalizeProfileApplyMode(state.options.profileApplyMode || "session");
     var runtimeDetection = local.runtimeDetection || {};
     var runtimeDetectionHasRun = runtimeDetection.hasRun === true;
@@ -1386,8 +1423,10 @@
         } else {
           simpleHint.textContent = "Applying runtime settings. Please wait while the runtime updates.";
         }
+      } else if (hasPendingRuntimeDraft) {
+        simpleHint.textContent = "Runtime edits are pending. Click Apply Runtime to commit provider/model changes.";
       } else if (transport === "native") {
-        simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
+        simpleHint.textContent = "ChatGPT runtime is active. Model list below shows ChatGPT catalog; switch to LM Studio runtime for local models.";
       } else if (isCopilotCli) {
         simpleHint.textContent = "Copilot subscription runtime is active. Use Sign In to authenticate your GitHub Copilot account.";
       } else if (isCompatible && isBridgePreset && bridgeSessionState === "auth-failed") {
@@ -1404,6 +1443,19 @@
         simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio and click Apply Runtime, or configure Advanced Runtime.";
       } else {
         simpleHint.textContent = "Local runtime is active. Use LM Studio Runtime for the default LM Studio endpoint.";
+      }
+    }
+
+    var runtimePanelHint = byId("optRuntimePanelHint");
+    if (runtimePanelHint) {
+      if (runtimePanelView === "provider") {
+        runtimePanelHint.textContent = "Showing provider setup and advanced endpoint controls.";
+      } else if (runtimePanelView === "model") {
+        runtimePanelHint.textContent = "Showing model selection and reasoning controls.";
+      } else if (runtimePanelView === "usage") {
+        runtimePanelHint.textContent = "Showing account slots and usage/limit tracking.";
+      } else {
+        runtimePanelHint.textContent = "Showing every runtime section.";
       }
     }
 
@@ -1545,50 +1597,66 @@
       var isNative = transport === "native";
       useOpenAiRuntimeButton.textContent = isNative ? "ChatGPT Runtime Active" : "Use ChatGPT Runtime";
       useOpenAiRuntimeButton.classList.toggle("options-btn-active", isNative);
-      useOpenAiRuntimeButton.disabled = false;
-      useOpenAiRuntimeButton.title = isApplying
+      useOpenAiRuntimeButton.classList.toggle("options-btn-ghost", !isNative);
+      useOpenAiRuntimeButton.disabled = turnBusy;
+      useOpenAiRuntimeButton.title = turnBusy
+        ? "Wait for the current turn to finish before switching runtime."
+        : (isApplying
         ? "Apply in progress. Click to queue switch to ChatGPT runtime."
-        : "";
+        : "");
     }
 
     var connectLmStudioButton = byId("btnConnectLmStudio");
     if (connectLmStudioButton) {
       connectLmStudioButton.textContent = lmStudioConnected ? "LM Studio Runtime Active" : "Use LM Studio Runtime";
       connectLmStudioButton.classList.toggle("options-btn-active", lmStudioConnected);
-      connectLmStudioButton.disabled = false;
-      connectLmStudioButton.title = isApplying
+      connectLmStudioButton.classList.toggle("options-btn-ghost", !lmStudioConnected);
+      connectLmStudioButton.disabled = turnBusy;
+      connectLmStudioButton.title = turnBusy
+        ? "Wait for the current turn to finish before switching runtime."
+        : (isApplying
         ? "Apply in progress. Click to queue switch to LM Studio runtime."
         : (runtimeDetectionHasRun && !lmStudioAvailable && !lmStudioConnected
           ? "LM Studio was not detected. Start LM Studio and click Auto Detect Runtime in Advanced Runtime."
-          : "");
+          : ""));
     }
 
     var useCopilotRuntimeButton = byId("btnUseCopilotRuntime");
     if (useCopilotRuntimeButton) {
       useCopilotRuntimeButton.textContent = isCopilotCli ? "Copilot Subscription Active" : "Use Copilot Subscription";
       useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotCli);
-      useCopilotRuntimeButton.disabled = false;
-      useCopilotRuntimeButton.title = isCopilotCli
+      useCopilotRuntimeButton.classList.toggle("options-btn-ghost", !isCopilotCli);
+      useCopilotRuntimeButton.disabled = turnBusy;
+      useCopilotRuntimeButton.title = turnBusy
+        ? "Wait for the current turn to finish before switching runtime."
+        : (isCopilotCli
         ? ""
         : (isApplying
           ? "Apply in progress. Click to queue switch to Copilot subscription runtime."
-          : "Uses GitHub Copilot subscription sign-in (no API key required).");
+          : "Uses GitHub Copilot subscription sign-in (no API key required)."));
     }
 
     var refreshModelsButton = byId("btnRefreshModels");
     if (refreshModelsButton) {
-      refreshModelsButton.disabled = isApplying || transport === "native";
-      refreshModelsButton.title = isApplying
+      refreshModelsButton.disabled = isApplying || turnBusy || transport === "native";
+      refreshModelsButton.title = turnBusy
+        ? "Wait for the current turn to finish before refreshing models."
+        : (isApplying
         ? "Runtime switch in progress."
-        : (transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : "");
+        : (transport === "native" ? "Switch to Copilot or compatible runtime to refresh models." : ""));
     }
 
     var applyRuntimeButton = byId("btnApplyLocalProvider");
     if (applyRuntimeButton) {
-      applyRuntimeButton.disabled = isApplying;
+      applyRuntimeButton.disabled = isApplying || turnBusy;
       applyRuntimeButton.textContent = isApplying
         ? (applyStage === "queued" ? "Runtime Queued..." : "Applying Runtime...")
-        : "Apply Runtime";
+        : (hasPendingRuntimeDraft ? "Apply Runtime (Pending)" : "Apply Runtime");
+      applyRuntimeButton.title = turnBusy
+        ? "Wait for the current turn to finish before applying runtime changes."
+        : (hasPendingRuntimeDraft
+          ? "Unsaved runtime changes detected. Click to apply these provider/model edits."
+          : "Manual field edits require Apply Runtime. Quick runtime buttons apply automatically.");
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();
@@ -1793,12 +1861,6 @@
         selectableOptionCount++;
       }
 
-      for (var r = 0; r < recents.length; r++) {
-        pushModelOption(recents[r], "Recent:", recents[r], "");
-      }
-      for (var f = 0; f < favorites.length; f++) {
-        pushModelOption(favorites[f], "Favorite:", favorites[f], "");
-      }
       for (var i = 0; i < models.length; i++) {
         var item = models[i] || {};
         var modelName = normalizeModelText(item.model || item.Model || item.id || item.Id);
@@ -2097,6 +2159,81 @@
         }
       }
     }
+
+    function resetRuntimePanelManagedVisibility(id) {
+      var element = byId(id);
+      if (!element) {
+        return;
+      }
+      if (element.dataset.ixRuntimePanelHidden === "1") {
+        element.hidden = false;
+        element.dataset.ixRuntimePanelHidden = "0";
+      }
+    }
+
+    function mergeRuntimePanelVisibility(id, shouldShow) {
+      var element = byId(id);
+      if (!element) {
+        return;
+      }
+      element.hidden = !shouldShow;
+      element.dataset.ixRuntimePanelHidden = shouldShow ? "0" : "1";
+    }
+
+    resetRuntimePanelManagedVisibility("optNativeAccountSlotRow");
+    resetRuntimePanelManagedVisibility("optNativeAccountIdRow");
+    resetRuntimePanelManagedVisibility("optNativeAccountHint");
+    resetRuntimePanelManagedVisibility("optAccountUsageTitle");
+    resetRuntimePanelManagedVisibility("optAccountUsageList");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionAuthTitle");
+    resetRuntimePanelManagedVisibility("optLocalModelInputRow");
+    resetRuntimePanelManagedVisibility("optLocalModelSelectRow");
+    resetRuntimePanelManagedVisibility("optLocalModelFilterRow");
+    resetRuntimePanelManagedVisibility("optLocalModelManualHint");
+    resetRuntimePanelManagedVisibility("optReasoningEffortRow");
+    resetRuntimePanelManagedVisibility("optReasoningSummaryRow");
+    resetRuntimePanelManagedVisibility("optTextVerbosityRow");
+    resetRuntimePanelManagedVisibility("optTemperatureRow");
+    resetRuntimePanelManagedVisibility("optReasoningHint");
+    resetRuntimePanelManagedVisibility("optRuntimeCapabilitiesTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeCapabilities");
+    resetRuntimePanelManagedVisibility("optLocalModelsState");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionModelTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionCatalogTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionCapabilitiesTitle");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionUsageTitle");
+    resetRuntimePanelManagedVisibility("optLocalSimpleHint");
+    resetRuntimePanelManagedVisibility("optLocalAdvancedArea");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionAdvancedTitle");
+
+    mergeRuntimePanelVisibility("optNativeAccountSlotRow", showUsagePanel);
+    mergeRuntimePanelVisibility("optNativeAccountIdRow", showUsagePanel);
+    mergeRuntimePanelVisibility("optNativeAccountHint", showUsagePanel);
+    mergeRuntimePanelVisibility("optAccountUsageTitle", showUsagePanel);
+    mergeRuntimePanelVisibility("optAccountUsageList", showUsagePanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionAuthTitle", showUsagePanel);
+
+    mergeRuntimePanelVisibility("optLocalModelInputRow", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelSelectRow", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelFilterRow", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelManualHint", showModelPanel);
+    mergeRuntimePanelVisibility("optReasoningEffortRow", showModelPanel);
+    mergeRuntimePanelVisibility("optReasoningSummaryRow", showModelPanel);
+    mergeRuntimePanelVisibility("optTextVerbosityRow", showModelPanel);
+    mergeRuntimePanelVisibility("optTemperatureRow", showModelPanel);
+    mergeRuntimePanelVisibility("optReasoningHint", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeCapabilitiesTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeCapabilities", showModelPanel);
+    mergeRuntimePanelVisibility("optLocalModelsState", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionModelTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionCatalogTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionCapabilitiesTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionUsageTitle", showUsagePanel);
+
+    mergeRuntimePanelVisibility("optLocalSimpleHint", showProviderPanel);
+    mergeRuntimePanelVisibility("optLocalAdvancedArea", showProviderPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionAdvancedTitle", showProviderPanel);
+
     refreshAccountUsageRetryCountdowns();
 
     var stateNote = byId("optLocalModelsState");
@@ -2105,7 +2242,7 @@
       if (transport === "native") {
         parts.push("ChatGPT runtime active");
         if (models.length > 0) {
-          parts.push(String(models.length) + " local models cached");
+          parts.push(String(models.length) + " models returned by native catalog");
         }
       } else if (isCopilotCli) {
         parts.push("GitHub Copilot subscription runtime active");

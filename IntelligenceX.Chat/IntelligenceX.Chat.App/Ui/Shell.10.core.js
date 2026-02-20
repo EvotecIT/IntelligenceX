@@ -536,16 +536,49 @@
     switchOptionsTab("profile");
   }
 
+  function resolveStatusRuntimeSummary() {
+    var local = (state.options && state.options.localModel) || {};
+    var transport = String(local.transport || "native").trim().toLowerCase();
+    var baseUrl = String(local.baseUrl || "").trim().toLowerCase();
+    var model = String(local.model || "").trim();
+
+    var runtimeLabel = "ChatGPT";
+    if (transport === "copilot-cli") {
+      runtimeLabel = "Copilot";
+    } else if (transport === "compatible-http") {
+      if (baseUrl.indexOf("127.0.0.1:1234") >= 0 || baseUrl.indexOf("localhost:1234") >= 0) {
+        runtimeLabel = "LM Studio";
+      } else if (baseUrl.indexOf("127.0.0.1:11434") >= 0 || baseUrl.indexOf("localhost:11434") >= 0) {
+        runtimeLabel = "Ollama";
+      } else if (baseUrl.indexOf("copilot") >= 0) {
+        runtimeLabel = "Copilot HTTP";
+      } else {
+        runtimeLabel = "Compatible HTTP";
+      }
+    }
+
+    return runtimeLabel + " | " + (model || "(auto)");
+  }
+
   function updateStatusVisual(text, tone) {
     var statusEl = byId("status");
     var value = text || "";
-    var lower = value.toLowerCase();
+    var shouldAppendRuntime = value.indexOf("|") < 0;
+    var displayValue = value;
     var normalizedTone = "";
     if (typeof tone === "string") {
       normalizedTone = tone.trim().toLowerCase();
     }
 
-    statusEl.textContent = value;
+    if (shouldAppendRuntime && (normalizedTone === "ok" || normalizedTone.length === 0)) {
+      var lowerForAppend = value.toLowerCase();
+      if (lowerForAppend.indexOf("ready") >= 0 || lowerForAppend.indexOf("connected") >= 0) {
+        displayValue = value + " - " + resolveStatusRuntimeSummary();
+      }
+    }
+
+    statusEl.textContent = displayValue;
+    var lower = displayValue.toLowerCase();
     statusEl.classList.remove("ok", "warn", "bad");
     if (normalizedTone === "ok") {
       statusEl.classList.add("ok");

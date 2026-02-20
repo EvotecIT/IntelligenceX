@@ -91,6 +91,15 @@ public sealed partial class MainWindow : Window {
                         }
                         break;
                     }
+                case "set_conversation_model":
+                    {
+                        var conversationId = (TryGetString(root, "id") ?? string.Empty).Trim();
+                        var model = TryGetString(root, "model");
+                        if (!string.IsNullOrWhiteSpace(conversationId)) {
+                            await SetConversationModelAsync(conversationId, model).ConfigureAwait(true);
+                        }
+                        break;
+                    }
                 case "delete_conversation":
                     {
                         var conversationId = (TryGetString(root, "id") ?? string.Empty).Trim();

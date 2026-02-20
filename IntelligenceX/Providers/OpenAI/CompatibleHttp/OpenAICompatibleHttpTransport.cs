@@ -508,13 +508,13 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
                 continue;
             }
 
-            var deltaContent = delta.GetString("content");
+            var deltaContent = ExtractDeltaContentText(delta);
             if (!string.IsNullOrEmpty(deltaContent)) {
                 content.Append(deltaContent);
                 DeltaReceived?.Invoke(this, deltaContent!);
             }
 
-            var deltaToolCalls = delta.GetArray("tool_calls");
+            var deltaToolCalls = delta.GetArray("tool_calls") ?? ExtractDeltaToolCallsFromContent(delta);
             if (deltaToolCalls is not null && deltaToolCalls.Count > 0) {
                 for (var i = 0; i < deltaToolCalls.Count; i++) {
                     var toolObj = deltaToolCalls[i].AsObject();
@@ -568,12 +568,12 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         var assistantMessage = new JsonObject()
             .Add("role", "assistant");
 
-        var content = message.GetString("content");
+        var content = ExtractMessageContentText(message);
         if (content is not null) {
             assistantMessage.Add("content", content);
         }
 
-        var toolCalls = message.GetArray("tool_calls");
+        var toolCalls = ExtractMessageToolCalls(message);
         if (toolCalls is not null) {
             assistantMessage.Add("tool_calls", toolCalls);
         }
@@ -581,6 +581,176 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         var usage = responseObj.GetObject("usage");
         var turn = BuildTurnFromAssistantMessage(assistantMessage, usage);
         return new ChatCompletionResponse(turn, assistantMessage);
+    }
+
+    private static string? ExtractMessageContentText(JsonObject message) {
+        var direct = message.GetString("content");
+        if (!string.IsNullOrWhiteSpace(direct)) {
+            return direct;
+        }
+
+        var contentParts = message.GetArray("content");
+        if (contentParts is null || contentParts.Count == 0) {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        for (var i = 0; i < contentParts.Count; i++) {
+            var part = contentParts[i].AsObject();
+            if (part is null) {
+                continue;
+            }
+
+            var partType = (part.GetString("type") ?? string.Empty).Trim();
+            var partText = string.Equals(partType, "refusal", StringComparison.OrdinalIgnoreCase)
+                ? (part.GetString("refusal") ?? part.GetString("text"))
+                : (part.GetString("text") ?? part.GetString("content"));
+            if (string.IsNullOrWhiteSpace(partText)) {
+                continue;
+            }
+
+            if (builder.Length > 0) {
+                builder.AppendLine();
+            }
+
+            builder.Append(partText!.Trim());
+        }
+
+        return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    private static JsonArray? ExtractMessageToolCalls(JsonObject message) {
+        var toolCalls = message.GetArray("tool_calls");
+        if (toolCalls is { Count: > 0 }) {
+            return toolCalls;
+        }
+
+        var contentParts = message.GetArray("content");
+        if (contentParts is null || contentParts.Count == 0) {
+            return null;
+        }
+
+        var parsedToolCalls = new JsonArray();
+        for (var i = 0; i < contentParts.Count; i++) {
+            var part = contentParts[i].AsObject();
+            if (part is null) {
+                continue;
+            }
+
+            var partType = (part.GetString("type") ?? string.Empty).Trim();
+            if (!partType.Equals("tool_call", StringComparison.OrdinalIgnoreCase)
+                && !partType.Equals("function_call", StringComparison.OrdinalIgnoreCase)
+                && !partType.Equals("custom_tool_call", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var function = part.GetObject("function");
+            var name = (function?.GetString("name") ?? part.GetString("name") ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            var id = (part.GetString("id") ?? part.GetString("call_id") ?? $"call_{parsedToolCalls.Count}").Trim();
+            var arguments = function?.GetString("arguments") ?? part.GetString("arguments") ?? "{}";
+
+            parsedToolCalls.Add(new JsonObject()
+                .Add("id", id)
+                .Add("type", "function")
+                .Add("function", new JsonObject()
+                    .Add("name", name)
+                    .Add("arguments", arguments)));
+        }
+
+        return parsedToolCalls.Count == 0 ? null : parsedToolCalls;
+    }
+
+    private static string? ExtractDeltaContentText(JsonObject delta) {
+        var direct = delta.GetString("content");
+        if (!string.IsNullOrEmpty(direct)) {
+            return direct;
+        }
+
+        var contentParts = delta.GetArray("content");
+        if (contentParts is null || contentParts.Count == 0) {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        for (var i = 0; i < contentParts.Count; i++) {
+            var part = contentParts[i].AsObject();
+            if (part is null) {
+                continue;
+            }
+
+            var partType = (part.GetString("type") ?? string.Empty).Trim();
+            var partText = string.Equals(partType, "refusal", StringComparison.OrdinalIgnoreCase)
+                ? (part.GetString("refusal") ?? part.GetString("text"))
+                : (part.GetString("text") ?? part.GetString("content"));
+            if (string.IsNullOrEmpty(partText)) {
+                continue;
+            }
+
+            builder.Append(partText);
+        }
+
+        return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    private static JsonArray? ExtractDeltaToolCallsFromContent(JsonObject delta) {
+        var contentParts = delta.GetArray("content");
+        if (contentParts is null || contentParts.Count == 0) {
+            return null;
+        }
+
+        var toolCalls = new JsonArray();
+        for (var i = 0; i < contentParts.Count; i++) {
+            var part = contentParts[i].AsObject();
+            if (part is null) {
+                continue;
+            }
+
+            var partType = (part.GetString("type") ?? string.Empty).Trim();
+            if (!partType.Equals("tool_call", StringComparison.OrdinalIgnoreCase)
+                && !partType.Equals("function_call", StringComparison.OrdinalIgnoreCase)
+                && !partType.Equals("custom_tool_call", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var output = new JsonObject();
+            var index = part.GetInt64("index");
+            if (index.HasValue) {
+                output.Add("index", index.Value);
+            }
+
+            var id = part.GetString("id") ?? part.GetString("call_id");
+            if (!string.IsNullOrWhiteSpace(id)) {
+                output.Add("id", id);
+            }
+
+            var function = part.GetObject("function");
+            if (function is null) {
+                var name = part.GetString("name");
+                var arguments = part.GetString("arguments");
+                if (!string.IsNullOrWhiteSpace(name) || arguments is not null) {
+                    function = new JsonObject();
+                    if (!string.IsNullOrWhiteSpace(name)) {
+                        function.Add("name", name);
+                    }
+
+                    if (arguments is not null) {
+                        function.Add("arguments", arguments);
+                    }
+                }
+            }
+
+            if (function is not null) {
+                output.Add("function", function);
+            }
+
+            toolCalls.Add(output);
+        }
+
+        return toolCalls.Count == 0 ? null : toolCalls;
     }
 
     private static TurnInfo BuildTurnFromAssistantMessage(JsonObject assistantMessageForHistory, JsonObject? usageObj) {

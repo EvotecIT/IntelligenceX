@@ -948,6 +948,11 @@
     }, localProviderAutoApplyDelayMs);
   }
 
+  function markLocalProviderDraftChanged() {
+    clearScheduledLocalProviderApply();
+    renderLocalModelOptions();
+  }
+
   function applyLocalProviderSettings(forceRefresh, clearApiKey, clearBasicAuth) {
     clearScheduledLocalProviderApply();
     var local = ((state.options || {}).localModel || {});
@@ -989,11 +994,13 @@
     var openAIAuthMode = normalizeCompatibleAuthMode(byId("optLocalAuthMode").value || "bearer");
     var openAIBasicUsername = (byId("optLocalBasicUsername").value || "").trim();
     var openAIBasicPassword = (byId("optLocalBasicPassword").value || "").trim();
+    var basicPasswordInput = byId("optLocalBasicPassword");
     var shouldClearApiKey = clearApiKey === true;
     var shouldClearBasicAuth = clearBasicAuth === true;
     var apiKey = transportUsesCompatibleHttp(transport)
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
+    var apiKeyInput = byId("optLocalApiKey");
     if (shouldClearApiKey) {
       apiKey = "";
     }
@@ -1007,6 +1014,12 @@
       openAIAuthMode = "bearer";
       openAIBasicUsername = "";
       openAIBasicPassword = "";
+    }
+    if (basicPasswordInput) {
+      basicPasswordInput.value = "";
+    }
+    if (apiKeyInput) {
+      apiKeyInput.value = "";
     }
     if (state.options) {
       if (!state.options.localModel) {
@@ -1152,6 +1165,7 @@
 
   byId("optLocalTransport").addEventListener("change", function(e) {
     var next = normalizeLocalTransportValue(e.target.value || "native");
+    var previousTransport = normalizeLocalTransportValue((((state.options || {}).localModel || {}).transport || "native"));
     var isCompatible = transportUsesCompatibleHttp(next);
     e.target.value = next;
     syncCustomSelect(e.target);
@@ -1197,6 +1211,10 @@
           baseInput.value = "http://127.0.0.1:11434";
         }
       }
+    }
+    var modelInput = byId("optLocalModelInput");
+    if (modelInput && previousTransport !== next && !isCompatible) {
+      modelInput.value = "";
     }
     if (apiKeyRow) {
       apiKeyRow.hidden = !isCompatible;
@@ -1251,7 +1269,7 @@
       autoDetectButton.hidden = !isCompatible;
     }
 
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalProviderPreset").addEventListener("change", function(e) {
@@ -1260,50 +1278,50 @@
       applyCompatiblePresetSelection(preset);
     }
     syncCustomSelect(e.target);
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalAuthMode").addEventListener("change", function(e) {
     e.target.value = normalizeCompatibleAuthMode(e.target.value || "bearer");
     syncCustomSelect(e.target);
     byId("optLocalTransport").dispatchEvent(new Event("change"));
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalBaseUrl").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalApiKey").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalModelInput").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optReasoningEffort").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optReasoningSummary").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optTextVerbosity").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optTemperature").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalBasicUsername").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalBasicPassword").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalModelSelect").addEventListener("change", function(e) {
@@ -1322,7 +1340,7 @@
     if (modelInput) {
       modelInput.value = selected;
     }
-    scheduleLocalProviderApply(false);
+    applyLocalProviderSettings(true);
   });
 
   byId("optNativeAccountSlot").addEventListener("change", function(e) {
@@ -1336,15 +1354,22 @@
       accountIdInput.value = resolveNativeSlotAccountId(local, slot);
     }
 
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optNativeAccountId").addEventListener("change", function() {
-    scheduleLocalProviderApply(false);
+    markLocalProviderDraftChanged();
   });
 
   byId("optLocalModelFilter").addEventListener("input", function(e) {
     writeStorage(runtimeModelFilterStorageKey(), (e.target.value || "").trim());
+    renderLocalModelOptions();
+  });
+
+  byId("optRuntimePanelView").addEventListener("change", function(e) {
+    var normalized = setRuntimePanelView(e.target.value || "provider");
+    e.target.value = normalized;
+    syncCustomSelect(e.target);
     renderLocalModelOptions();
   });
 
@@ -1354,8 +1379,12 @@
 
   byId("btnUseOpenAiRuntime").addEventListener("click", function() {
     var transport = byId("optLocalTransport");
+    var modelInput = byId("optLocalModelInput");
     transport.value = "native";
     syncCustomSelect(transport);
+    if (modelInput) {
+      modelInput.value = "";
+    }
     applyLocalProviderSettings(true);
   });
 
@@ -1366,10 +1395,14 @@
 
   byId("btnUseCopilotRuntime").addEventListener("click", function() {
     var transport = byId("optLocalTransport");
+    var modelInput = byId("optLocalModelInput");
     if (transport) {
       transport.value = "copilot-cli";
       syncCustomSelect(transport);
       transport.dispatchEvent(new Event("change"));
+    }
+    if (modelInput) {
+      modelInput.value = "";
     }
     applyLocalProviderSettings(true);
   });
@@ -1502,6 +1535,20 @@
           }
         }, 3000);
       }
+    });
+
+    optConversations.addEventListener("change", function(e) {
+      var modelSelect = e.target.closest(".options-conversation-model-select");
+      if (!modelSelect) {
+        return;
+      }
+
+      var modelId = modelSelect.dataset.conversationId || "";
+      if (!modelId) {
+        return;
+      }
+
+      post("set_conversation_model", { id: modelId, model: (modelSelect.value || "").trim() });
     });
   }
 

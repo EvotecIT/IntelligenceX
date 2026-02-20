@@ -45,6 +45,7 @@
     ensureCustomSelect("optLocalProviderPreset");
     ensureCustomSelect("optLocalAuthMode");
     ensureCustomSelect("optNativeAccountSlot");
+    ensureCustomSelect("optRuntimePanelView");
     ensureCustomSelect("optLocalModelSelect");
     ensureCustomSelect("optReasoningEffort");
     ensureCustomSelect("optReasoningSummary");
@@ -357,7 +358,9 @@
       var timelineSummary = "";
       if (Array.isArray(timeline) && timeline.length > 0) {
         state.activityTimeline = timeline;
-        timelineSummary = " | " + timeline.join(" > ");
+        if (state.debugEnabled) {
+          timelineSummary = " | " + timeline.join(" > ");
+        }
       }
       label.textContent = text + timelineSummary;
       el.classList.add("active");

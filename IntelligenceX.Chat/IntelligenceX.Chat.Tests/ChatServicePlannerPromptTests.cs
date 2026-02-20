@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.OpenAI;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -19,6 +21,14 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo BuildToolRoutingSearchTextMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolRoutingSearchText", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolRoutingSearchText not found.");
+
+    private static readonly MethodInfo SelectWeightedToolSubsetMethod =
+        typeof(ChatServiceSession).GetMethod("SelectWeightedToolSubset", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("SelectWeightedToolSubset not found.");
+
+    private static readonly MethodInfo ResolveMaxCandidateToolsSettingMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveMaxCandidateToolsSetting", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveMaxCandidateToolsSetting not found.");
 
     [Fact]
     public void BuildModelPlannerPrompt_IncludesSchemaArgumentsRequiredAndTableViewTrait() {
@@ -63,4 +73,67 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("required", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("table view projection", searchText, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void SelectWeightedToolSubset_UsesRequestedLimit_WhenPromptHasNoRoutingSignal() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        var args = new object?[] {
+            definitions,
+            "Please summarize release readiness trends for this quarter.",
+            4,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.Equal(4, selected.Count);
+        Assert.Equal("ix_probe_tool_00", selected[0].Name);
+        Assert.Equal("ix_probe_tool_03", selected[3].Name);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_UsesRequestedLimit_WhenWeightedRoutingIsSkippedForShortPrompt() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        var args = new object?[] {
+            definitions,
+            "hello there",
+            6,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.Equal(6, selected.Count);
+        Assert.Equal("ix_probe_tool_00", selected[0].Name);
+        Assert.Equal("ix_probe_tool_05", selected[5].Name);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsSetting_DefaultsCompatibleHttpToEight() {
+        var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { null, OpenAITransportKind.CompatibleHttp });
+        var value = Assert.IsType<int>(result);
+        Assert.Equal(8, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsSetting_PreservesExplicitRequest() {
+        var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { 17, OpenAITransportKind.CompatibleHttp });
+        var value = Assert.IsType<int>(result);
+        Assert.Equal(17, value);
+    }
 }
+
