@@ -267,7 +267,12 @@ public sealed partial class MainWindow : Window {
         var attempt = 0;
 
         while (!cancellationToken.IsCancellationRequested) {
-            if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
+            if (_client is not null
+                && await IsClientAliveAsync(
+                        _client,
+                        probeTimeout: AliveProbeFastTimeout,
+                        cacheTtl: AliveProbeCacheTtl)
+                    .ConfigureAwait(false)) {
                 return;
             }
 
@@ -304,7 +309,12 @@ public sealed partial class MainWindow : Window {
                 attempt = Math.Min(attempt, 2);
             }
 
-            if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
+            if (_client is not null
+                && await IsClientAliveAsync(
+                        _client,
+                        probeTimeout: AliveProbeFastTimeout,
+                        cacheTtl: AliveProbeCacheTtl)
+                    .ConfigureAwait(false)) {
                 return;
             }
         }

@@ -133,6 +133,10 @@ public sealed partial class MainWindow : Window {
         return new TimeoutException($"Startup connect budget exhausted after {elapsedMs.ToString(CultureInfo.InvariantCulture)}ms (budget: {budgetMs.ToString(CultureInfo.InvariantCulture)}ms).");
     }
 
+    internal static bool ShouldApplyDispatchConnectFailureCooldown(bool hasTrackedRunningServiceProcess, bool prioritizeLatency) {
+        return !hasTrackedRunningServiceProcess && !prioritizeLatency;
+    }
+
     internal static bool ShouldDeferStartupModelProfileSync(bool captureStartupPhaseTelemetry) {
         return captureStartupPhaseTelemetry;
     }

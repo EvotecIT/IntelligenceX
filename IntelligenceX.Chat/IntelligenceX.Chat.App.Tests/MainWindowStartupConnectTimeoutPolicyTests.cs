@@ -211,6 +211,25 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures dispatch cooldown applies only for non-priority paths without a tracked running sidecar.
+    /// Priority login/queued-turn recovery should bypass cooldown and attempt reconnect immediately.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    public void ShouldApplyDispatchConnectFailureCooldown_ReturnsExpectedValue(
+        bool hasTrackedRunningServiceProcess,
+        bool prioritizeLatency,
+        bool expected) {
+        var shouldApply = MainWindow.ShouldApplyDispatchConnectFailureCooldown(
+            hasTrackedRunningServiceProcess,
+            prioritizeLatency);
+        Assert.Equal(expected, shouldApply);
+    }
+
+    /// <summary>
     /// Ensures post-cancel connect settlement treats near-boundary successful completion as success.
     /// </summary>
     [Fact]
