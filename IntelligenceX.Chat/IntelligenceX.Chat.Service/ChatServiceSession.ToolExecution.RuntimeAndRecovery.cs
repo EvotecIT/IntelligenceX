@@ -23,6 +23,75 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static string BuildToolRoundStartedMessage(int roundNumber, int maxRounds, int callCount, bool parallelTools, bool allowMutatingParallel) {
+        var round = Math.Max(1, roundNumber);
+        var rounds = Math.Max(round, maxRounds);
+        var calls = Math.Max(0, callCount);
+
+        var mode = "sequential";
+        if (parallelTools && calls > 1) {
+            mode = allowMutatingParallel ? "parallel (mutating override enabled)" : "parallel";
+        }
+
+        return $"Tool round {round}/{rounds}: executing {calls} call(s) in {mode} mode.";
+    }
+
+    private static string BuildToolRoundCapAppliedMessage(int requestedMaxRounds, int effectiveMaxRounds) {
+        var requested = Math.Max(1, requestedMaxRounds);
+        var effective = Math.Clamp(effectiveMaxRounds, 1, requested);
+        return $"Requested max tool rounds ({requested}) exceeds safety limit. Using {effective} for this turn.";
+    }
+
+    private static string BuildToolRoundCompletedMessage(int roundNumber, int maxRounds, int callCount, int failedCalls) {
+        var round = Math.Max(1, roundNumber);
+        var rounds = Math.Max(round, maxRounds);
+        var calls = Math.Max(0, callCount);
+        var failed = Math.Clamp(failedCalls, 0, calls);
+
+        if (failed <= 0) {
+            return $"Tool round {round}/{rounds} completed: {calls} call(s), all succeeded.";
+        }
+
+        return $"Tool round {round}/{rounds} completed: {calls} call(s), {failed} failed.";
+    }
+
+    private static string BuildToolRoundLimitReachedMessage(int maxRounds, int totalToolCalls, int totalToolOutputs) {
+        var rounds = Math.Max(1, maxRounds);
+        var calls = Math.Max(0, totalToolCalls);
+        var outputs = Math.Max(0, totalToolOutputs);
+        return $"Reached max tool rounds ({rounds}). Executed {calls} call(s) and collected {outputs} output(s).";
+    }
+
+    internal Task WriteToolRoundStartedStatusAsync(StreamWriter writer, string requestId, string threadId, int roundNumber, int maxRounds, int callCount,
+        bool parallelTools, bool allowMutatingParallel) {
+        return TryWriteStatusAsync(
+            writer,
+            requestId,
+            threadId,
+            status: "tool_round_started",
+            message: BuildToolRoundStartedMessage(roundNumber, maxRounds, callCount, parallelTools, allowMutatingParallel));
+    }
+
+    internal Task WriteToolRoundCompletedStatusAsync(StreamWriter writer, string requestId, string threadId, int roundNumber, int maxRounds, int callCount,
+        int failedCalls) {
+        return TryWriteStatusAsync(
+            writer,
+            requestId,
+            threadId,
+            status: "tool_round_completed",
+            message: BuildToolRoundCompletedMessage(roundNumber, maxRounds, callCount, failedCalls));
+    }
+
+    internal Task WriteToolRoundLimitReachedStatusAsync(StreamWriter writer, string requestId, string threadId, int maxRounds, int totalToolCalls,
+        int totalToolOutputs) {
+        return TryWriteStatusAsync(
+            writer,
+            requestId,
+            threadId,
+            status: "tool_round_limit_reached",
+            message: BuildToolRoundLimitReachedMessage(maxRounds, totalToolCalls, totalToolOutputs));
+    }
+
     private static string BuildToolBatchRecoveringMessage(int recoveredCalls, int totalCalls) {
         var recovered = Math.Max(0, recoveredCalls);
         var total = Math.Max(0, totalCalls);

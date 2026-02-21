@@ -262,7 +262,11 @@ public sealed class ToolRegistry {
             if (contract is not null &&
                 contract.IsWriteCapable &&
                 contract.IsWriteRequested(arguments)) {
-                if (_owner.WriteGovernanceMode == ToolWriteGovernanceMode.Yolo) {
+                var canBypassWriteGovernanceInYolo =
+                    _owner.WriteGovernanceMode == ToolWriteGovernanceMode.Yolo
+                    && !_owner.RequireWriteGovernanceRuntime
+                    && !_owner.RequireWriteAuditSinkForWriteOperations;
+                if (canBypassWriteGovernanceInYolo) {
                     return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
                 }
 

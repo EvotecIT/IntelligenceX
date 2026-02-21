@@ -355,8 +355,8 @@ public static partial class ToolRuntimePolicyBootstrap {
             throw new ArgumentNullException(nameof(options));
         }
 
-        var effectiveRequireWriteGovernanceRuntime = options.WriteGovernanceMode == ToolWriteGovernanceMode.Enforced &&
-                                                     options.RequireWriteGovernanceRuntime;
+        // Explicit requirement flags stay authoritative even when write-governance mode is yolo.
+        var effectiveRequireWriteGovernanceRuntime = options.RequireWriteGovernanceRuntime;
         var effectiveRequireAuthenticationRuntime = options.RequireAuthenticationRuntime ||
                                                     options.AuthenticationPreset == ToolAuthenticationRuntimePreset.Strict;
         var normalizedAuditSinkPath = NormalizeOptionalPath(options.WriteAuditSinkPath);

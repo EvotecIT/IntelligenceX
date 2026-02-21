@@ -212,4 +212,129 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(result);
         Assert.Null(invokeArgs[1]);
     }
+
+    [Theory]
+    [InlineData(0, "maxToolRounds must be between 1 and 256.")]
+    [InlineData(257, "maxToolRounds must be between 1 and 256.")]
+    public void TryValidateChatRequestOptions_RejectsOutOfRangeMaxToolRounds(int maxToolRounds, string expectedError) {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions { MaxToolRounds = maxToolRounds },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(expectedError, Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Theory]
+    [InlineData(-1, "turnTimeoutSeconds must be between 0 and 3600.")]
+    [InlineData(3601, "turnTimeoutSeconds must be between 0 and 3600.")]
+    public void TryValidateChatRequestOptions_RejectsOutOfRangeTurnTimeout(int turnTimeoutSeconds, string expectedError) {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions { TurnTimeoutSeconds = turnTimeoutSeconds },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(expectedError, Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Theory]
+    [InlineData(-1, "toolTimeoutSeconds must be between 0 and 3600.")]
+    [InlineData(3601, "toolTimeoutSeconds must be between 0 and 3600.")]
+    public void TryValidateChatRequestOptions_RejectsOutOfRangeToolTimeout(int toolTimeoutSeconds, string expectedError) {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions { ToolTimeoutSeconds = toolTimeoutSeconds },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(expectedError, Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_AcceptsBoundaryRoundsAndTimeouts() {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                MaxToolRounds = 256,
+                TurnTimeoutSeconds = 0,
+                ToolTimeoutSeconds = 3600
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.True(result);
+        Assert.Null(invokeArgs[1]);
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_RejectsInvalidParallelToolMode() {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                ParallelToolMode = "parallelize_everything"
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(
+            "parallelToolMode must be one of: auto, force_serial, allow_parallel.",
+            Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("force_serial")]
+    [InlineData("serial")]
+    [InlineData("allow_parallel")]
+    [InlineData("allow-parallel")]
+    [InlineData("on")]
+    [InlineData("off")]
+    public void TryValidateChatRequestOptions_AcceptsCanonicalAndAliasParallelToolModeValues(string parallelToolMode) {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                ParallelToolMode = parallelToolMode
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.True(result);
+        Assert.Null(invokeArgs[1]);
+    }
+
+    [Theory]
+    [InlineData(-1, "maxCandidateTools must be between 0 and 256.")]
+    [InlineData(257, "maxCandidateTools must be between 0 and 256.")]
+    public void TryValidateChatRequestOptions_RejectsOutOfRangeMaxCandidateTools(int maxCandidateTools, string expectedError) {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                MaxCandidateTools = maxCandidateTools
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(expectedError, Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_AcceptsBoundaryMaxCandidateTools() {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                MaxCandidateTools = 256
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.True(result);
+        Assert.Null(invokeArgs[1]);
+    }
 }

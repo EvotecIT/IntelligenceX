@@ -21,6 +21,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
+    private const int MaxToolRoundsLimit = 256;
 
     private sealed class ReplOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
         public string Model { get; set; } = "gpt-5.3-codex";
@@ -42,7 +43,8 @@ internal static partial class Program {
 
         public bool ShowHelp { get; set; }
         public bool ForceLogin { get; set; }
-        public bool ParallelToolCalls { get; set; }
+        public bool ParallelToolCalls { get; set; } = true;
+        public bool AllowMutatingParallelToolCalls { get; set; }
         public int MaxToolRounds { get; set; } = 24;
         public int TurnTimeoutSeconds { get; set; }
         public int ToolTimeoutSeconds { get; set; }
@@ -321,14 +323,23 @@ internal static partial class Program {
                         if (!TryGetValue(args, ref i, out var rounds, out error)) {
                             return options;
                         }
-                        if (!int.TryParse(rounds, out var n) || n <= 0) {
-                            error = "Invalid --max-tool-rounds value.";
+                        if (!int.TryParse(rounds, out var n) || n < 1 || n > MaxToolRoundsLimit) {
+                            error = $"--max-tool-rounds must be between 1 and {MaxToolRoundsLimit}.";
                             return options;
                         }
                         options.MaxToolRounds = n;
                         break;
                     case "--parallel-tools":
                         options.ParallelToolCalls = true;
+                        break;
+                    case "--no-parallel-tools":
+                        options.ParallelToolCalls = false;
+                        break;
+                    case "--allow-mutating-parallel-tools":
+                        options.AllowMutatingParallelToolCalls = true;
+                        break;
+                    case "--disallow-mutating-parallel-tools":
+                        options.AllowMutatingParallelToolCalls = false;
                         break;
                     case "--turn-timeout-seconds":
                         if (!TryGetValue(args, ref i, out var turnTimeout, out error)) {
@@ -467,8 +478,9 @@ internal static partial class Program {
             TextVerbosity = profile.TextVerbosity;
             Temperature = profile.Temperature;
 
-            MaxToolRounds = profile.MaxToolRounds;
+            MaxToolRounds = Math.Clamp(profile.MaxToolRounds, 1, MaxToolRoundsLimit);
             ParallelToolCalls = profile.ParallelTools;
+            AllowMutatingParallelToolCalls = profile.AllowMutatingParallelToolCalls;
             TurnTimeoutSeconds = profile.TurnTimeoutSeconds;
             ToolTimeoutSeconds = profile.ToolTimeoutSeconds;
 
@@ -533,6 +545,7 @@ internal static partial class Program {
                 ShowHelp = ShowHelp,
                 ForceLogin = ForceLogin,
                 ParallelToolCalls = ParallelToolCalls,
+                AllowMutatingParallelToolCalls = AllowMutatingParallelToolCalls,
                 MaxToolRounds = MaxToolRounds,
                 TurnTimeoutSeconds = TurnTimeoutSeconds,
                 ToolTimeoutSeconds = ToolTimeoutSeconds,

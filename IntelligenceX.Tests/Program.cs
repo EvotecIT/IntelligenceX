@@ -52,6 +52,7 @@ internal static partial class Program {
         failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
         failed += Run("Tool runner unregistered tool", TestToolRunnerUnregisteredTool);
         failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
+        failed += Run("Tool runner happy path chains outputs", TestToolRunnerHappyPathChainsOutputsAcrossRounds);
         failed += Run("Ensure ChatGPT login uses cache", TestEnsureChatGptLoginUsesCache);
         failed += Run("Ensure ChatGPT login triggers when missing", TestEnsureChatGptLoginTriggersLoginWhenMissing);
         failed += Run("Ensure ChatGPT login force triggers", TestEnsureChatGptLoginForceTriggersLogin);

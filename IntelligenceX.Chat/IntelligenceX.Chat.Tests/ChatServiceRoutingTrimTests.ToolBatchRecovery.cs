@@ -11,6 +11,7 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -165,6 +166,53 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildToolRoundStartedMessage_ReportsRoundAndParallelMode() {
+        var result = BuildToolRoundStartedMessageMethod.Invoke(null, new object?[] { 2, 6, 4, true, false });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("round 2/6", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("4 call", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("parallel", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoundStartedMessage_ReportsMutatingParallelOverrideWhenEnabled() {
+        var result = BuildToolRoundStartedMessageMethod.Invoke(null, new object?[] { 3, 6, 5, true, true });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("mutating override", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoundCapAppliedMessage_ReportsRequestedAndEffectiveLimits() {
+        var result = BuildToolRoundCapAppliedMessageMethod.Invoke(null, new object?[] { 500, 256 });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("requested max tool rounds (500)", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("using 256", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoundCompletedMessage_ReportsFailureCount() {
+        var result = BuildToolRoundCompletedMessageMethod.Invoke(null, new object?[] { 2, 6, 4, 2 });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("round 2/6", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("4 call", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2 failed", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoundLimitReachedMessage_ReportsRoundBudgetAndTotals() {
+        var result = BuildToolRoundLimitReachedMessageMethod.Invoke(null, new object?[] { 5, 12, 11 });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("max tool rounds (5)", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("12 call", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("11 output", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolHeartbeatMessage_ContainsToolAndElapsedSeconds() {
         var result = BuildToolHeartbeatMessageMethod.Invoke(null, new object?[] { "ad_replication_summary", 13 });
         var text = Assert.IsType<string>(result);
@@ -202,6 +250,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var hints = Assert.IsAssignableFrom<IReadOnlyDictionary<string, bool>>(result);
 
         Assert.True(hints.TryGetValue("ad_whoami", out var isMutating));
+        Assert.False(isMutating);
+    }
+
+    [Fact]
+    public void BuildMutatingToolHintsByName_PrefersWriteGovernanceContractOverReadOnlyTagHints() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "powershell_run",
+                "PowerShell runtime",
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
+                    intentArgumentName: "send",
+                    confirmationArgumentName: "allow_write"),
+                tags: new[] { "read_only" })
+        };
+
+        var result = BuildMutatingToolHintsByNameMethod.Invoke(null, new object?[] { definitions });
+        var hints = Assert.IsAssignableFrom<IReadOnlyDictionary<string, bool>>(result);
+
+        Assert.True(hints.TryGetValue("powershell_run", out var isMutating));
+        Assert.True(isMutating);
+    }
+
+    [Fact]
+    public void BuildMutatingToolHintsByName_PrefersNonWriteGovernanceContractOverMutatingTagHints() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_readonly",
+                "AD context",
+                writeGovernance: new ToolWriteGovernanceContract { IsWriteCapable = false },
+                tags: new[] { "read_write" })
+        };
+
+        var result = BuildMutatingToolHintsByNameMethod.Invoke(null, new object?[] { definitions });
+        var hints = Assert.IsAssignableFrom<IReadOnlyDictionary<string, bool>>(result);
+
+        Assert.True(hints.TryGetValue("ad_readonly", out var isMutating));
         Assert.False(isMutating);
     }
 

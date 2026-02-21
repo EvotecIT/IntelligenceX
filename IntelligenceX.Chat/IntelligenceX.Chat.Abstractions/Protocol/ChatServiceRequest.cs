@@ -322,7 +322,7 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public double? Temperature { get; init; }
     /// <summary>
-    /// Max tool-call rounds per user message.
+    /// Max tool-call rounds per user message (1..256).
     /// </summary>
     public int MaxToolRounds { get; init; } = 24;
     /// <summary>
@@ -336,11 +336,11 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public string? ParallelToolMode { get; init; }
     /// <summary>
-    /// Optional per-turn timeout in seconds (null means use service default; 0 means no explicit timeout).
+    /// Optional per-turn timeout in seconds (null means use service default; 0 means no explicit timeout; 0..3600 when provided).
     /// </summary>
     public int? TurnTimeoutSeconds { get; init; }
     /// <summary>
-    /// Optional per-tool timeout in seconds (null means use service default; 0 means no explicit timeout).
+    /// Optional per-tool timeout in seconds (null means use service default; 0 means no explicit timeout; 0..3600 when provided).
     /// </summary>
     public int? ToolTimeoutSeconds { get; init; }
     /// <summary>
@@ -353,7 +353,7 @@ public sealed record ChatRequestOptions {
     public bool? WeightedToolRouting { get; init; }
     /// <summary>
     /// Optional cap for how many candidate tools are exposed to the model per turn.
-    /// Null/0 means service-selected default.
+    /// Null/0 means service-selected default; 0..256 when provided.
     /// </summary>
     public int? MaxCandidateTools { get; init; }
     /// <summary>

@@ -314,6 +314,60 @@ internal static partial class Program {
         AssertThrows<InvalidOperationException>(() => runnerTask.GetAwaiter().GetResult(), "tool runner parallel");
     }
 
+    private static void TestToolRunnerHappyPathChainsOutputsAcrossRounds() {
+        var firstTurn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn_call_1")
+            .Add("response_id", "resp_1")
+            .Add("output", new JsonArray()
+                .Add(new JsonObject()
+                    .Add("type", "custom_tool_call")
+                    .Add("call_id", "call_1")
+                    .Add("name", "echo")
+                    .Add("input", "{}"))));
+        var secondTurn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn_final")
+            .Add("output", new JsonArray()));
+
+        var seenInputs = new List<JsonArray>();
+        var seenPreviousResponseIds = new List<string?>();
+        using var client = CreateToolRunnerClient(
+            new[] { firstTurn, secondTurn },
+            (chatInput, chatOptions) => {
+                seenInputs.Add(CallChatInputToJson(chatInput));
+                seenPreviousResponseIds.Add(chatOptions?.PreviousResponseId);
+            });
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("echo"));
+        var input = ChatInput.FromText("Run tools");
+        var options = new ChatOptions { Model = "gpt-5.3-codex" };
+
+        var result = ToolRunner.RunAsync(
+                client,
+                input,
+                options,
+                registry,
+                new ToolRunnerOptions { MaxRounds = 3 })
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(1, result.ToolCalls.Count, "tool runner happy path call count");
+        AssertEqual(1, result.ToolOutputs.Count, "tool runner happy path output count");
+        AssertEqual("call_1", result.ToolOutputs[0].CallId, "tool runner happy path output call id");
+        AssertEqual("ok", result.ToolOutputs[0].Output, "tool runner happy path output");
+        AssertEqual("turn_final", result.FinalTurn.Id, "tool runner happy path final turn id");
+
+        AssertEqual(2, seenInputs.Count, "tool runner happy path turn count");
+        AssertEqual(null, seenPreviousResponseIds[0], "tool runner happy path first previous response id");
+        AssertEqual("resp_1", seenPreviousResponseIds[1], "tool runner happy path chained previous response id");
+
+        var secondInput = seenInputs[1][0].AsObject();
+        AssertNotNull(secondInput, "tool runner happy path second input item");
+        AssertEqual("custom_tool_call_output", secondInput!.GetString("type"), "tool runner happy path second input type");
+        AssertEqual("call_1", secondInput.GetString("call_id"), "tool runner happy path second input call id");
+        AssertEqual("ok", secondInput.GetString("output"), "tool runner happy path second input output");
+    }
+
     private static int Run(string name, Action test) {
         try {
             test();

@@ -77,7 +77,7 @@ public sealed class MainWindowExecutionContractBlockerTests {
 
         var baseTime = new DateTime(2026, 2, 16, 12, 0, 0, DateTimeKind.Utc);
         for (var i = 0; i < messages.Length; i++) {
-            list.Add((messages[i].Role, messages[i].Text, baseTime.AddSeconds(i)));
+            list.Add((messages[i].Role, messages[i].Text, baseTime.AddSeconds(i), (string?)null));
         }
 
         return conversation;

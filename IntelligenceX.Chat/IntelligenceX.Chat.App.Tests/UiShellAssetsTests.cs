@@ -125,6 +125,17 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures autonomy numeric inputs expose the full supported service range for long tool flows.
+    /// </summary>
+    [Fact]
+    public void Load_UsesExtendedAutonomyInputBounds_ForToolRoundsAndCandidates() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("id=\"optAutonomyMaxRounds\" class=\"options-input options-input-sm\" type=\"number\" min=\"1\" max=\"256\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optAutonomyMaxCandidates\" class=\"options-input options-input-sm\" type=\"number\" min=\"0\" max=\"256\"", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures export visual-theme controls and messaging hooks are present in shell assets.
     /// </summary>
     [Fact]

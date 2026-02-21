@@ -48,6 +48,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool? ClassifyMutatingCapabilityFromDefinition(ToolDefinition definition) {
+        if (definition.WriteGovernance is not null) {
+            return definition.WriteGovernance.IsWriteCapable;
+        }
+
         if (TryClassifyMutatingCapabilityFromTags(definition.Tags, out var fromTags)) {
             return fromTags;
         }

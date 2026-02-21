@@ -20,6 +20,16 @@ public sealed class MainWindowAutonomyPersistenceTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_autonomyPlanExecuteReviewLoop field not found.");
 
+    private static readonly FieldInfo AutonomyMaxToolRoundsField = typeof(MainWindow).GetField(
+        "_autonomyMaxToolRounds",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_autonomyMaxToolRounds field not found.");
+
+    private static readonly FieldInfo AutonomyMaxCandidateToolsField = typeof(MainWindow).GetField(
+        "_autonomyMaxCandidateTools",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_autonomyMaxCandidateTools field not found.");
+
     private static readonly FieldInfo AutonomyMaxReviewPassesField = typeof(MainWindow).GetField(
         "_autonomyMaxReviewPasses",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -88,6 +98,42 @@ public sealed class MainWindowAutonomyPersistenceTests {
         Assert.Equal(false, state.AutonomyPlanExecuteReviewLoop);
         Assert.Null(state.AutonomyMaxReviewPasses);
         Assert.Null(state.AutonomyModelHeartbeatSeconds);
+    }
+
+    /// <summary>
+    /// Ensures autonomy tool bounds preserve the supported upper limit for long tool flows.
+    /// </summary>
+    [Fact]
+    public void AutonomyToolBounds_RestorePreservesSupportedMaxValues() {
+        var window = CreateWindowWithState();
+        var state = Assert.IsType<ChatAppState>(AppStateField.GetValue(window));
+        state.AutonomyMaxToolRounds = 256;
+        state.AutonomyMaxCandidateTools = 256;
+
+        Invoke(RestoreAutonomyOverridesFromAppStateMethod, window);
+
+        Assert.Equal(256, ReadNullableInt(AutonomyMaxToolRoundsField, window));
+        Assert.Equal(256, ReadNullableInt(AutonomyMaxCandidateToolsField, window));
+        Assert.Equal(256, state.AutonomyMaxToolRounds);
+        Assert.Equal(256, state.AutonomyMaxCandidateTools);
+    }
+
+    /// <summary>
+    /// Ensures persisted autonomy tool bounds above supported range are dropped safely.
+    /// </summary>
+    [Fact]
+    public void AutonomyToolBounds_RestoreClearsOutOfRangeValues() {
+        var window = CreateWindowWithState();
+        var state = Assert.IsType<ChatAppState>(AppStateField.GetValue(window));
+        state.AutonomyMaxToolRounds = 257;
+        state.AutonomyMaxCandidateTools = 257;
+
+        Invoke(RestoreAutonomyOverridesFromAppStateMethod, window);
+
+        Assert.Null(ReadNullableInt(AutonomyMaxToolRoundsField, window));
+        Assert.Null(ReadNullableInt(AutonomyMaxCandidateToolsField, window));
+        Assert.Null(state.AutonomyMaxToolRounds);
+        Assert.Null(state.AutonomyMaxCandidateTools);
     }
 
     private static MainWindow CreateWindowWithState() {

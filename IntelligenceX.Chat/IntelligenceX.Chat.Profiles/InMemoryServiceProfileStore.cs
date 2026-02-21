@@ -52,6 +52,7 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             Temperature = profile.Temperature,
             MaxToolRounds = profile.MaxToolRounds,
             ParallelTools = profile.ParallelTools,
+            AllowMutatingParallelToolCalls = profile.AllowMutatingParallelToolCalls,
             TurnTimeoutSeconds = profile.TurnTimeoutSeconds,
             ToolTimeoutSeconds = profile.ToolTimeoutSeconds,
             AllowedRoots = new List<string>(profile.AllowedRoots ?? new List<string>()),

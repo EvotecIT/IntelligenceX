@@ -20,6 +20,7 @@ public sealed class SessionPolicyContractTests {
                 DangerousToolsEnabled = false,
                 MaxToolRounds = 3,
                 ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
                 Packs = new[] {
                     new ToolPackInfoDto {
                         Id = "testimox",
@@ -52,6 +53,7 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal("[plugin] path_not_found path='C:\\plugins\\missing'", policy.StartupWarnings[0]);
         Assert.Equal(2, policy.PluginSearchPaths.Length);
         Assert.Equal("C:\\Support\\GitHub\\IntelligenceX\\plugins", policy.PluginSearchPaths[1]);
+        Assert.False(policy.AllowMutatingParallelToolCalls);
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);
         Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);

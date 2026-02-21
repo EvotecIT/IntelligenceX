@@ -27,6 +27,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal(0, options.MaxTableRows);
         Assert.Equal(0, options.MaxSample);
         Assert.True(options.EnableOfficeImoPack);
+        Assert.False(options.AllowMutatingParallelToolCalls);
     }
 
     [Fact]
@@ -102,6 +103,26 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_LoadsLegacyProfileWithOversizedMaxToolRounds_ClampsToSafetyLimit() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-legacy-rounds-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            SeedLegacyProfileRow(dbPath, profileName: "default", model: "legacy-model", maxToolRounds: 500);
+
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "default"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal(256, options.MaxToolRounds);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
     public void Parse_Allows_Disabling_And_Enabling_OfficeImoPack() {
         var disabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack" }, out var disabledError);
         Assert.True(string.IsNullOrWhiteSpace(disabledError));
@@ -121,6 +142,32 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         var disabled = ServiceOptions.Parse(new[] { "--enable-powershell-pack", "--disable-powershell-pack" }, out var disabledError);
         Assert.True(string.IsNullOrWhiteSpace(disabledError));
         Assert.False(disabled.EnablePowerShellPack);
+    }
+
+    [Fact]
+    public void Parse_Allows_Toggling_MutatingParallelOverride() {
+        var enabled = ServiceOptions.Parse(new[] { "--allow-mutating-parallel-tools" }, out var enabledError);
+        Assert.True(string.IsNullOrWhiteSpace(enabledError));
+        Assert.True(enabled.AllowMutatingParallelToolCalls);
+
+        var disabled = ServiceOptions.Parse(new[] { "--allow-mutating-parallel-tools", "--disallow-mutating-parallel-tools" }, out var disabledError);
+        Assert.True(string.IsNullOrWhiteSpace(disabledError));
+        Assert.False(disabled.AllowMutatingParallelToolCalls);
+    }
+
+    [Fact]
+    public void Parse_AcceptsMaxToolRoundsUpperBoundary() {
+        var options = ServiceOptions.Parse(new[] { "--max-tool-rounds", "256" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(256, options.MaxToolRounds);
+    }
+
+    [Fact]
+    public void Parse_RejectsMaxToolRoundsOverSafetyLimit() {
+        _ = ServiceOptions.Parse(new[] { "--max-tool-rounds", "257" }, out var error);
+        Assert.Equal("--max-tool-rounds must be between 1 and 256.", error);
     }
 
     [Theory]
@@ -258,6 +305,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
                 "--state-db", dbPath,
                 "--profile", "runtime",
                 "--save-profile", "runtime",
+                "--allow-mutating-parallel-tools",
                 "--write-governance-mode", "yolo",
                 "--no-require-write-governance-runtime",
                 "--require-write-audit-sink",
@@ -279,6 +327,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
             Assert.NotNull(loaded);
             Assert.True(string.IsNullOrWhiteSpace(loadError));
+            Assert.True(loaded.AllowMutatingParallelToolCalls);
             Assert.Equal(ToolWriteGovernanceMode.Yolo, loaded.WriteGovernanceMode);
             Assert.False(loaded.RequireWriteGovernanceRuntime);
             Assert.True(loaded.RequireWriteAuditSinkForWriteOperations);
@@ -315,7 +364,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         }
     }
 
-    private static void SeedLegacyProfileRow(string dbPath, string profileName, string model) {
+    private static void SeedLegacyProfileRow(string dbPath, string profileName, string model, int maxToolRounds = 24) {
         var db = new SQLite();
         db.ExecuteNonQuery(dbPath, """
 CREATE TABLE IF NOT EXISTS ix_service_profiles (
@@ -386,7 +435,7 @@ INSERT INTO ix_service_profiles (
                 ["@reasoning_summary"] = null,
                 ["@text_verbosity"] = null,
                 ["@temperature"] = null,
-                ["@max_tool_rounds"] = 24,
+                ["@max_tool_rounds"] = maxToolRounds,
                 ["@parallel_tools"] = 1,
                 ["@turn_timeout_seconds"] = 0,
                 ["@tool_timeout_seconds"] = 0,

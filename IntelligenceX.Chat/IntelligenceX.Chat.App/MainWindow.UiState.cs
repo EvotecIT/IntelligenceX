@@ -551,6 +551,7 @@ public sealed partial class MainWindow : Window {
                 toolTimeoutSeconds = _sessionPolicy.ToolTimeoutSeconds,
                 maxToolRounds = _sessionPolicy.MaxToolRounds,
                 parallelTools = _sessionPolicy.ParallelTools,
+                allowMutatingParallelToolCalls = _sessionPolicy.AllowMutatingParallelToolCalls,
                 startupWarnings = _sessionPolicy.StartupWarnings,
                 pluginSearchPaths = _sessionPolicy.PluginSearchPaths
             }

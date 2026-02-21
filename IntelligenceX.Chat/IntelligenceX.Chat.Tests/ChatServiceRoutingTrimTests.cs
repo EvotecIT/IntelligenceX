@@ -80,6 +80,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildToolBatchCompletedMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolBatchCompletedMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolBatchCompletedMessage not found.");
+    private static readonly MethodInfo BuildToolRoundStartedMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolRoundStartedMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolRoundStartedMessage not found.");
+    private static readonly MethodInfo BuildToolRoundCapAppliedMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolRoundCapAppliedMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolRoundCapAppliedMessage not found.");
+    private static readonly MethodInfo BuildToolRoundCompletedMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolRoundCompletedMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolRoundCompletedMessage not found.");
+    private static readonly MethodInfo BuildToolRoundLimitReachedMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolRoundLimitReachedMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolRoundLimitReachedMessage not found.");
     private static readonly MethodInfo CollectLowConcurrencyRecoveryIndexesMethod =
         typeof(ChatServiceSession).GetMethod("CollectLowConcurrencyRecoveryIndexes", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("CollectLowConcurrencyRecoveryIndexes not found.");
@@ -110,6 +122,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ResolveParallelToolExecutionModeMethod =
         typeof(ChatServiceSession).GetMethod("ResolveParallelToolExecutionMode", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ResolveParallelToolExecutionMode not found.");
+    private static readonly MethodInfo BuildReviewPassClampMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildReviewPassClampMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildReviewPassClampMessage not found.");
+    private static readonly MethodInfo BuildModelHeartbeatClampMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildModelHeartbeatClampMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildModelHeartbeatClampMessage not found.");
     private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");

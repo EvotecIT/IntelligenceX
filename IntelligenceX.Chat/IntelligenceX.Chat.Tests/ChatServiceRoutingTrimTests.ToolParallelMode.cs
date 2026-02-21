@@ -29,7 +29,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ParallelToolMode = "auto"
         };
 
-        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true });
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true, false });
         var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
 
         Assert.False(decision.Item1);
@@ -39,7 +39,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ResolveParallelToolExecutionMode_UsesServiceDefaultWhenOptionsMissing() {
-        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { null, false });
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { null, false, false });
         var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
 
         Assert.False(decision.Item1);
@@ -54,7 +54,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ParallelToolMode = "force_serial"
         };
 
-        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true });
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true, true });
         var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
 
         Assert.False(decision.Item1);
@@ -69,7 +69,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ParallelToolMode = "allow_parallel"
         };
 
-        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, false });
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, false, false });
         var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
 
         Assert.True(decision.Item1);
@@ -83,11 +83,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ParallelTools = false
         };
 
-        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true });
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { options, true, false });
         var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
 
         Assert.False(decision.Item1);
         Assert.False(decision.Item2);
+        Assert.Equal("auto", decision.Item3);
+    }
+
+    [Fact]
+    public void ResolveParallelToolExecutionMode_UsesServiceDefaultMutatingPolicyInAutoMode() {
+        var result = ResolveParallelToolExecutionModeMethod.Invoke(null, new object?[] { null, true, true });
+        var decision = Assert.IsType<ValueTuple<bool, bool, string>>(result);
+
+        Assert.True(decision.Item1);
+        Assert.True(decision.Item2);
         Assert.Equal("auto", decision.Item3);
     }
 }

@@ -95,6 +95,66 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task ToolRoundStatusLifecycle_EmitsRoundStatusesInDeterministicOrder() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        await session.WriteToolRoundStartedStatusAsync(
+            writer,
+            requestId: "req-rounds",
+            threadId: "thread-rounds",
+            roundNumber: 1,
+            maxRounds: 2,
+            callCount: 3,
+            parallelTools: true,
+            allowMutatingParallel: false);
+        await session.WriteToolRoundCompletedStatusAsync(
+            writer,
+            requestId: "req-rounds",
+            threadId: "thread-rounds",
+            roundNumber: 1,
+            maxRounds: 2,
+            callCount: 3,
+            failedCalls: 0);
+        await session.WriteToolRoundStartedStatusAsync(
+            writer,
+            requestId: "req-rounds",
+            threadId: "thread-rounds",
+            roundNumber: 2,
+            maxRounds: 2,
+            callCount: 2,
+            parallelTools: true,
+            allowMutatingParallel: false);
+        await session.WriteToolRoundCompletedStatusAsync(
+            writer,
+            requestId: "req-rounds",
+            threadId: "thread-rounds",
+            roundNumber: 2,
+            maxRounds: 2,
+            callCount: 2,
+            failedCalls: 1);
+        await session.WriteToolRoundLimitReachedStatusAsync(
+            writer,
+            requestId: "req-rounds",
+            threadId: "thread-rounds",
+            maxRounds: 2,
+            totalToolCalls: 5,
+            totalToolOutputs: 5);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Equal(
+            new[] {
+                "tool_round_started",
+                "tool_round_completed",
+                "tool_round_started",
+                "tool_round_completed",
+                "tool_round_limit_reached"
+            },
+            statuses);
+    }
+
+    [Fact]
     public async Task SynchronizedCaptureStream_FlushAsync_CanceledTokenReturnsCanceledTask() {
         using var stream = new SynchronizedCaptureStream();
         using var cts = new CancellationTokenSource();

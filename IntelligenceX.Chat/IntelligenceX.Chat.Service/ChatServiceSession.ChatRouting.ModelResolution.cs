@@ -250,7 +250,10 @@ internal sealed partial class ChatServiceSession {
 
     private static int? ResolveMaxCandidateToolsSetting(int? requestedLimit, OpenAITransportKind transportKind) {
         if (requestedLimit.HasValue) {
-            return requestedLimit;
+            var requested = requestedLimit.Value;
+            if (requested > 0) {
+                return Math.Min(requested, MaxCandidateToolsLimit);
+            }
         }
 
         // Compatible-http local runtimes (LM Studio/Ollama-style endpoints) often run with smaller loaded

@@ -38,6 +38,10 @@ public sealed record SessionPolicyDto {
     /// Whether tool calls can be executed in parallel.
     /// </summary>
     public required bool ParallelTools { get; init; }
+    /// <summary>
+    /// Whether mutating tool calls are allowed to execute in parallel.
+    /// </summary>
+    public required bool AllowMutatingParallelToolCalls { get; init; }
 
     /// <summary>
     /// Optional maximum number of rows to show in table-like outputs (null/0 means no explicit limit).

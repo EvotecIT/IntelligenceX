@@ -61,11 +61,28 @@ public sealed class ToolRuntimePolicyBootstrapTests {
     }
 
     [Fact]
-    public void ApplyToRegistry_YoloMode_DisablesRuntimeRequirementAndStrictRuntime() {
+    public void ApplyToRegistry_YoloMode_PreservesExplicitRuntimeRequirement() {
         var registry = new ToolRegistry();
         var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
             WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
             RequireWriteGovernanceRuntime = true
+        });
+
+        var diagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, context);
+
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, registry.WriteGovernanceMode);
+        Assert.True(registry.RequireWriteGovernanceRuntime);
+        Assert.NotNull(registry.WriteGovernanceRuntime);
+        Assert.True(diagnostics.RequireWriteGovernanceRuntime);
+        Assert.True(diagnostics.WriteGovernanceRuntimeConfigured);
+    }
+
+    [Fact]
+    public void ApplyToRegistry_YoloMode_StillAllowsExplicitRuntimeBypassWhenDisabled() {
+        var registry = new ToolRegistry();
+        var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
+            RequireWriteGovernanceRuntime = false
         });
 
         var diagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, context);
@@ -87,6 +104,17 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.True(resolved.Options.RequireAuthenticationRuntime);
         Assert.True(resolved.RequireSuccessfulSmtpProbeForSend);
         Assert.Equal(600, resolved.SmtpProbeMaxAgeSeconds);
+    }
+
+    [Fact]
+    public void ResolveOptions_YoloMode_PreservesExplicitWriteRuntimeRequirement() {
+        var resolved = ToolRuntimePolicyBootstrap.ResolveOptions(new ToolRuntimePolicyOptions {
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
+            RequireWriteGovernanceRuntime = true
+        });
+
+        Assert.Equal(ToolWriteGovernanceMode.Yolo, resolved.Options.WriteGovernanceMode);
+        Assert.True(resolved.Options.RequireWriteGovernanceRuntime);
     }
 
     [Fact]
