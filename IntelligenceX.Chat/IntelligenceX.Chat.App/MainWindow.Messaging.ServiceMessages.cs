@@ -132,16 +132,17 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private async Task<bool> VerifyPostLoginAuthenticationAsync() {
-        const int maxProbeAttempts = 5;
+    private async Task<bool> VerifyPostLoginAuthenticationAsync(bool prioritizeDispatchLatency) {
+        var maxProbeAttempts = prioritizeDispatchLatency ? 2 : 5;
+        var probeTimeout = prioritizeDispatchLatency ? EnsureLoginFastPathProbeTimeout : EnsureLoginFreshProbeTimeout;
         var runtimePinCleared = false;
         for (var attempt = 0; attempt < maxProbeAttempts; attempt++) {
-            var allowCachedFallback = attempt >= 2;
+            var allowCachedFallback = prioritizeDispatchLatency || attempt >= 2;
             if (await RefreshAuthenticationStateAsync(
                     updateStatus: true,
                     requireFreshProbe: true,
                     allowCachedAuthenticatedFallback: allowCachedFallback,
-                    probeTimeout: EnsureLoginFreshProbeTimeout)
+                    probeTimeout: probeTimeout)
                 .ConfigureAwait(false)) {
                 return true;
             }
@@ -156,7 +157,9 @@ public sealed partial class MainWindow : Window {
             }
 
             if (attempt + 1 < maxProbeAttempts) {
-                var delayMs = Math.Min(2000, 250 * (attempt + 1));
+                var delayMs = prioritizeDispatchLatency
+                    ? Math.Min(500, 150 * (attempt + 1))
+                    : Math.Min(2000, 250 * (attempt + 1));
                 await Task.Delay(delayMs).ConfigureAwait(false);
             }
         }
@@ -173,9 +176,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task CompleteLoginAndDispatchQueuedTurnAsync() {
+        var queuedPromptCount = GetQueuedPromptAfterLoginCount();
+        var prioritizeDispatchLatency = queuedPromptCount > 0;
         var refreshSucceeded = false;
         try {
-            refreshSucceeded = await VerifyPostLoginAuthenticationAsync().ConfigureAwait(false);
+            refreshSucceeded = await VerifyPostLoginAuthenticationAsync(prioritizeDispatchLatency).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             return;
         } catch (Exception ex) {
