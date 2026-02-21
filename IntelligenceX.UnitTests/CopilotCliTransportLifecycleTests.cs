@@ -126,7 +126,7 @@ public sealed class CopilotCliTransportLifecycleTests {
         using var cts = new CancellationTokenSource(timeout);
         var stopwatch = Stopwatch.StartNew();
         while (!cts.IsCancellationRequested && stopwatch.Elapsed < timeout) {
-            if (transport.IsDisposed) {
+            if (transport.IsDisposedForDiagnostics) {
                 return true;
             }
 
