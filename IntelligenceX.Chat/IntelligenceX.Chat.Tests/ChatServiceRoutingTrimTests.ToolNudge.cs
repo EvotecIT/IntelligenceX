@@ -110,6 +110,74 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForSingleReadOnlyPendingActionEnvelopeWithoutContinuationSubset() {
+        var userRequest = "Could you do analysis of replication and trusts and then show a network diagram?";
+        var assistantDraft = """
+            Absolutely. Proceeding with that now.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Run replication and trust analysis
+            request: Run replication and trust diagnostics and return a network diagram.
+            mutating: false
+            reply: /act act_001
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForSingleMutatingPendingActionEnvelopeWithoutContinuationSubset() {
+        var userRequest = "Disable stale account evotec\\john and then verify.";
+        var assistantDraft = """
+            Understood. Proceeding with that now.
+
+            [Action]
+            ix:action:v1
+            id: act_disable
+            title: Disable stale account
+            request: Disable stale account evotec\john and verify status.
+            mutating: true
+            reply: /act act_disable
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForSingleUnknownMutabilityPendingActionEnvelopeWithoutContinuationSubset() {
+        var userRequest = "Run replication diagnostics now.";
+        var assistantDraft = """
+            Proceeding now.
+
+            [Action]
+            ix:action:v1
+            id: act_unknown
+            title: Run replication diagnostics
+            request: Run replication diagnostics and summarize findings.
+            reply: /act act_unknown
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
     public void ShouldEnforceExecuteOrExplainContract_TriggersForMutatingActionSelectionPayload() {
         var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Reset account password\",\"request\":\"Reset password for user evotec\\\\john.\",\"mutating\":true}}";
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
