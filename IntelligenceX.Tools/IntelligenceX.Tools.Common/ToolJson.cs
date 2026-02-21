@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using IntelligenceX.Json;
@@ -75,7 +77,17 @@ public static class ToolJson {
             return obj;
         }
 
-        var node = JsonSerializer.SerializeToNode(value, SnakeCaseSerializerOptions);
+        System.Text.Json.Nodes.JsonNode? node;
+        try {
+            node = JsonSerializer.SerializeToNode(value, SnakeCaseSerializerOptions);
+        } catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or JsonException) {
+            var sanitized = SanitizeForJsonFallback(
+                value,
+                seen: new HashSet<object>(ReferenceEqualityComparer.Instance),
+                depth: 0);
+            node = JsonSerializer.SerializeToNode(sanitized, SnakeCaseSerializerOptions);
+        }
+
         var converted = ConvertNode(node);
 
         if (converted is JsonObject root) {
@@ -121,5 +133,133 @@ public static class ToolJson {
         }
 
         return node.ToJsonString();
+    }
+
+    private static object? SanitizeForJsonFallback(object? value, HashSet<object> seen, int depth) {
+        if (value is null) {
+            return null;
+        }
+
+        if (depth > 8) {
+            return ConvertToInvariantString(value);
+        }
+
+        switch (value) {
+            case string text:
+                return text;
+            case bool b:
+                return b;
+            case byte n:
+                return n;
+            case sbyte n:
+                return n;
+            case short n:
+                return n;
+            case ushort n:
+                return n;
+            case int n:
+                return n;
+            case uint n:
+                return n;
+            case long n:
+                return n;
+            case ulong n:
+                return n;
+            case float n:
+                return n;
+            case double n:
+                return n;
+            case decimal n:
+                return n;
+            case DateTime dt:
+                return dt.ToUniversalTime().ToString("O");
+            case DateTimeOffset dto:
+                return dto.ToUniversalTime().ToString("O");
+            case TimeSpan ts:
+                return ts.ToString();
+            case Guid guid:
+                return guid.ToString();
+            case Uri uri:
+                return uri.ToString();
+            case Type type:
+                return type.FullName ?? type.Name;
+            case JsonObject or JsonArray:
+                return value;
+            case System.Text.Json.Nodes.JsonNode jsonNode:
+                return ConvertNode(jsonNode);
+        }
+
+        var typeInfo = value.GetType();
+        if (typeInfo.IsEnum) {
+            return value.ToString();
+        }
+
+        var trackReference = !typeInfo.IsValueType;
+        if (trackReference && !seen.Add(value)) {
+            return "[cycle]";
+        }
+
+        try {
+            if (value is IDictionary dictionary) {
+                var normalized = new Dictionary<string, object?>(StringComparer.Ordinal);
+                foreach (DictionaryEntry entry in dictionary) {
+                    var key = ConvertToInvariantString(entry.Key);
+                    if (string.IsNullOrWhiteSpace(key)) {
+                        continue;
+                    }
+
+                    normalized[key] = SanitizeForJsonFallback(entry.Value, seen, depth + 1);
+                }
+                return normalized;
+            }
+
+            if (value is IEnumerable enumerable) {
+                var list = new List<object?>();
+                foreach (var item in enumerable) {
+                    list.Add(SanitizeForJsonFallback(item, seen, depth + 1));
+                }
+                return list;
+            }
+
+            var props = typeInfo.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            if (props.Length > 0) {
+                var normalized = new Dictionary<string, object?>(StringComparer.Ordinal);
+                var wroteAny = false;
+                foreach (var prop in props) {
+                    if (!prop.CanRead || prop.GetIndexParameters().Length != 0) {
+                        continue;
+                    }
+
+                    object? propValue;
+                    try {
+                        propValue = prop.GetValue(value);
+                    } catch {
+                        continue;
+                    }
+
+                    var key = SnakeCaseSerializerOptions.PropertyNamingPolicy?.ConvertName(prop.Name) ?? prop.Name;
+                    normalized[key] = SanitizeForJsonFallback(propValue, seen, depth + 1);
+                    wroteAny = true;
+                }
+
+                if (wroteAny) {
+                    return normalized;
+                }
+            }
+
+            return ConvertToInvariantString(value);
+        } finally {
+            if (trackReference) {
+                seen.Remove(value);
+            }
+        }
+    }
+
+    private static string ConvertToInvariantString(object? value) {
+        if (value is null) {
+            return string.Empty;
+        }
+
+        return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
     }
 }
