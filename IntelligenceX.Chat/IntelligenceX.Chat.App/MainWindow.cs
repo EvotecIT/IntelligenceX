@@ -68,6 +68,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupInitialPipeConnectColdStartTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan DispatchConnectBudget = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan DispatchConnectFailureCooldown = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan AutoReconnectConnectBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
@@ -228,6 +229,7 @@ public sealed partial class MainWindow : Window {
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly object _ensureConnectedSync = new();
     private Task<bool>? _ensureConnectedInFlightTask;
+    private long _lastDispatchConnectFailureUtcTicks;
     private bool _webViewReady;
     private bool _startupInitialized;
     private int _startupFlowState;

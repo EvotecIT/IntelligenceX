@@ -462,6 +462,12 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
+        var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+        if (!hasTrackedRunningServiceProcess && TryGetDispatchConnectFailureCooldownRemaining(out _)) {
+            _isConnected = false;
+            return false;
+        }
+
         await ConnectAsync(fromUserAction: false, connectBudgetOverride: connectBudget).ConfigureAwait(false);
         var connected = _client is not null;
         _isConnected = connected;

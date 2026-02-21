@@ -96,6 +96,37 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private void MarkDispatchConnectFailure() {
+        Interlocked.Exchange(ref _lastDispatchConnectFailureUtcTicks, DateTime.UtcNow.Ticks);
+    }
+
+    private void ClearDispatchConnectFailure() {
+        Interlocked.Exchange(ref _lastDispatchConnectFailureUtcTicks, 0);
+    }
+
+    private bool TryGetDispatchConnectFailureCooldownRemaining(out TimeSpan remaining) {
+        remaining = TimeSpan.Zero;
+        var failureTicks = Interlocked.Read(ref _lastDispatchConnectFailureUtcTicks);
+        if (failureTicks <= 0) {
+            return false;
+        }
+
+        var failureUtc = new DateTime(failureTicks, DateTimeKind.Utc);
+        var elapsed = DateTime.UtcNow - failureUtc;
+        if (elapsed < TimeSpan.Zero) {
+            elapsed = TimeSpan.Zero;
+        }
+
+        var cooldownRemaining = DispatchConnectFailureCooldown - elapsed;
+        if (cooldownRemaining <= TimeSpan.Zero) {
+            Interlocked.Exchange(ref _lastDispatchConnectFailureUtcTicks, 0);
+            return false;
+        }
+
+        remaining = cooldownRemaining;
+        return true;
+    }
+
     private static TimeoutException CreateStartupConnectBudgetExceededException(TimeSpan budget, TimeSpan elapsed) {
         var budgetMs = Math.Round(Math.Max(0, budget.TotalMilliseconds));
         var elapsedMs = Math.Round(Math.Max(0, elapsed.TotalMilliseconds));
@@ -238,6 +269,7 @@ public sealed partial class MainWindow : Window {
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 _isConnected = true;
+                ClearDispatchConnectFailure();
                 StopAutoReconnectLoop();
                 await SetStatusAsync(SessionStatus.ForConnectedAuth(IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
                 return;
@@ -382,6 +414,7 @@ public sealed partial class MainWindow : Window {
                         LogStartupConnectPhase("ensure_sidecar", "failed");
                         await client.DisposeAsync().ConfigureAwait(false);
                         _isConnected = false;
+                        MarkDispatchConnectFailure();
                         await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
                         EnsureAutoReconnectLoop();
                         if (fromUserAction || _debugMode) {
@@ -395,6 +428,7 @@ public sealed partial class MainWindow : Window {
                 if (!connected) {
                     await client.DisposeAsync().ConfigureAwait(false);
                     _isConnected = false;
+                    MarkDispatchConnectFailure();
                     await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
                     EnsureAutoReconnectLoop();
                     if (VerboseServiceLogs || _debugMode) {
@@ -409,6 +443,7 @@ public sealed partial class MainWindow : Window {
 
             _client = client;
             _isConnected = true;
+            ClearDispatchConnectFailure();
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
 

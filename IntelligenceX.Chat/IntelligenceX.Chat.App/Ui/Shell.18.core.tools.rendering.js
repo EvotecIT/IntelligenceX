@@ -225,6 +225,13 @@
     if (typeof nextState.windowMaximized === "boolean") {
       state.windowMaximized = nextState.windowMaximized;
     }
+    if (!wasSending && state.sending) {
+      // New turn started; keep transcript anchored to latest output when user is already near bottom.
+      if (isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX + 40)) {
+        transcriptFollowState.enabled = true;
+        scrollToBottom(transcript);
+      }
+    }
     if (wasSending && !state.sending) {
       applyPendingTranscriptEnhancements();
     }
