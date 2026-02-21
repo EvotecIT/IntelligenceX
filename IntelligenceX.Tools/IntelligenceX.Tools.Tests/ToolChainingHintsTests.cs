@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 using Xunit;
 
@@ -39,5 +40,25 @@ public sealed class ToolChainingHintsTests {
         Assert.StartsWith("eventlog:", token, StringComparison.Ordinal);
         Assert.Contains("name=Kerberos%20auth", token, StringComparison.Ordinal);
         Assert.Contains("machine=dc01.contoso.com", token, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Map_ShouldReturnReadOnlyDictionary() {
+        var map = ToolChainingHints.Map(("contract", "test"));
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(map);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
+    [Fact]
+    public void Create_WhenInputsEmpty_ShouldReturnReadOnlyEmptyMap() {
+        var chain = ToolChainingHints.Create();
+
+        Assert.Empty(chain.NextActions);
+        Assert.Equal(string.Empty, chain.Cursor);
+        Assert.Equal(string.Empty, chain.ResumeToken);
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
     }
 }

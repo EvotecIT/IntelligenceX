@@ -28,6 +28,7 @@ public sealed class AdForestDiscoverToolTests {
         Assert.True(root.TryGetProperty("handoff", out var handoff));
         Assert.True(root.TryGetProperty("confidence", out var confidence));
         Assert.True(nextActions.ValueKind == global::System.Text.Json.JsonValueKind.Array);
+        Assert.Equal("ad_scope_discovery", nextActions[0].GetProperty("tool").GetString());
         Assert.Equal("ad_forest_discover_handoff", handoff.GetProperty("contract").GetString());
         Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
         Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));

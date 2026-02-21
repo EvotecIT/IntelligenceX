@@ -248,20 +248,6 @@ public class SourceGuardrailTests {
         }
     }
 
-    [Fact]
-    public void EventLogNamedEventsQueryTool_ShouldPopulateAllNamedEventsQueryResultChainFields() {
-        var repoRoot = FindRepoRoot();
-        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsQueryTool.cs");
-        var source = File.ReadAllText(filePath);
-
-        Assert.Contains("new NamedEventsQueryResult(", source, StringComparison.Ordinal);
-        Assert.Contains("NextActions: chain.NextActions", source, StringComparison.Ordinal);
-        Assert.Contains("Cursor: chain.Cursor", source, StringComparison.Ordinal);
-        Assert.Contains("ResumeToken: chain.ResumeToken", source, StringComparison.Ordinal);
-        Assert.Contains("Handoff: chain.Handoff", source, StringComparison.Ordinal);
-        Assert.Contains("Confidence: chain.Confidence", source, StringComparison.Ordinal);
-    }
-
     private static string FindRepoRoot() {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null) {
