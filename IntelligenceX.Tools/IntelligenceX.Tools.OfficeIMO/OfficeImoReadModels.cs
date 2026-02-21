@@ -94,6 +94,7 @@ public sealed class OfficeImoReadResult {
 
     /// <summary>
     /// Structured handoff payload for downstream tools.
+    /// Keys are normalized by trimming surrounding whitespace; normalized-key collisions use last-write-wins semantics.
     /// </summary>
     public IReadOnlyDictionary<string, string> Handoff {
         get => _handoff;
