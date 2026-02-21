@@ -113,7 +113,11 @@ internal static class ReviewSummaryParser {
                 continue;
             }
 
-            return true;
+            if (trimmed.StartsWith("- [ ]", StringComparison.Ordinal)
+                || trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("-", StringComparison.Ordinal)) {
+                return !IsNoneLine(trimmed) && !IsPlaceholderLine(trimmed);
+            }
         }
 
         return false;
