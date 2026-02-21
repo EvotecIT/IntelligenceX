@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Tools;
@@ -9,6 +8,8 @@ namespace IntelligenceX.Tools;
 /// Defines a tool that can be invoked by the model.
 /// </summary>
 public sealed class ToolDefinition {
+    private static readonly StringComparer TagComparer = StringComparer.OrdinalIgnoreCase;
+
     /// <summary>
     /// Initializes a new tool definition.
     /// </summary>
@@ -153,47 +154,7 @@ public sealed class ToolDefinition {
     }
 
     private static IReadOnlyList<string> NormalizeTags(IReadOnlyList<string>? tags) {
-        if (tags is null || tags.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        var list = new List<string>(tags.Count);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var taxonomyByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var tag in tags) {
-            if (string.IsNullOrWhiteSpace(tag)) {
-                continue;
-            }
-
-            var normalized = tag.Trim();
-            if (ToolRoutingTaxonomy.TryGetTagKeyValue(normalized, out var taxonomyKey, out _)) {
-                taxonomyByKey[taxonomyKey] = normalized;
-                continue;
-            }
-            if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
-                continue;
-            }
-
-            if (seen.Add(normalized)) {
-                list.Add(normalized);
-            }
-        }
-
-        var taxonomyKeys = taxonomyByKey.Keys.ToList();
-        taxonomyKeys.Sort(StringComparer.OrdinalIgnoreCase);
-        foreach (var taxonomyKey in taxonomyKeys) {
-            var taxonomyTag = taxonomyByKey[taxonomyKey];
-            if (seen.Add(taxonomyTag)) {
-                list.Add(taxonomyTag);
-            }
-        }
-
-        if (list.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        list.Sort(StringComparer.OrdinalIgnoreCase);
-        return list.ToArray();
+        return MergeTags(baseTags: Array.Empty<string>(), overrideTags: tags);
     }
 
     private static IReadOnlyList<ToolAliasDefinition> NormalizeAliases(
@@ -232,58 +193,72 @@ public sealed class ToolDefinition {
         }
 
         var merged = new List<string>((baseTags?.Count ?? 0) + (overrideTags?.Count ?? 0));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var taxonomyByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(TagComparer);
+        var taxonomyByKey = new Dictionary<string, string>(TagComparer);
 
-        void AddTag(string? tag, bool allowTaxonomyOverride) {
-            if (tag is null) {
-                return;
-            }
+        AddTags(baseTags, allowTaxonomyOverride: false, merged, seen, taxonomyByKey);
+        AddTags(overrideTags, allowTaxonomyOverride: true, merged, seen, taxonomyByKey);
 
-            var normalized = tag.Trim();
-            if (normalized.Length == 0) {
-                return;
-            }
+        return FinalizeMergedTags(merged, taxonomyByKey);
+    }
 
-            if (ToolRoutingTaxonomy.TryGetTagKeyValue(normalized, out var taxonomyKey, out _)) {
-                if (allowTaxonomyOverride || !taxonomyByKey.ContainsKey(taxonomyKey)) {
-                    taxonomyByKey[taxonomyKey] = normalized;
-                }
-                return;
-            }
-            if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
-                return;
-            }
-
-            if (seen.Add(normalized)) {
-                merged.Add(normalized);
-            }
+    private static void AddTags(
+        IReadOnlyList<string>? tags,
+        bool allowTaxonomyOverride,
+        List<string> merged,
+        HashSet<string> seen,
+        Dictionary<string, string> taxonomyByKey) {
+        if (tags is null || tags.Count == 0) {
+            return;
         }
 
-        if (baseTags is not null) {
-            foreach (var tag in baseTags) {
-                AddTag(tag, allowTaxonomyOverride: false);
-            }
+        foreach (var tag in tags) {
+            AddTag(tag, allowTaxonomyOverride, merged, seen, taxonomyByKey);
+        }
+    }
+
+    private static void AddTag(
+        string? tag,
+        bool allowTaxonomyOverride,
+        List<string> merged,
+        HashSet<string> seen,
+        Dictionary<string, string> taxonomyByKey) {
+        if (tag is null) {
+            return;
         }
 
-        if (overrideTags is not null) {
-            foreach (var tag in overrideTags) {
-                AddTag(tag, allowTaxonomyOverride: true);
-            }
+        var normalized = tag.Trim();
+        if (normalized.Length == 0) {
+            return;
         }
 
-        var taxonomyKeys = taxonomyByKey.Keys.ToList();
-        taxonomyKeys.Sort(StringComparer.OrdinalIgnoreCase);
-        foreach (var taxonomyKey in taxonomyKeys) {
-            var taxonomyTag = taxonomyByKey[taxonomyKey];
-            merged.Add(taxonomyTag);
+        if (ToolRoutingTaxonomy.TryGetTagKeyValue(normalized, out var taxonomyKey, out _)) {
+            if (allowTaxonomyOverride || !taxonomyByKey.ContainsKey(taxonomyKey)) {
+                taxonomyByKey[taxonomyKey] = normalized;
+            }
+            return;
+        }
+        if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
+            return;
+        }
+
+        if (seen.Add(normalized)) {
+            merged.Add(normalized);
+        }
+    }
+
+    private static IReadOnlyList<string> FinalizeMergedTags(List<string> merged, Dictionary<string, string> taxonomyByKey) {
+        if (taxonomyByKey.Count > 0) {
+            foreach (var taxonomyTag in taxonomyByKey.Values) {
+                merged.Add(taxonomyTag);
+            }
         }
 
         if (merged.Count == 0) {
             return Array.Empty<string>();
         }
 
-        merged.Sort(StringComparer.OrdinalIgnoreCase);
+        merged.Sort(TagComparer);
         return merged.ToArray();
     }
 }
