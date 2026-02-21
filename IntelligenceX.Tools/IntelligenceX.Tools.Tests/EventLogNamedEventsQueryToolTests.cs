@@ -6,21 +6,15 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.EventLog;
 using Xunit;
+using Xunit.Sdk;
 
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class EventLogNamedEventsQueryToolTests {
     [Fact]
     public async Task InvokeAsync_WhenQuerySucceeds_EmitsChainingContractFields() {
-        if (!OperatingSystem.IsWindows()) {
-            return;
-        }
-
-        if (!TrySelectNamedEventQueryName(out var namedEvent)) {
-            return;
-        }
-
         var tool = new EventLogNamedEventsQueryTool(new EventLogToolOptions());
+        var namedEvent = ResolveNamedEventOrSkip();
         var start = DateTime.UtcNow.AddDays(1);
         var end = start.AddHours(1);
 
@@ -51,6 +45,18 @@ public sealed class EventLogNamedEventsQueryToolTests {
         Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
         Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));
         Assert.InRange(confidence.GetDouble(), 0d, 1d);
+    }
+
+    private static string ResolveNamedEventOrSkip() {
+        if (!OperatingSystem.IsWindows()) {
+            throw SkipException.ForSkip("EventLogNamedEventsQueryToolTests require Windows event log support.");
+        }
+
+        if (!TrySelectNamedEventQueryName(out var queryName)) {
+            throw SkipException.ForSkip("No available named event catalog entries were found on this environment.");
+        }
+
+        return queryName;
     }
 
     private static bool TrySelectNamedEventQueryName(out string queryName) {

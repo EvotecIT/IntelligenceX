@@ -6,12 +6,28 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.Tools.Common;
 using IntelligenceX.Tools.OfficeIMO;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
 
 public class OfficeImoReadToolTests {
+    [Fact]
+    public void OfficeImoReadResult_WhenHandoffAssignedNullOrEmpty_UsesSharedEmptyMap() {
+        var result = new OfficeImoReadResult {
+            Handoff = null!
+        };
+
+        Assert.Same(ToolChainingHints.EmptyMap, result.Handoff);
+
+        result.Handoff = new Dictionary<string, string>(StringComparer.Ordinal);
+        Assert.Same(ToolChainingHints.EmptyMap, result.Handoff);
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(result.Handoff);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
     [Fact]
     public void OfficeImoReadResult_WhenHandoffAssignedMutableMap_IsNormalizedAndReadOnly() {
         var source = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {

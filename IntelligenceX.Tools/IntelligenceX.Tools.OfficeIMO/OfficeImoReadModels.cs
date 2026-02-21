@@ -105,6 +105,7 @@ public sealed class OfficeImoReadResult {
     /// </summary>
     public double Confidence { get; set; } = 0.5d;
 
+    // Keys are trimmed; collisions after normalization are resolved as last-write-wins.
     private static IReadOnlyDictionary<string, string> NormalizeHandoff(IReadOnlyDictionary<string, string>? value) {
         if (value is null || value.Count == 0) {
             return ToolChainingHints.EmptyMap;
