@@ -343,7 +343,20 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+        _ = await TryClearNativeRuntimeAccountPinNoThrowAsync("Account switch").ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryClearNativeRuntimeAccountPinNoThrowAsync(string flowLabel) {
+        try {
+            return await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync($"{flowLabel} will continue, but runtime account pin reset timed out.")
+                    .ConfigureAwait(false);
+            }
+
+            return false;
+        }
     }
 
     private async Task<bool> TryClearNativeRuntimeAccountPinAsync() {
@@ -363,7 +376,7 @@ public sealed partial class MainWindow : Window {
             throw;
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
-                await AppendSystemBestEffortAsync("Account switch will continue, but runtime account pin reset failed: " + ex.Message)
+                await AppendSystemBestEffortAsync("Runtime account pin reset failed: " + ex.Message)
                     .ConfigureAwait(false);
             }
 
