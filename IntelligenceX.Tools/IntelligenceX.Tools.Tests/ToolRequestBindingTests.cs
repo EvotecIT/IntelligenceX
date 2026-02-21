@@ -45,4 +45,28 @@ public sealed class ToolRequestBindingTests {
         Assert.True(result.Request.Enabled);
         Assert.Equal(new[] { "a", "b" }, result.Request.Tags);
     }
+
+    [Fact]
+    public void Failure_WhenHintsMutableList_ShouldDefensivelyCopyAndExposeReadOnlyView() {
+        var hints = new List<string> { "first" };
+
+        var result = ToolRequestBindingResult<RequestModel>.Failure(
+            error: "bad request",
+            hints: hints);
+
+        hints.Add("second");
+
+        Assert.Equal(new[] { "first" }, result.Hints);
+        var list = Assert.IsAssignableFrom<IList<string>>(result.Hints);
+        Assert.Throws<NotSupportedException>(() => list.Add("x"));
+    }
+
+    [Fact]
+    public void Failure_WhenHintsContainWhitespace_ShouldTrimAndDropEmptyEntries() {
+        var result = ToolRequestBindingResult<RequestModel>.Failure(
+            error: "bad request",
+            hints: new[] { "  first hint  ", " ", string.Empty, "second hint" });
+
+        Assert.Equal(new[] { "first hint", "second hint" }, result.Hints);
+    }
 }
