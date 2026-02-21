@@ -64,6 +64,19 @@ public sealed class ChatServiceRuntimeReconnectPolicyTests {
     }
 
     /// <summary>
+    /// Ensures model whitespace differences do not register as a model change.
+    /// </summary>
+    [Fact]
+    public void ResolveRuntimeClientReconfigureDecision_ModelWhitespaceOnly_DoesNotReconnect() {
+        var decision = ResolveDecision(
+            previous: settings => settings.Model = "gpt-5.3-codex",
+            current: settings => settings.Model = "  gpt-5.3-codex  ");
+
+        Assert.False(decision.ReconnectClient);
+        Assert.False(decision.ModelChanged);
+    }
+
+    /// <summary>
     /// Ensures transport changes require provider-client reconnect.
     /// </summary>
     [Fact]
@@ -123,6 +136,23 @@ public sealed class ChatServiceRuntimeReconnectPolicyTests {
         });
 
         Assert.True(decision.ReconnectClient);
+        Assert.False(decision.ModelChanged);
+    }
+
+    /// <summary>
+    /// Ensures equivalent endpoint formatting does not force reconnect.
+    /// </summary>
+    [Theory]
+    [InlineData("https://api.example.com/v1", "https://api.example.com/v1/")]
+    [InlineData("https://api.example.com:443/v1", "https://api.example.com/v1")]
+    [InlineData("HTTPS://API.EXAMPLE.COM/v1", "https://api.example.com/v1")]
+    [InlineData(" https://api.example.com/v1 ", "https://api.example.com/v1")]
+    public void ResolveRuntimeClientReconfigureDecision_EquivalentBaseUrl_DoesNotReconnect(string previousBaseUrl,
+        string currentBaseUrl) {
+        var decision = ResolveDecision(previous: settings => settings.BaseUrl = previousBaseUrl,
+            current: settings => settings.BaseUrl = currentBaseUrl);
+
+        Assert.False(decision.ReconnectClient);
         Assert.False(decision.ModelChanged);
     }
 

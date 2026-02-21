@@ -58,6 +58,10 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// </summary>
     public string? Model { get; init; }
     /// <summary>
+    /// Requested model override for the turn, when one was provided.
+    /// </summary>
+    public string? RequestedModel { get; init; }
+    /// <summary>
     /// Runtime transport used for the turn (native/appserver/compatible-http/copilot-cli).
     /// </summary>
     public string? Transport { get; init; }

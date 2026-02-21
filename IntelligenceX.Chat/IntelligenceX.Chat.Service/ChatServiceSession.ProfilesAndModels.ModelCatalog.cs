@@ -211,7 +211,7 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private async Task TryRecordRecentModelAsync(string model, CancellationToken cancellationToken) {
+    private async Task TryRecordRecentModelAsync(string? model, CancellationToken cancellationToken) {
         var profileName = (_options.ProfileName ?? string.Empty).Trim();
         var normalizedModel = (model ?? string.Empty).Trim();
         if (_options.NoStateDb || string.IsNullOrWhiteSpace(profileName) || string.IsNullOrWhiteSpace(normalizedModel)) {

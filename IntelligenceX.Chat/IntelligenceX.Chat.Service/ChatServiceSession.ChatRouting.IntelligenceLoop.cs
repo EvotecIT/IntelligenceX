@@ -30,7 +30,8 @@ internal sealed partial class ChatServiceSession {
         int ToolCallsCount,
         int ToolRounds,
         int ProjectionFallbackCount,
-        IReadOnlyList<ToolErrorMetricDto> ToolErrors);
+        IReadOnlyList<ToolErrorMetricDto> ToolErrors,
+        string? ResolvedModel);
 
     private static (bool ParallelTools, bool AllowMutatingParallel, string Mode) ResolveParallelToolExecutionMode(ChatRequestOptions? options,
         bool serviceDefaultParallelTools) {
