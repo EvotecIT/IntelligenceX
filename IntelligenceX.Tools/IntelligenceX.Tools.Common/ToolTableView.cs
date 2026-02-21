@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using IntelligenceX.Json;
@@ -11,10 +12,15 @@ namespace IntelligenceX.Tools.Common;
 /// Common request contract for tabular tool result shaping.
 /// </summary>
 public sealed class ToolTableViewRequest {
+    private IReadOnlyList<string> _columns = Array.Empty<string>();
+
     /// <summary>
     /// Selected columns in preferred display order. Empty means default/all.
     /// </summary>
-    public IReadOnlyList<string> Columns { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Columns {
+        get => _columns;
+        init => _columns = NormalizeColumns(value);
+    }
 
     /// <summary>
     /// Optional column key used for sorting.
@@ -30,6 +36,32 @@ public sealed class ToolTableViewRequest {
     /// Optional output row cap.
     /// </summary>
     public int? Top { get; init; }
+
+    private static IReadOnlyList<string> NormalizeColumns(IReadOnlyList<string>? columns) {
+        if (columns is null || columns.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(columns.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < columns.Count; i++) {
+            var column = columns[i];
+            if (string.IsNullOrWhiteSpace(column)) {
+                continue;
+            }
+
+            var trimmed = column.Trim();
+            if (seen.Add(trimmed)) {
+                normalized.Add(trimmed);
+            }
+        }
+
+        if (normalized.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return new ReadOnlyCollection<string>(normalized);
+    }
 }
 
 /// <summary>
@@ -81,10 +113,16 @@ public sealed class ToolTableColumnSpec<TRow> {
 /// Result of applying a tabular view request to typed rows.
 /// </summary>
 public sealed class ToolTableViewResult {
+    private IReadOnlyList<ToolColumn> _columns = Array.Empty<ToolColumn>();
+    private IReadOnlyList<IReadOnlyList<string>> _previewRows = Array.Empty<IReadOnlyList<string>>();
+
     /// <summary>
     /// Selected render columns.
     /// </summary>
-    public IReadOnlyList<ToolColumn> Columns { get; init; } = Array.Empty<ToolColumn>();
+    public IReadOnlyList<ToolColumn> Columns {
+        get => _columns;
+        init => _columns = NormalizeColumns(value);
+    }
 
     /// <summary>
     /// Projected rows (JSON-safe values).
@@ -94,7 +132,10 @@ public sealed class ToolTableViewResult {
     /// <summary>
     /// Preview rows (string cells) for summary markdown.
     /// </summary>
-    public IReadOnlyList<IReadOnlyList<string>> PreviewRows { get; init; } = Array.Empty<IReadOnlyList<string>>();
+    public IReadOnlyList<IReadOnlyList<string>> PreviewRows {
+        get => _previewRows;
+        init => _previewRows = NormalizePreviewRows(value);
+    }
 
     /// <summary>
     /// Number of projected rows.
@@ -105,6 +146,33 @@ public sealed class ToolTableViewResult {
     /// Indicates whether rows were truncated by view-level constraints.
     /// </summary>
     public bool TruncatedByView { get; init; }
+
+    private static IReadOnlyList<ToolColumn> NormalizeColumns(IReadOnlyList<ToolColumn>? columns) {
+        if (columns is null || columns.Count == 0) {
+            return Array.Empty<ToolColumn>();
+        }
+
+        return new ReadOnlyCollection<ToolColumn>(columns.ToList());
+    }
+
+    private static IReadOnlyList<IReadOnlyList<string>> NormalizePreviewRows(IReadOnlyList<IReadOnlyList<string>>? previewRows) {
+        if (previewRows is null || previewRows.Count == 0) {
+            return Array.Empty<IReadOnlyList<string>>();
+        }
+
+        var normalized = new List<IReadOnlyList<string>>(previewRows.Count);
+        for (var i = 0; i < previewRows.Count; i++) {
+            var row = previewRows[i];
+            if (row is null || row.Count == 0) {
+                normalized.Add(Array.Empty<string>());
+                continue;
+            }
+
+            normalized.Add(new ReadOnlyCollection<string>(row.Select(static cell => cell ?? string.Empty).ToList()));
+        }
+
+        return new ReadOnlyCollection<IReadOnlyList<string>>(normalized);
+    }
 }
 
 /// <summary>

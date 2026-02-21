@@ -222,6 +222,50 @@ public class ToolTableViewTests {
         Assert.Contains("\"error_code\":\"invalid_argument\"", response);
     }
 
+    [Fact]
+    public void ToolTableViewRequest_ObjectInitializer_ShouldNormalizeAndDefensivelyCopyColumns() {
+        var columns = new List<string> { "  name ", "id", "name", " " };
+
+        var request = new ToolTableViewRequest {
+            Columns = columns
+        };
+
+        columns.Add("memory_usage");
+
+        Assert.Equal(new[] { "name", "id" }, request.Columns);
+        var requestColumns = Assert.IsAssignableFrom<IList<string>>(request.Columns);
+        Assert.Throws<NotSupportedException>(() => requestColumns.Add("x"));
+    }
+
+    [Fact]
+    public void ToolTableViewResult_ObjectInitializer_ShouldDefensivelyCopyColumnsAndPreviewRows() {
+        var columns = new List<ToolColumn> {
+            new("id", "ID", "int")
+        };
+        var firstRow = new List<string> { "alpha" };
+        var previewRows = new List<IReadOnlyList<string>> { firstRow };
+
+        var result = new ToolTableViewResult {
+            Columns = columns,
+            PreviewRows = previewRows
+        };
+
+        columns.Add(new ToolColumn("name", "Name", "string"));
+        firstRow.Add("beta");
+        previewRows.Add(new[] { "gamma" });
+
+        Assert.Single(result.Columns);
+        Assert.Single(result.PreviewRows);
+        Assert.Equal(new[] { "alpha" }, result.PreviewRows[0]);
+
+        var resultColumns = Assert.IsAssignableFrom<IList<ToolColumn>>(result.Columns);
+        Assert.Throws<NotSupportedException>(() => resultColumns.Add(new ToolColumn("x", "X", "string")));
+        var resultRows = Assert.IsAssignableFrom<IList<IReadOnlyList<string>>>(result.PreviewRows);
+        Assert.Throws<NotSupportedException>(() => resultRows.Add(Array.Empty<string>()));
+        var firstResultRow = Assert.IsAssignableFrom<IList<string>>(result.PreviewRows[0]);
+        Assert.Throws<NotSupportedException>(() => firstResultRow.Add("x"));
+    }
+
     private sealed record Row(int Id, string Name, long MemoryUsage);
     private sealed record AutoRow(int Id, string DisplayName, DateTime StartTimeUtc, IReadOnlyList<string> Tags);
 
