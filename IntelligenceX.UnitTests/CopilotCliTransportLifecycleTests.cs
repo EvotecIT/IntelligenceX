@@ -126,7 +126,7 @@ public sealed class CopilotCliTransportLifecycleTests {
         using var cts = new CancellationTokenSource(timeout);
         var stopwatch = Stopwatch.StartNew();
         while (!cts.IsCancellationRequested && stopwatch.Elapsed < timeout) {
-            if (await IsDisposedAsync(transport).ConfigureAwait(false)) {
+            if (transport.IsDisposed) {
                 return true;
             }
 
@@ -138,14 +138,5 @@ public sealed class CopilotCliTransportLifecycleTests {
         }
 
         return false;
-    }
-
-    private static async Task<bool> IsDisposedAsync(CopilotCliTransport transport) {
-        try {
-            await transport.LogoutAsync(CancellationToken.None).ConfigureAwait(false);
-            return false;
-        } catch (ObjectDisposedException) {
-            return true;
-        }
     }
 }

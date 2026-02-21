@@ -51,6 +51,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
 
     public OpenAITransportKind Kind => OpenAITransportKind.CopilotCli;
     public AppServerClient? RawAppServerClient => null;
+    internal bool IsDisposed => Volatile.Read(ref _disposeState) != 0;
 
     public event EventHandler<string>? DeltaReceived;
     public event EventHandler<LoginEventArgs>? LoginStarted;
