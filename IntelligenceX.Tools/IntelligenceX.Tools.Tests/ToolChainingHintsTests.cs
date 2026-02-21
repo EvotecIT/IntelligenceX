@@ -125,4 +125,34 @@ public sealed class ToolChainingHintsTests {
         var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(action.SuggestedArguments);
         Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
     }
+
+    [Fact]
+    public void ToolChainContractModel_ObjectInitializer_WhenAssignedNulls_ShouldUseSafeDefaults() {
+        var chain = new ToolChainContractModel {
+            NextActions = null!,
+            Cursor = null!,
+            ResumeToken = null!,
+            Handoff = null!,
+            Confidence = 0.5d
+        };
+
+        Assert.Empty(chain.NextActions);
+        Assert.Equal(string.Empty, chain.Cursor);
+        Assert.Equal(string.Empty, chain.ResumeToken);
+        Assert.Equal(0.5d, chain.Confidence);
+
+        var actions = Assert.IsAssignableFrom<IList<ToolNextActionModel>>(chain.NextActions);
+        Assert.Throws<NotSupportedException>(() => actions.Add(new ToolNextActionModel { Tool = "x", Reason = "y" }));
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
+    [Fact]
+    public void ToolChainContractModel_ObjectInitializer_ShouldClampNegativeConfidenceToZero() {
+        var chain = new ToolChainContractModel {
+            Confidence = -0.1d
+        };
+
+        Assert.Equal(0d, chain.Confidence);
+    }
 }
