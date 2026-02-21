@@ -66,6 +66,13 @@ public sealed class ToolCommonCollectionGuardrailTests {
             Handoff = handoff
         };
 
+        var checkpoint = new Dictionary<string, string>(StringComparer.Ordinal) {
+            ["phase"] = "collect"
+        };
+        var chainCheckpoint = new ToolChainContractModel {
+            Checkpoint = checkpoint
+        };
+
         var suggestedArguments = new Dictionary<string, string>(StringComparer.Ordinal) {
             ["path"] = @"C:\docs"
         };
@@ -180,6 +187,18 @@ public sealed class ToolCommonCollectionGuardrailTests {
                 AssertSnapshot: static value => {
                     var map = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(value);
                     Assert.Equal("scope", map["contract"]);
+                    Assert.False(map.ContainsKey("new"));
+                },
+                AssertImmutable: static value => AssertReadOnlyDictionary(value)),
+
+            new GuardCase(
+                ModelType: typeof(ToolChainContractModel),
+                PropertyName: nameof(ToolChainContractModel.Checkpoint),
+                Model: chainCheckpoint,
+                MutateSource: () => checkpoint["new"] = "value",
+                AssertSnapshot: static value => {
+                    var map = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(value);
+                    Assert.Equal("collect", map["phase"]);
                     Assert.False(map.ContainsKey("new"));
                 },
                 AssertImmutable: static value => AssertReadOnlyDictionary(value)),

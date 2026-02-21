@@ -63,6 +63,9 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
         IReadOnlyList<ToolNextActionModel> NextActions,
         string Cursor,
         string ResumeToken,
+        string FlowId,
+        string StepId,
+        IReadOnlyDictionary<string, string> Checkpoint,
         IReadOnlyDictionary<string, string> Handoff,
         double Confidence);
 
@@ -204,6 +207,9 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             NextActions: chain.NextActions,
             Cursor: chain.Cursor,
             ResumeToken: chain.ResumeToken,
+            FlowId: chain.FlowId,
+            StepId: chain.StepId,
+            Checkpoint: chain.Checkpoint,
             Handoff: chain.Handoff,
             Confidence: chain.Confidence);
 
@@ -309,7 +315,17 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 ("start", ToolTime.FormatUtc(startUtc) ?? string.Empty),
                 ("end", ToolTime.FormatUtc(endUtc) ?? string.Empty)),
             handoff: BuildHandoffMap(entityHandoff),
-            confidence: confidence);
+            confidence: confidence,
+            flowId: ToolChainingHints.BuildToken(
+                "eventlog_named_events_query.flow",
+                ("named_events", namedEvents.Count.ToString()),
+                ("machines", machines.Count.ToString())),
+            stepId: "named_events_page",
+            checkpoint: ToolChainingHints.Map(
+                ("rows", rows.Count),
+                ("truncated", truncated),
+                ("last_record_id", lastRecordId),
+                ("max_events", maxEvents)));
     }
 
     private static IReadOnlyDictionary<string, string> BuildSelfQueryArguments(

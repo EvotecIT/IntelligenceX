@@ -71,6 +71,9 @@ public class AdScopeDiscoveryToolTests {
         Assert.True(root.TryGetProperty("next_actions", out var nextActions));
         Assert.True(root.TryGetProperty("cursor", out var cursor));
         Assert.True(root.TryGetProperty("resume_token", out var resumeToken));
+        Assert.True(root.TryGetProperty("flow_id", out var flowId));
+        Assert.True(root.TryGetProperty("step_id", out var stepId));
+        Assert.True(root.TryGetProperty("checkpoint", out var checkpoint));
         Assert.True(root.TryGetProperty("handoff", out var handoff));
         Assert.True(root.TryGetProperty("confidence", out var confidence));
         Assert.True(nextActions.ValueKind == global::System.Text.Json.JsonValueKind.Array);
@@ -78,6 +81,9 @@ public class AdScopeDiscoveryToolTests {
         Assert.Equal("ad_scope_discovery_handoff", handoff.GetProperty("contract").GetString());
         Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
         Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(flowId.GetString()));
+        Assert.Equal("scope_receipt", stepId.GetString());
+        Assert.True(checkpoint.TryGetProperty("domains", out _));
         Assert.InRange(confidence.GetDouble(), 0d, 1d);
     }
 }
