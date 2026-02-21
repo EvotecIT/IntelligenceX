@@ -28,6 +28,7 @@
   - Always include a one-line summary immediately before each visual block and one short interpretation line immediately after it.
   - Visual fences must be closed.
   - Mermaid blocks must be syntactically valid.
+  - For Mermaid label line breaks, prefer `<br/>` over escaped `\n` for better export compatibility.
   - `ix-chart` blocks must contain valid JSON object payloads.
   - `ix-network` blocks must contain valid JSON object payloads with compact nodes/edges.
   - Keep visuals compact: max 8 Mermaid blocks per message (max 12000 source characters each).

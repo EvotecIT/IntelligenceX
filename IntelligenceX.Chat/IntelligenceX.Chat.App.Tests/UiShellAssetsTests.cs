@@ -313,8 +313,14 @@ public sealed class UiShellAssetsTests {
         AssertContainsAll(
             html,
             "ensureMermaidThemeInitialized",
+            "normalizeMermaidExportSvg",
+            "htmlLabels: normalizedRenderProfile !== \"export\"",
+            "svg.replace(/<br\\s*\\/?\\s*>/gi, \"<br/>\")",
             "themeVariables",
             "applyChartThemeDefaults",
+            "host.style.width = String(ixVisualExportState.chartWidth) + \"px\"",
+            "(!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === \"function\"",
+            "window.requestAnimationFrame(function()",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"target\")");
     }

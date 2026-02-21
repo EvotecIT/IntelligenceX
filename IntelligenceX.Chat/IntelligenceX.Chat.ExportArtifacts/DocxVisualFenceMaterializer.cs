@@ -14,6 +14,7 @@ internal static partial class DocxVisualFenceMaterializer {
     private const int MaxNetworkChars = 24000;
     private const int MaxNetworkNodes = 220;
     private const int MaxNetworkEdges = 520;
+    private const int DocxImageMaxWidthPx = 760;
 
     private static readonly string[] SupportedLanguages = ["mermaid", "ix-chart", "chart", "ix-network"];
     private static readonly string[] Palette = [
@@ -67,7 +68,7 @@ internal static partial class DocxVisualFenceMaterializer {
             var source = string.Join("\n", lines.Skip(i + 1).Take(Math.Max(0, closingIndex - i - 1)));
             tempDirectory ??= CreateTempDirectory();
             if (TryRenderVisual(language, source, tempDirectory, ++imageIndex, out var imagePath, out var altText)) {
-                outputLines.Add("![" + altText + "](<" + ToMarkdownPath(imagePath) + ">)");
+                outputLines.Add("![" + altText + "](<" + ToMarkdownPath(imagePath) + ">)" + "{width=" + DocxImageMaxWidthPx.ToString(CultureInfo.InvariantCulture) + "}");
                 replacedAny = true;
             } else {
                 AppendLines(lines, outputLines, i, closingIndex);
@@ -146,6 +147,7 @@ internal static partial class DocxVisualFenceMaterializer {
     private static string RenderMermaidPreviewSvg(string source) {
         var lines = source
             .Split('\n')
+            .SelectMany(static line => NormalizeEscapedLineBreaks(line).Split('\n'))
             .Select(static line => line.TrimEnd())
             .Where(static line => line.Length > 0)
             .Take(28)
@@ -566,7 +568,10 @@ internal static partial class DocxVisualFenceMaterializer {
             if (!string.IsNullOrWhiteSpace(edge.Label)) {
                 var midX = (from.X + to.X) / 2.0;
                 var midY = (from.Y + to.Y) / 2.0;
-                var label = edge.Label.Length > 26 ? edge.Label[..23] + "..." : edge.Label;
+                var label = NormalizeEscapedLineBreaks(edge.Label).Replace('\n', ' ').Trim();
+                if (label.Length > 26) {
+                    label = label[..23] + "...";
+                }
                 sb.Append("<text x='").Append(midX.ToString("0.##", CultureInfo.InvariantCulture))
                     .Append("' y='").Append((midY - 6).ToString("0.##", CultureInfo.InvariantCulture))
                     .Append("' fill='#5a7088' font-size='11' text-anchor='middle' font-family='Segoe UI, Arial'>")
@@ -579,13 +584,17 @@ internal static partial class DocxVisualFenceMaterializer {
             var node = nodes[i];
             var point = positions[node.Id];
             var color = Palette[i % Palette.Length];
+            var nodeLabel = NormalizeEscapedLineBreaks(node.Label).Replace('\n', ' ').Trim();
+            if (nodeLabel.Length > 22) {
+                nodeLabel = nodeLabel[..19] + "...";
+            }
             sb.Append("<circle cx='").Append(point.X.ToString("0.##", CultureInfo.InvariantCulture))
                 .Append("' cy='").Append(point.Y.ToString("0.##", CultureInfo.InvariantCulture))
                 .Append("' r='24' fill='").Append(color).Append("' stroke='#2f4256' stroke-width='1.2'/>");
             sb.Append("<text x='").Append(point.X.ToString("0.##", CultureInfo.InvariantCulture))
                 .Append("' y='").Append((point.Y + 41).ToString("0.##", CultureInfo.InvariantCulture))
                 .Append("' fill='#293f57' font-size='12' text-anchor='middle' font-family='Segoe UI, Arial'>")
-                .Append(EscapeXml(node.Label.Length > 22 ? node.Label[..19] + "..." : node.Label))
+                .Append(EscapeXml(nodeLabel))
                 .Append("</text>");
         }
 
