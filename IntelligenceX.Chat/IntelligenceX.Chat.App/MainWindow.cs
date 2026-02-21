@@ -312,6 +312,7 @@ public sealed partial class MainWindow : Window {
     private readonly HashSet<string> _knownProfiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _appStateLoaded;
     private bool _isSending;
+    private bool _turnStartupInProgress;
     private readonly object _pendingTurnQueueSync = new();
     private readonly Queue<QueuedTurn> _pendingTurns = new();
     private string? _activeTurnRequestId;

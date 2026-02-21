@@ -188,7 +188,7 @@ public sealed partial class MainWindow : Window {
             authenticated = effectiveAuthenticated,
             accountId = _authenticatedAccountId ?? string.Empty,
             loginInProgress = effectiveLoginInProgress,
-            sending = _isSending,
+            sending = _isSending || _turnStartupInProgress,
             cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId),
             cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId),
             activityTimeline = SnapshotActivityTimeline(),

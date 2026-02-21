@@ -265,7 +265,7 @@ public sealed partial class MainWindow : Window {
         await SetStatusAsync("Applying runtime settings...").ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
 
-        if (_isSending) {
+        if (IsTurnDispatchInProgress()) {
             UpdateRuntimeApplyProgress("failed", "Finish the active response before changing runtime settings.", active: false, request.RequestId);
             await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
             return false;

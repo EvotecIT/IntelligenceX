@@ -175,7 +175,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> TryApplyRuntimePackSettingAsync(string normalizedPackId, bool enabled) {
-        if (_isSending) {
+        if (IsTurnDispatchInProgress()) {
             await SetStatusAsync("Finish the active response before changing runtime pack settings.").ConfigureAwait(false);
             return false;
         }
@@ -495,7 +495,7 @@ Quick start prompts:
             return;
         }
 
-        if (!_isSending) {
+        if (!IsTurnDispatchInProgress()) {
             await DispatchNextQueuedTurnAsync(honorAutoDispatch: false).ConfigureAwait(false);
         }
     }
