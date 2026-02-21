@@ -393,6 +393,15 @@ public sealed partial class MainWindow : Window {
     private bool _serviceSessionPublishScheduled;
     private bool _serviceSessionPublishPending;
     private long _serviceSessionPublishLastUtcTicks;
+    private long _serviceSessionPublishRequestedCount;
+    private long _serviceSessionPublishCoalescedCount;
+    private long _serviceSessionPublishExecutedCount;
+    private long _serviceSessionPublishFailedCount;
+    private long _serviceSessionPublishDelayedCount;
+    private long _serviceSessionPublishLastDelayMs;
+    private long _serviceSessionPublishMaxDelayMs;
+    private long _serviceSessionPublishLastRequestedUtcTicks;
+    private long _serviceSessionPublishLastPublishedUtcTicks;
     private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
     private CancellationTokenSource? _persistDebounceCts;

@@ -256,6 +256,7 @@ public sealed partial class MainWindow : Window {
             lastTurnMetrics = BuildLastTurnMetricsState(),
             latencySummary = BuildActiveProviderLatencySummaryState(),
             providerCircuit = BuildActiveProviderCircuitState(),
+            serviceSessionPublish = BuildServiceSessionPublishDiagnosticsState(),
             debugMode = _debugMode,
             windowMaximized = IsWindowMaximized()
         });

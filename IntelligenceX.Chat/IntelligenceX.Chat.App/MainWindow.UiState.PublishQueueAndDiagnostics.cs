@@ -280,6 +280,10 @@ public sealed partial class MainWindow : Window {
     }
 
     private void RequestServiceDrivenSessionPublish() {
+        var requestedUtcTicks = DateTime.UtcNow.Ticks;
+        Interlocked.Increment(ref _serviceSessionPublishRequestedCount);
+        Interlocked.Exchange(ref _serviceSessionPublishLastRequestedUtcTicks, requestedUtcTicks);
+
         lock (_serviceSessionPublishSync) {
             if (_shutdownRequested) {
                 return;
@@ -287,6 +291,7 @@ public sealed partial class MainWindow : Window {
 
             _serviceSessionPublishPending = true;
             if (_serviceSessionPublishScheduled) {
+                Interlocked.Increment(ref _serviceSessionPublishCoalescedCount);
                 return;
             }
 
@@ -325,6 +330,10 @@ public sealed partial class MainWindow : Window {
 
                 try {
                     if (delay > TimeSpan.Zero) {
+                        var delayMs = Math.Max(1L, (long)Math.Round(delay.TotalMilliseconds));
+                        Interlocked.Increment(ref _serviceSessionPublishDelayedCount);
+                        Interlocked.Exchange(ref _serviceSessionPublishLastDelayMs, delayMs);
+                        UpdateMaxInterlocked(ref _serviceSessionPublishMaxDelayMs, delayMs);
                         await Task.Delay(delay).ConfigureAwait(false);
                     }
 
@@ -333,9 +342,12 @@ public sealed partial class MainWindow : Window {
                     }
 
                     await PublishSessionStateAsync().ConfigureAwait(false);
+                    Interlocked.Increment(ref _serviceSessionPublishExecutedCount);
+                    Interlocked.Exchange(ref _serviceSessionPublishLastPublishedUtcTicks, DateTime.UtcNow.Ticks);
                 } catch (OperationCanceledException) {
                     // Shutdown may cancel pending publish work.
                 } catch (Exception ex) {
+                    Interlocked.Increment(ref _serviceSessionPublishFailedCount);
                     if (VerboseServiceLogs || _debugMode) {
                         await AppendSystemBestEffortAsync("Service-driven session publish failed: " + ex.Message).ConfigureAwait(false);
                     }
@@ -346,6 +358,54 @@ public sealed partial class MainWindow : Window {
                 }
             }
         });
+    }
+
+    private object BuildServiceSessionPublishDiagnosticsState() {
+        bool scheduled;
+        bool pending;
+        long schedulerLastUtcTicks;
+        lock (_serviceSessionPublishSync) {
+            scheduled = _serviceSessionPublishScheduled;
+            pending = _serviceSessionPublishPending;
+            schedulerLastUtcTicks = _serviceSessionPublishLastUtcTicks;
+        }
+
+        return new {
+            requested = Interlocked.Read(ref _serviceSessionPublishRequestedCount),
+            coalesced = Interlocked.Read(ref _serviceSessionPublishCoalescedCount),
+            executed = Interlocked.Read(ref _serviceSessionPublishExecutedCount),
+            failed = Interlocked.Read(ref _serviceSessionPublishFailedCount),
+            delayed = Interlocked.Read(ref _serviceSessionPublishDelayedCount),
+            lastDelayMs = Interlocked.Read(ref _serviceSessionPublishLastDelayMs),
+            maxDelayMs = Interlocked.Read(ref _serviceSessionPublishMaxDelayMs),
+            scheduled,
+            pending,
+            lastRequestedLocal = FormatUtcTicksAsLocalTimestamp(Interlocked.Read(ref _serviceSessionPublishLastRequestedUtcTicks)),
+            lastPublishedLocal = FormatUtcTicksAsLocalTimestamp(Interlocked.Read(ref _serviceSessionPublishLastPublishedUtcTicks)),
+            lastSchedulerTickLocal = FormatUtcTicksAsLocalTimestamp(schedulerLastUtcTicks)
+        };
+    }
+
+    private string FormatUtcTicksAsLocalTimestamp(long utcTicks) {
+        if (utcTicks <= 0) {
+            return string.Empty;
+        }
+
+        var utc = new DateTime(utcTicks, DateTimeKind.Utc);
+        return utc.ToLocalTime().ToString(_timestampFormat, CultureInfo.InvariantCulture);
+    }
+
+    private static void UpdateMaxInterlocked(ref long target, long candidate) {
+        while (true) {
+            var current = Interlocked.Read(ref target);
+            if (candidate <= current) {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref target, candidate, current) == current) {
+                return;
+            }
+        }
     }
 
     private object[] BuildConversationState() {
