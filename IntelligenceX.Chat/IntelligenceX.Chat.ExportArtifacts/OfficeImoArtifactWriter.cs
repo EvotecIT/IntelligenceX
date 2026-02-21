@@ -90,7 +90,7 @@ public static class OfficeImoArtifactWriter {
     /// <param name="markdown">Transcript markdown source.</param>
     /// <param name="outputPath">Destination .docx file path.</param>
     public static void WriteDocxTranscript(string title, string markdown, string outputPath) {
-        WriteDocxTranscript(title, markdown, outputPath, additionalAllowedImageDirectories: null);
+        WriteDocxTranscript(title, markdown, outputPath, additionalAllowedImageDirectories: null, docxVisualMaxWidthPx: null);
     }
 
     /// <summary>
@@ -100,11 +100,13 @@ public static class OfficeImoArtifactWriter {
     /// <param name="markdown">Transcript markdown source.</param>
     /// <param name="outputPath">Destination .docx file path.</param>
     /// <param name="additionalAllowedImageDirectories">Additional local image directories to allow during markdown conversion.</param>
+    /// <param name="docxVisualMaxWidthPx">Optional max-width hint in pixels for materialized visual images.</param>
     public static void WriteDocxTranscript(
         string title,
         string markdown,
         string outputPath,
-        IReadOnlyList<string>? additionalAllowedImageDirectories) {
+        IReadOnlyList<string>? additionalAllowedImageDirectories,
+        int? docxVisualMaxWidthPx = null) {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var normalizedMarkdown = NormalizeTranscriptMarkdownForDocx(sourceMarkdown);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, normalizedMarkdown);

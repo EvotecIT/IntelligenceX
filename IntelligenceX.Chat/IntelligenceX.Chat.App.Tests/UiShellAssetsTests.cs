@@ -136,7 +136,7 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures export visual-theme controls and messaging hooks are present in shell assets.
+    /// Ensures export visual-theme and DOCX visual sizing controls/messaging hooks are present in shell assets.
     /// </summary>
     [Fact]
     public void Load_IncludesExportVisualThemeModeBindingsAndControl() {
@@ -145,11 +145,15 @@ public sealed class UiShellAssetsTests {
         AssertContainsAll(
             html,
             "id=\"optExportVisualThemeMode\"",
+            "id=\"optExportDocxVisualMaxWidthPx\"",
             "set_export_visual_theme_mode",
+            "set_export_docx_visual_max_width",
+            "docxVisualMaxWidthPx",
             "visualThemeMode",
             "print_friendly",
             "preserve_ui_theme",
-            "unexpected export visual theme mode");
+            "unexpected export visual theme mode",
+            "normalizeExportDocxVisualMaxWidthPx");
     }
 
     /// <summary>
@@ -301,6 +305,22 @@ public sealed class UiShellAssetsTests {
             "export_visual_artifact",
             "visual_export_action",
             "open_visual_popout");
+    }
+
+    /// <summary>
+    /// Ensures visual export and popout show actionable prep failures instead of generic pre-save errors.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesVisualExportPreparationDiagnosticsAndCanvasFallback() {
+        var html = UiShellAssets.Load();
+
+        AssertContainsAll(
+            html,
+            "function resolveVisualExportBuildFailureMessage(visualType, format)",
+            "function tryCaptureVisualViewCanvasPayload(visualType)",
+            "SVG export is only available for Mermaid diagrams.",
+            "Visual export couldn't prepare the image payload before save.",
+            "Visual popout couldn't prepare the image payload.");
     }
 
     /// <summary>

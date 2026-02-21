@@ -2475,6 +2475,24 @@
     }
   }
 
+  function normalizeExportDocxVisualMaxWidthPx(value) {
+    // Keep bounds/default parity with ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx (C# host).
+    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return 760;
+    }
+
+    if (parsed < 320) {
+      return 320;
+    }
+
+    if (parsed > 2000) {
+      return 2000;
+    }
+
+    return Math.floor(parsed);
+  }
+
   function exportFormatDisplayName(format) {
     var normalized = normalizeExportFormat(format);
     if (normalized === "docx") return "Word";
@@ -2487,6 +2505,7 @@
     var saveMode = normalizeExportSaveMode(exportPrefs.saveMode);
     var format = normalizeExportFormat(exportPrefs.defaultFormat);
     var visualThemeMode = normalizeExportVisualThemeMode(exportPrefs.visualThemeMode);
+    var docxVisualMaxWidthPx = normalizeExportDocxVisualMaxWidthPx(exportPrefs.docxVisualMaxWidthPx);
     var lastDirectory = String(exportPrefs.lastDirectory || "");
 
     var saveModeSelect = byId("optExportSaveMode");
@@ -2505,6 +2524,11 @@
     if (visualThemeModeSelect) {
       visualThemeModeSelect.value = visualThemeMode;
       syncCustomSelect(visualThemeModeSelect);
+    }
+
+    var docxVisualMaxWidthInput = byId("optExportDocxVisualMaxWidthPx");
+    if (docxVisualMaxWidthInput) {
+      docxVisualMaxWidthInput.value = String(docxVisualMaxWidthPx);
     }
 
     var lastDirectoryInput = byId("optExportLastDirectory");

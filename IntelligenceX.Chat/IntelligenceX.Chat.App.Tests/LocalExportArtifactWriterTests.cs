@@ -465,6 +465,44 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures DOCX visual fence materialization uses caller-provided width hint for generated markdown images.
+    /// </summary>
+    [Fact]
+    public void DocxVisualFenceMaterializer_UsesConfiguredWidthHint() {
+        const string markdown = """
+            ```mermaid
+            flowchart LR
+            A --> B
+            ```
+            """;
+
+        using var materialized = DocxVisualFenceMaterializer.Materialize(markdown, 980);
+
+        Assert.Contains("{width=980}", materialized.Markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("```mermaid", materialized.Markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures DOCX visual fence materialization clamps width hints to supported bounds.
+    /// </summary>
+    [Theory]
+    [InlineData(10, 320)]
+    [InlineData(760, 760)]
+    [InlineData(6000, 2000)]
+    public void DocxVisualFenceMaterializer_ClampsWidthHint(int requestedWidth, int expectedWidth) {
+        const string markdown = """
+            ```mermaid
+            graph TD
+            X --> Y
+            ```
+            """;
+
+        using var materialized = DocxVisualFenceMaterializer.Materialize(markdown, requestedWidth);
+
+        Assert.Contains("{width=" + expectedWidth + "}", materialized.Markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures invalid visual fences remain as raw code and are not materialized into images.
     /// </summary>
     [Fact]

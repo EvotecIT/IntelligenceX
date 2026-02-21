@@ -1853,8 +1853,64 @@
     return "png";
   }
 
+  function normalizeDocxVisualMaxWidthPx(value) {
+    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return 760;
+    }
+
+    if (parsed < 320) {
+      return 320;
+    }
+    if (parsed > 2000) {
+      return 2000;
+    }
+
+    return Math.floor(parsed);
+  }
+
   function getVisualExportExtension(format) {
     return String(format || "").toLowerCase() === "svg" ? ".svg" : ".png";
+  }
+
+  function resolveVisualExportBuildFailureMessage(visualType, format) {
+    var kindLabel = getVisualKindLabel(visualType);
+    var normalizedFormat = normalizeVisualExportFormat(format, visualType).toUpperCase();
+    return kindLabel + " export couldn't prepare a " + normalizedFormat + " image payload.";
+  }
+
+  function tryCaptureVisualViewCanvasPayload(visualType) {
+    if (!visualViewCanvasWrap || !document.body || !document.body.classList.contains("visual-view-open")) {
+      return null;
+    }
+
+    var activeType = normalizeVisualType(visualViewState.type);
+    var normalizedType = normalizeVisualType(visualType);
+    if (!normalizedType || normalizedType !== activeType) {
+      return null;
+    }
+
+    var canvas = visualViewCanvasWrap.querySelector("canvas");
+    if (!canvas || typeof canvas.toDataURL !== "function") {
+      return null;
+    }
+
+    try {
+      var dataUrl = canvas.toDataURL("image/png");
+      var parsedData = parseDataUrlPayload(dataUrl);
+      if (!parsedData || !parsedData.dataBase64) {
+        return null;
+      }
+
+      return {
+        id: "panel-canvas",
+        alt: getVisualKindLabel(normalizedType) + " preview",
+        mimeType: parsedData.mimeType || "image/png",
+        dataBase64: parsedData.dataBase64
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   function getVisualExportPreferences() {
@@ -1863,7 +1919,8 @@
     return {
       saveMode: String(exportPrefs.saveMode || "").toLowerCase() === "remember" ? "remember" : "ask",
       lastDirectory: String(exportPrefs.lastDirectory || "").trim(),
-      visualThemeMode: normalizeVisualExportThemeMode(exportPrefs.visualThemeMode)
+      visualThemeMode: normalizeVisualExportThemeMode(exportPrefs.visualThemeMode),
+      docxVisualMaxWidthPx: normalizeDocxVisualMaxWidthPx(exportPrefs.docxVisualMaxWidthPx)
     };
   }
 
@@ -2407,21 +2464,67 @@
 
     if (exportFormat === "svg") {
       if (visualType !== "mermaid") {
-        return null;
+        return {
+          payload: null,
+          error: "SVG export is only available for Mermaid diagrams."
+        };
       }
-      return renderMermaidForExport(source, "panel", themeMode);
+      var svgPayload = await renderMermaidForExport(source, "panel", themeMode);
+      if (!svgPayload || !svgPayload.dataBase64) {
+        return {
+          payload: null,
+          error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+        };
+      }
+
+      return {
+        payload: svgPayload,
+        error: ""
+      };
     }
 
     var rendered = await renderVisualFenceForExport(visualType, source, "panel", themeMode);
     if (!rendered) {
-      return null;
+      var panelFallback = tryCaptureVisualViewCanvasPayload(visualType);
+      if (panelFallback && panelFallback.dataBase64) {
+        return {
+          payload: panelFallback,
+          error: ""
+        };
+      }
+
+      return {
+        payload: null,
+        error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+      };
     }
 
     if (rendered.mimeType === "image/svg+xml") {
-      return convertSvgPayloadToPng(rendered, themeMode);
+      var pngPayload = await convertSvgPayloadToPng(rendered, themeMode);
+      if (!pngPayload || !pngPayload.dataBase64) {
+        return {
+          payload: null,
+          error: "Visual export couldn't convert SVG output to PNG."
+        };
+      }
+
+      return {
+        payload: pngPayload,
+        error: ""
+      };
     }
 
-    return rendered;
+    if (!rendered.dataBase64) {
+      return {
+        payload: null,
+        error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+      };
+    }
+
+    return {
+      payload: rendered,
+      error: ""
+    };
   }
 
   async function executeVisualExport(exportId, outputPath) {
@@ -2431,11 +2534,15 @@
     }
 
     try {
-      var payload = await buildVisualExportPayload(pending.type, pending.source, pending.format);
+      var exportBuild = await buildVisualExportPayload(pending.type, pending.source, pending.format);
+      var payload = exportBuild && exportBuild.payload ? exportBuild.payload : null;
       if (!payload || !payload.dataBase64) {
         delete pendingVisualExports[exportId];
         setVisualViewExportButtonsBusy();
-        setVisualViewFeedback("Visual export failed before save.", "bad", 0);
+        var errorMessage = exportBuild && exportBuild.error
+          ? exportBuild.error
+          : "Visual export couldn't prepare the image payload before save.";
+        setVisualViewFeedback(errorMessage, "bad", 0);
         return;
       }
 
@@ -2447,10 +2554,13 @@
         mimeType: payload.mimeType || "",
         dataBase64: payload.dataBase64
       });
-    } catch (_) {
+    } catch (err) {
       delete pendingVisualExports[exportId];
       setVisualViewExportButtonsBusy();
-      setVisualViewFeedback("Visual export failed before save.", "bad", 0);
+      var message = err && err.message
+        ? "Visual export preparation failed: " + err.message
+        : "Visual export couldn't prepare the image payload before save.";
+      setVisualViewFeedback(message, "bad", 0);
     }
   }
 
@@ -2505,9 +2615,13 @@
     setVisualViewPopoutBusy(true);
     setVisualViewFeedback("Opening visual in external viewer...", "info", 0);
     buildVisualExportPayload(type, source, preferredFormat)
-      .then(function(payload) {
+      .then(function(exportBuild) {
+        var payload = exportBuild && exportBuild.payload ? exportBuild.payload : null;
         if (!payload || !payload.dataBase64) {
-          throw new Error("render payload missing");
+          var detail = exportBuild && exportBuild.error
+            ? exportBuild.error
+            : "Visual popout couldn't prepare the image payload.";
+          throw new Error(detail);
         }
 
         post("open_visual_popout", {
@@ -2516,9 +2630,10 @@
           dataBase64: payload.dataBase64
         });
       })
-      .catch(function() {
+      .catch(function(err) {
+        var message = err && err.message ? err.message : "Visual popout couldn't prepare the image payload.";
         setVisualViewPopoutBusy(false);
-        setVisualViewFeedback("Failed to prepare visual popout.", "bad", 0);
+        setVisualViewFeedback(message, "bad", 0);
       });
   }
 
@@ -3565,6 +3680,7 @@
     }
 
     var themeMode = normalizeVisualExportThemeMode(request && request.themeMode);
+    var docxVisualMaxWidthPx = normalizeDocxVisualMaxWidthPx(request && request.docxVisualMaxWidthPx);
     var newline = detectLineEnding(sourceMarkdown);
     var normalized = sourceMarkdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     var lines = normalized.split("\n");
@@ -3619,7 +3735,7 @@
         mimeType: rendered.mimeType,
         dataBase64: rendered.dataBase64
       });
-      output.push("![" + String(rendered.alt || "Visual preview") + "](ix-export-image://" + imageId + ")");
+      output.push("![" + String(rendered.alt || "Visual preview") + "](<ix-export-image://" + imageId + ">)" + "{width=" + String(docxVisualMaxWidthPx) + "}");
       i = closingIndex + 1;
     }
 

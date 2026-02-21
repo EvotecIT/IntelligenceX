@@ -63,6 +63,18 @@ public sealed partial class MainWindow : Window {
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
+    private async Task SetExportDocxVisualMaxWidthPxAsync(string? value) {
+        var next = ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(value);
+        if (_exportDocxVisualMaxWidthPx == next) {
+            return;
+        }
+
+        _exportDocxVisualMaxWidthPx = next;
+        _appState.ExportDocxVisualMaxWidthPx = next;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
     private async Task ClearExportLastDirectoryAsync() {
         if (string.IsNullOrWhiteSpace(_lastExportDirectory)) {
             return;

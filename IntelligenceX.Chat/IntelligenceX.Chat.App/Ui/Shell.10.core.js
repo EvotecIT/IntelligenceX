@@ -57,6 +57,7 @@
         saveMode: "ask",
         defaultFormat: "xlsx",
         visualThemeMode: "preserve_ui_theme",
+        docxVisualMaxWidthPx: 760,
         lastDirectory: ""
       },
       autonomy: {

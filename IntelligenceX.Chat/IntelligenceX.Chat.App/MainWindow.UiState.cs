@@ -571,6 +571,7 @@ public sealed partial class MainWindow : Window {
                 saveMode = _exportSaveMode,
                 defaultFormat = _exportDefaultFormat,
                 visualThemeMode = _exportVisualThemeMode,
+                docxVisualMaxWidthPx = _exportDocxVisualMaxWidthPx,
                 lastDirectory = _lastExportDirectory ?? string.Empty
             },
             autonomy = new {

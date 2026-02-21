@@ -468,6 +468,10 @@
     post("set_export_visual_theme_mode", { value: e.target.value || "preserve_ui_theme" });
   });
 
+  byId("optExportDocxVisualMaxWidthPx").addEventListener("change", function(e) {
+    post("set_export_docx_visual_max_width", { value: String(e.target.value || "").trim() });
+  });
+
   byId("btnClearExportLastDirectory").addEventListener("click", function() {
     post("clear_export_last_directory");
   });

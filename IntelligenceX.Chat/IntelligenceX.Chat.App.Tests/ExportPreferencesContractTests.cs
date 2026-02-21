@@ -45,6 +45,39 @@ public sealed class ExportPreferencesContractTests {
     }
 
     /// <summary>
+    /// Ensures DOCX visual max-width normalization clamps values to supported bounds.
+    /// </summary>
+    [Theory]
+    [InlineData(null, ExportPreferencesContract.DefaultDocxVisualMaxWidthPx)]
+    [InlineData(0, ExportPreferencesContract.MinDocxVisualMaxWidthPx)]
+    [InlineData(300, ExportPreferencesContract.MinDocxVisualMaxWidthPx)]
+    [InlineData(320, 320)]
+    [InlineData(760, 760)]
+    [InlineData(5000, ExportPreferencesContract.MaxDocxVisualMaxWidthPx)]
+    public void NormalizeDocxVisualMaxWidthPx_FromNullableInt_ClampsAndDefaults(int? input, int expected) {
+        var actual = ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(input);
+
+        Assert.Equal(expected, actual);
+    }
+
+    /// <summary>
+    /// Ensures DOCX visual max-width string parsing defaults on invalid values and clamps valid integers.
+    /// </summary>
+    [Theory]
+    [InlineData(null, ExportPreferencesContract.DefaultDocxVisualMaxWidthPx)]
+    [InlineData("", ExportPreferencesContract.DefaultDocxVisualMaxWidthPx)]
+    [InlineData("  ", ExportPreferencesContract.DefaultDocxVisualMaxWidthPx)]
+    [InlineData("abc", ExportPreferencesContract.DefaultDocxVisualMaxWidthPx)]
+    [InlineData("319", ExportPreferencesContract.MinDocxVisualMaxWidthPx)]
+    [InlineData("760", 760)]
+    [InlineData("2001", ExportPreferencesContract.MaxDocxVisualMaxWidthPx)]
+    public void NormalizeDocxVisualMaxWidthPx_FromString_ParsesClampsAndDefaults(string? input, int expected) {
+        var actual = ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(input);
+
+        Assert.Equal(expected, actual);
+    }
+
+    /// <summary>
     /// Ensures host visual-theme aliases stay aligned with shell normalization branches.
     /// </summary>
     [Fact]
@@ -63,6 +96,10 @@ public sealed class ExportPreferencesContractTests {
         Assert.Contains("case \"theme\":", shell, StringComparison.Ordinal);
         Assert.Contains("return \"print_friendly\";", shell, StringComparison.Ordinal);
         Assert.Contains("return \"preserve_ui_theme\";", shell, StringComparison.Ordinal);
+        Assert.Contains("function normalizeExportDocxVisualMaxWidthPx(value)", shell, StringComparison.Ordinal);
+        Assert.Contains("return 760;", shell, StringComparison.Ordinal);
+        Assert.Contains("if (parsed < 320)", shell, StringComparison.Ordinal);
+        Assert.Contains("if (parsed > 2000)", shell, StringComparison.Ordinal);
     }
 
     /// <summary>
