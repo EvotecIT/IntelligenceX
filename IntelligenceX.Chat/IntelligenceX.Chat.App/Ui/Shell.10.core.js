@@ -602,18 +602,31 @@
       || lower.indexOf("debug mode on") === 0;
   }
 
+  function resolveHeaderStatusChipFallbackStatus() {
+    if (normalizeBool(state.connected)) {
+      if (normalizeBool(state.authenticated)) {
+        return { text: "Ready", tone: "ok" };
+      }
+      return { text: "Sign in to continue", tone: "warn" };
+    }
+
+    return { text: "Starting runtime...", tone: "warn" };
+  }
+
   function updateStatusVisual(text, tone) {
     var statusEl = byId("status");
     var value = String(text || "").trim();
-    if (!shouldRenderHeaderStatusChip(value)) {
-      return;
-    }
-    var shouldAppendRuntime = value.indexOf("|") < 0;
-    var displayValue = value;
     var normalizedTone = "";
     if (typeof tone === "string") {
       normalizedTone = tone.trim().toLowerCase();
     }
+    if (!shouldRenderHeaderStatusChip(value)) {
+      var fallbackStatus = resolveHeaderStatusChipFallbackStatus();
+      value = fallbackStatus.text;
+      normalizedTone = fallbackStatus.tone;
+    }
+    var shouldAppendRuntime = value.indexOf("|") < 0;
+    var displayValue = value;
 
     if (shouldAppendRuntime && (normalizedTone === "ok" || normalizedTone.length === 0)) {
       var lowerForAppend = value.toLowerCase();
