@@ -203,6 +203,7 @@
       "renderedCheckContrast": true,
       "renderedContrastMinRatio": 4.5,
       "renderedContrastMaxFindings": 12,
+      "mediaProfiles": "./.powerforge/media-profiles.json",
       "renderedInclude": "index.html,docs/**,faq/**,changelog/**,blog/**,api/index.html,api/powershell/index.html,showcase/**",
       "renderedExclude": "docs/api/**,api-docs/**",
       "summary": true,
