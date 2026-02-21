@@ -9,6 +9,7 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private const int MaxTrackedAccounts = 12;
+    private static readonly TimeSpan UsageLimitDispatchCooldown = TimeSpan.FromMinutes(2);
     private static readonly Regex UsageRetryAfterMinutesRegex = new(
         @"(?:in\s+about|about)\s+(?<minutes>\d+)\s+minute",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -438,6 +439,54 @@ public sealed partial class MainWindow : Window {
             TrimAccountUsageCacheLocked();
             SyncAccountUsageToAppStateLocked();
         }
+    }
+
+    private bool IsActiveUsageLimitDispatchBlocked(out int? retryAfterMinutes) {
+        var identity = ResolveActiveUsageIdentity();
+        var nowUtc = DateTime.UtcNow;
+        lock (_turnDiagnosticsSync) {
+            if (!_accountUsageByKey.TryGetValue(identity.Key, out var snapshot)) {
+                retryAfterMinutes = null;
+                return false;
+            }
+
+            return IsUsageLimitDispatchBlocked(
+                nowUtc,
+                snapshot.UsageLimitHitUtc,
+                snapshot.UsageLimitRetryAfterUtc,
+                snapshot.RateLimitReached,
+                out retryAfterMinutes);
+        }
+    }
+
+    internal static bool IsUsageLimitDispatchBlocked(
+        DateTime nowUtc,
+        DateTime? usageLimitHitUtc,
+        DateTime? usageLimitRetryAfterUtc,
+        bool? rateLimitReached,
+        out int? retryAfterMinutes) {
+        retryAfterMinutes = null;
+        var normalizedNowUtc = EnsureUtc(nowUtc);
+
+        if (usageLimitRetryAfterUtc.HasValue) {
+            var remaining = EnsureUtc(usageLimitRetryAfterUtc.Value) - normalizedNowUtc;
+            if (remaining > TimeSpan.Zero) {
+                retryAfterMinutes = (int)Math.Ceiling(remaining.TotalMinutes);
+                return true;
+            }
+        }
+
+        if (rateLimitReached == true) {
+            return true;
+        }
+
+        if (!usageLimitHitUtc.HasValue) {
+            return false;
+        }
+
+        var hitUtc = EnsureUtc(usageLimitHitUtc.Value);
+        // If provider omitted Retry-After, keep a short cooldown to prevent immediate replay loops.
+        return normalizedNowUtc <= hitUtc || normalizedNowUtc - hitUtc < UsageLimitDispatchCooldown;
     }
 
     private void RestoreAccountUsageFromAppState() {
