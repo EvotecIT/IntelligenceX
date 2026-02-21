@@ -166,23 +166,27 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private void AppendActivityTimeline(ChatStatusMessage status, string activityText) {
+    private bool AppendActivityTimeline(ChatStatusMessage status, string activityText) {
         var label = BuildActivityTimelineLabel(status, activityText);
         if (label.Length == 0) {
-            return;
+            return false;
         }
 
+        var changed = false;
         lock (_turnDiagnosticsSync) {
             if (_activityTimeline.Count > 0
                 && string.Equals(_activityTimeline[^1], label, StringComparison.OrdinalIgnoreCase)) {
-                return;
+                return false;
             }
 
             _activityTimeline.Add(label);
             while (_activityTimeline.Count > MaxActivityTimelineEntries) {
                 _activityTimeline.RemoveAt(0);
             }
+            changed = true;
         }
+
+        return changed;
     }
 
     private string[] SnapshotActivityTimeline() {

@@ -61,10 +61,16 @@ public sealed partial class MainWindow : Window {
                     MarkTurnStatusStage(status);
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
-                    AppendActivityTimeline(status, activityText ?? string.Empty);
-                    _latestServiceActivityText = activityText ?? string.Empty;
-                    _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
-                    _ = PublishSessionStateAsync();
+                    var timelineChanged = AppendActivityTimeline(status, activityText ?? string.Empty);
+                    var normalizedActivityText = activityText ?? string.Empty;
+                    var activityChanged = !string.Equals(_latestServiceActivityText, normalizedActivityText, StringComparison.Ordinal);
+                    _latestServiceActivityText = normalizedActivityText;
+                    if (activityChanged || timelineChanged) {
+                        _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
+                    }
+                    if (timelineChanged) {
+                        _ = PublishSessionStateAsync();
+                    }
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
                     }
