@@ -140,6 +140,86 @@ public sealed class OfficeImoDocument {
 }
 
 /// <summary>
+/// Normalized source location metadata for a chunk.
+/// </summary>
+public sealed class OfficeImoChunkLocation {
+    /// <summary>
+    /// Source path used for citations.
+    /// </summary>
+    public string? Path { get; set; }
+
+    /// <summary>
+    /// Optional emitted chunk index (0-based).
+    /// </summary>
+    public int? BlockIndex { get; set; }
+
+    /// <summary>
+    /// Optional source block index within the input document.
+    /// </summary>
+    public int? SourceBlockIndex { get; set; }
+
+    /// <summary>
+    /// Optional 1-based start line number (Markdown/text inputs).
+    /// </summary>
+    public int? StartLine { get; set; }
+
+    /// <summary>
+    /// Optional heading path label.
+    /// </summary>
+    public string? HeadingPath { get; set; }
+
+    /// <summary>
+    /// Optional sheet name (Excel).
+    /// </summary>
+    public string? Sheet { get; set; }
+
+    /// <summary>
+    /// Optional A1 range descriptor (Excel).
+    /// </summary>
+    public string? A1Range { get; set; }
+
+    /// <summary>
+    /// Optional 1-based slide number (PowerPoint).
+    /// </summary>
+    public int? Slide { get; set; }
+
+    /// <summary>
+    /// Optional 1-based page number (PDF).
+    /// </summary>
+    public int? Page { get; set; }
+}
+
+/// <summary>
+/// Normalized table payload for chunk outputs.
+/// </summary>
+public sealed class OfficeImoChunkTable {
+    /// <summary>
+    /// Optional title/label.
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// Column headers.
+    /// </summary>
+    public IReadOnlyList<string> Columns { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Rows aligned with <see cref="Columns"/>.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<string>> Rows { get; set; } = Array.Empty<IReadOnlyList<string>>();
+
+    /// <summary>
+    /// Total row count before truncation.
+    /// </summary>
+    public int TotalRowCount { get; set; }
+
+    /// <summary>
+    /// True when <see cref="Rows"/> was truncated.
+    /// </summary>
+    public bool Truncated { get; set; }
+}
+
+/// <summary>
 /// Minimal chunk shape intended for stable tool contracts.
 /// </summary>
 public sealed class OfficeImoChunk {
@@ -166,12 +246,12 @@ public sealed class OfficeImoChunk {
     /// <summary>
     /// Optional location metadata.
     /// </summary>
-    public object? Location { get; set; }
+    public OfficeImoChunkLocation? Location { get; set; }
 
     /// <summary>
     /// Optional table data (Excel or extracted tables).
     /// </summary>
-    public object? Tables { get; set; }
+    public IReadOnlyList<OfficeImoChunkTable>? Tables { get; set; }
 
     /// <summary>
     /// Optional per-chunk warnings.

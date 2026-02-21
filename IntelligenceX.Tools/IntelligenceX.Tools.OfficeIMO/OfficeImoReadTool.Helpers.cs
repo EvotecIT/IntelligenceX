@@ -309,8 +309,8 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
             Kind = chunk.Kind.ToString().ToLowerInvariant(),
             Text = chunk.Text ?? string.Empty,
             Markdown = chunk.Markdown,
-            Location = chunk.Location,
-            Tables = chunk.Tables,
+            Location = MapLocation(chunk.Location),
+            Tables = MapTables(chunk.Tables),
             Warnings = chunk.Warnings,
             SourceId = chunk.SourceId,
             SourceHash = chunk.SourceHash,
@@ -319,6 +319,65 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
             SourceLengthBytes = chunk.SourceLengthBytes,
             TokenEstimate = chunk.TokenEstimate
         };
+    }
+
+    private static OfficeImoChunkLocation? MapLocation(ReaderLocation? location) {
+        if (location is null) {
+            return null;
+        }
+
+        return new OfficeImoChunkLocation {
+            Path = location.Path,
+            BlockIndex = location.BlockIndex,
+            SourceBlockIndex = location.SourceBlockIndex,
+            StartLine = location.StartLine,
+            HeadingPath = location.HeadingPath,
+            Sheet = location.Sheet,
+            A1Range = location.A1Range,
+            Slide = location.Slide,
+            Page = location.Page
+        };
+    }
+
+    private static IReadOnlyList<OfficeImoChunkTable>? MapTables(IReadOnlyList<ReaderTable>? tables) {
+        if (tables is null || tables.Count == 0) {
+            return null;
+        }
+
+        var mapped = new List<OfficeImoChunkTable>(tables.Count);
+        for (var i = 0; i < tables.Count; i++) {
+            var table = tables[i];
+            if (table is null) {
+                continue;
+            }
+
+            var columns = table.Columns is null
+                ? Array.Empty<string>()
+                : table.Columns.Select(static value => value ?? string.Empty).ToArray();
+
+            var rows = new List<IReadOnlyList<string>>();
+            if (table.Rows is not null) {
+                for (var rowIndex = 0; rowIndex < table.Rows.Count; rowIndex++) {
+                    var row = table.Rows[rowIndex];
+                    if (row is null) {
+                        rows.Add(Array.Empty<string>());
+                        continue;
+                    }
+
+                    rows.Add(row.Select(static value => value ?? string.Empty).ToArray());
+                }
+            }
+
+            mapped.Add(new OfficeImoChunkTable {
+                Title = table.Title,
+                Columns = columns,
+                Rows = rows,
+                TotalRowCount = table.TotalRowCount,
+                Truncated = table.Truncated
+            });
+        }
+
+        return mapped.Count == 0 ? null : mapped;
     }
 
     private static int SumTokenEstimate(IReadOnlyList<OfficeImoChunk> chunks) {
