@@ -60,6 +60,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan PersistDebounceInterval = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
+    private static readonly TimeSpan ServiceDrivenSessionPublishMinInterval = TimeSpan.FromMilliseconds(140);
     private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
@@ -388,6 +389,9 @@ public sealed partial class MainWindow : Window {
     private string? _lastActivityScriptPayload;
     private string? _lastStatusDrivenSessionStamp;
     private string? _lastStatusDrivenOptionsStamp;
+    private readonly object _serviceSessionPublishSync = new();
+    private bool _serviceSessionPublishScheduled;
+    private long _serviceSessionPublishLastUtcTicks;
     private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
     private CancellationTokenSource? _persistDebounceCts;

@@ -276,6 +276,54 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private void RequestServiceDrivenSessionPublish() {
+        TimeSpan delay = TimeSpan.Zero;
+        lock (_serviceSessionPublishSync) {
+            if (_shutdownRequested || _serviceSessionPublishScheduled) {
+                return;
+            }
+
+            if (_serviceSessionPublishLastUtcTicks > 0) {
+                var elapsedTicks = DateTime.UtcNow.Ticks - _serviceSessionPublishLastUtcTicks;
+                if (elapsedTicks < 0) {
+                    elapsedTicks = 0;
+                }
+
+                var minIntervalTicks = ServiceDrivenSessionPublishMinInterval.Ticks;
+                if (elapsedTicks < minIntervalTicks) {
+                    delay = TimeSpan.FromTicks(minIntervalTicks - elapsedTicks);
+                }
+            }
+
+            _serviceSessionPublishScheduled = true;
+        }
+
+        _ = Task.Run(async () => {
+            try {
+                if (delay > TimeSpan.Zero) {
+                    await Task.Delay(delay).ConfigureAwait(false);
+                }
+
+                if (_shutdownRequested) {
+                    return;
+                }
+
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Shutdown may cancel pending publish work.
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    await AppendSystemBestEffortAsync("Service-driven session publish failed: " + ex.Message).ConfigureAwait(false);
+                }
+            } finally {
+                lock (_serviceSessionPublishSync) {
+                    _serviceSessionPublishScheduled = false;
+                    _serviceSessionPublishLastUtcTicks = DateTime.UtcNow.Ticks;
+                }
+            }
+        });
+    }
+
     private object[] BuildConversationState() {
         if (_conversations.Count == 0) {
             return Array.Empty<object>();

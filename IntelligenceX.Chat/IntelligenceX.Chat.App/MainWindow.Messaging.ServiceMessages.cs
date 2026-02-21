@@ -69,7 +69,7 @@ public sealed partial class MainWindow : Window {
                         _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
                     }
                     if (timelineChanged) {
-                        _ = PublishSessionStateAsync();
+                        RequestServiceDrivenSessionPublish();
                     }
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
@@ -84,7 +84,7 @@ public sealed partial class MainWindow : Window {
                     }
 
                     ApplyTurnMetrics(metrics);
-                    _ = PublishSessionStateAsync();
+                    RequestServiceDrivenSessionPublish();
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatMetricsTrace(metrics));
                     }
