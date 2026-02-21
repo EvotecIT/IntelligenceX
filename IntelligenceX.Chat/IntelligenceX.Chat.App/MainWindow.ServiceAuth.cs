@@ -359,6 +359,8 @@ public sealed partial class MainWindow : Window {
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
             return true;
+        } catch (OperationCanceledException) {
+            throw;
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 await AppendSystemBestEffortAsync("Account switch will continue, but runtime account pin reset failed: " + ex.Message)
