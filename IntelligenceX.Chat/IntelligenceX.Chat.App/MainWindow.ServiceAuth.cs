@@ -733,7 +733,21 @@ public sealed partial class MainWindow : Window {
             _servicePipeName = pipeName;
             _pendingServiceLaunchProfileOptions = null;
 
-            await Task.Delay(250).ConfigureAwait(true);
+            if (ServiceStartupExitProbeDelay > TimeSpan.Zero) {
+                await Task.Delay(ServiceStartupExitProbeDelay).ConfigureAwait(false);
+            } else {
+                await Task.Yield();
+            }
+
+            if (p.HasExited) {
+                if (ReferenceEquals(_serviceProcess, p)) {
+                    _serviceProcess = null;
+                    _servicePipeName = null;
+                }
+
+                return false;
+            }
+
             return true;
         } catch (Exception ex) {
             AppendSystem(SystemNotice.ServiceStartFailed(ex.Message));

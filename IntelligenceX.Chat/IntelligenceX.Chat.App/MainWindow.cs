@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan DispatchConnectBudget = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan ServiceStartupExitProbeDelay = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan StartupConnectAttemptHardTimeoutGrace = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan StartupConnectAttemptOutlierThreshold = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);

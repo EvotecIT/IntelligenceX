@@ -323,6 +323,11 @@ public sealed partial class MainWindow : Window {
                         LogStartupConnectPhase("ensure_sidecar", "done");
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
                         for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
+                            if (_serviceProcess is { HasExited: true }) {
+                                sidecarConnectException = new InvalidOperationException("Service process exited before pipe connect retry could begin.");
+                                break;
+                            }
+
                             var requestedRetryTimeout = StartupConnectRetryTimeouts[attempt];
                             if (!TryResolveConnectTimeout(requestedRetryTimeout, out var retryTimeout)) {
                                 sidecarConnectException = CreateBudgetExceededException();
