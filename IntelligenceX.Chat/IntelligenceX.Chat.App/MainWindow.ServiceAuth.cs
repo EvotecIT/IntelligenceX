@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EnsureLoginProbeCacheTtl = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan EnsureLoginUnknownProbeRetryDelay = TimeSpan.FromMilliseconds(120);
     private enum EnsureLoginProbeState {
         Unknown = 0,
         Authenticated = 1,
@@ -407,7 +408,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false) {
+    private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false, bool skipPreLoginAuthProbe = false) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
             if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
@@ -438,19 +439,29 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (!forceInteractive) {
+        if (!forceInteractive && !skipPreLoginAuthProbe) {
             if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
                 _isConnected = _client is not null;
                 await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
                 return true;
             }
 
-            // Allow one short retry window before launching browser login.
-            await Task.Delay(250).ConfigureAwait(false);
-            if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
-                _isConnected = _client is not null;
-                await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
-                return true;
+            // Retry only when the first probe was inconclusive.
+            // Explicit unauthenticated probes are cached and should not incur extra wait.
+            if (!_ensureLoginProbeCacheHasValue) {
+                if (EnsureLoginUnknownProbeRetryDelay > TimeSpan.Zero) {
+                    await Task.Delay(EnsureLoginUnknownProbeRetryDelay).ConfigureAwait(false);
+                }
+
+                if (await RefreshAuthenticationStateAsync(
+                        updateStatus: true,
+                        requireFreshProbe: true,
+                        allowCachedAuthenticatedFallback: false,
+                        probeTimeout: EnsureLoginFastPathProbeTimeout).ConfigureAwait(false)) {
+                    _isConnected = _client is not null;
+                    await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
+                    return true;
+                }
             }
         }
 

@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window {
             // User bubble is already rendered for this prompt, so retries after sign-in
             // must reuse that bubble instead of appending duplicate user messages.
             var promptQueued = TryEnqueuePromptAfterLogin(text, conversationId, out var queuedCount, skipUserBubbleOnDispatch: true);
-            var loginStarted = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
+            var loginStarted = await StartLoginFlowIfNeededAsync(skipPreLoginAuthProbe: true).ConfigureAwait(false);
             if (loginStarted) {
                 var waitingText = promptQueued
                     ? $"Waiting for sign-in... ({queuedCount}/{MaxQueuedTurns} queued)"
@@ -595,7 +595,7 @@ public sealed partial class MainWindow : Window {
             turn.ConversationId,
             out var queuedCount,
             skipUserBubbleOnDispatch: true);
-        var loginStarted = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
+        var loginStarted = await StartLoginFlowIfNeededAsync(skipPreLoginAuthProbe: true).ConfigureAwait(false);
         if (loginStarted) {
             var waitingText = promptQueued
                 ? $"Waiting for sign-in... ({queuedCount}/{MaxQueuedTurns} queued)"
