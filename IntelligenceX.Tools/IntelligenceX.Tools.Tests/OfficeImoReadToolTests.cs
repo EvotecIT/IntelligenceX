@@ -84,6 +84,7 @@ public class OfficeImoReadToolTests {
             Assert.True(root.TryGetProperty("handoff", out var handoff));
             Assert.True(root.TryGetProperty("confidence", out var confidence));
             Assert.True(nextActions.ValueKind == global::System.Text.Json.JsonValueKind.Array);
+            Assert.Equal("officeimo_read", nextActions[0].GetProperty("tool").GetString());
             Assert.Equal("officeimo_read_handoff", handoff.GetProperty("contract").GetString());
             Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
             Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));

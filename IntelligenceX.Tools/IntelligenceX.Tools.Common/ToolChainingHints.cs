@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 
@@ -9,6 +10,14 @@ namespace IntelligenceX.Tools.Common;
 /// Shared contract helpers for model-driven continuation/chaining hints in tool responses.
 /// </summary>
 public static class ToolChainingHints {
+    private static readonly IReadOnlyDictionary<string, string> EmptyStringMap =
+        new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal));
+
+    /// <summary>
+    /// Shared immutable empty string map.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> EmptyMap => EmptyStringMap;
+
     /// <summary>
     /// Creates a normalized continuation contract payload.
     /// </summary>
@@ -54,6 +63,10 @@ public static class ToolChainingHints {
     /// Builds a simple dictionary payload from key/value entries.
     /// </summary>
     public static IReadOnlyDictionary<string, string> Map(params (string Key, object? Value)[] entries) {
+        if (entries is null || entries.Length == 0) {
+            return EmptyStringMap;
+        }
+
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var i = 0; i < entries.Length; i++) {
             var key = entries[i].Key;
@@ -64,7 +77,9 @@ public static class ToolChainingHints {
             map[key.Trim()] = Convert.ToString(entries[i].Value, CultureInfo.InvariantCulture) ?? string.Empty;
         }
 
-        return map;
+        return map.Count == 0
+            ? EmptyStringMap
+            : new ReadOnlyDictionary<string, string>(map);
     }
 
     /// <summary>
@@ -127,7 +142,7 @@ public static class ToolChainingHints {
 
     private static IReadOnlyDictionary<string, string> NormalizeMap(IReadOnlyDictionary<string, string>? source) {
         if (source is null || source.Count == 0) {
-            return new Dictionary<string, string>(StringComparer.Ordinal);
+            return EmptyStringMap;
         }
 
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -137,7 +152,9 @@ public static class ToolChainingHints {
             }
         }
 
-        return map;
+        return map.Count == 0
+            ? EmptyStringMap
+            : new ReadOnlyDictionary<string, string>(map);
     }
 }
 
@@ -163,7 +180,7 @@ public sealed class ToolChainContractModel {
     /// <summary>
     /// Structured handoff payload for cross-tool chaining.
     /// </summary>
-    public IReadOnlyDictionary<string, string> Handoff { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, string> Handoff { get; init; } = ToolChainingHints.EmptyMap;
 
     /// <summary>
     /// Best-effort confidence score (0..1) for the emitted result context.
@@ -188,7 +205,7 @@ public sealed class ToolNextActionModel {
     /// <summary>
     /// Suggested argument skeleton for follow-up.
     /// </summary>
-    public IReadOnlyDictionary<string, string> SuggestedArguments { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, string> SuggestedArguments { get; init; } = ToolChainingHints.EmptyMap;
 
     /// <summary>
     /// Indicates this action is optional/advisory and should not block autonomous planning.

@@ -92,7 +92,7 @@ public sealed class OfficeImoReadResult {
     /// <summary>
     /// Structured handoff payload for downstream tools.
     /// </summary>
-    public IReadOnlyDictionary<string, string> Handoff { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, string> Handoff { get; set; } = ToolChainingHints.EmptyMap;
 
     /// <summary>
     /// Best-effort confidence score (0..1) for this extraction context.
