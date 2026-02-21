@@ -325,10 +325,10 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures DOCX transcript export materializes supported visual fences into embedded images.
+    /// Ensures local DOCX transcript export leaves visual fences as code when runtime materialization is not present.
     /// </summary>
     [Fact]
-    public void ExportTranscript_Docx_MaterializesVisualFencesIntoImages() {
+    public void ExportTranscript_Docx_LeavesVisualFencesAsCodeWhenNoRuntimeMaterialization() {
         const string markdown = """
             # Transcript
 
@@ -363,9 +363,12 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("Mermaid snapshot", bodyText, StringComparison.Ordinal);
             Assert.Contains("Chart snapshot", bodyText, StringComparison.Ordinal);
             Assert.Contains("Network snapshot", bodyText, StringComparison.Ordinal);
+            Assert.Contains("flowchart LR", bodyText, StringComparison.Ordinal);
+            Assert.Contains("\"datasets\"", bodyText, StringComparison.Ordinal);
+            Assert.Contains("memberOf", bodyText, StringComparison.Ordinal);
 
             var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(3, imageCount);
+            Assert.Equal(0, imageCount);
         } finally {
             Directory.Delete(root, recursive: true);
         }
