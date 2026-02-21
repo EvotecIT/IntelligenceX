@@ -128,7 +128,7 @@ public static class ToolChainingHints {
         }
 
         var deduplicated = normalized
-            .DistinctBy(static action => $"{action.Tool}|{action.Reason}")
+            .DistinctBy(static action => (action.Tool, action.Reason))
             .ToList();
         if (deduplicated.Count == 0) {
             return Array.Empty<ToolNextActionModel>();
