@@ -345,6 +345,8 @@ Quick start prompts:
 
         // Local compatible runtimes (LM Studio/Ollama) are much more sensitive to long tool/review loops.
         // Keep defaults conservative unless the user explicitly overrides autonomy settings.
+        // Keep local-compatible runtime conservative (8 rounds) to avoid runaway loops on weaker local transports;
+        // full/default round budget applies to service/native paths.
         var defaultMaxToolRounds = isLocalCompatibleRuntime ? 8 : SafeDefaultMaxToolRounds;
 
         var effectiveMaxToolRounds = _autonomyMaxToolRounds
