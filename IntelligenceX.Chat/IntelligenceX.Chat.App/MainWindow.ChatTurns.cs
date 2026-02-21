@@ -253,8 +253,11 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
+        var hasKickoffRequestToCancel = !string.IsNullOrWhiteSpace(_activeKickoffRequestId) && _client is not null;
         await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
-        await Task.Delay(150).ConfigureAwait(false);
+        if (hasKickoffRequestToCancel && KickoffRecoverySettleDelay > TimeSpan.Zero) {
+            await Task.Delay(KickoffRecoverySettleDelay).ConfigureAwait(false);
+        }
         return true;
     }
 

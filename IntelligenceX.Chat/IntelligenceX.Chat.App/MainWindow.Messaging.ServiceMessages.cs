@@ -415,7 +415,43 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> EnsureConnectedAsync(TimeSpan? connectBudgetOverride = null) {
+        if (_client is not null
+            && await IsClientAliveAsync(
+                    _client,
+                    probeTimeout: AliveProbeFastTimeout,
+                    cacheTtl: AliveProbeCacheTtl)
+                .ConfigureAwait(false)) {
+            _isConnected = true;
+            return true;
+        }
+
         var connectBudget = connectBudgetOverride.GetValueOrDefault(DispatchConnectBudget);
+        if (connectBudget <= TimeSpan.Zero) {
+            connectBudget = DispatchConnectBudget;
+        }
+
+        Task<bool> connectAttemptTask;
+        lock (_ensureConnectedSync) {
+            if (_ensureConnectedInFlightTask is { IsCompleted: false } inFlightTask) {
+                connectAttemptTask = inFlightTask;
+            } else {
+                connectAttemptTask = EnsureConnectedCoreAsync(connectBudget);
+                _ensureConnectedInFlightTask = connectAttemptTask;
+            }
+        }
+
+        try {
+            return await connectAttemptTask.ConfigureAwait(false);
+        } finally {
+            lock (_ensureConnectedSync) {
+                if (ReferenceEquals(_ensureConnectedInFlightTask, connectAttemptTask) && connectAttemptTask.IsCompleted) {
+                    _ensureConnectedInFlightTask = null;
+                }
+            }
+        }
+    }
+
+    private async Task<bool> EnsureConnectedCoreAsync(TimeSpan connectBudget) {
         if (_client is not null
             && await IsClientAliveAsync(
                     _client,

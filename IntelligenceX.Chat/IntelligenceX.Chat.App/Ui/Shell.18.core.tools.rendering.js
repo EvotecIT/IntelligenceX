@@ -319,6 +319,7 @@
   };
   var TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX = 28;
   var TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX = 84;
+  var TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX = 180;
 
   function distanceFromBottom(el) {
     if (!el) {
@@ -373,8 +374,12 @@
     var allowDisable = options.allowDisable === true;
     var allowEnable = options.allowEnable !== false;
     var distance = distanceFromBottom(transcript);
+    var disableThreshold = TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX;
+    if (state.sending === true) {
+      disableThreshold = Math.max(disableThreshold, TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX);
+    }
     if (transcriptFollowState.enabled) {
-      if (allowDisable && distance > TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX) {
+      if (allowDisable && distance > disableThreshold) {
         transcriptFollowState.enabled = false;
       }
       return transcriptFollowState.enabled;
@@ -393,6 +398,13 @@
     refreshTranscriptFollowState({ allowDisable: true, allowEnable: true });
   });
   refreshTranscriptFollowState();
+
+  window.ixEnableTranscriptFollow = function(stickBottom) {
+    transcriptFollowState.enabled = true;
+    if (stickBottom !== false) {
+      scrollToBottom(transcript);
+    }
+  };
 
   window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
