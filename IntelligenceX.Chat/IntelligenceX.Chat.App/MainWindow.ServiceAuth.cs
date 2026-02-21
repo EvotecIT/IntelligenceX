@@ -316,7 +316,13 @@ public sealed partial class MainWindow : Window {
         SetNativeAccountSlotId(activeSlot, string.Empty);
         _localProviderOpenAIAccountId = string.Empty;
         SyncNativeAccountSlotsToAppState();
-        await PersistAppStateAsync().ConfigureAwait(false);
+        try {
+            await PersistAppStateAsync().ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Account switch will continue, but clearing saved account pin failed: " + ex.Message);
+            }
+        }
 
         var client = _client;
         if (client is null) {
