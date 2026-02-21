@@ -522,8 +522,7 @@ internal static partial class Program {
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
-        Console.WriteLine(
-            $"  --max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).");
+        Console.WriteLine(BuildMaxToolRoundsHelpLine());
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible (default: on).");
         Console.WriteLine("  --no-parallel-tools     Disable parallel tool calls.");
         Console.WriteLine("  --allow-mutating-parallel-tools  Allow parallel execution for write-capable tool calls (default: off).");
@@ -540,6 +539,11 @@ internal static partial class Program {
         Console.WriteLine("REPL commands:");
         Console.WriteLine("  /help, /tools, /toolhealth [filters], /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
         Console.WriteLine("  /toolhealth filters: open|closed|private|builtin|pack:<id> (repeatable)");
+    }
+
+    internal static string BuildMaxToolRoundsHelpLine() {
+        return
+            $"  --max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).";
     }
 
     private static string? LoadInstructions(ReplOptions options) {

@@ -106,7 +106,11 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     public void Parse_LoadsLegacyProfileWithOversizedMaxToolRounds_ClampsToSafetyLimit() {
         var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-legacy-rounds-" + Guid.NewGuid().ToString("N") + ".db");
         try {
-            SeedLegacyProfileRow(dbPath, profileName: "default", model: "legacy-model", maxToolRounds: 500);
+            SeedLegacyProfileRow(
+                dbPath,
+                profileName: "default",
+                model: "legacy-model",
+                maxToolRounds: ChatRequestOptionLimits.MaxToolRounds + 244);
 
             var options = ServiceOptions.Parse(new[] {
                 "--pipe", "test.pipe",
@@ -116,7 +120,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
             Assert.NotNull(options);
             Assert.True(string.IsNullOrWhiteSpace(error), error);
-            Assert.Equal(256, options.MaxToolRounds);
+            Assert.Equal(ChatRequestOptionLimits.MaxToolRounds, options.MaxToolRounds);
         } finally {
             TryDelete(dbPath);
         }
@@ -157,17 +161,30 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
     [Fact]
     public void Parse_AcceptsMaxToolRoundsUpperBoundary() {
-        var options = ServiceOptions.Parse(new[] { "--max-tool-rounds", "256" }, out var error);
+        var options = ServiceOptions.Parse(
+            new[] { "--max-tool-rounds", ChatRequestOptionLimits.MaxToolRounds.ToString() },
+            out var error);
 
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error));
-        Assert.Equal(256, options.MaxToolRounds);
+        Assert.Equal(ChatRequestOptionLimits.MaxToolRounds, options.MaxToolRounds);
     }
 
     [Fact]
     public void Parse_RejectsMaxToolRoundsOverSafetyLimit() {
-        _ = ServiceOptions.Parse(new[] { "--max-tool-rounds", "257" }, out var error);
-        Assert.Equal("--max-tool-rounds must be between 1 and 256.", error);
+        _ = ServiceOptions.Parse(
+            new[] { "--max-tool-rounds", (ChatRequestOptionLimits.MaxToolRounds + 1).ToString() },
+            out var error);
+        Assert.Equal(
+            $"--max-tool-rounds must be between {ChatRequestOptionLimits.MinToolRounds} and {ChatRequestOptionLimits.MaxToolRounds}.",
+            error);
+    }
+
+    [Fact]
+    public void WriteHelp_MaxToolRoundsLineUsesSharedBoundsAndDefault() {
+        Assert.Equal(
+            $"--max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).",
+            ServiceOptions.BuildMaxToolRoundsHelpLine().TrimStart());
     }
 
     [Theory]

@@ -538,8 +538,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --no-state-db           Disable SQLite state storage (profiles unavailable).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
-        Console.WriteLine(
-            $"  --max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).");
+        Console.WriteLine(BuildMaxToolRoundsHelpLine());
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible (default: on).");
         Console.WriteLine("  --no-parallel-tools     Disable parallel tool calls.");
         Console.WriteLine("  --allow-mutating-parallel-tools  Allow mutating/write-capable tool calls to run in parallel (default: off).");
@@ -565,6 +564,11 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (runtime-managed mode).");
         Console.WriteLine("  --parent-pid <PID>      Parent process id used with --exit-on-disconnect.");
         Console.WriteLine("  -h, --help              Show help.");
+    }
+
+    internal static string BuildMaxToolRoundsHelpLine() {
+        return
+            $"  --max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).";
     }
 
     private static bool TryParseTransport(string value, out OpenAITransportKind kind) {
