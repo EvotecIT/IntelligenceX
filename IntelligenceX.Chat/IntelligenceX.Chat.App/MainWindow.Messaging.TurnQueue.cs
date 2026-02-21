@@ -430,7 +430,6 @@ public sealed partial class MainWindow : Window {
         var queuedTotal = queuedTurns + queuedSignIn;
         if (queuedTotal == 0) {
             await SetStatusAsync("No queued turns.").ConfigureAwait(false);
-            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
@@ -446,7 +445,6 @@ public sealed partial class MainWindow : Window {
         }
 
         await SetStatusAsync("Queued turns are waiting.").ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
     }
 
     private async Task ClearQueuedTurnsAsync() {
@@ -455,12 +453,10 @@ public sealed partial class MainWindow : Window {
         var clearedTotal = clearedPending + clearedSignIn;
         if (clearedTotal <= 0) {
             await SetStatusAsync("No queued turns to clear.").ConfigureAwait(false);
-            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
         await SetStatusAsync($"Cleared queued turns ({clearedTotal} removed).").ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
     }
 
     private async Task CancelActiveTurnAsync() {
@@ -491,7 +487,6 @@ public sealed partial class MainWindow : Window {
         }
 
         await SetStatusAsync(SessionStatus.Canceling()).ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
 
         try {
             var cancelRequest = new CancelChatRequest {

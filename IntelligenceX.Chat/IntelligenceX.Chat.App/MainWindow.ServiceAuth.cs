@@ -330,7 +330,6 @@ public sealed partial class MainWindow : Window {
             ApplyNonNativeAuthenticationStateIfNeeded();
             if (updateStatus) {
                 await SetStatusAsync(SessionStatus.ForConnection(_isConnected, isAuthenticated: true)).ConfigureAwait(false);
-                await PublishOptionsStateAsync().ConfigureAwait(false);
             }
 
             return true;
@@ -363,7 +362,6 @@ public sealed partial class MainWindow : Window {
 
                 if (updateStatus) {
                     await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
-                    await PublishOptionsStateAsync().ConfigureAwait(false);
                 }
 
                 return true;
@@ -372,7 +370,6 @@ public sealed partial class MainWindow : Window {
                 _authenticatedAccountId = null;
                 if (updateStatus) {
                     await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: false)).ConfigureAwait(false);
-                    await PublishOptionsStateAsync().ConfigureAwait(false);
                 }
 
                 return false;

@@ -111,7 +111,6 @@ public sealed partial class MainWindow : Window {
                 case "toggle_debug":
                     _debugMode = !_debugMode;
                     await SetStatusAsync(_debugMode ? SessionStatus.DebugModeOn() : SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(true);
-                    await PublishOptionsStateAsync().ConfigureAwait(true);
                     break;
                 case "options_refresh":
                     await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(true);
