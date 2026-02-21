@@ -22,7 +22,11 @@ public sealed partial class MainWindow : Window {
         await SwitchAccountAsync().ConfigureAwait(false);
     }
 
-    private async Task SendPromptAsync(string text, string? preferredConversationId = null, DateTime? queuedAtUtc = null) {
+    private async Task SendPromptAsync(
+        string text,
+        string? preferredConversationId = null,
+        DateTime? queuedAtUtc = null,
+        bool skipUserBubble = false) {
         text = (text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(text)) {
             return;
@@ -46,7 +50,7 @@ public sealed partial class MainWindow : Window {
             await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
         }
 
-        var turn = await PrepareChatTurnAsync(text).ConfigureAwait(false);
+        var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
         if (turn is null) {
             return;
         }
@@ -163,26 +167,35 @@ public sealed partial class MainWindow : Window {
         await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
     }
 
-    private async Task SendPromptToConversationAsync(string text, string? conversationId, DateTime? queuedAtUtc = null) {
+    private async Task SendPromptToConversationAsync(
+        string text,
+        string? conversationId,
+        DateTime? queuedAtUtc = null,
+        bool skipUserBubble = false) {
         var normalized = (conversationId ?? string.Empty).Trim();
         if (_isSending) {
-            await SendPromptAsync(text, normalized.Length == 0 ? _activeConversationId : normalized, queuedAtUtc).ConfigureAwait(false);
+            await SendPromptAsync(
+                    text,
+                    normalized.Length == 0 ? _activeConversationId : normalized,
+                    queuedAtUtc,
+                    skipUserBubble)
+                .ConfigureAwait(false);
             return;
         }
 
         if (normalized.Length == 0 || string.Equals(normalized, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            await SendPromptAsync(text, normalized, queuedAtUtc).ConfigureAwait(false);
+            await SendPromptAsync(text, normalized, queuedAtUtc, skipUserBubble).ConfigureAwait(false);
             return;
         }
 
         var target = FindConversationById(normalized);
         if (target is null) {
-            await SendPromptAsync(text, normalized, queuedAtUtc).ConfigureAwait(false);
+            await SendPromptAsync(text, normalized, queuedAtUtc, skipUserBubble).ConfigureAwait(false);
             return;
         }
 
         await SwitchConversationAsync(target.Id).ConfigureAwait(false);
-        await SendPromptAsync(text, normalized, queuedAtUtc).ConfigureAwait(false);
+        await SendPromptAsync(text, normalized, queuedAtUtc, skipUserBubble).ConfigureAwait(false);
     }
 
     private bool TryEnqueuePendingTurn(string text, string? conversationId, out int queuedCount) {
@@ -226,7 +239,11 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private bool TryEnqueuePromptAfterLogin(string text, string? conversationId, out int queuedCount) {
+    private bool TryEnqueuePromptAfterLogin(
+        string text,
+        string? conversationId,
+        out int queuedCount,
+        bool skipUserBubbleOnDispatch = false) {
         var trimmedText = (text ?? string.Empty).Trim();
         var trimmedConversationId = (conversationId ?? string.Empty).Trim();
         lock (_queuedAfterLoginSync) {
@@ -235,7 +252,7 @@ public sealed partial class MainWindow : Window {
                 return false;
             }
 
-            _queuedTurnsAfterLogin.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow));
+            _queuedTurnsAfterLogin.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow, skipUserBubbleOnDispatch));
             queuedCount = _queuedTurnsAfterLogin.Count;
             return true;
         }
@@ -289,7 +306,12 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        await SendPromptToConversationAsync(queuedTurn.Text, queuedTurn.ConversationId, queuedTurn.EnqueuedUtc).ConfigureAwait(false);
+        await SendPromptToConversationAsync(
+                queuedTurn.Text,
+                queuedTurn.ConversationId,
+                queuedTurn.EnqueuedUtc,
+                queuedTurn.SkipUserBubbleOnDispatch)
+            .ConfigureAwait(false);
         return true;
     }
 
@@ -299,7 +321,12 @@ public sealed partial class MainWindow : Window {
         }
 
         if (TryDequeuePendingTurn(out var queuedTurn)) {
-            await SendPromptToConversationAsync(queuedTurn.Text, queuedTurn.ConversationId, queuedTurn.EnqueuedUtc).ConfigureAwait(false);
+            await SendPromptToConversationAsync(
+                    queuedTurn.Text,
+                    queuedTurn.ConversationId,
+                    queuedTurn.EnqueuedUtc,
+                    queuedTurn.SkipUserBubbleOnDispatch)
+                .ConfigureAwait(false);
             return true;
         }
 

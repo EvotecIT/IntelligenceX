@@ -294,7 +294,7 @@ public class ToolPackGuidanceTests {
         Assert.Equal("query", item.Routing.Operation);
         Assert.Equal("event", item.Routing.Entity);
         Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
-        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, item.Routing.Source);
     }
 
     [Fact]
@@ -410,7 +410,7 @@ public class ToolPackGuidanceTests {
             }
         };
 
-        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, entry.Routing.Scope);
+        Assert.Equal("host", entry.Routing.Scope);
         Assert.Equal(ToolRoutingTaxonomy.OperationRead, entry.Routing.Operation);
         Assert.Equal(ToolRoutingTaxonomy.EntityResource, entry.Routing.Entity);
         Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);

@@ -19,7 +19,16 @@ public sealed partial class MainWindow : Window {
         string RequestText,
         string? AssistantModelLabel);
 
-    private async Task<ChatTurnContext?> PrepareChatTurnAsync(string text) {
+    private async Task<ChatTurnContext?> PrepareChatTurnAsync(string text, bool skipUserBubble) {
+        var conversation = GetActiveConversation();
+        var conversationId = conversation.Id;
+
+        if (!skipUserBubble) {
+            await AppendUserMessageAsync(conversation, text).ConfigureAwait(false);
+        }
+
+        await SetActivityAsync("Checking account and runtime status...").ConfigureAwait(false);
+
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
             var authenticatedNow = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
             if (authenticatedNow) {
@@ -27,11 +36,10 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        var conversation = GetActiveConversation();
-        var conversationId = conversation.Id;
-
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
-            var promptQueued = TryEnqueuePromptAfterLogin(text, conversationId, out var queuedCount);
+            // User bubble is already rendered for this prompt, so retries after sign-in
+            // must reuse that bubble instead of appending duplicate user messages.
+            var promptQueued = TryEnqueuePromptAfterLogin(text, conversationId, out var queuedCount, skipUserBubbleOnDispatch: true);
             var loginStarted = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
             if (loginStarted) {
                 var waitingText = promptQueued
@@ -43,8 +51,12 @@ public sealed partial class MainWindow : Window {
             }
             if (!loginStarted) {
                 AppendSystem(SystemNotice.SignInRequiredBeforeSendingMessages());
+                await SetActivityAsync("Sign-in required. Prompt will run after login.").ConfigureAwait(false);
             } else if (!promptQueued) {
                 AppendSystem("Sign-in queue is full. Complete sign-in or wait for queued prompts to run.");
+                await SetActivityAsync("Sign-in queue is full. Waiting for available retry slot.").ConfigureAwait(false);
+            } else {
+                await SetActivityAsync("Prompt queued for retry after sign-in.").ConfigureAwait(false);
             }
 
             return null;
@@ -69,7 +81,6 @@ public sealed partial class MainWindow : Window {
         var assistantModelLabel = string.IsNullOrWhiteSpace(resolvedModel) ? "(auto)" : resolvedModel.Trim();
         conversation.ModelLabel = assistantModelLabel;
         var now = DateTime.Now;
-        conversation.Messages.Add(("User", text, now, null));
         conversation.Messages.Add(("Assistant", string.Empty, now, assistantModelLabel));
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         conversation.UpdatedUtc = now.ToUniversalTime();
@@ -93,6 +104,18 @@ public sealed partial class MainWindow : Window {
             text,
             BuildRequestTextForService(text),
             assistantModelLabel);
+    }
+
+    private async Task AppendUserMessageAsync(ConversationRuntime conversation, string text) {
+        var now = DateTime.Now;
+        conversation.Messages.Add(("User", text, now, null));
+        conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
+        conversation.UpdatedUtc = now.ToUniversalTime();
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            await RenderTranscriptAsync().ConfigureAwait(false);
+        }
+
+        await PersistAppStateAsync().ConfigureAwait(false);
     }
 
     private async Task ExecuteChatTurnWithReconnectAsync(ChatTurnContext turn, CancellationToken cancellationToken) {

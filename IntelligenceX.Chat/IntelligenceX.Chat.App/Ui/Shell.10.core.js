@@ -560,15 +560,73 @@
     return runtimeLabel + " | " + (model || "(auto)");
   }
 
+  function shouldRenderHeaderStatusChip(value) {
+    var normalized = String(value || "").trim();
+    if (!normalized) {
+      return false;
+    }
+
+    var lower = normalized.toLowerCase();
+    if (lower.length > 72) {
+      return false;
+    }
+
+    // Centralized gate: keep the top header chip scoped to compact runtime/session states.
+    // Longer operational updates belong in activity/system messages, not in the title-bar chip.
+    if (lower.indexOf("queued") >= 0
+      || lower.indexOf("queue ") >= 0
+      || lower.indexOf("prompt ") >= 0
+      || lower.indexOf("turn ") >= 0
+      || lower.indexOf("retry") >= 0
+      || lower.indexOf("switch account") >= 0
+      || lower.indexOf("usage limit") >= 0
+      || lower.indexOf("account limit") >= 0
+      || lower.indexOf("paused") >= 0
+      || lower.indexOf("remaining") >= 0
+      || lower.indexOf("applying") >= 0
+      || lower.indexOf("export") >= 0) {
+      return false;
+    }
+
+    return lower.indexOf("ready") === 0
+      || lower.indexOf("connected") === 0
+      || lower.indexOf("starting runtime") === 0
+      || lower.indexOf("sign in to continue") === 0
+      || lower.indexOf("waiting for sign-in") === 0
+      || lower.indexOf("finish sign-in in browser") === 0
+      || lower.indexOf("opening sign-in") === 0
+      || lower.indexOf("runtime unavailable") === 0
+      || lower.indexOf("sign in failed") === 0
+      || lower.indexOf("canceling") === 0
+      || lower.indexOf("previous request still running") === 0
+      || lower.indexOf("debug mode on") === 0;
+  }
+
+  function resolveHeaderStatusChipFallbackStatus() {
+    if (normalizeBool(state.connected)) {
+      if (normalizeBool(state.authenticated)) {
+        return { text: "Ready", tone: "ok" };
+      }
+      return { text: "Sign in to continue", tone: "warn" };
+    }
+
+    return { text: "Starting runtime...", tone: "warn" };
+  }
+
   function updateStatusVisual(text, tone) {
     var statusEl = byId("status");
-    var value = text || "";
-    var shouldAppendRuntime = value.indexOf("|") < 0;
-    var displayValue = value;
+    var value = String(text || "").trim();
     var normalizedTone = "";
     if (typeof tone === "string") {
       normalizedTone = tone.trim().toLowerCase();
     }
+    if (!shouldRenderHeaderStatusChip(value)) {
+      var fallbackStatus = resolveHeaderStatusChipFallbackStatus();
+      value = fallbackStatus.text;
+      normalizedTone = fallbackStatus.tone;
+    }
+    var shouldAppendRuntime = value.indexOf("|") < 0;
+    var displayValue = value;
 
     if (shouldAppendRuntime && (normalizedTone === "ok" || normalizedTone.length === 0)) {
       var lowerForAppend = value.toLowerCase();
