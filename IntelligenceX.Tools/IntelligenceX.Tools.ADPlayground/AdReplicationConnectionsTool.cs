@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.DirectoryServices.ActiveDirectory;
 using System.Linq;
 using System.Threading;
@@ -256,7 +257,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             }
 
             allowedSlotsByDay[day] = allowedDaySlots;
-            allowedHoursGrid.Add(hourRow);
+            allowedHoursGrid.Add(Array.AsReadOnly(hourRow));
         }
 
         return new AdReplicationConnectionSchedule(
@@ -265,8 +266,8 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             SlotsPerHour: slotsPerHour,
             AllowedSlots: allowedSlots,
             TotalSlots: days * hoursPerDay * slotsPerHour,
-            AllowedSlotsByDay: allowedSlotsByDay,
-            AllowedHoursGrid: allowedHoursGrid);
+            AllowedSlotsByDay: Array.AsReadOnly(allowedSlotsByDay),
+            AllowedHoursGrid: new ReadOnlyCollection<IReadOnlyList<bool>>(allowedHoursGrid));
     }
 
     private static IReadOnlyList<string>? ReadStringArrayOrNull(JsonArray? array) {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.DirectoryServices.ActiveDirectory;
 using System.Text.Json;
 using ADPlayground.Replication;
@@ -33,6 +34,26 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
 
         var json = JsonSerializer.Serialize(view);
         Assert.Contains("AllowedHoursGrid", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MapReplicationScheduleForResponse_UsesReadOnlyCollections() {
+        var schedule = new ActiveDirectorySchedule();
+        var raw = new bool[7, 24, 4];
+        raw[0, 0, 0] = true;
+        schedule.RawSchedule = raw;
+
+        var view = AdReplicationConnectionsTool.MapReplicationScheduleForResponse(schedule);
+        Assert.NotNull(view);
+
+        var slotsByDay = Assert.IsAssignableFrom<IList<int>>(view!.AllowedSlotsByDay);
+        Assert.Throws<NotSupportedException>(() => slotsByDay.Add(1));
+
+        var hoursGrid = Assert.IsAssignableFrom<IList<IReadOnlyList<bool>>>(view.AllowedHoursGrid);
+        Assert.Throws<NotSupportedException>(() => hoursGrid.Add(Array.Empty<bool>()));
+
+        var firstDay = Assert.IsAssignableFrom<IList<bool>>(view.AllowedHoursGrid[0]);
+        Assert.Throws<NotSupportedException>(() => firstDay[0] = false);
     }
 
     [Fact]

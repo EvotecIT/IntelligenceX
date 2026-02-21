@@ -41,6 +41,23 @@ public class OfficeImoReadToolTests {
     }
 
     [Fact]
+    public void OfficeImoChunkTable_WhenRowsContainNull_PreservesRowShapeWithEmptyRows() {
+        IReadOnlyList<string>?[] rows = {
+            new[] { "alpha", "1" },
+            null
+        };
+
+        var table = new OfficeImoChunkTable {
+            Columns = new[] { "name", "value" },
+            Rows = rows!
+        };
+
+        Assert.Equal(2, table.Rows.Count);
+        Assert.Equal(new[] { "alpha", "1" }, table.Rows[0]);
+        Assert.Empty(table.Rows[1]);
+    }
+
+    [Fact]
     public void OfficeImoChunk_WhenTablesAndWarningsAssignedMutableLists_AreCopiedAndReadOnly() {
         var table = new OfficeImoChunkTable { Columns = new[] { "name" }, Rows = new[] { new[] { "alpha" } } };
         var tables = new List<OfficeImoChunkTable> { table };

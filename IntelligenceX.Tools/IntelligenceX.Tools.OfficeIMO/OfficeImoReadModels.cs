@@ -311,14 +311,18 @@ public sealed class OfficeImoChunkTable {
             return Array.Empty<IReadOnlyList<string>>();
         }
 
-        var normalized = value
-            .Where(static row => row is not null)
-            .Select(static row => (IReadOnlyList<string>)new ReadOnlyCollection<string>(row.ToList()))
-            .ToList();
+        var normalized = new List<IReadOnlyList<string>>(value.Count);
+        for (var i = 0; i < value.Count; i++) {
+            var row = value[i];
+            if (row is null || row.Count == 0) {
+                normalized.Add(Array.Empty<string>());
+                continue;
+            }
 
-        return normalized.Count == 0
-            ? Array.Empty<IReadOnlyList<string>>()
-            : new ReadOnlyCollection<IReadOnlyList<string>>(normalized);
+            normalized.Add(new ReadOnlyCollection<string>(row.ToList()));
+        }
+
+        return new ReadOnlyCollection<IReadOnlyList<string>>(normalized);
     }
 }
 
