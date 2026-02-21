@@ -28,7 +28,9 @@ public sealed class ToolSelectionMetadataIdempotencyTests {
         Assert.Equal(enriched.Description, enrichedAgain.Description);
         Assert.Equal(enriched.Category, enrichedAgain.Category);
         Assert.True(enriched.Tags.SequenceEqual(enrichedAgain.Tags, StringComparer.OrdinalIgnoreCase));
-        Assert.Equal(enriched.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), enriched.Tags);
+        var actualTags = enriched.Tags.ToArray();
+        var expectedSortedTags = actualTags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        Assert.Equal(expectedSortedTags, actualTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("scope:general", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", enriched.Tags, StringComparer.OrdinalIgnoreCase);
