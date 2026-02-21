@@ -371,6 +371,7 @@ public sealed partial class MainWindow : Window {
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
     private long _transcriptRenderGeneration;
     private long _transcriptLastRenderUtcTicks;
+    private string? _lastTranscriptScriptPayload;
     private readonly object _uiPublishSync = new();
     private bool _uiPublishPumpRunning;
     private bool _pendingSessionStatePublish;

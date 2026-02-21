@@ -741,6 +741,11 @@
   }
 
   window.ixSetTranscript = function(html) {
+    var nextHtml = html || "";
+    if (transcriptLastHtml === nextHtml) {
+      return;
+    }
+
     refreshTranscriptFollowState();
     var shouldStickBottom = transcriptFollowState.enabled;
     var previousTop = transcript.scrollTop;
@@ -750,10 +755,6 @@
     var renderRevision = ++transcriptRenderRevision;
     var visualRenderTask = null;
     var shouldDeferEnhancements = state.sending === true;
-    var nextHtml = html || "";
-    if (transcriptLastHtml === nextHtml) {
-      return;
-    }
     if (window.ixDisposeTranscriptVisuals) {
       window.ixDisposeTranscriptVisuals(transcript);
     }

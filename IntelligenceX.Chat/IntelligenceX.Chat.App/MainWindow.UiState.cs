@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task RenderTranscriptAsync() {
         if (!_webViewReady) {
+            _lastTranscriptScriptPayload = null;
             return;
         }
 
@@ -124,7 +125,21 @@ public sealed partial class MainWindow : Window {
                 return;
             }
             var json = JsonSerializer.Serialize(html);
-            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask()).ConfigureAwait(false);
+            if (string.Equals(_lastTranscriptScriptPayload, json, StringComparison.Ordinal)) {
+                return;
+            }
+
+            var previousPayload = _lastTranscriptScriptPayload;
+            _lastTranscriptScriptPayload = json;
+            try {
+                await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask())
+                    .ConfigureAwait(false);
+            } catch {
+                if (string.Equals(_lastTranscriptScriptPayload, json, StringComparison.Ordinal)) {
+                    _lastTranscriptScriptPayload = previousPayload;
+                }
+                throw;
+            }
             Interlocked.Exchange(ref _transcriptLastRenderUtcTicks, DateTime.UtcNow.Ticks);
         } finally {
             _transcriptRenderGate.Release();
