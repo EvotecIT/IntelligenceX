@@ -329,38 +329,51 @@ public sealed partial class MainWindow : Window {
         var runtimeAccountId = NormalizeLocalProviderOpenAIAccountId(_localProviderOpenAIAccountId);
         var hadPinnedAccount = slotAccountId.Length > 0 || runtimeAccountId.Length > 0;
 
-        if (!hadPinnedAccount) {
-            return;
-        }
-
-        SetNativeAccountSlotId(activeSlot, string.Empty);
-        _localProviderOpenAIAccountId = string.Empty;
-        SyncNativeAccountSlotsToAppState();
-        try {
-            await PersistAppStateAsync().ConfigureAwait(false);
-        } catch (Exception ex) {
-            if (VerboseServiceLogs || _debugMode) {
-                await AppendSystemBestEffortAsync("Account switch will continue, but clearing saved account pin failed: " + ex.Message)
-                    .ConfigureAwait(false);
+        if (hadPinnedAccount) {
+            SetNativeAccountSlotId(activeSlot, string.Empty);
+            _localProviderOpenAIAccountId = string.Empty;
+            SyncNativeAccountSlotsToAppState();
+            try {
+                await PersistAppStateAsync().ConfigureAwait(false);
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    await AppendSystemBestEffortAsync("Account switch will continue, but clearing saved account pin failed: " + ex.Message)
+                        .ConfigureAwait(false);
+                }
             }
         }
 
+        _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryClearNativeRuntimeAccountPinAsync() {
         var client = _client;
         if (client is null) {
-            return;
+            return false;
         }
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             _ = await client.ApplyRuntimeSettingsAsync(
                     openAIAccountId: string.Empty,
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
-        } catch (Exception ex) {
+            return true;
+        } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+            // Timeout while applying runtime settings should be non-fatal for auth recovery.
             if (VerboseServiceLogs || _debugMode) {
-                await AppendSystemBestEffortAsync("Account switch will continue, but runtime account pin reset failed: " + ex.Message)
+                await AppendSystemBestEffortAsync("Runtime account pin reset timed out.")
                     .ConfigureAwait(false);
             }
+
+            return false;
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync("Runtime account pin reset failed: " + ex.Message)
+                    .ConfigureAwait(false);
+            }
+
+            return false;
         }
     }
 

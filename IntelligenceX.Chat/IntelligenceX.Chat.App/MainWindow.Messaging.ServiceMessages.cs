@@ -130,10 +130,40 @@ public sealed partial class MainWindow : Window {
         });
     }
 
+    private async Task<bool> VerifyPostLoginAuthenticationAsync() {
+        const int directProbeAttempts = 2;
+        for (var attempt = 0; attempt < directProbeAttempts; attempt++) {
+            if (await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false)) {
+                return true;
+            }
+
+            if (attempt + 1 < directProbeAttempts) {
+                await Task.Delay(250).ConfigureAwait(false);
+            }
+        }
+
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            return false;
+        }
+
+        // If runtime still holds a stale account pin after successful OAuth callback,
+        // clear it and probe again so we can bind to the account that just authenticated.
+        _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+
+        if (await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false)) {
+            return true;
+        }
+
+        await Task.Delay(250).ConfigureAwait(false);
+        return await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false);
+    }
+
     private async Task CompleteLoginAndDispatchQueuedTurnAsync() {
         var refreshSucceeded = false;
         try {
-            refreshSucceeded = await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false);
+            refreshSucceeded = await VerifyPostLoginAuthenticationAsync().ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            return;
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 try {
