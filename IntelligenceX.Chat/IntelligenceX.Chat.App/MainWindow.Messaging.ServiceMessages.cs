@@ -506,9 +506,11 @@ public sealed partial class MainWindow : Window {
         }
 
         Task<bool> connectAttemptTask;
+        var joinedExistingInFlight = false;
         lock (_ensureConnectedSync) {
             if (_ensureConnectedInFlightTask is { IsCompleted: false } inFlightTask) {
                 connectAttemptTask = inFlightTask;
+                joinedExistingInFlight = true;
             } else {
                 connectAttemptTask = EnsureConnectedCoreAsync(connectBudget);
                 _ensureConnectedInFlightTask = connectAttemptTask;
@@ -516,6 +518,20 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
+            if (joinedExistingInFlight && connectBudget > TimeSpan.Zero) {
+                try {
+                    return await connectAttemptTask.WaitAsync(connectBudget).ConfigureAwait(false);
+                } catch (TimeoutException) {
+                    _isConnected = false;
+                    if (VerboseServiceLogs || _debugMode) {
+                        await AppendSystemBestEffortAsync(
+                                "Connect probe timed out while waiting for an in-flight reconnect. Prompt will retry.")
+                            .ConfigureAwait(false);
+                    }
+                    return false;
+                }
+            }
+
             return await connectAttemptTask.ConfigureAwait(false);
         } finally {
             lock (_ensureConnectedSync) {
