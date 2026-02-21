@@ -28,11 +28,11 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan EnsureLoginProbeCacheTtl = TimeSpan.FromMilliseconds(900);
-    private static readonly TimeSpan EnsureLoginUnknownProbeRetryDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan EnsureLoginUnknownProbeRetryDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan RuntimeAccountPinResetTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan RuntimeAccountPinResetFastTimeout = TimeSpan.FromSeconds(2);
     private enum EnsureLoginProbeState {

@@ -12,13 +12,33 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     private async Task SetActivityAsync(string? text, IReadOnlyList<string>? timeline = null) {
         if (!_webViewReady) {
+            lock (_uiPublishSync) {
+                _lastActivityScriptPayload = null;
+            }
             return;
         }
 
         var textJson = JsonSerializer.Serialize(text ?? string.Empty);
         var timelineJson = JsonSerializer.Serialize(timeline ?? Array.Empty<string>());
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetActivity(" + textJson + "," + timelineJson + ");").AsTask())
-            .ConfigureAwait(false);
+        var scriptPayload = textJson + "|" + timelineJson;
+        lock (_uiPublishSync) {
+            if (string.Equals(_lastActivityScriptPayload, scriptPayload, StringComparison.Ordinal)) {
+                return;
+            }
+            _lastActivityScriptPayload = scriptPayload;
+        }
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetActivity(" + textJson + "," + timelineJson + ");").AsTask())
+                .ConfigureAwait(false);
+        } catch {
+            lock (_uiPublishSync) {
+                if (string.Equals(_lastActivityScriptPayload, scriptPayload, StringComparison.Ordinal)) {
+                    _lastActivityScriptPayload = null;
+                }
+            }
+            throw;
+        }
     }
 
     private void StartTurnWatchdog() {

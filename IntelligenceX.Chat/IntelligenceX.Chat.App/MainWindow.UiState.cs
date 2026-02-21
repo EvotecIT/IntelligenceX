@@ -146,13 +146,36 @@ public sealed partial class MainWindow : Window {
         _statusTone = tone ?? InferStatusTone(_statusText);
         _usageLimitSwitchRecommended = usageLimitSwitchRecommended ?? InferUsageLimitSwitchRecommendation(_statusText);
         if (!_webViewReady) {
+            lock (_uiPublishSync) {
+                _lastStatusScriptPayload = null;
+            }
             return;
         }
 
         var textJson = JsonSerializer.Serialize(_statusText);
         var toneJson = JsonSerializer.Serialize(MapStatusTone(_statusTone));
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetStatus(" + textJson + "," + toneJson + ");").AsTask())
-            .ConfigureAwait(false);
+        var scriptPayload = textJson + "|" + toneJson;
+        var publishStatusScript = false;
+        lock (_uiPublishSync) {
+            if (!string.Equals(_lastStatusScriptPayload, scriptPayload, StringComparison.Ordinal)) {
+                _lastStatusScriptPayload = scriptPayload;
+                publishStatusScript = true;
+            }
+        }
+
+        if (publishStatusScript) {
+            try {
+                await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetStatus(" + textJson + "," + toneJson + ");").AsTask())
+                    .ConfigureAwait(false);
+            } catch {
+                lock (_uiPublishSync) {
+                    if (string.Equals(_lastStatusScriptPayload, scriptPayload, StringComparison.Ordinal)) {
+                        _lastStatusScriptPayload = null;
+                    }
+                }
+                throw;
+            }
+        }
         await PublishSessionStateAsync().ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
     }

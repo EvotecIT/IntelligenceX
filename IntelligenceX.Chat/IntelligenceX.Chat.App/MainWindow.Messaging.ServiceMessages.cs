@@ -163,7 +163,7 @@ public sealed partial class MainWindow : Window {
 
             if (hasAnotherProbeAttempt) {
                 var delayMs = prioritizeDispatchLatency
-                    ? Math.Min(500, 150 * (attempt + 1))
+                    ? Math.Min(350, 100 * (attempt + 1))
                     : Math.Min(2000, 250 * (attempt + 1));
                 await Task.Delay(delayMs).ConfigureAwait(false);
             }
