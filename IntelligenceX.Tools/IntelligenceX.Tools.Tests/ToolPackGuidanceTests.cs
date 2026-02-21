@@ -433,6 +433,48 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void ToolPackInfoModel_ShouldNormalizeToolCatalog_OnAssignment() {
+        var model = new ToolPackInfoModel {
+            Pack = "system",
+            Engine = "ComputerX",
+            Tools = new[] { "system_info" },
+            ToolCatalog = new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = " system_info ",
+                    Description = "System info",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "host",
+                        Operation = "read",
+                        Entity = "resource",
+                        Risk = "low",
+                        Source = ToolRoutingTaxonomy.SourceInferred
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "SYSTEM_INFO",
+                    Description = "Duplicate",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "domain",
+                        Operation = "search",
+                        Entity = "directory_object",
+                        Risk = "high",
+                        Source = ToolRoutingTaxonomy.SourceExplicit
+                    }
+                }
+            }
+        };
+
+        var entry = Assert.Single(model.ToolCatalog);
+        Assert.Equal("system_info", entry.Name);
+        Assert.Equal("System info", entry.Description);
+        Assert.Equal("host", entry.Routing.Scope);
+        Assert.Equal("read", entry.Routing.Operation);
+        Assert.Equal("resource", entry.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+    }
+
+    [Fact]
     public void Create_ShouldNormalizeAndSerializeDefaultRoutingValues_WhenCatalogRoutingIsBlank() {
         var model = ToolPackGuidance.Create(
             pack: "system",

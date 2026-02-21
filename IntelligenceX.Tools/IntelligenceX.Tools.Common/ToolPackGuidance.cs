@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.Common;
 /// Typed contract for pack-level guidance returned by <c>*_pack_info</c> tools.
 /// </summary>
 public sealed class ToolPackInfoModel {
+    private IReadOnlyList<ToolPackToolCatalogEntryModel> _toolCatalog = Array.Empty<ToolPackToolCatalogEntryModel>();
+
     /// <summary>
     /// Pack identifier (for example: <c>active_directory</c>, <c>system</c>).
     /// </summary>
@@ -69,7 +71,10 @@ public sealed class ToolPackInfoModel {
     /// <summary>
     /// Tool-level catalog derived from runtime registrations and schemas.
     /// </summary>
-    public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog { get; init; } = Array.Empty<ToolPackToolCatalogEntryModel>();
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog {
+        get => _toolCatalog;
+        init => _toolCatalog = ToolPackGuidance.NormalizeToolCatalogContract(value);
+    }
 
     /// <summary>
     /// Registered tool names for this pack.
@@ -494,6 +499,11 @@ public static class ToolPackGuidance {
 
     internal static ToolPackToolRoutingModel NormalizeRoutingContract(ToolPackToolRoutingModel? routing) {
         return NormalizeRouting(routing);
+    }
+
+    internal static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalogContract(
+        IEnumerable<ToolPackToolCatalogEntryModel>? entries) {
+        return NormalizeToolCatalog(entries);
     }
 
     /// <summary>
