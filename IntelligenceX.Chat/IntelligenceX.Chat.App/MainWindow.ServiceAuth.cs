@@ -31,6 +31,11 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
+    private enum DispatchAuthenticationProbeOutcome {
+        Authenticated = 0,
+        Unauthenticated = 1,
+        Unknown = 2
+    }
 
     private bool IsNativeRuntimeTransport() {
         return string.Equals(_localProviderTransport, TransportNative, StringComparison.OrdinalIgnoreCase);
@@ -241,6 +246,41 @@ public sealed partial class MainWindow : Window {
             }
 
             return allowCachedAuthenticatedFallback && _isAuthenticated;
+        }
+    }
+
+    private async Task<DispatchAuthenticationProbeOutcome> ProbeAuthenticationStateForDispatchAsync(TimeSpan? probeTimeout = null) {
+        if (!RequiresInteractiveSignInForCurrentTransport()) {
+            ApplyNonNativeAuthenticationStateIfNeeded();
+            return DispatchAuthenticationProbeOutcome.Authenticated;
+        }
+
+        var client = _client;
+        if (client is null) {
+            _isAuthenticated = false;
+            _authenticatedAccountId = null;
+            return DispatchAuthenticationProbeOutcome.Unknown;
+        }
+
+        try {
+            var timeout = probeTimeout.GetValueOrDefault(EnsureLoginFastPathProbeTimeout);
+            using var probeCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
+            var probeToken = probeCts?.Token ?? CancellationToken.None;
+            var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, probeToken).ConfigureAwait(false);
+            _isAuthenticated = login.IsAuthenticated;
+            _authenticatedAccountId = login.IsAuthenticated ? (login.AccountId ?? string.Empty).Trim() : null;
+            if (login.IsAuthenticated) {
+                CaptureAuthenticatedAccountIntoActiveSlot();
+                UpdateAccountUsageFromNativeLoginStatus(login);
+                QueuePersistAppState();
+                return DispatchAuthenticationProbeOutcome.Authenticated;
+            }
+
+            return DispatchAuthenticationProbeOutcome.Unauthenticated;
+        } catch (OperationCanceledException) {
+            return DispatchAuthenticationProbeOutcome.Unknown;
+        } catch {
+            return DispatchAuthenticationProbeOutcome.Unknown;
         }
     }
 

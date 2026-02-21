@@ -191,6 +191,8 @@ public sealed partial class MainWindow : Window {
                 StartupLog.Write("StartupPhase.Onboarding done");
             } catch (Exception ex) {
                 StartupLog.Write("StartupPhase.Onboarding failed: " + ex.Message);
+            } finally {
+                Interlocked.Exchange(ref _startupOnboardingDeferredQueued, 0);
             }
         });
     }
@@ -216,8 +218,18 @@ public sealed partial class MainWindow : Window {
                 StartupLog.Write("StartupPhase.Auth done");
             } catch (Exception ex) {
                 StartupLog.Write("StartupPhase.Auth failed: " + ex.Message);
+            } finally {
+                Interlocked.Exchange(ref _startupAuthDeferredQueued, 0);
             }
         });
+    }
+
+    private bool IsStartupInteractivePriorityRequested() {
+        return Volatile.Read(ref _startupInteractivePriorityRequested) != 0;
+    }
+
+    private void MarkStartupInteractivePriorityRequested() {
+        Interlocked.Exchange(ref _startupInteractivePriorityRequested, 1);
     }
 
     private void QueueDeferredStartupModelProfileSync() {
@@ -231,8 +243,12 @@ public sealed partial class MainWindow : Window {
 
         _ = Task.Run(async () => {
             try {
-                await Task.Delay(150).ConfigureAwait(false);
+                await Task.Delay(StartupDeferredModelProfileSyncDelay).ConfigureAwait(false);
                 if (_shutdownRequested) {
+                    return;
+                }
+                if (IsStartupInteractivePriorityRequested()) {
+                    StartupLog.Write("StartupConnect.model_profile_sync skipped_interactive_priority");
                     return;
                 }
 
@@ -247,6 +263,8 @@ public sealed partial class MainWindow : Window {
                 if (VerboseServiceLogs || _debugMode) {
                     AppendSystem("Model/profile sync failed: " + ex.Message);
                 }
+            } finally {
+                Interlocked.Exchange(ref _startupModelProfileSyncDeferredQueued, 0);
             }
         });
     }
@@ -262,8 +280,12 @@ public sealed partial class MainWindow : Window {
 
         _ = Task.Run(async () => {
             try {
-                await Task.Delay(100).ConfigureAwait(false);
+                await Task.Delay(StartupDeferredConnectMetadataDelay).ConfigureAwait(false);
                 if (_shutdownRequested) {
+                    return;
+                }
+                if (IsStartupInteractivePriorityRequested()) {
+                    StartupLog.Write("StartupConnect.metadata_sync skipped_interactive_priority");
                     return;
                 }
 
@@ -273,6 +295,10 @@ public sealed partial class MainWindow : Window {
                 }
 
                 try {
+                    if (IsStartupInteractivePriorityRequested()) {
+                        StartupLog.Write("StartupConnect.hello skipped_interactive_priority");
+                        return;
+                    }
                     StartupLog.Write("StartupConnect.hello begin");
                     var hello = await client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     _sessionPolicy = hello.Policy;
@@ -288,6 +314,10 @@ public sealed partial class MainWindow : Window {
                 }
 
                 try {
+                    if (IsStartupInteractivePriorityRequested()) {
+                        StartupLog.Write("StartupConnect.list_tools skipped_interactive_priority");
+                        return;
+                    }
                     StartupLog.Write("StartupConnect.list_tools begin");
                     var toolList = await client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     UpdateToolCatalog(toolList.Tools);
@@ -300,6 +330,10 @@ public sealed partial class MainWindow : Window {
                 }
 
                 try {
+                    if (IsStartupInteractivePriorityRequested()) {
+                        StartupLog.Write("StartupConnect.auth_refresh skipped_interactive_priority");
+                        return;
+                    }
                     StartupLog.Write("StartupConnect.auth_refresh begin");
                     _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
                     StartupLog.Write("StartupConnect.auth_refresh done");
@@ -313,6 +347,8 @@ public sealed partial class MainWindow : Window {
                 await PublishOptionsStateSafeAsync().ConfigureAwait(false);
             } catch (Exception ex) {
                 StartupLog.Write("StartupConnect.metadata_sync failed: " + ex.Message);
+            } finally {
+                Interlocked.Exchange(ref _startupConnectMetadataDeferredQueued, 0);
             }
         });
     }

@@ -72,6 +72,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupConnectAttemptHardTimeoutGrace = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan StartupConnectAttemptOutlierThreshold = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan StartupDeferredModelProfileSyncDelay = TimeSpan.FromMilliseconds(1250);
     private const int StartupWebViewBudgetFastEnsureThresholdMs = 1200;
     private const int StartupWebViewBudgetMediumEnsureThresholdMs = 2000;
     private const int StartupWebViewBudgetSlowEnsureThresholdMs = 3000;
@@ -336,6 +338,7 @@ public sealed partial class MainWindow : Window {
     private int _startupConnectMetadataDeferredQueued;
     private int _startupModelProfileSyncDeferredQueued;
     private int _startupWebViewPostInitDeferredQueued;
+    private int _startupInteractivePriorityRequested;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;
     private string? _sessionAssistantPersonaOverride;

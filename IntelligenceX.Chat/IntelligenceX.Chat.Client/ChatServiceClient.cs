@@ -87,7 +87,7 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             await SendAsync(request, cancellationToken).ConfigureAwait(false);
             var msg = await tcs.Task.ConfigureAwait(false);
             if (msg is ErrorMessage err) {
-                throw new InvalidOperationException(err.Error);
+                throw new ChatServiceRequestException(err.Error, err.Code);
             }
             if (msg is TResponse typed) {
                 return typed;
