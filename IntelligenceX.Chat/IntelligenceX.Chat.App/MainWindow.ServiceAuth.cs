@@ -105,6 +105,10 @@ public sealed partial class MainWindow : Window {
         _ensureLoginProbeCachedAtUtc = DateTime.UtcNow;
     }
 
+    private bool HasExplicitUnauthenticatedEnsureLoginProbeSnapshot() {
+        return _ensureLoginProbeCacheHasValue && !_ensureLoginProbeCachedIsAuthenticated;
+    }
+
     private async Task<EnsureLoginProbeSnapshot> ProbeEnsureLoginAsync(TimeSpan timeout, bool requireFreshProbe) {
         if (TryGetEnsureLoginProbeCache(requireFreshProbe, out var cached)) {
             return cached;

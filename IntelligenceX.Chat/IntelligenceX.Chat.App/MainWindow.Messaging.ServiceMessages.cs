@@ -145,6 +145,7 @@ public sealed partial class MainWindow : Window {
         var verificationStopwatch = Stopwatch.StartNew();
         var minimumRemainingBudget = TimeSpan.FromMilliseconds(120);
         var runtimePinCleared = false;
+        var requireFreshProbe = true;
         for (var attempt = 0; attempt < maxProbeAttempts; attempt++) {
             var remainingBudget = verificationBudget - verificationStopwatch.Elapsed;
             if (remainingBudget <= minimumRemainingBudget) {
@@ -159,17 +160,21 @@ public sealed partial class MainWindow : Window {
             var allowCachedFallback = prioritizeDispatchLatency || attempt >= 2;
             if (await RefreshAuthenticationStateAsync(
                     updateStatus: true,
-                    requireFreshProbe: true,
+                    requireFreshProbe: requireFreshProbe,
                     allowCachedAuthenticatedFallback: allowCachedFallback,
                     probeTimeout: effectiveProbeTimeout)
                 .ConfigureAwait(false)) {
                 return true;
             }
 
+            var hasExplicitUnauthenticatedProbe = HasExplicitUnauthenticatedEnsureLoginProbeSnapshot();
+            requireFreshProbe = false;
+
             var hasAnotherProbeAttempt = attempt + 1 < maxProbeAttempts;
             if (!runtimePinCleared
                 && RequiresInteractiveSignInForCurrentTransport()
                 && hasAnotherProbeAttempt
+                && hasExplicitUnauthenticatedProbe
                 && (attempt >= 1 || prioritizeDispatchLatency)) {
                 // After OAuth callback succeeds, runtime state may still carry a stale account pin.
                 // Clear it once and continue probing before declaring sign-in failure.
@@ -178,6 +183,11 @@ public sealed partial class MainWindow : Window {
                     : RuntimeAccountPinResetRecoveryTimeout;
                 _ = await TryClearNativeRuntimeAccountPinAsync(pinResetTimeout).ConfigureAwait(false);
                 runtimePinCleared = true;
+                requireFreshProbe = true;
+            } else if (runtimePinCleared && hasExplicitUnauthenticatedProbe) {
+                // A definitive unauthenticated probe even after runtime pin clear is unlikely to recover
+                // within this verification loop; avoid burning the remaining budget on duplicate probes.
+                break;
             }
 
             if (hasAnotherProbeAttempt) {
