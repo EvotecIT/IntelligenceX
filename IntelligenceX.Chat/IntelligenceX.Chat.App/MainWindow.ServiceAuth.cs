@@ -329,25 +329,27 @@ public sealed partial class MainWindow : Window {
         var runtimeAccountId = NormalizeLocalProviderOpenAIAccountId(_localProviderOpenAIAccountId);
         var hadPinnedAccount = slotAccountId.Length > 0 || runtimeAccountId.Length > 0;
 
-        if (!hadPinnedAccount) {
-            return;
-        }
-
-        SetNativeAccountSlotId(activeSlot, string.Empty);
-        _localProviderOpenAIAccountId = string.Empty;
-        SyncNativeAccountSlotsToAppState();
-        try {
-            await PersistAppStateAsync().ConfigureAwait(false);
-        } catch (Exception ex) {
-            if (VerboseServiceLogs || _debugMode) {
-                await AppendSystemBestEffortAsync("Account switch will continue, but clearing saved account pin failed: " + ex.Message)
-                    .ConfigureAwait(false);
+        if (hadPinnedAccount) {
+            SetNativeAccountSlotId(activeSlot, string.Empty);
+            _localProviderOpenAIAccountId = string.Empty;
+            SyncNativeAccountSlotsToAppState();
+            try {
+                await PersistAppStateAsync().ConfigureAwait(false);
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    await AppendSystemBestEffortAsync("Account switch will continue, but clearing saved account pin failed: " + ex.Message)
+                        .ConfigureAwait(false);
+                }
             }
         }
 
+        await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryClearNativeRuntimeAccountPinAsync() {
         var client = _client;
         if (client is null) {
-            return;
+            return false;
         }
 
         try {
@@ -356,11 +358,14 @@ public sealed partial class MainWindow : Window {
                     openAIAccountId: string.Empty,
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
+            return true;
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 await AppendSystemBestEffortAsync("Account switch will continue, but runtime account pin reset failed: " + ex.Message)
                     .ConfigureAwait(false);
             }
+
+            return false;
         }
     }
 
