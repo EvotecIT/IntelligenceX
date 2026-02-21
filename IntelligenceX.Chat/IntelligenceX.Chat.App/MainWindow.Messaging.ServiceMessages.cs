@@ -139,16 +139,29 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> VerifyPostLoginAuthenticationAsync(bool prioritizeDispatchLatency) {
-        var maxProbeAttempts = prioritizeDispatchLatency ? 2 : 5;
+        var maxProbeAttempts = prioritizeDispatchLatency ? 2 : 3;
         var probeTimeout = prioritizeDispatchLatency ? EnsureLoginFastPathProbeTimeout : EnsureLoginFreshProbeTimeout;
+        var verificationBudget = prioritizeDispatchLatency ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(7);
+        var verificationStopwatch = Stopwatch.StartNew();
+        var minimumRemainingBudget = TimeSpan.FromMilliseconds(120);
         var runtimePinCleared = false;
         for (var attempt = 0; attempt < maxProbeAttempts; attempt++) {
+            var remainingBudget = verificationBudget - verificationStopwatch.Elapsed;
+            if (remainingBudget <= minimumRemainingBudget) {
+                break;
+            }
+
+            var effectiveProbeTimeout = probeTimeout < remainingBudget ? probeTimeout : remainingBudget;
+            if (effectiveProbeTimeout <= TimeSpan.Zero) {
+                break;
+            }
+
             var allowCachedFallback = prioritizeDispatchLatency || attempt >= 2;
             if (await RefreshAuthenticationStateAsync(
                     updateStatus: true,
                     requireFreshProbe: true,
                     allowCachedAuthenticatedFallback: allowCachedFallback,
-                    probeTimeout: probeTimeout)
+                    probeTimeout: effectiveProbeTimeout)
                 .ConfigureAwait(false)) {
                 return true;
             }
@@ -162,16 +175,26 @@ public sealed partial class MainWindow : Window {
                 // Clear it once and continue probing before declaring sign-in failure.
                 var pinResetTimeout = prioritizeDispatchLatency
                     ? RuntimeAccountPinResetFastTimeout
-                    : RuntimeAccountPinResetTimeout;
+                    : RuntimeAccountPinResetRecoveryTimeout;
                 _ = await TryClearNativeRuntimeAccountPinAsync(pinResetTimeout).ConfigureAwait(false);
                 runtimePinCleared = true;
             }
 
             if (hasAnotherProbeAttempt) {
                 var delayMs = prioritizeDispatchLatency
-                    ? Math.Min(350, 100 * (attempt + 1))
-                    : Math.Min(2000, 250 * (attempt + 1));
-                await Task.Delay(delayMs).ConfigureAwait(false);
+                    ? Math.Min(250, 80 * (attempt + 1))
+                    : Math.Min(900, 160 * (attempt + 1));
+                var plannedDelay = TimeSpan.FromMilliseconds(delayMs);
+                remainingBudget = verificationBudget - verificationStopwatch.Elapsed;
+                if (remainingBudget <= TimeSpan.Zero) {
+                    break;
+                }
+                if (plannedDelay > remainingBudget) {
+                    plannedDelay = remainingBudget;
+                }
+                if (plannedDelay > TimeSpan.Zero) {
+                    await Task.Delay(plannedDelay).ConfigureAwait(false);
+                }
             }
         }
 
