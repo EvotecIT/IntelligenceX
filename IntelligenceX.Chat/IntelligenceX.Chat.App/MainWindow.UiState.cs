@@ -148,6 +148,7 @@ public sealed partial class MainWindow : Window {
         if (!_webViewReady) {
             lock (_uiPublishSync) {
                 _lastStatusScriptPayload = null;
+                _lastStatusDrivenSessionStamp = null;
                 _lastStatusDrivenOptionsStamp = null;
             }
             return;
@@ -179,15 +180,23 @@ public sealed partial class MainWindow : Window {
         }
 
         var statusDrivenOptionsStamp = BuildStatusDrivenOptionsStamp();
+        var statusDrivenSessionStamp = BuildStatusDrivenSessionStamp();
+        var publishSessionFromStatus = false;
         var publishOptionsFromStatus = false;
         lock (_uiPublishSync) {
+            if (!string.Equals(_lastStatusDrivenSessionStamp, statusDrivenSessionStamp, StringComparison.Ordinal)) {
+                _lastStatusDrivenSessionStamp = statusDrivenSessionStamp;
+                publishSessionFromStatus = true;
+            }
             if (!string.Equals(_lastStatusDrivenOptionsStamp, statusDrivenOptionsStamp, StringComparison.Ordinal)) {
                 _lastStatusDrivenOptionsStamp = statusDrivenOptionsStamp;
                 publishOptionsFromStatus = true;
             }
         }
 
-        await PublishSessionStateAsync().ConfigureAwait(false);
+        if (publishSessionFromStatus) {
+            await PublishSessionStateAsync().ConfigureAwait(false);
+        }
         if (publishOptionsFromStatus) {
             await PublishOptionsStateAsync().ConfigureAwait(false);
         }
@@ -290,6 +299,30 @@ public sealed partial class MainWindow : Window {
             _authenticatedAccountId ?? string.Empty,
             _localProviderTransport,
             _activeNativeAccountSlot.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private string BuildStatusDrivenSessionStamp() {
+        var effectiveAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
+        var effectiveLoginInProgress = RequiresInteractiveSignInForCurrentTransport() && _loginInProgress;
+        var queuedPromptCount = GetQueuedPromptAfterLoginCount();
+        var queuedTurnCount = GetQueuedTurnCount();
+        var sending = _isSending || _turnStartupInProgress;
+        var cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId);
+        var cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId);
+
+        return string.Join(
+            "|",
+            _usageLimitSwitchRecommended ? "1" : "0",
+            _isConnected ? "1" : "0",
+            effectiveAuthenticated ? "1" : "0",
+            _authenticatedAccountId ?? string.Empty,
+            effectiveLoginInProgress ? "1" : "0",
+            queuedPromptCount.ToString(CultureInfo.InvariantCulture),
+            queuedTurnCount.ToString(CultureInfo.InvariantCulture),
+            sending ? "1" : "0",
+            cancelable ? "1" : "0",
+            cancelRequested ? "1" : "0",
+            _debugMode ? "1" : "0");
     }
 
     private static bool InferUsageLimitSwitchRecommendation(string text) {

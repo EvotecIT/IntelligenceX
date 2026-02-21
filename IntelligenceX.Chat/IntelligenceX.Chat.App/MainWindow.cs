@@ -383,6 +383,7 @@ public sealed partial class MainWindow : Window {
     private string? _lastPublishedOptionsStateJson;
     private string? _lastStatusScriptPayload;
     private string? _lastActivityScriptPayload;
+    private string? _lastStatusDrivenSessionStamp;
     private string? _lastStatusDrivenOptionsStamp;
     private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
