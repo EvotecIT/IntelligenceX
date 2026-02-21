@@ -61,4 +61,68 @@ public sealed class ToolChainingHintsTests {
         var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
         Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
     }
+
+    [Fact]
+    public void ToolChainContractModel_ObjectInitializer_ShouldNormalizeAndDefensivelyCopy() {
+        var actions = new List<ToolNextActionModel> {
+            new() {
+                Tool = " officeimo_read ",
+                Reason = " follow up ",
+                SuggestedArguments = new Dictionary<string, string>(StringComparer.Ordinal) {
+                    [" path "] = @"C:\docs"
+                }
+            }
+        };
+        var handoff = new Dictionary<string, string>(StringComparer.Ordinal) {
+            [" contract "] = "officeimo_read_handoff"
+        };
+
+        var chain = new ToolChainContractModel {
+            NextActions = actions,
+            Cursor = " c1 ",
+            ResumeToken = " r1 ",
+            Handoff = handoff,
+            Confidence = 2.0d
+        };
+
+        actions.Add(new ToolNextActionModel { Tool = "x", Reason = "y" });
+        handoff["new"] = "value";
+
+        Assert.Single(chain.NextActions);
+        Assert.Equal("officeimo_read", chain.NextActions[0].Tool);
+        Assert.Equal("follow up", chain.NextActions[0].Reason);
+        Assert.Equal("c1", chain.Cursor);
+        Assert.Equal("r1", chain.ResumeToken);
+        Assert.Equal(1d, chain.Confidence);
+        Assert.True(chain.Handoff.ContainsKey("contract"));
+        Assert.False(chain.Handoff.ContainsKey("new"));
+
+        var actionsList = Assert.IsAssignableFrom<IList<ToolNextActionModel>>(chain.NextActions);
+        Assert.Throws<NotSupportedException>(() => actionsList.Add(new ToolNextActionModel { Tool = "z", Reason = "r" }));
+        var handoffMap = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
+        Assert.Throws<NotSupportedException>(() => handoffMap.Add("x", "1"));
+    }
+
+    [Fact]
+    public void ToolNextActionModel_ObjectInitializer_ShouldNormalizeAndDefensivelyCopyArguments() {
+        var suggestedArguments = new Dictionary<string, string>(StringComparer.Ordinal) {
+            [" path "] = @"C:\docs"
+        };
+
+        var action = new ToolNextActionModel {
+            Tool = " ad_scope_discovery ",
+            Reason = " investigate trust path ",
+            SuggestedArguments = suggestedArguments
+        };
+
+        suggestedArguments["server"] = "dc01.contoso.com";
+
+        Assert.Equal("ad_scope_discovery", action.Tool);
+        Assert.Equal("investigate trust path", action.Reason);
+        Assert.True(action.SuggestedArguments.ContainsKey("path"));
+        Assert.False(action.SuggestedArguments.ContainsKey("server"));
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(action.SuggestedArguments);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
 }

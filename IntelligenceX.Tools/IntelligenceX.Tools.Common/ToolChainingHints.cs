@@ -28,11 +28,11 @@ public static class ToolChainingHints {
         IReadOnlyDictionary<string, string>? handoff = null,
         double confidence = 0.5d) {
         return new ToolChainContractModel {
-            NextActions = NormalizeActions(nextActions),
-            Cursor = NormalizeToken(cursor),
-            ResumeToken = NormalizeToken(resumeToken),
-            Handoff = NormalizeMap(handoff),
-            Confidence = Math.Clamp(confidence, 0d, 1d)
+            NextActions = NormalizeActionsForContract(nextActions),
+            Cursor = NormalizeTokenForContract(cursor),
+            ResumeToken = NormalizeTokenForContract(resumeToken),
+            Handoff = NormalizeMapForContract(handoff),
+            Confidence = NormalizeConfidenceForContract(confidence)
         };
     }
 
@@ -54,7 +54,7 @@ public static class ToolChainingHints {
         return new ToolNextActionModel {
             Tool = tool.Trim(),
             Reason = reason.Trim(),
-            SuggestedArguments = NormalizeMap(suggestedArguments),
+            SuggestedArguments = NormalizeMapForContract(suggestedArguments),
             Optional = optional
         };
     }
@@ -122,7 +122,7 @@ public static class ToolChainingHints {
             normalized.Add(new ToolNextActionModel {
                 Tool = action.Tool.Trim(),
                 Reason = action.Reason.Trim(),
-                SuggestedArguments = NormalizeMap(action.SuggestedArguments),
+                SuggestedArguments = NormalizeMapForContract(action.SuggestedArguments),
                 Optional = action.Optional
             });
         }
@@ -156,56 +156,106 @@ public static class ToolChainingHints {
             ? EmptyStringMap
             : new ReadOnlyDictionary<string, string>(map);
     }
+
+    internal static IReadOnlyList<ToolNextActionModel> NormalizeActionsForContract(IEnumerable<ToolNextActionModel>? actions) {
+        return NormalizeActions(actions);
+    }
+
+    internal static string NormalizeTokenForContract(string? token) {
+        return NormalizeToken(token);
+    }
+
+    internal static IReadOnlyDictionary<string, string> NormalizeMapForContract(IReadOnlyDictionary<string, string>? source) {
+        return NormalizeMap(source);
+    }
+
+    internal static double NormalizeConfidenceForContract(double confidence) {
+        return Math.Clamp(confidence, 0d, 1d);
+    }
 }
 
 /// <summary>
 /// Canonical continuation/chaining contract emitted by chat-oriented tools.
 /// </summary>
 public sealed class ToolChainContractModel {
+    private IReadOnlyList<ToolNextActionModel> _nextActions = Array.Empty<ToolNextActionModel>();
+    private string _cursor = string.Empty;
+    private string _resumeToken = string.Empty;
+    private IReadOnlyDictionary<string, string> _handoff = ToolChainingHints.EmptyMap;
+    private double _confidence = 0.5d;
+
     /// <summary>
     /// Optional follow-up actions for the model (advisory only).
     /// </summary>
-    public IReadOnlyList<ToolNextActionModel> NextActions { get; init; } = Array.Empty<ToolNextActionModel>();
+    public IReadOnlyList<ToolNextActionModel> NextActions {
+        get => _nextActions;
+        init => _nextActions = ToolChainingHints.NormalizeActionsForContract(value);
+    }
 
     /// <summary>
     /// Opaque cursor representing current continuation position/state.
     /// </summary>
-    public string Cursor { get; init; } = string.Empty;
+    public string Cursor {
+        get => _cursor;
+        init => _cursor = ToolChainingHints.NormalizeTokenForContract(value);
+    }
 
     /// <summary>
     /// Opaque token that can be echoed by orchestrators to resume a flow.
     /// </summary>
-    public string ResumeToken { get; init; } = string.Empty;
+    public string ResumeToken {
+        get => _resumeToken;
+        init => _resumeToken = ToolChainingHints.NormalizeTokenForContract(value);
+    }
 
     /// <summary>
     /// Structured handoff payload for cross-tool chaining.
     /// </summary>
-    public IReadOnlyDictionary<string, string> Handoff { get; init; } = ToolChainingHints.EmptyMap;
+    public IReadOnlyDictionary<string, string> Handoff {
+        get => _handoff;
+        init => _handoff = ToolChainingHints.NormalizeMapForContract(value);
+    }
 
     /// <summary>
     /// Best-effort confidence score (0..1) for the emitted result context.
     /// </summary>
-    public double Confidence { get; init; } = 0.5d;
+    public double Confidence {
+        get => _confidence;
+        init => _confidence = ToolChainingHints.NormalizeConfidenceForContract(value);
+    }
 }
 
 /// <summary>
 /// Advisory next-action descriptor for agent orchestration.
 /// </summary>
 public sealed class ToolNextActionModel {
+    private string _tool = string.Empty;
+    private string _reason = string.Empty;
+    private IReadOnlyDictionary<string, string> _suggestedArguments = ToolChainingHints.EmptyMap;
+
     /// <summary>
     /// Suggested tool name.
     /// </summary>
-    public string Tool { get; init; } = string.Empty;
+    public string Tool {
+        get => _tool;
+        init => _tool = ToolChainingHints.NormalizeTokenForContract(value);
+    }
 
     /// <summary>
     /// Why this action is suggested.
     /// </summary>
-    public string Reason { get; init; } = string.Empty;
+    public string Reason {
+        get => _reason;
+        init => _reason = ToolChainingHints.NormalizeTokenForContract(value);
+    }
 
     /// <summary>
     /// Suggested argument skeleton for follow-up.
     /// </summary>
-    public IReadOnlyDictionary<string, string> SuggestedArguments { get; init; } = ToolChainingHints.EmptyMap;
+    public IReadOnlyDictionary<string, string> SuggestedArguments {
+        get => _suggestedArguments;
+        init => _suggestedArguments = ToolChainingHints.NormalizeMapForContract(value);
+    }
 
     /// <summary>
     /// Indicates this action is optional/advisory and should not block autonomous planning.
