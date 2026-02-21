@@ -265,7 +265,7 @@ public sealed partial class MainWindow : Window {
         await SetStatusAsync("Applying runtime settings...").ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
 
-        if (_isSending) {
+        if (IsTurnDispatchInProgress()) {
             UpdateRuntimeApplyProgress("failed", "Finish the active response before changing runtime settings.", active: false, request.RequestId);
             await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
             return false;
@@ -566,7 +566,7 @@ public sealed partial class MainWindow : Window {
         QueueServiceLaunchProfileSyncSnapshot();
         StopAutoReconnectLoop();
         await DisposeClientAsync().ConfigureAwait(false);
-        await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+        await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
     }
 
     private void QueueServiceLaunchProfileSyncSnapshot() {

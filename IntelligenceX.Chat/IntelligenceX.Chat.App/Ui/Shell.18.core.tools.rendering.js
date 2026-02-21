@@ -161,6 +161,7 @@
 
   window.ixSetSessionState = function(nextState) {
     nextState = nextState || {};
+    var wasSending = state.sending === true;
     if (typeof nextState.status === "string") {
       state.status = nextState.status;
     }
@@ -211,8 +212,28 @@
     } else if (nextState.lastTurnMetrics === null) {
       state.lastTurnMetrics = null;
     }
+    if (nextState.latencySummary && typeof nextState.latencySummary === "object") {
+      state.latencySummary = nextState.latencySummary;
+    } else if (nextState.latencySummary === null) {
+      state.latencySummary = null;
+    }
+    if (nextState.providerCircuit && typeof nextState.providerCircuit === "object") {
+      state.providerCircuit = nextState.providerCircuit;
+    } else if (nextState.providerCircuit === null) {
+      state.providerCircuit = null;
+    }
     if (typeof nextState.windowMaximized === "boolean") {
       state.windowMaximized = nextState.windowMaximized;
+    }
+    if (!wasSending && state.sending) {
+      // New turn started; keep transcript anchored to latest output when user is already near bottom.
+      if (isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX + 40)) {
+        transcriptFollowState.enabled = true;
+        scrollToBottom(transcript);
+      }
+    }
+    if (wasSending && !state.sending) {
+      applyPendingTranscriptEnhancements();
     }
 
     updateStatusVisual(state.status, state.statusTone);
@@ -305,6 +326,15 @@
   };
   var TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX = 28;
   var TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX = 84;
+  var TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX = 180;
+  var TRANSCRIPT_FOLLOW_USER_UPWARD_SCROLL_MIN_PX = 2;
+  var TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS = 1400;
+  var transcriptLastUserScrollIntentAt = 0;
+  var transcriptLastObservedScrollTop = transcript ? transcript.scrollTop : 0;
+
+  function markTranscriptUserScrollIntent() {
+    transcriptLastUserScrollIntentAt = Date.now();
+  }
 
   function distanceFromBottom(el) {
     if (!el) {
@@ -336,6 +366,7 @@
     transcriptFollowState.suppressScrollEvent = true;
     transcript.scrollTop = top;
     transcriptFollowState.suppressScrollEvent = false;
+    transcriptLastObservedScrollTop = transcript.scrollTop;
   }
 
   function scrollToBottom(el) {
@@ -348,38 +379,70 @@
       el.scrollTop = el.scrollHeight;
       transcriptFollowState.suppressScrollEvent = false;
       transcriptFollowState.enabled = true;
+      transcriptLastObservedScrollTop = transcript.scrollTop;
       return;
     }
 
     el.scrollTop = el.scrollHeight;
   }
 
-  function refreshTranscriptFollowState() {
+  function refreshTranscriptFollowState(options) {
+    options = options || {};
+    var allowDisable = options.allowDisable === true;
+    var allowEnable = options.allowEnable !== false;
     var distance = distanceFromBottom(transcript);
+    var disableThreshold = TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX;
+    if (state.sending === true) {
+      disableThreshold = Math.max(disableThreshold, TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX);
+    }
     if (transcriptFollowState.enabled) {
-      if (distance > TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX) {
+      if (allowDisable && distance > disableThreshold) {
         transcriptFollowState.enabled = false;
       }
       return transcriptFollowState.enabled;
     }
 
-    if (distance <= TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX) {
+    if (allowEnable && distance <= TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX) {
       transcriptFollowState.enabled = true;
     }
     return transcriptFollowState.enabled;
   }
 
+  transcript.addEventListener("wheel", markTranscriptUserScrollIntent, { passive: true });
+  transcript.addEventListener("pointerdown", markTranscriptUserScrollIntent);
+  transcript.addEventListener("touchstart", markTranscriptUserScrollIntent, { passive: true });
   transcript.addEventListener("scroll", function() {
     if (transcriptFollowState.suppressScrollEvent) {
       return;
     }
-    refreshTranscriptFollowState();
+
+    var currentTop = transcript.scrollTop;
+    var scrollDelta = currentTop - transcriptLastObservedScrollTop;
+    transcriptLastObservedScrollTop = currentTop;
+
+    var allowDisable = true;
+    if (state.sending === true && transcriptFollowState.enabled) {
+      var userIntentAge = Date.now() - transcriptLastUserScrollIntentAt;
+      var hasRecentUserIntent = userIntentAge >= 0 && userIntentAge <= TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS;
+      var userScrolledUp = scrollDelta <= -TRANSCRIPT_FOLLOW_USER_UPWARD_SCROLL_MIN_PX;
+      allowDisable = hasRecentUserIntent && userScrolledUp;
+    }
+
+    refreshTranscriptFollowState({ allowDisable: allowDisable, allowEnable: true });
   });
   refreshTranscriptFollowState();
+
+  window.ixEnableTranscriptFollow = function(stickBottom) {
+    transcriptFollowState.enabled = true;
+    if (stickBottom !== false) {
+      scrollToBottom(transcript);
+    }
+  };
 
   window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
     var label = el.querySelector(".activity-text");
+    var wasActive = el.classList.contains("active");
     if (text) {
       var timelineSummary = "";
       if (Array.isArray(timeline) && timeline.length > 0) {
@@ -390,7 +453,9 @@
       }
       label.textContent = text + timelineSummary;
       el.classList.add("active");
-      refreshTranscriptFollowState();
+      if (!wasActive) {
+        refreshTranscriptFollowState();
+      }
     } else {
       el.classList.remove("active");
     }
@@ -608,27 +673,10 @@
 
   var transcriptRenderRevision = 0;
   var transcriptLastHtml = null;
+  var transcriptPendingVisualRefresh = false;
 
-  window.ixSetTranscript = function(html) {
-    refreshTranscriptFollowState();
-    var shouldStickBottom = transcriptFollowState.enabled;
-    var previousTop = transcript.scrollTop;
-    var previousDistance = distanceFromBottom(transcript);
-    var stickAnchorTop = -1;
-    var renderRevision = ++transcriptRenderRevision;
+  function runTranscriptEnhancements() {
     var visualRenderTask = null;
-    var nextHtml = html || "";
-    if (transcriptLastHtml === nextHtml) {
-      if (shouldStickBottom && transcriptFollowState.enabled && isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX)) {
-        scrollToBottom(transcript);
-      }
-      return;
-    }
-    if (window.ixDisposeTranscriptVisuals) {
-      window.ixDisposeTranscriptVisuals(transcript);
-    }
-    transcript.innerHTML = nextHtml;
-    transcriptLastHtml = nextHtml;
     if (window.ixRenderTranscriptVisuals) {
       visualRenderTask = window.ixRenderTranscriptVisuals(transcript);
     }
@@ -640,10 +688,114 @@
     }
     setupCodeCopyButtons();
     setupTableCopyButtons();
+    return visualRenderTask;
+  }
+
+  function applyTranscriptVisualAnchoringAsync(
+    visualRenderTask,
+    renderRevision,
+    shouldStickBottom,
+    preserveDistanceAfterVisual,
+    nonFollowAnchorTop) {
+    if (!visualRenderTask || typeof visualRenderTask.then !== "function") {
+      return;
+    }
+
+    visualRenderTask.then(function() {
+      if (renderRevision !== transcriptRenderRevision) {
+        return;
+      }
+
+      if (shouldStickBottom) {
+        if (!transcriptFollowState.enabled) {
+          return;
+        }
+
+        scrollToBottom(transcript);
+        return;
+      }
+
+      if (preserveDistanceAfterVisual === null) {
+        return;
+      }
+
+      // Keep non-follow views stable through async diagram/chart expansion unless user scrolled.
+      if (Math.abs(transcript.scrollTop - nonFollowAnchorTop) > 40) {
+        return;
+      }
+
+      var maxScrollTopAfterVisual = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
+      var anchoredTopAfterVisual = maxScrollTopAfterVisual - preserveDistanceAfterVisual;
+      if (!Number.isFinite(anchoredTopAfterVisual)) {
+        return;
+      }
+
+      setTranscriptScrollTop(Math.max(0, Math.min(maxScrollTopAfterVisual, anchoredTopAfterVisual)));
+    }).catch(function() {
+      // Ignore visual rendering failures; transcript already has raw fallback blocks.
+    });
+  }
+
+  function applyPendingTranscriptEnhancements() {
+    if (!transcriptPendingVisualRefresh) {
+      return;
+    }
+
+    transcriptPendingVisualRefresh = false;
+    refreshTranscriptFollowState();
+    var shouldStickBottom = transcriptFollowState.enabled;
+    var previousTop = transcript.scrollTop;
+    var previousDistance = distanceFromBottom(transcript);
+    var preserveDistanceAfterVisual = null;
+    var nonFollowAnchorTop = previousTop;
+    var renderRevision = transcriptRenderRevision;
+    var visualRenderTask = runTranscriptEnhancements();
+
     if (shouldStickBottom) {
       scrollToBottom(transcript);
-      stickAnchorTop = transcript.scrollTop;
     } else {
+      preserveDistanceAfterVisual = Number.isFinite(previousDistance) ? previousDistance : null;
+      nonFollowAnchorTop = transcript.scrollTop;
+    }
+
+    applyTranscriptVisualAnchoringAsync(
+      visualRenderTask,
+      renderRevision,
+      shouldStickBottom,
+      preserveDistanceAfterVisual,
+      nonFollowAnchorTop);
+  }
+
+  window.ixSetTranscript = function(html) {
+    var nextHtml = html || "";
+    if (transcriptLastHtml === nextHtml) {
+      return;
+    }
+
+    refreshTranscriptFollowState();
+    var shouldStickBottom = transcriptFollowState.enabled;
+    var previousTop = transcript.scrollTop;
+    var previousDistance = distanceFromBottom(transcript);
+    var preserveDistanceAfterVisual = null;
+    var nonFollowAnchorTop = previousTop;
+    var renderRevision = ++transcriptRenderRevision;
+    var visualRenderTask = null;
+    var shouldDeferEnhancements = state.sending === true;
+    if (window.ixDisposeTranscriptVisuals) {
+      window.ixDisposeTranscriptVisuals(transcript);
+    }
+    transcript.innerHTML = nextHtml;
+    transcriptLastHtml = nextHtml;
+    if (shouldDeferEnhancements) {
+      transcriptPendingVisualRefresh = true;
+    } else {
+      transcriptPendingVisualRefresh = false;
+      visualRenderTask = runTranscriptEnhancements();
+    }
+    if (shouldStickBottom) {
+      scrollToBottom(transcript);
+    } else {
+      preserveDistanceAfterVisual = Number.isFinite(previousDistance) ? previousDistance : null;
       var restoreTop = previousTop;
       if (Number.isFinite(previousDistance)) {
         var maxScrollTop = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
@@ -653,26 +805,13 @@
         }
       }
       setTranscriptScrollTop(restoreTop);
+      nonFollowAnchorTop = transcript.scrollTop;
     }
 
-    if (shouldStickBottom && visualRenderTask && typeof visualRenderTask.then === "function") {
-      visualRenderTask.then(function() {
-        if (renderRevision !== transcriptRenderRevision) {
-          return;
-        }
-
-        if (!transcriptFollowState.enabled) {
-          return;
-        }
-
-        // If user intentionally scrolled away from the follow position, do not force-pin.
-        if (stickAnchorTop >= 0 && transcript.scrollTop < (stickAnchorTop - 40)) {
-          return;
-        }
-
-        scrollToBottom(transcript);
-      }).catch(function() {
-        // Ignore visual rendering failures; transcript already has raw fallback blocks.
-      });
-    }
+    applyTranscriptVisualAnchoringAsync(
+      visualRenderTask,
+      renderRevision,
+      shouldStickBottom,
+      preserveDistanceAfterVisual,
+      nonFollowAnchorTop);
   };

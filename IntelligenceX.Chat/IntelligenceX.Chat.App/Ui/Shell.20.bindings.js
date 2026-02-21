@@ -1683,6 +1683,9 @@
     var text = (promptEl.value || "").trim();
     if (normalizeBool(state.cancelable)) {
       if (text) {
+        if (window.ixEnableTranscriptFollow) {
+          window.ixEnableTranscriptFollow(true);
+        }
         post("send", { text: text });
         promptEl.value = "";
         autoResizePrompt();
@@ -1698,6 +1701,9 @@
       return;
     }
 
+    if (window.ixEnableTranscriptFollow) {
+      window.ixEnableTranscriptFollow(true);
+    }
     post("send", { text: text });
     promptEl.value = "";
     autoResizePrompt();

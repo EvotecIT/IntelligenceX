@@ -42,6 +42,7 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
 
+                    MarkTurnDeltaStage(delta);
                     _assistantStreaming.Append(delta.Text);
                     _activeTurnReceivedDelta = true;
                     ReplaceLastAssistantText(
@@ -57,12 +58,19 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
 
+                    MarkTurnStatusStage(status);
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
-                    AppendActivityTimeline(status, activityText ?? string.Empty);
-                    _latestServiceActivityText = activityText ?? string.Empty;
-                    _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
-                    _ = PublishSessionStateAsync();
+                    var timelineChanged = AppendActivityTimeline(status, activityText ?? string.Empty);
+                    var normalizedActivityText = activityText ?? string.Empty;
+                    var activityChanged = !string.Equals(_latestServiceActivityText, normalizedActivityText, StringComparison.Ordinal);
+                    _latestServiceActivityText = normalizedActivityText;
+                    if (activityChanged || timelineChanged) {
+                        _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
+                    }
+                    if (timelineChanged) {
+                        RequestServiceDrivenSessionPublish();
+                    }
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
                     }
@@ -76,7 +84,7 @@ public sealed partial class MainWindow : Window {
                     }
 
                     ApplyTurnMetrics(metrics);
-                    _ = PublishSessionStateAsync();
+                    RequestServiceDrivenSessionPublish();
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatMetricsTrace(metrics));
                     }
@@ -102,7 +110,7 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
-                        _ = CompleteLoginAndDispatchQueuedTurnAsync();
+                        QueuePostLoginCompletion();
                     }
                     break;
                 case ErrorMessage err:
@@ -130,32 +138,109 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private async Task<bool> VerifyPostLoginAuthenticationAsync() {
-        const int maxProbeAttempts = 5;
+    private void QueuePostLoginCompletion() {
+        Task completionTask;
+        lock (_postLoginCompletionSync) {
+            if (_postLoginCompletionInFlightTask is { IsCompleted: false }) {
+                return;
+            }
+
+            completionTask = RunPostLoginCompletionAsync();
+            _postLoginCompletionInFlightTask = completionTask;
+        }
+
+        _ = completionTask.ContinueWith(
+            completedTask => {
+                lock (_postLoginCompletionSync) {
+                    if (ReferenceEquals(_postLoginCompletionInFlightTask, completedTask)) {
+                        _postLoginCompletionInFlightTask = null;
+                    }
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task RunPostLoginCompletionAsync() {
+        try {
+            await CompleteLoginAndDispatchQueuedTurnAsync().ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Ignore cancellation while app/session is transitioning.
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync("Post-login completion failed: " + ex.Message).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<bool> VerifyPostLoginAuthenticationAsync(bool prioritizeDispatchLatency) {
+        var maxProbeAttempts = prioritizeDispatchLatency ? 2 : 3;
+        var probeTimeout = prioritizeDispatchLatency ? EnsureLoginFastPathProbeTimeout : EnsureLoginPostLoginProbeTimeout;
+        var verificationBudget = prioritizeDispatchLatency ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(5);
+        var verificationStopwatch = Stopwatch.StartNew();
+        var minimumRemainingBudget = TimeSpan.FromMilliseconds(100);
         var runtimePinCleared = false;
+        var requireFreshProbe = true;
         for (var attempt = 0; attempt < maxProbeAttempts; attempt++) {
-            var allowCachedFallback = attempt >= 2;
+            var remainingBudget = verificationBudget - verificationStopwatch.Elapsed;
+            if (remainingBudget <= minimumRemainingBudget) {
+                break;
+            }
+
+            var effectiveProbeTimeout = probeTimeout < remainingBudget ? probeTimeout : remainingBudget;
+            if (effectiveProbeTimeout <= TimeSpan.Zero) {
+                break;
+            }
+
+            var allowCachedFallback = prioritizeDispatchLatency || attempt >= 1;
             if (await RefreshAuthenticationStateAsync(
                     updateStatus: true,
-                    requireFreshProbe: true,
+                    requireFreshProbe: requireFreshProbe,
                     allowCachedAuthenticatedFallback: allowCachedFallback,
-                    probeTimeout: EnsureLoginFreshProbeTimeout)
+                    probeTimeout: effectiveProbeTimeout)
                 .ConfigureAwait(false)) {
                 return true;
             }
 
+            var hasExplicitUnauthenticatedProbe = HasExplicitUnauthenticatedEnsureLoginProbeSnapshot();
+            requireFreshProbe = false;
+
+            var hasAnotherProbeAttempt = attempt + 1 < maxProbeAttempts;
             if (!runtimePinCleared
                 && RequiresInteractiveSignInForCurrentTransport()
-                && attempt >= 1) {
+                && hasAnotherProbeAttempt
+                && hasExplicitUnauthenticatedProbe
+                && (attempt >= 1 || prioritizeDispatchLatency)) {
                 // After OAuth callback succeeds, runtime state may still carry a stale account pin.
                 // Clear it once and continue probing before declaring sign-in failure.
-                _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+                var pinResetTimeout = prioritizeDispatchLatency
+                    ? RuntimeAccountPinResetFastTimeout
+                    : RuntimeAccountPinResetRecoveryTimeout;
+                _ = await TryClearNativeRuntimeAccountPinAsync(pinResetTimeout).ConfigureAwait(false);
                 runtimePinCleared = true;
+                requireFreshProbe = true;
+            } else if (runtimePinCleared && hasExplicitUnauthenticatedProbe) {
+                // A definitive unauthenticated probe even after runtime pin clear is unlikely to recover
+                // within this verification loop; avoid burning the remaining budget on duplicate probes.
+                break;
             }
 
-            if (attempt + 1 < maxProbeAttempts) {
-                var delayMs = Math.Min(2000, 250 * (attempt + 1));
-                await Task.Delay(delayMs).ConfigureAwait(false);
+            if (hasAnotherProbeAttempt) {
+                var delayMs = prioritizeDispatchLatency
+                    ? Math.Min(180, 60 * (attempt + 1))
+                    : Math.Min(500, 120 * (attempt + 1));
+                var plannedDelay = TimeSpan.FromMilliseconds(delayMs);
+                remainingBudget = verificationBudget - verificationStopwatch.Elapsed;
+                if (remainingBudget <= TimeSpan.Zero) {
+                    break;
+                }
+                if (plannedDelay > remainingBudget) {
+                    plannedDelay = remainingBudget;
+                }
+                if (plannedDelay > TimeSpan.Zero) {
+                    await Task.Delay(plannedDelay).ConfigureAwait(false);
+                }
             }
         }
 
@@ -171,9 +256,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task CompleteLoginAndDispatchQueuedTurnAsync() {
+        var queuedPromptCount = GetQueuedPromptAfterLoginCount();
+        var prioritizeDispatchLatency = queuedPromptCount > 0;
         var refreshSucceeded = false;
         try {
-            refreshSucceeded = await VerifyPostLoginAuthenticationAsync().ConfigureAwait(false);
+            refreshSucceeded = await VerifyPostLoginAuthenticationAsync(prioritizeDispatchLatency).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             return;
         } catch (Exception ex) {
@@ -235,20 +322,69 @@ public sealed partial class MainWindow : Window {
     }
 
     private void ApplyTurnMetrics(ChatMetricsMessage metrics) {
+        var normalizedRequestId = NormalizeRequestId(metrics.RequestId);
         var completedUtc = metrics.CompletedAtUtc.Kind == DateTimeKind.Utc
             ? metrics.CompletedAtUtc
             : DateTime.SpecifyKind(metrics.CompletedAtUtc, DateTimeKind.Utc);
+        var startedUtc = metrics.StartedAtUtc.Kind == DateTimeKind.Utc
+            ? metrics.StartedAtUtc
+            : DateTime.SpecifyKind(metrics.StartedAtUtc, DateTimeKind.Utc);
         var outcome = (metrics.Outcome ?? string.Empty).Trim();
         if (outcome.Length == 0) {
             outcome = "unknown";
         }
+        var normalizedDurationMs = Math.Max(0L, metrics.DurationMs);
+        var completion = CompleteTurnLatencyTracking(
+            normalizedRequestId,
+            completedUtc,
+            explicitDurationMs: normalizedDurationMs);
+        if (completion is not null && string.Equals(outcome, "ok", StringComparison.OrdinalIgnoreCase)) {
+            RegisterTurnSuccessReliability(completion);
+        }
 
         lock (_turnDiagnosticsSync) {
+            var prior = _lastTurnMetrics;
+            var sameRequestAsPrior = prior is not null
+                                     && string.Equals(prior.RequestId, normalizedRequestId, StringComparison.OrdinalIgnoreCase);
+            var queueWaitMs = completion?.QueueWaitMs
+                              ?? (sameRequestAsPrior ? prior!.QueueWaitMs : _activeTurnQueueWaitMs);
+            var authProbeMs = completion?.AuthProbeMs
+                              ?? (sameRequestAsPrior ? prior!.AuthProbeMs : null);
+            var connectMs = completion?.ConnectMs
+                            ?? (sameRequestAsPrior ? prior!.ConnectMs : null);
+            var dispatchToFirstStatusMs = completion?.DispatchToFirstStatusMs
+                                         ?? (sameRequestAsPrior ? prior!.DispatchToFirstStatusMs : null);
+            var dispatchToModelSelectedMs = completion?.DispatchToModelSelectedMs
+                                            ?? (sameRequestAsPrior ? prior!.DispatchToModelSelectedMs : null);
+            var dispatchToFirstToolRunningMs = completion?.DispatchToFirstToolRunningMs
+                                              ?? (sameRequestAsPrior ? prior!.DispatchToFirstToolRunningMs : null);
+            var dispatchToFirstDeltaMs = completion?.DispatchToFirstDeltaMs
+                                        ?? (sameRequestAsPrior ? prior!.DispatchToFirstDeltaMs : null);
+            var dispatchToLastDeltaMs = completion?.DispatchToLastDeltaMs
+                                       ?? (sameRequestAsPrior ? prior!.DispatchToLastDeltaMs : null);
+            var streamDurationMs = completion?.StreamDurationMs
+                                   ?? (sameRequestAsPrior ? prior!.StreamDurationMs : null);
+            if (!dispatchToFirstDeltaMs.HasValue && metrics.FirstDeltaAtUtc.HasValue) {
+                var firstDeltaAtUtc = metrics.FirstDeltaAtUtc.Value.Kind == DateTimeKind.Utc
+                    ? metrics.FirstDeltaAtUtc.Value
+                    : DateTime.SpecifyKind(metrics.FirstDeltaAtUtc.Value, DateTimeKind.Utc);
+                dispatchToFirstDeltaMs = TryComputeElapsedMs(startedUtc, firstDeltaAtUtc);
+            }
+
             _lastTurnMetrics = new TurnMetricsSnapshot(
+                RequestId: normalizedRequestId,
                 CompletedUtc: completedUtc,
-                DurationMs: Math.Max(0, metrics.DurationMs),
+                DurationMs: normalizedDurationMs,
                 TtftMs: metrics.TtftMs,
-                QueueWaitMs: _activeTurnQueueWaitMs,
+                QueueWaitMs: queueWaitMs,
+                AuthProbeMs: authProbeMs,
+                ConnectMs: connectMs,
+                DispatchToFirstStatusMs: dispatchToFirstStatusMs,
+                DispatchToModelSelectedMs: dispatchToModelSelectedMs,
+                DispatchToFirstToolRunningMs: dispatchToFirstToolRunningMs,
+                DispatchToFirstDeltaMs: dispatchToFirstDeltaMs,
+                DispatchToLastDeltaMs: dispatchToLastDeltaMs,
+                StreamDurationMs: streamDurationMs,
                 ToolCallsCount: Math.Max(0, metrics.ToolCallsCount),
                 ToolRounds: Math.Max(0, metrics.ToolRounds),
                 ProjectionFallbackCount: Math.Max(0, metrics.ProjectionFallbackCount),
@@ -353,14 +489,78 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private async Task<bool> EnsureConnectedAsync() {
-        if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
+    private async Task<bool> EnsureConnectedAsync(TimeSpan? connectBudgetOverride = null) {
+        if (_client is not null
+            && await IsClientAliveAsync(
+                    _client,
+                    probeTimeout: AliveProbeFastTimeout,
+                    cacheTtl: AliveProbeCacheTtl)
+                .ConfigureAwait(false)) {
             _isConnected = true;
             return true;
         }
 
-        await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
-        var connected = _client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false);
+        var connectBudget = connectBudgetOverride.GetValueOrDefault(DispatchConnectBudget);
+        if (connectBudget <= TimeSpan.Zero) {
+            connectBudget = DispatchConnectBudget;
+        }
+
+        Task<bool> connectAttemptTask;
+        var joinedExistingInFlight = false;
+        lock (_ensureConnectedSync) {
+            if (_ensureConnectedInFlightTask is { IsCompleted: false } inFlightTask) {
+                connectAttemptTask = inFlightTask;
+                joinedExistingInFlight = true;
+            } else {
+                connectAttemptTask = EnsureConnectedCoreAsync(connectBudget);
+                _ensureConnectedInFlightTask = connectAttemptTask;
+            }
+        }
+
+        try {
+            if (joinedExistingInFlight && connectBudget > TimeSpan.Zero) {
+                try {
+                    return await connectAttemptTask.WaitAsync(connectBudget).ConfigureAwait(false);
+                } catch (TimeoutException) {
+                    _isConnected = false;
+                    if (VerboseServiceLogs || _debugMode) {
+                        await AppendSystemBestEffortAsync(
+                                "Connect probe timed out while waiting for an in-flight reconnect. Prompt will retry.")
+                            .ConfigureAwait(false);
+                    }
+                    return false;
+                }
+            }
+
+            return await connectAttemptTask.ConfigureAwait(false);
+        } finally {
+            lock (_ensureConnectedSync) {
+                if (ReferenceEquals(_ensureConnectedInFlightTask, connectAttemptTask) && connectAttemptTask.IsCompleted) {
+                    _ensureConnectedInFlightTask = null;
+                }
+            }
+        }
+    }
+
+    private async Task<bool> EnsureConnectedCoreAsync(TimeSpan connectBudget) {
+        if (_client is not null
+            && await IsClientAliveAsync(
+                    _client,
+                    probeTimeout: AliveProbeFastTimeout,
+                    cacheTtl: AliveProbeCacheTtl)
+                .ConfigureAwait(false)) {
+            _isConnected = true;
+            return true;
+        }
+
+        var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+        if (!hasTrackedRunningServiceProcess && TryGetDispatchConnectFailureCooldownRemaining(out _)) {
+            _isConnected = false;
+            return false;
+        }
+
+        await ConnectAsync(fromUserAction: false, connectBudgetOverride: connectBudget).ConfigureAwait(false);
+        var connected = _client is not null;
         _isConnected = connected;
         if (!connected) {
             await PublishSessionStateAsync().ConfigureAwait(false);

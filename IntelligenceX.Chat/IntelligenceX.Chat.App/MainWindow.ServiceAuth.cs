@@ -28,10 +28,16 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromMilliseconds(1200);
+    private static readonly TimeSpan EnsureLoginPostLoginProbeTimeout = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan EnsureLoginProbeCacheTtl = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan EnsureLoginUnknownProbeRetryDelay = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan RuntimeAccountPinResetTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan RuntimeAccountPinResetFastTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RuntimeAccountPinResetSwitchPreflightTimeout = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan RuntimeAccountPinResetRecoveryTimeout = TimeSpan.FromSeconds(4);
     private enum EnsureLoginProbeState {
         Unknown = 0,
         Authenticated = 1,
@@ -99,6 +105,10 @@ public sealed partial class MainWindow : Window {
         _ensureLoginProbeCachedIsAuthenticated = state == EnsureLoginProbeState.Authenticated;
         _ensureLoginProbeCachedAccountId = _ensureLoginProbeCachedIsAuthenticated ? (accountId ?? string.Empty).Trim() : null;
         _ensureLoginProbeCachedAtUtc = DateTime.UtcNow;
+    }
+
+    private bool HasExplicitUnauthenticatedEnsureLoginProbeSnapshot() {
+        return _ensureLoginProbeCacheHasValue && !_ensureLoginProbeCachedIsAuthenticated;
     }
 
     private async Task<EnsureLoginProbeSnapshot> ProbeEnsureLoginAsync(TimeSpan timeout, bool requireFreshProbe) {
@@ -181,19 +191,28 @@ public sealed partial class MainWindow : Window {
         _loginInProgress = false;
     }
 
-    private async Task<bool> IsClientAliveAsync(ChatServiceClient client) {
+    private async Task<bool> IsClientAliveAsync(
+        ChatServiceClient client,
+        TimeSpan? probeTimeout = null,
+        TimeSpan? cacheTtl = null) {
+        var effectiveCacheTtl = cacheTtl.GetValueOrDefault(AliveProbeCacheTtl);
         var nowTicks = DateTime.UtcNow.Ticks;
         lock (_aliveProbeSync) {
             if (ReferenceEquals(client, _aliveProbeClient)
                 && _aliveProbeTicksUtc > 0
-                && nowTicks - _aliveProbeTicksUtc <= TimeSpan.FromMilliseconds(1200).Ticks) {
+                && effectiveCacheTtl > TimeSpan.Zero
+                && nowTicks - _aliveProbeTicksUtc <= effectiveCacheTtl.Ticks) {
                 return true;
             }
         }
 
         try {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            _ = await client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, cts.Token).ConfigureAwait(false);
+            var effectiveProbeTimeout = probeTimeout.GetValueOrDefault(AliveProbeTimeout);
+            using var cts = effectiveProbeTimeout > TimeSpan.Zero ? new CancellationTokenSource(effectiveProbeTimeout) : null;
+            _ = await client.RequestAsync<HelloMessage>(
+                    new HelloRequest { RequestId = NextId() },
+                    cts?.Token ?? CancellationToken.None)
+                .ConfigureAwait(false);
             lock (_aliveProbeSync) {
                 _aliveProbeClient = client;
                 _aliveProbeTicksUtc = DateTime.UtcNow.Ticks;
@@ -245,13 +264,6 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task AutoReconnectLoopAsync(CancellationToken cancellationToken) {
-        var delays = new[] {
-            TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(20),
-            TimeSpan.FromSeconds(30)
-        };
         var attempt = 0;
 
         while (!cancellationToken.IsCancellationRequested) {
@@ -259,8 +271,17 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
-            var delay = delays[Math.Min(attempt, delays.Length - 1)];
-            attempt++;
+            if (IsTurnDispatchInProgress()) {
+                try {
+                    await Task.Delay(AutoReconnectBusyTurnDelay, cancellationToken).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return;
+                }
+
+                continue;
+            }
+
+            var delay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
 
             try {
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
@@ -272,7 +293,8 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
-            await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+            await ConnectAsync(fromUserAction: false, connectBudgetOverride: AutoReconnectConnectBudget).ConfigureAwait(false);
+            attempt++;
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 return;
@@ -309,7 +331,6 @@ public sealed partial class MainWindow : Window {
             ApplyNonNativeAuthenticationStateIfNeeded();
             if (updateStatus) {
                 await SetStatusAsync(SessionStatus.ForConnection(_isConnected, isAuthenticated: true)).ConfigureAwait(false);
-                await PublishOptionsStateAsync().ConfigureAwait(false);
             }
 
             return true;
@@ -342,7 +363,6 @@ public sealed partial class MainWindow : Window {
 
                 if (updateStatus) {
                     await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
-                    await PublishOptionsStateAsync().ConfigureAwait(false);
                 }
 
                 return true;
@@ -351,7 +371,6 @@ public sealed partial class MainWindow : Window {
                 _authenticatedAccountId = null;
                 if (updateStatus) {
                     await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: false)).ConfigureAwait(false);
-                    await PublishOptionsStateAsync().ConfigureAwait(false);
                 }
 
                 return false;
@@ -407,10 +426,10 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false) {
+    private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false, bool skipPreLoginAuthProbe = false) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
-            if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+            if (!await EnsureConnectedAsync(connectBudgetOverride: StartupConnectBudget).ConfigureAwait(false)) {
                 return false;
             }
 
@@ -434,23 +453,33 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+        if (!await EnsureConnectedAsync(connectBudgetOverride: StartupConnectBudget).ConfigureAwait(false)) {
             return false;
         }
 
-        if (!forceInteractive) {
+        if (!forceInteractive && !skipPreLoginAuthProbe) {
             if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
                 _isConnected = _client is not null;
                 await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
                 return true;
             }
 
-            // Allow one short retry window before launching browser login.
-            await Task.Delay(250).ConfigureAwait(false);
-            if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
-                _isConnected = _client is not null;
-                await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
-                return true;
+            // Retry only when the first probe was inconclusive.
+            // Explicit unauthenticated probes are cached and should not incur extra wait.
+            if (!_ensureLoginProbeCacheHasValue) {
+                if (EnsureLoginUnknownProbeRetryDelay > TimeSpan.Zero) {
+                    await Task.Delay(EnsureLoginUnknownProbeRetryDelay).ConfigureAwait(false);
+                }
+
+                if (await RefreshAuthenticationStateAsync(
+                        updateStatus: true,
+                        requireFreshProbe: true,
+                        allowCachedAuthenticatedFallback: false,
+                        probeTimeout: EnsureLoginFastPathProbeTimeout).ConfigureAwait(false)) {
+                    _isConnected = _client is not null;
+                    await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
+                    return true;
+                }
             }
         }
 
@@ -511,33 +540,29 @@ public sealed partial class MainWindow : Window {
             // runtime account pin so the next login can bind to whichever account authenticates.
             _localProviderOpenAIAccountId = string.Empty;
             SyncNativeAccountSlotsToAppState();
-            try {
-                await PersistAppStateAsync().ConfigureAwait(false);
-            } catch (Exception ex) {
-                if (VerboseServiceLogs || _debugMode) {
-                    await AppendSystemBestEffortAsync("Account switch will continue, but resetting runtime account selection failed: " + ex.Message)
-                        .ConfigureAwait(false);
-                }
-            }
+            QueuePersistAppState();
         }
 
-        _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+        _ = await TryClearNativeRuntimeAccountPinAsync(RuntimeAccountPinResetSwitchPreflightTimeout).ConfigureAwait(false);
     }
 
-    private async Task<bool> TryClearNativeRuntimeAccountPinAsync() {
+    private async Task<bool> TryClearNativeRuntimeAccountPinAsync(TimeSpan? timeout = null) {
         var client = _client;
         if (client is null) {
             return false;
         }
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var effectiveTimeout = timeout.GetValueOrDefault(RuntimeAccountPinResetTimeout);
+        using var cts = effectiveTimeout > TimeSpan.Zero
+            ? new CancellationTokenSource(effectiveTimeout)
+            : null;
         try {
             _ = await client.ApplyRuntimeSettingsAsync(
                     openAIAccountId: string.Empty,
-                    cancellationToken: cts.Token)
+                    cancellationToken: cts?.Token ?? CancellationToken.None)
                 .ConfigureAwait(false);
             return true;
-        } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+        } catch (OperationCanceledException) when (cts is not null && cts.IsCancellationRequested) {
             // Timeout while applying runtime settings should be non-fatal for auth recovery.
             if (VerboseServiceLogs || _debugMode) {
                 await AppendSystemBestEffortAsync("Runtime account pin reset timed out.")
@@ -722,7 +747,21 @@ public sealed partial class MainWindow : Window {
             _servicePipeName = pipeName;
             _pendingServiceLaunchProfileOptions = null;
 
-            await Task.Delay(250).ConfigureAwait(true);
+            if (ServiceStartupExitProbeDelay > TimeSpan.Zero) {
+                await Task.Delay(ServiceStartupExitProbeDelay).ConfigureAwait(false);
+            } else {
+                await Task.Yield();
+            }
+
+            if (p.HasExited) {
+                if (ReferenceEquals(_serviceProcess, p)) {
+                    _serviceProcess = null;
+                    _servicePipeName = null;
+                }
+
+                return false;
+            }
+
             return true;
         } catch (Exception ex) {
             AppendSystem(SystemNotice.ServiceStartFailed(ex.Message));

@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window {
         string? preferredConversationId = null,
         DateTime? queuedAtUtc = null,
         bool skipUserBubble = false) {
+        var dispatchStartedUtc = DateTime.UtcNow;
         text = (text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(text)) {
             return;
@@ -34,7 +35,7 @@ public sealed partial class MainWindow : Window {
 
         MarkStartupInteractivePriorityRequested();
 
-        if (_isSending) {
+        if (IsTurnDispatchInProgress()) {
             var queueConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
                 ? _activeConversationId
                 : preferredConversationId;
@@ -48,104 +49,157 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
-        if (turn is null) {
-            return;
-        }
-
-        if (_modelKickoffInProgress) {
-            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
-        }
-
-        // Keep user bubble rendering immediate, but still validate connectivity
-        // before we enter active send state.
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
-            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
-            return;
-        }
-        if (_client is null) {
-            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
-            return;
-        }
-
-        long? queueWaitMs = null;
-        if (queuedAtUtc.HasValue && queuedAtUtc.Value.Kind == DateTimeKind.Utc) {
-            var elapsed = DateTime.UtcNow - queuedAtUtc.Value;
-            if (elapsed.TotalMilliseconds > 0) {
-                queueWaitMs = (long)Math.Round(elapsed.TotalMilliseconds);
-            }
-        }
-
-        var requestId = turn.RequestId;
-        _isSending = true;
-        _latestServiceActivityText = string.Empty;
-        _activeTurnQueueWaitMs = queueWaitMs;
-        ResetActivityTimeline();
-        StartTurnWatchdog();
-        CancellationTokenSource? turnRequestCts = null;
+        _turnStartupInProgress = true;
+        var dispatchRequestId = string.Empty;
         try {
-            turnRequestCts = new CancellationTokenSource();
-            lock (_activeTurnLifecycleSync) {
-                _activeTurnRequestId = requestId;
-                _latestTurnRequestId = requestId;
-                _cancelRequestedTurnRequestId = null;
-                _activeTurnRequestCts = turnRequestCts;
-                _activeRequestConversationId = turn.ConversationId;
-            }
-            ClearToolRoutingInsights();
-            await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
-            try {
-                await PublishSessionStateAsync().ConfigureAwait(false);
-            } finally {
-                // Ensure tools state is refreshed after routing reset even if session publish faults.
-                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
-            }
-
-            await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
-        } finally {
-            StopTurnWatchdog();
-            _isSending = false;
-            lock (_activeTurnLifecycleSync) {
-                if (string.Equals(_activeTurnRequestId, requestId, StringComparison.Ordinal)) {
-                    _activeTurnRequestId = null;
-                    if (string.Equals(_activeRequestConversationId, turn.ConversationId, StringComparison.OrdinalIgnoreCase)) {
-                        _activeRequestConversationId = null;
-                    }
+            long? queueWaitMs = null;
+            if (queuedAtUtc.HasValue && queuedAtUtc.Value.Kind == DateTimeKind.Utc) {
+                var elapsed = DateTime.UtcNow - queuedAtUtc.Value;
+                if (elapsed.TotalMilliseconds > 0) {
+                    queueWaitMs = (long)Math.Round(elapsed.TotalMilliseconds);
                 }
+            }
 
-                if (string.Equals(_cancelRequestedTurnRequestId, requestId, StringComparison.Ordinal)) {
+            var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
+            if (turn is null) {
+                return;
+            }
+
+            dispatchRequestId = turn.RequestId;
+
+            var activeUsageIdentity = ResolveActiveUsageIdentity();
+            if (TryGetActiveProviderCircuitOpen(activeUsageIdentity, out var circuitRemaining, out _)) {
+                var waitSeconds = Math.Max(1, (int)Math.Ceiling(circuitRemaining.TotalSeconds));
+                await ApplyTurnFailureAsync(
+                        turn,
+                        AssistantTurnOutcome.Error(
+                            "Provider cooldown active (" + waitSeconds + "s). "
+                            + "Retry in about " + waitSeconds + " seconds."))
+                    .ConfigureAwait(false);
+                await SetStatusAsync(
+                        "Provider cooldown active (" + waitSeconds + "s). Retrying now would likely fail.",
+                        SessionStatusTone.Warn)
+                    .ConfigureAwait(false);
+                await SetActivityAsync(
+                        "Runtime is cooling down after transient failures. Retry in about " + waitSeconds + "s.")
+                    .ConfigureAwait(false);
+                await PublishSessionStateAsync().ConfigureAwait(false);
+                return;
+            }
+
+            RegisterTurnDispatchStart(turn.RequestId, activeUsageIdentity, dispatchStartedUtc, queueWaitMs, turn.AuthProbeMs);
+
+            if (_modelKickoffInProgress) {
+                await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
+            }
+
+            // Keep user bubble rendering immediate, but still validate connectivity
+            // before we enter active send state.
+            var connectStartedUtc = DateTime.UtcNow;
+            var connected = await EnsureConnectedAsync().ConfigureAwait(false);
+            var connectCompletedUtc = DateTime.UtcNow;
+            MarkTurnConnectStage(turn.RequestId, connectStartedUtc, connectCompletedUtc, connected);
+            if (!connected) {
+                await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+                await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+                return;
+            }
+            if (_client is null) {
+                MarkTurnConnectStage(turn.RequestId, connectStartedUtc, DateTime.UtcNow, connected: false);
+                await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+                await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+                return;
+            }
+
+            _turnStartupInProgress = false;
+            var requestId = turn.RequestId;
+            _isSending = true;
+            _latestServiceActivityText = string.Empty;
+            _activeTurnQueueWaitMs = queueWaitMs;
+            ResetActivityTimeline();
+            StartTurnWatchdog();
+            CancellationTokenSource? turnRequestCts = null;
+            try {
+                turnRequestCts = new CancellationTokenSource();
+                lock (_activeTurnLifecycleSync) {
+                    _activeTurnRequestId = requestId;
+                    _latestTurnRequestId = requestId;
                     _cancelRequestedTurnRequestId = null;
+                    _activeTurnRequestCts = turnRequestCts;
+                    _activeRequestConversationId = turn.ConversationId;
+                }
+                ClearToolRoutingInsights();
+                await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
+                try {
+                    await PublishSessionStateAsync().ConfigureAwait(false);
+                } finally {
+                    // Ensure tools state is refreshed after routing reset even if session publish faults.
+                    await PublishOptionsStateSafeAsync().ConfigureAwait(false);
                 }
 
-                if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
-                    _activeTurnRequestCts = null;
+                await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
+            } finally {
+                StopTurnWatchdog();
+                _isSending = false;
+                lock (_activeTurnLifecycleSync) {
+                    if (string.Equals(_activeTurnRequestId, requestId, StringComparison.Ordinal)) {
+                        _activeTurnRequestId = null;
+                        if (string.Equals(_activeRequestConversationId, turn.ConversationId, StringComparison.OrdinalIgnoreCase)) {
+                            _activeRequestConversationId = null;
+                        }
+                    }
+
+                    if (string.Equals(_cancelRequestedTurnRequestId, requestId, StringComparison.Ordinal)) {
+                        _cancelRequestedTurnRequestId = null;
+                    }
+
+                    if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
+                        _activeTurnRequestCts = null;
+                    }
+
+                    if (turnRequestCts is not null) {
+                        try {
+                            turnRequestCts.Dispose();
+                        } catch (ObjectDisposedException) {
+                            // Cancellation may race with completion; disposed CTS is safe to ignore.
+                        }
+                    }
+                }
+                _activeTurnReceivedDelta = false;
+                _activeTurnQueueWaitMs = null;
+                try {
+                    await PublishSessionStateAsync().ConfigureAwait(false);
+                } finally {
+                    await PublishOptionsStateSafeAsync().ConfigureAwait(false);
                 }
 
-                if (turnRequestCts is not null) {
-                    try {
-                        turnRequestCts.Dispose();
-                    } catch (ObjectDisposedException) {
-                        // Cancellation may race with completion; disposed CTS is safe to ignore.
+                var dispatchedNextQueuedTurn = await DispatchNextQueuedTurnAsync(honorAutoDispatch: true).ConfigureAwait(false);
+                if (!dispatchedNextQueuedTurn) {
+                    var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
+                    if (!_queueAutoDispatchEnabled && queuedTotal > 0) {
+                        await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
+                    } else {
+                        await RestoreHeaderStatusAfterTurnIfNeededAsync(requestId).ConfigureAwait(false);
                     }
                 }
             }
-            _activeTurnReceivedDelta = false;
-            _activeTurnQueueWaitMs = null;
-            try {
-                await PublishSessionStateAsync().ConfigureAwait(false);
-            } finally {
-                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
-            }
+        } finally {
+            if (_turnStartupInProgress) {
+                _turnStartupInProgress = false;
+                try {
+                    await PublishSessionStateAsync().ConfigureAwait(false);
+                } finally {
+                    await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+                }
 
-            var dispatchedNextQueuedTurn = await DispatchNextQueuedTurnAsync(honorAutoDispatch: true).ConfigureAwait(false);
-            if (!dispatchedNextQueuedTurn) {
-                var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
-                if (!_queueAutoDispatchEnabled && queuedTotal > 0) {
-                    await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
-                } else {
-                    await RestoreHeaderStatusAfterTurnIfNeededAsync(requestId).ConfigureAwait(false);
+                var dispatchedNextQueuedTurn = await DispatchNextQueuedTurnAsync(honorAutoDispatch: true).ConfigureAwait(false);
+                if (!dispatchedNextQueuedTurn) {
+                    var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
+                    if (!_queueAutoDispatchEnabled && queuedTotal > 0) {
+                        await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
+                    } else if (!string.IsNullOrWhiteSpace(dispatchRequestId)) {
+                        await RestoreHeaderStatusAfterTurnIfNeededAsync(dispatchRequestId).ConfigureAwait(false);
+                    }
                 }
             }
         }
@@ -175,7 +229,7 @@ public sealed partial class MainWindow : Window {
         DateTime? queuedAtUtc = null,
         bool skipUserBubble = false) {
         var normalized = (conversationId ?? string.Empty).Trim();
-        if (_isSending) {
+        if (IsTurnDispatchInProgress()) {
             await SendPromptAsync(
                     text,
                     normalized.Length == 0 ? _activeConversationId : normalized,
@@ -299,8 +353,12 @@ public sealed partial class MainWindow : Window {
         return "Queued prompt paused by account limit. Use Switch Account to run now.";
     }
 
+    private bool IsTurnDispatchInProgress() {
+        return _isSending || _turnStartupInProgress;
+    }
+
     private async Task<bool> TryDispatchQueuedPromptAfterLoginAsync(bool honorAutoDispatch = true) {
-        if (_isSending || !IsEffectivelyAuthenticatedForCurrentTransport() || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
+        if (IsTurnDispatchInProgress() || !IsEffectivelyAuthenticatedForCurrentTransport() || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
             return false;
         }
 
@@ -324,7 +382,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> DispatchNextQueuedTurnAsync(bool honorAutoDispatch) {
-        if (_isSending || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
+        if (IsTurnDispatchInProgress() || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
             return false;
         }
 
@@ -357,7 +415,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task RunNextQueuedTurnAsync() {
-        if (_isSending) {
+        if (IsTurnDispatchInProgress()) {
             await SetStatusAsync("Current turn is still running.").ConfigureAwait(false);
             return;
         }
@@ -372,7 +430,6 @@ public sealed partial class MainWindow : Window {
         var queuedTotal = queuedTurns + queuedSignIn;
         if (queuedTotal == 0) {
             await SetStatusAsync("No queued turns.").ConfigureAwait(false);
-            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
@@ -388,7 +445,6 @@ public sealed partial class MainWindow : Window {
         }
 
         await SetStatusAsync("Queued turns are waiting.").ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
     }
 
     private async Task ClearQueuedTurnsAsync() {
@@ -397,12 +453,10 @@ public sealed partial class MainWindow : Window {
         var clearedTotal = clearedPending + clearedSignIn;
         if (clearedTotal <= 0) {
             await SetStatusAsync("No queued turns to clear.").ConfigureAwait(false);
-            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
         await SetStatusAsync($"Cleared queued turns ({clearedTotal} removed).").ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
     }
 
     private async Task CancelActiveTurnAsync() {
@@ -433,7 +487,6 @@ public sealed partial class MainWindow : Window {
         }
 
         await SetStatusAsync(SessionStatus.Canceling()).ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
 
         try {
             var cancelRequest = new CancelChatRequest {

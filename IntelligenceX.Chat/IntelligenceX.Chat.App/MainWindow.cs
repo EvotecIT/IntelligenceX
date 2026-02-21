@@ -60,6 +60,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan PersistDebounceInterval = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
+    private static readonly TimeSpan ServiceDrivenSessionPublishMinInterval = TimeSpan.FromMilliseconds(140);
     private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
@@ -68,10 +69,26 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupInitialPipeConnectColdStartTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan DispatchConnectBudget = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan DispatchConnectFailureCooldown = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan AutoReconnectConnectBudget = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan AutoReconnectBusyTurnDelay = TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan StartupConnectRetryAttemptCapNonInteractive = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ServiceStartupExitProbeDelay = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan StartupConnectAttemptHardTimeoutGrace = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan StartupConnectAttemptOutlierThreshold = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan AliveProbeCacheTtl = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan AliveProbeTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AliveProbeFastTimeout = TimeSpan.FromMilliseconds(700);
+    private static readonly TimeSpan[] AutoReconnectBackoffDelays = {
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(6),
+        TimeSpan.FromSeconds(12),
+        TimeSpan.FromSeconds(20)
+    };
+    private static readonly TimeSpan KickoffRecoverySettleDelay = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan StartupDeferredModelProfileSyncDelay = TimeSpan.FromMilliseconds(1250);
@@ -220,6 +237,9 @@ public sealed partial class MainWindow : Window {
 
     private readonly string _pipeName = "intelligencex.chat";
     private readonly SemaphoreSlim _connectGate = new(1, 1);
+    private readonly object _ensureConnectedSync = new();
+    private Task<bool>? _ensureConnectedInFlightTask;
+    private long _lastDispatchConnectFailureUtcTicks;
     private bool _webViewReady;
     private bool _startupInitialized;
     private int _startupFlowState;
@@ -312,6 +332,7 @@ public sealed partial class MainWindow : Window {
     private readonly HashSet<string> _knownProfiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _appStateLoaded;
     private bool _isSending;
+    private bool _turnStartupInProgress;
     private readonly object _pendingTurnQueueSync = new();
     private readonly Queue<QueuedTurn> _pendingTurns = new();
     private string? _activeTurnRequestId;
@@ -353,6 +374,7 @@ public sealed partial class MainWindow : Window {
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
     private long _transcriptRenderGeneration;
     private long _transcriptLastRenderUtcTicks;
+    private string? _lastTranscriptScriptPayload;
     private readonly object _uiPublishSync = new();
     private bool _uiPublishPumpRunning;
     private bool _pendingSessionStatePublish;
@@ -361,6 +383,27 @@ public sealed partial class MainWindow : Window {
     private TaskCompletionSource<object?>? _pendingOptionsStatePublishTcs;
     private TaskCompletionSource<object?>? _activeSessionStatePublishTcs;
     private TaskCompletionSource<object?>? _activeOptionsStatePublishTcs;
+    private string? _lastPublishedSessionStateJson;
+    private string? _lastPublishedOptionsStateJson;
+    private string? _lastStatusScriptPayload;
+    private string? _lastActivityScriptPayload;
+    private string? _lastStatusDrivenSessionStamp;
+    private string? _lastStatusDrivenOptionsStamp;
+    private readonly object _serviceSessionPublishSync = new();
+    private bool _serviceSessionPublishScheduled;
+    private bool _serviceSessionPublishPending;
+    private long _serviceSessionPublishLastUtcTicks;
+    private readonly object _postLoginCompletionSync = new();
+    private Task? _postLoginCompletionInFlightTask;
+    private long _serviceSessionPublishRequestedCount;
+    private long _serviceSessionPublishCoalescedCount;
+    private long _serviceSessionPublishExecutedCount;
+    private long _serviceSessionPublishFailedCount;
+    private long _serviceSessionPublishDelayedCount;
+    private long _serviceSessionPublishLastDelayMs;
+    private long _serviceSessionPublishMaxDelayMs;
+    private long _serviceSessionPublishLastRequestedUtcTicks;
+    private long _serviceSessionPublishLastPublishedUtcTicks;
     private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
     private CancellationTokenSource? _persistDebounceCts;
@@ -422,10 +465,19 @@ public sealed partial class MainWindow : Window {
         long RequestId);
 
     private sealed record TurnMetricsSnapshot(
+        string RequestId,
         DateTime CompletedUtc,
         long DurationMs,
         long? TtftMs,
         long? QueueWaitMs,
+        long? AuthProbeMs,
+        long? ConnectMs,
+        long? DispatchToFirstStatusMs,
+        long? DispatchToModelSelectedMs,
+        long? DispatchToFirstToolRunningMs,
+        long? DispatchToFirstDeltaMs,
+        long? DispatchToLastDeltaMs,
+        long? StreamDurationMs,
         int ToolCallsCount,
         int ToolRounds,
         int ProjectionFallbackCount,

@@ -344,7 +344,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        if (_isSending && string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
+        if (IsTurnDispatchInProgress() && string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
             await SetStatusAsync(SessionStatus.CannotDeleteActiveConversationDuringTurn()).ConfigureAwait(false);
             return;
         }

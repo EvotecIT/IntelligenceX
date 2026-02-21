@@ -45,6 +45,8 @@
     cancelRequested: false,
     activityTimeline: [],
     lastTurnMetrics: null,
+    latencySummary: null,
+    providerCircuit: null,
     windowMaximized: false,
     debugMode: false,
     expandedToolPacks: {},

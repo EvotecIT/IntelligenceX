@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task RenderTranscriptAsync() {
         if (!_webViewReady) {
+            _lastTranscriptScriptPayload = null;
             return;
         }
 
@@ -124,7 +125,21 @@ public sealed partial class MainWindow : Window {
                 return;
             }
             var json = JsonSerializer.Serialize(html);
-            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask()).ConfigureAwait(false);
+            if (string.Equals(_lastTranscriptScriptPayload, json, StringComparison.Ordinal)) {
+                return;
+            }
+
+            var previousPayload = _lastTranscriptScriptPayload;
+            _lastTranscriptScriptPayload = json;
+            try {
+                await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask())
+                    .ConfigureAwait(false);
+            } catch {
+                if (string.Equals(_lastTranscriptScriptPayload, json, StringComparison.Ordinal)) {
+                    _lastTranscriptScriptPayload = previousPayload;
+                }
+                throw;
+            }
             Interlocked.Exchange(ref _transcriptLastRenderUtcTicks, DateTime.UtcNow.Ticks);
         } finally {
             _transcriptRenderGate.Release();
@@ -146,15 +161,60 @@ public sealed partial class MainWindow : Window {
         _statusTone = tone ?? InferStatusTone(_statusText);
         _usageLimitSwitchRecommended = usageLimitSwitchRecommended ?? InferUsageLimitSwitchRecommendation(_statusText);
         if (!_webViewReady) {
+            lock (_uiPublishSync) {
+                _lastStatusScriptPayload = null;
+                _lastStatusDrivenSessionStamp = null;
+                _lastStatusDrivenOptionsStamp = null;
+            }
             return;
         }
 
         var textJson = JsonSerializer.Serialize(_statusText);
         var toneJson = JsonSerializer.Serialize(MapStatusTone(_statusTone));
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetStatus(" + textJson + "," + toneJson + ");").AsTask())
-            .ConfigureAwait(false);
-        await PublishSessionStateAsync().ConfigureAwait(false);
-        await PublishOptionsStateAsync().ConfigureAwait(false);
+        var scriptPayload = textJson + "|" + toneJson;
+        var publishStatusScript = false;
+        lock (_uiPublishSync) {
+            if (!string.Equals(_lastStatusScriptPayload, scriptPayload, StringComparison.Ordinal)) {
+                _lastStatusScriptPayload = scriptPayload;
+                publishStatusScript = true;
+            }
+        }
+
+        if (publishStatusScript) {
+            try {
+                await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetStatus(" + textJson + "," + toneJson + ");").AsTask())
+                    .ConfigureAwait(false);
+            } catch {
+                lock (_uiPublishSync) {
+                    if (string.Equals(_lastStatusScriptPayload, scriptPayload, StringComparison.Ordinal)) {
+                        _lastStatusScriptPayload = null;
+                    }
+                }
+                throw;
+            }
+        }
+
+        var statusDrivenOptionsStamp = BuildStatusDrivenOptionsStamp();
+        var statusDrivenSessionStamp = BuildStatusDrivenSessionStamp();
+        var publishSessionFromStatus = false;
+        var publishOptionsFromStatus = false;
+        lock (_uiPublishSync) {
+            if (!string.Equals(_lastStatusDrivenSessionStamp, statusDrivenSessionStamp, StringComparison.Ordinal)) {
+                _lastStatusDrivenSessionStamp = statusDrivenSessionStamp;
+                publishSessionFromStatus = true;
+            }
+            if (!string.Equals(_lastStatusDrivenOptionsStamp, statusDrivenOptionsStamp, StringComparison.Ordinal)) {
+                _lastStatusDrivenOptionsStamp = statusDrivenOptionsStamp;
+                publishOptionsFromStatus = true;
+            }
+        }
+
+        if (publishSessionFromStatus) {
+            await PublishSessionStateAsync().ConfigureAwait(false);
+        }
+        if (publishOptionsFromStatus) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
     }
 
     private Task SetStatusAsync(SessionStatus status) {
@@ -170,6 +230,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task PublishSessionStateCoreAsync() {
         if (!_webViewReady) {
+            _lastPublishedSessionStateJson = null;
             return;
         }
 
@@ -188,15 +249,27 @@ public sealed partial class MainWindow : Window {
             authenticated = effectiveAuthenticated,
             accountId = _authenticatedAccountId ?? string.Empty,
             loginInProgress = effectiveLoginInProgress,
-            sending = _isSending,
+            sending = _isSending || _turnStartupInProgress,
             cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId),
             cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId),
             activityTimeline = SnapshotActivityTimeline(),
             lastTurnMetrics = BuildLastTurnMetricsState(),
+            latencySummary = BuildActiveProviderLatencySummaryState(),
+            providerCircuit = BuildActiveProviderCircuitState(),
+            serviceSessionPublish = BuildServiceSessionPublishDiagnosticsState(),
             debugMode = _debugMode,
             windowMaximized = IsWindowMaximized()
         });
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetSessionState(" + json + ");").AsTask()).ConfigureAwait(false);
+        if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedSessionStateJson, json)) {
+            return;
+        }
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetSessionState(" + json + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            UiPublishDedupe.RollbackFailedPublish(_uiPublishSync, ref _lastPublishedSessionStateJson, json);
+            throw;
+        }
     }
 
     private static string MapStatusTone(SessionStatusTone tone) {
@@ -236,6 +309,40 @@ public sealed partial class MainWindow : Window {
         }
 
         return SessionStatusTone.Neutral;
+    }
+
+    private string BuildStatusDrivenOptionsStamp() {
+        return string.Join(
+            "|",
+            _isConnected ? "1" : "0",
+            IsEffectivelyAuthenticatedForCurrentTransport() ? "1" : "0",
+            _authenticatedAccountId ?? string.Empty,
+            _localProviderTransport,
+            _activeNativeAccountSlot.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private string BuildStatusDrivenSessionStamp() {
+        var effectiveAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
+        var effectiveLoginInProgress = RequiresInteractiveSignInForCurrentTransport() && _loginInProgress;
+        var queuedPromptCount = GetQueuedPromptAfterLoginCount();
+        var queuedTurnCount = GetQueuedTurnCount();
+        var sending = _isSending || _turnStartupInProgress;
+        var cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId);
+        var cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId);
+
+        return string.Join(
+            "|",
+            _usageLimitSwitchRecommended ? "1" : "0",
+            _isConnected ? "1" : "0",
+            effectiveAuthenticated ? "1" : "0",
+            _authenticatedAccountId ?? string.Empty,
+            effectiveLoginInProgress ? "1" : "0",
+            queuedPromptCount.ToString(CultureInfo.InvariantCulture),
+            queuedTurnCount.ToString(CultureInfo.InvariantCulture),
+            sending ? "1" : "0",
+            cancelable ? "1" : "0",
+            cancelRequested ? "1" : "0",
+            _debugMode ? "1" : "0");
     }
 
     private static bool InferUsageLimitSwitchRecommendation(string text) {
@@ -443,6 +550,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task PublishOptionsStateCoreAsync() {
         if (!_webViewReady) {
+            _lastPublishedOptionsStateJson = null;
             return;
         }
 
@@ -556,8 +664,16 @@ public sealed partial class MainWindow : Window {
                 pluginSearchPaths = _sessionPolicy.PluginSearchPaths
             }
         });
+        if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json)) {
+            return;
+        }
 
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            UiPublishDedupe.RollbackFailedPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json);
+            throw;
+        }
     }
 
 }
