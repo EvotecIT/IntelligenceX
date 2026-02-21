@@ -327,6 +327,12 @@
   var TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX = 28;
   var TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX = 84;
   var TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX = 180;
+  var TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS = 1400;
+  var transcriptLastUserScrollIntentAt = 0;
+
+  function markTranscriptUserScrollIntent() {
+    transcriptLastUserScrollIntentAt = Date.now();
+  }
 
   function distanceFromBottom(el) {
     if (!el) {
@@ -398,11 +404,21 @@
     return transcriptFollowState.enabled;
   }
 
+  transcript.addEventListener("wheel", markTranscriptUserScrollIntent, { passive: true });
+  transcript.addEventListener("pointerdown", markTranscriptUserScrollIntent);
+  transcript.addEventListener("touchstart", markTranscriptUserScrollIntent, { passive: true });
   transcript.addEventListener("scroll", function() {
     if (transcriptFollowState.suppressScrollEvent) {
       return;
     }
-    refreshTranscriptFollowState({ allowDisable: true, allowEnable: true });
+
+    var allowDisable = true;
+    if (state.sending === true && transcriptFollowState.enabled) {
+      var userIntentAge = Date.now() - transcriptLastUserScrollIntentAt;
+      allowDisable = userIntentAge >= 0 && userIntentAge <= TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS;
+    }
+
+    refreshTranscriptFollowState({ allowDisable: allowDisable, allowEnable: true });
   });
   refreshTranscriptFollowState();
 
