@@ -108,6 +108,8 @@ public static class OfficeImoArtifactWriter {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var normalizedMarkdown = NormalizeTranscriptMarkdownForDocx(sourceMarkdown);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, normalizedMarkdown);
+        // Runtime export materializes visual fences before invoking this writer.
+        // This path intentionally handles only markdown normalization and image allow-listing.
         var allowedImageDirectories = BuildAllowedImageDirectories(additionalAllowedImageDirectories);
         WriteDocxFromMarkdown(transcriptMarkdown, outputPath, allowedImageDirectories);
     }
