@@ -147,16 +147,21 @@ public sealed partial class MainWindow : Window {
                 return true;
             }
 
+            var hasAnotherProbeAttempt = attempt + 1 < maxProbeAttempts;
             if (!runtimePinCleared
                 && RequiresInteractiveSignInForCurrentTransport()
-                && attempt >= 1) {
+                && hasAnotherProbeAttempt
+                && (attempt >= 1 || prioritizeDispatchLatency)) {
                 // After OAuth callback succeeds, runtime state may still carry a stale account pin.
                 // Clear it once and continue probing before declaring sign-in failure.
-                _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+                var pinResetTimeout = prioritizeDispatchLatency
+                    ? RuntimeAccountPinResetFastTimeout
+                    : RuntimeAccountPinResetTimeout;
+                _ = await TryClearNativeRuntimeAccountPinAsync(pinResetTimeout).ConfigureAwait(false);
                 runtimePinCleared = true;
             }
 
-            if (attempt + 1 < maxProbeAttempts) {
+            if (hasAnotherProbeAttempt) {
                 var delayMs = prioritizeDispatchLatency
                     ? Math.Min(500, 150 * (attempt + 1))
                     : Math.Min(2000, 250 * (attempt + 1));

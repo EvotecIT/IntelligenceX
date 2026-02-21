@@ -33,6 +33,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EnsureLoginProbeCacheTtl = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan EnsureLoginUnknownProbeRetryDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan RuntimeAccountPinResetTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan RuntimeAccountPinResetFastTimeout = TimeSpan.FromSeconds(2);
     private enum EnsureLoginProbeState {
         Unknown = 0,
         Authenticated = 1,
@@ -535,20 +537,23 @@ public sealed partial class MainWindow : Window {
         _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
     }
 
-    private async Task<bool> TryClearNativeRuntimeAccountPinAsync() {
+    private async Task<bool> TryClearNativeRuntimeAccountPinAsync(TimeSpan? timeout = null) {
         var client = _client;
         if (client is null) {
             return false;
         }
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var effectiveTimeout = timeout.GetValueOrDefault(RuntimeAccountPinResetTimeout);
+        using var cts = effectiveTimeout > TimeSpan.Zero
+            ? new CancellationTokenSource(effectiveTimeout)
+            : null;
         try {
             _ = await client.ApplyRuntimeSettingsAsync(
                     openAIAccountId: string.Empty,
-                    cancellationToken: cts.Token)
+                    cancellationToken: cts?.Token ?? CancellationToken.None)
                 .ConfigureAwait(false);
             return true;
-        } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+        } catch (OperationCanceledException) when (cts is not null && cts.IsCancellationRequested) {
             // Timeout while applying runtime settings should be non-fatal for auth recovery.
             if (VerboseServiceLogs || _debugMode) {
                 await AppendSystemBestEffortAsync("Runtime account pin reset timed out.")
