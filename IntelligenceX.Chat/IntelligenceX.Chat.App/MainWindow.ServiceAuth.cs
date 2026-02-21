@@ -275,7 +275,7 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
-            await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+            await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 return;
@@ -534,7 +534,7 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
+        _ = await TryClearNativeRuntimeAccountPinAsync(RuntimeAccountPinResetFastTimeout).ConfigureAwait(false);
     }
 
     private async Task<bool> TryClearNativeRuntimeAccountPinAsync(TimeSpan? timeout = null) {
