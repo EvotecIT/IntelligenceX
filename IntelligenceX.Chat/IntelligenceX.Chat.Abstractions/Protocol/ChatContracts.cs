@@ -40,6 +40,11 @@ public static class ChatRequestOptionLimits {
     public const int MaxTimeoutSeconds = 3600;
 
     /// <summary>
+    /// Minimum positive timeout value (seconds) when an operation requires a bounded wait.
+    /// </summary>
+    public const int MinPositiveTimeoutSeconds = 1;
+
+    /// <summary>
     /// Default max review passes when unset.
     /// </summary>
     public const int DefaultReviewPasses = 1;

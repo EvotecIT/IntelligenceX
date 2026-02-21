@@ -275,12 +275,12 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        if (request.TimeoutSeconds <= ChatRequestOptionLimits.MinTimeoutSeconds
+        if (request.TimeoutSeconds < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
             || request.TimeoutSeconds > ChatRequestOptionLimits.MaxTimeoutSeconds) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Error = $"timeoutSeconds must be between 1 and {ChatRequestOptionLimits.MaxTimeoutSeconds}.",
+                Error = $"timeoutSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.",
                 Code = "invalid_argument"
             }, cancellationToken).ConfigureAwait(false);
             return;
