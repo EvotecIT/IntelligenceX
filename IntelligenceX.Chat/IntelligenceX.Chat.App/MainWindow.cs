@@ -67,6 +67,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupInitialPipeConnectTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan StartupInitialPipeConnectColdStartTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan DispatchConnectBudget = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan StartupConnectAttemptHardTimeoutGrace = TimeSpan.FromMilliseconds(350);
