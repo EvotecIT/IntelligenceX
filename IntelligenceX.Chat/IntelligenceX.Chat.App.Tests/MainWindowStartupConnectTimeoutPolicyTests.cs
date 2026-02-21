@@ -63,6 +63,27 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures explicit connect-budget overrides are honored for dispatch connects,
+    /// and non-positive overrides disable the budget.
+    /// </summary>
+    [Theory]
+    [InlineData(8000, 8000)]
+    [InlineData(0, null)]
+    [InlineData(-10, null)]
+    public void ResolveStartupConnectBudget_HonorsOverrideWhenProvided(
+        int overrideBudgetMs,
+        int? expectedTimeoutMs) {
+        var timeout = MainWindow.ResolveStartupConnectBudget(
+            fromUserAction: false,
+            captureStartupPhaseTelemetry: false,
+            overrideBudget: TimeSpan.FromMilliseconds(overrideBudgetMs));
+        var expected = expectedTimeoutMs.HasValue
+            ? TimeSpan.FromMilliseconds(expectedTimeoutMs.Value)
+            : (TimeSpan?)null;
+        Assert.Equal(expected, timeout);
+    }
+
+    /// <summary>
     /// Ensures startup webview wait budget is enabled only during startup flow telemetry capture.
     /// </summary>
     [Theory]

@@ -391,9 +391,6 @@
       label.textContent = text + timelineSummary;
       el.classList.add("active");
       refreshTranscriptFollowState();
-      if (transcriptFollowState.enabled && isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX)) {
-        scrollToBottom(transcript);
-      }
     } else {
       el.classList.remove("active");
     }
@@ -610,18 +607,28 @@
   }
 
   var transcriptRenderRevision = 0;
+  var transcriptLastHtml = null;
 
   window.ixSetTranscript = function(html) {
     refreshTranscriptFollowState();
     var shouldStickBottom = transcriptFollowState.enabled;
     var previousTop = transcript.scrollTop;
+    var previousDistance = distanceFromBottom(transcript);
     var stickAnchorTop = -1;
     var renderRevision = ++transcriptRenderRevision;
     var visualRenderTask = null;
+    var nextHtml = html || "";
+    if (transcriptLastHtml === nextHtml) {
+      if (shouldStickBottom && transcriptFollowState.enabled && isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX)) {
+        scrollToBottom(transcript);
+      }
+      return;
+    }
     if (window.ixDisposeTranscriptVisuals) {
       window.ixDisposeTranscriptVisuals(transcript);
     }
-    transcript.innerHTML = html || "";
+    transcript.innerHTML = nextHtml;
+    transcriptLastHtml = nextHtml;
     if (window.ixRenderTranscriptVisuals) {
       visualRenderTask = window.ixRenderTranscriptVisuals(transcript);
     }
@@ -637,7 +644,15 @@
       scrollToBottom(transcript);
       stickAnchorTop = transcript.scrollTop;
     } else {
-      setTranscriptScrollTop(previousTop);
+      var restoreTop = previousTop;
+      if (Number.isFinite(previousDistance)) {
+        var maxScrollTop = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
+        var anchoredTop = transcript.scrollHeight - transcript.clientHeight - previousDistance;
+        if (Number.isFinite(anchoredTop)) {
+          restoreTop = Math.max(0, Math.min(maxScrollTop, anchoredTop));
+        }
+      }
+      setTranscriptScrollTop(restoreTop);
     }
 
     if (shouldStickBottom && visualRenderTask && typeof visualRenderTask.then === "function") {

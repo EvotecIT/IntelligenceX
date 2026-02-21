@@ -342,6 +342,7 @@ public sealed partial class MainWindow : Window {
             await DisposeClientAsync().ConfigureAwait(false);
             _isAuthenticated = false;
             _authenticatedAccountId = null;
+            ResetEnsureLoginProbeCache();
             _loginInProgress = false;
             _isConnected = false;
             _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
@@ -358,7 +359,7 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
-        await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+        await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
         var connected = _client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false);
         _isConnected = connected;
         if (!connected) {

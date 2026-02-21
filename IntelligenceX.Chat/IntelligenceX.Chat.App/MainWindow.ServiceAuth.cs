@@ -31,10 +31,132 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EnsureLoginProbeCacheTtl = TimeSpan.FromMilliseconds(900);
+    private enum EnsureLoginProbeState {
+        Unknown = 0,
+        Authenticated = 1,
+        Unauthenticated = 2
+    }
+
+    private readonly record struct EnsureLoginProbeSnapshot(
+        EnsureLoginProbeState State,
+        string? AccountId,
+        LoginStatusMessage? LoginStatus,
+        Exception? Error,
+        bool IsTimeout,
+        bool FromCache);
+
+    private readonly SemaphoreSlim _ensureLoginProbeGate = new(1, 1);
+    private bool _ensureLoginProbeCacheHasValue;
+    private bool _ensureLoginProbeCachedIsAuthenticated;
+    private string? _ensureLoginProbeCachedAccountId;
+    private DateTime _ensureLoginProbeCachedAtUtc;
+
     private enum DispatchAuthenticationProbeOutcome {
         Authenticated = 0,
         Unauthenticated = 1,
         Unknown = 2
+    }
+
+    private void ResetEnsureLoginProbeCache() {
+        _ensureLoginProbeCacheHasValue = false;
+        _ensureLoginProbeCachedIsAuthenticated = false;
+        _ensureLoginProbeCachedAccountId = null;
+        _ensureLoginProbeCachedAtUtc = DateTime.MinValue;
+    }
+
+    private bool TryGetEnsureLoginProbeCache(bool requireFreshProbe, out EnsureLoginProbeSnapshot snapshot) {
+        snapshot = default;
+        if (requireFreshProbe || !_ensureLoginProbeCacheHasValue) {
+            return false;
+        }
+
+        var elapsed = DateTime.UtcNow - _ensureLoginProbeCachedAtUtc;
+        if (elapsed < TimeSpan.Zero || elapsed > EnsureLoginProbeCacheTtl) {
+            return false;
+        }
+
+        var state = _ensureLoginProbeCachedIsAuthenticated
+            ? EnsureLoginProbeState.Authenticated
+            : EnsureLoginProbeState.Unauthenticated;
+        snapshot = new EnsureLoginProbeSnapshot(
+            State: state,
+            AccountId: _ensureLoginProbeCachedAccountId,
+            LoginStatus: null,
+            Error: null,
+            IsTimeout: false,
+            FromCache: true);
+        return true;
+    }
+
+    private void CacheEnsureLoginProbeSnapshot(EnsureLoginProbeState state, string? accountId) {
+        if (state == EnsureLoginProbeState.Unknown) {
+            ResetEnsureLoginProbeCache();
+            return;
+        }
+
+        _ensureLoginProbeCacheHasValue = true;
+        _ensureLoginProbeCachedIsAuthenticated = state == EnsureLoginProbeState.Authenticated;
+        _ensureLoginProbeCachedAccountId = _ensureLoginProbeCachedIsAuthenticated ? (accountId ?? string.Empty).Trim() : null;
+        _ensureLoginProbeCachedAtUtc = DateTime.UtcNow;
+    }
+
+    private async Task<EnsureLoginProbeSnapshot> ProbeEnsureLoginAsync(TimeSpan timeout, bool requireFreshProbe) {
+        if (TryGetEnsureLoginProbeCache(requireFreshProbe, out var cached)) {
+            return cached;
+        }
+
+        await _ensureLoginProbeGate.WaitAsync().ConfigureAwait(false);
+        try {
+            if (TryGetEnsureLoginProbeCache(requireFreshProbe, out cached)) {
+                return cached;
+            }
+
+            var client = _client;
+            if (client is null) {
+                return new EnsureLoginProbeSnapshot(
+                    State: EnsureLoginProbeState.Unknown,
+                    AccountId: null,
+                    LoginStatus: null,
+                    Error: null,
+                    IsTimeout: false,
+                    FromCache: false);
+            }
+
+            try {
+                using var probeCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
+                var probeToken = probeCts?.Token ?? CancellationToken.None;
+                var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, probeToken).ConfigureAwait(false);
+                var accountId = login.IsAuthenticated ? (login.AccountId ?? string.Empty).Trim() : null;
+                var state = login.IsAuthenticated ? EnsureLoginProbeState.Authenticated : EnsureLoginProbeState.Unauthenticated;
+                CacheEnsureLoginProbeSnapshot(state, accountId);
+                return new EnsureLoginProbeSnapshot(
+                    State: state,
+                    AccountId: accountId,
+                    LoginStatus: login,
+                    Error: null,
+                    IsTimeout: false,
+                    FromCache: false);
+            } catch (OperationCanceledException) {
+                return new EnsureLoginProbeSnapshot(
+                    State: EnsureLoginProbeState.Unknown,
+                    AccountId: null,
+                    LoginStatus: null,
+                    Error: null,
+                    IsTimeout: true,
+                    FromCache: false);
+            } catch (Exception ex) {
+                return new EnsureLoginProbeSnapshot(
+                    State: EnsureLoginProbeState.Unknown,
+                    AccountId: null,
+                    LoginStatus: null,
+                    Error: ex,
+                    IsTimeout: false,
+                    FromCache: false);
+            }
+        } finally {
+            _ensureLoginProbeGate.Release();
+        }
     }
 
     private bool IsNativeRuntimeTransport() {
@@ -195,6 +317,7 @@ public sealed partial class MainWindow : Window {
 
         var client = _client;
         if (client is null) {
+            ResetEnsureLoginProbeCache();
             _isAuthenticated = false;
             _authenticatedAccountId = null;
             if (updateStatus) {
@@ -203,49 +326,46 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        try {
-            var timeout = probeTimeout.GetValueOrDefault(requireFreshProbe ? EnsureLoginFreshProbeTimeout : EnsureLoginProbeTimeout);
-            using var probeCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
-            var probeToken = probeCts?.Token ?? CancellationToken.None;
-            var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, probeToken).ConfigureAwait(false);
-            _isAuthenticated = login.IsAuthenticated;
-            _authenticatedAccountId = login.IsAuthenticated ? (login.AccountId ?? string.Empty).Trim() : null;
-            if (login.IsAuthenticated) {
+        var timeout = probeTimeout.GetValueOrDefault(requireFreshProbe ? EnsureLoginFreshProbeTimeout : EnsureLoginProbeTimeout);
+        var probe = await ProbeEnsureLoginAsync(timeout, requireFreshProbe).ConfigureAwait(false);
+        switch (probe.State) {
+            case EnsureLoginProbeState.Authenticated:
+                _isAuthenticated = true;
+                _authenticatedAccountId = (probe.AccountId ?? string.Empty).Trim();
                 CaptureAuthenticatedAccountIntoActiveSlot();
-                UpdateAccountUsageFromNativeLoginStatus(login);
-                QueuePersistAppState();
-            }
+                if (probe.LoginStatus is { IsAuthenticated: true } loginStatus) {
+                    UpdateAccountUsageFromNativeLoginStatus(loginStatus);
+                }
+                if (!probe.FromCache) {
+                    QueuePersistAppState();
+                }
 
-            if (updateStatus) {
-                await SetStatusAsync(SessionStatus.ForConnectedAuth(login.IsAuthenticated)).ConfigureAwait(false);
-                await PublishOptionsStateAsync().ConfigureAwait(false);
-            }
+                if (updateStatus) {
+                    await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
+                    await PublishOptionsStateAsync().ConfigureAwait(false);
+                }
 
-            return login.IsAuthenticated;
-        } catch (OperationCanceledException) when (!requireFreshProbe) {
-            // Regular auth probes should not force user-visible auth churn when the service is briefly slow.
-            if (updateStatus) {
-                await PublishSessionStateAsync().ConfigureAwait(false);
-            }
+                return true;
+            case EnsureLoginProbeState.Unauthenticated:
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                if (updateStatus) {
+                    await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: false)).ConfigureAwait(false);
+                    await PublishOptionsStateAsync().ConfigureAwait(false);
+                }
 
-            return allowCachedAuthenticatedFallback && _isAuthenticated;
-        } catch (OperationCanceledException) when (requireFreshProbe) {
-            if (updateStatus) {
-                await PublishSessionStateAsync().ConfigureAwait(false);
-            }
+                return false;
+            default:
+                // Transient ensure_login probe failures should not automatically force a new browser login.
+                if (probe.Error is not null && (VerboseServiceLogs || _debugMode)) {
+                    await AppendSystemBestEffortAsync(SystemNotice.EnsureLoginFailed(probe.Error.Message)).ConfigureAwait(false);
+                }
 
-            return allowCachedAuthenticatedFallback && _isAuthenticated;
-        } catch (Exception ex) {
-            // Transient ensure_login probe failures should not automatically force a new browser login.
-            if (VerboseServiceLogs || _debugMode) {
-                await AppendSystemBestEffortAsync(SystemNotice.EnsureLoginFailed(ex.Message)).ConfigureAwait(false);
-            }
+                if (updateStatus) {
+                    await PublishSessionStateAsync().ConfigureAwait(false);
+                }
 
-            if (updateStatus) {
-                await PublishSessionStateAsync().ConfigureAwait(false);
-            }
-
-            return allowCachedAuthenticatedFallback && _isAuthenticated;
+                return allowCachedAuthenticatedFallback && _isAuthenticated;
         }
     }
 
@@ -257,30 +377,33 @@ public sealed partial class MainWindow : Window {
 
         var client = _client;
         if (client is null) {
+            ResetEnsureLoginProbeCache();
             _isAuthenticated = false;
             _authenticatedAccountId = null;
             return DispatchAuthenticationProbeOutcome.Unknown;
         }
 
-        try {
-            var timeout = probeTimeout.GetValueOrDefault(EnsureLoginFastPathProbeTimeout);
-            using var probeCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
-            var probeToken = probeCts?.Token ?? CancellationToken.None;
-            var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, probeToken).ConfigureAwait(false);
-            _isAuthenticated = login.IsAuthenticated;
-            _authenticatedAccountId = login.IsAuthenticated ? (login.AccountId ?? string.Empty).Trim() : null;
-            if (login.IsAuthenticated) {
+        var timeout = probeTimeout.GetValueOrDefault(EnsureLoginFastPathProbeTimeout);
+        var probe = await ProbeEnsureLoginAsync(timeout, requireFreshProbe: false).ConfigureAwait(false);
+        switch (probe.State) {
+            case EnsureLoginProbeState.Authenticated:
+                _isAuthenticated = true;
+                _authenticatedAccountId = (probe.AccountId ?? string.Empty).Trim();
                 CaptureAuthenticatedAccountIntoActiveSlot();
-                UpdateAccountUsageFromNativeLoginStatus(login);
-                QueuePersistAppState();
-                return DispatchAuthenticationProbeOutcome.Authenticated;
-            }
+                if (probe.LoginStatus is { IsAuthenticated: true } loginStatus) {
+                    UpdateAccountUsageFromNativeLoginStatus(loginStatus);
+                }
+                if (!probe.FromCache) {
+                    QueuePersistAppState();
+                }
 
-            return DispatchAuthenticationProbeOutcome.Unauthenticated;
-        } catch (OperationCanceledException) {
-            return DispatchAuthenticationProbeOutcome.Unknown;
-        } catch {
-            return DispatchAuthenticationProbeOutcome.Unknown;
+                return DispatchAuthenticationProbeOutcome.Authenticated;
+            case EnsureLoginProbeState.Unauthenticated:
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                return DispatchAuthenticationProbeOutcome.Unauthenticated;
+            default:
+                return DispatchAuthenticationProbeOutcome.Unknown;
         }
     }
 
@@ -338,6 +461,7 @@ public sealed partial class MainWindow : Window {
 
         try {
             _loginInProgress = true;
+            ResetEnsureLoginProbeCache();
             _isConnected = true;
             _isAuthenticated = false;
             _authenticatedAccountId = null;
@@ -351,6 +475,7 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             _loginInProgress = false;
             _isConnected = _client is not null;
+            ResetEnsureLoginProbeCache();
             _authenticatedAccountId = null;
             await SetStatusAsync(SessionStatus.SignInFailed()).ConfigureAwait(false);
             await AppendSystemBestEffortAsync(SystemNotice.SignInFailed(ex.Message)).ConfigureAwait(false);
@@ -369,6 +494,7 @@ public sealed partial class MainWindow : Window {
         }
 
         await ClearNativeAccountPinForSwitchAsync().ConfigureAwait(false);
+        ResetEnsureLoginProbeCache();
         _isAuthenticated = false;
         _authenticatedAccountId = null;
         _loginInProgress = false;

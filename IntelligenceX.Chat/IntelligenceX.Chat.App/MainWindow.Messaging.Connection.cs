@@ -42,7 +42,11 @@ public sealed partial class MainWindow : Window {
         return fromUserAction || hasTrackedRunningServiceProcess;
     }
 
-    internal static TimeSpan? ResolveStartupConnectBudget(bool fromUserAction, bool captureStartupPhaseTelemetry) {
+    internal static TimeSpan? ResolveStartupConnectBudget(bool fromUserAction, bool captureStartupPhaseTelemetry, TimeSpan? overrideBudget = null) {
+        if (overrideBudget.HasValue) {
+            return overrideBudget.Value > TimeSpan.Zero ? overrideBudget : null;
+        }
+
         if (fromUserAction || !captureStartupPhaseTelemetry) {
             return null;
         }
@@ -118,7 +122,7 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
-    private async Task ConnectAsync(bool fromUserAction = false) {
+    private async Task ConnectAsync(bool fromUserAction = false, TimeSpan? connectBudgetOverride = null) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
             var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == 1;
@@ -127,7 +131,7 @@ public sealed partial class MainWindow : Window {
                     StartupLog.Write("StartupConnect." + phase + " " + state);
                 }
             }
-            var startupConnectBudget = ResolveStartupConnectBudget(fromUserAction, captureStartupPhaseTelemetry);
+            var startupConnectBudget = ResolveStartupConnectBudget(fromUserAction, captureStartupPhaseTelemetry, connectBudgetOverride);
             var startupConnectStopwatch = startupConnectBudget.HasValue ? Stopwatch.StartNew() : null;
             var startupBudgetExhaustedLogged = false;
 
