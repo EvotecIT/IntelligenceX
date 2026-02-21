@@ -295,11 +295,45 @@ public sealed partial class MainWindow : Window {
             AppendSystem("Sign-in cache cleared. You can now choose another account.");
         }
 
+        await ClearNativeAccountPinForSwitchAsync().ConfigureAwait(false);
         _isAuthenticated = false;
         _authenticatedAccountId = null;
         _loginInProgress = false;
         await SetStatusAsync("Starting sign-in for another account...").ConfigureAwait(false);
         return await StartLoginFlowIfNeededAsync(forceInteractive: true).ConfigureAwait(false);
+    }
+
+    private async Task ClearNativeAccountPinForSwitchAsync() {
+        var activeSlot = NormalizeNativeAccountSlot(_activeNativeAccountSlot);
+        var slotAccountId = GetNativeAccountSlotId(activeSlot);
+        var runtimeAccountId = NormalizeLocalProviderOpenAIAccountId(_localProviderOpenAIAccountId);
+        var hadPinnedAccount = slotAccountId.Length > 0 || runtimeAccountId.Length > 0;
+
+        if (!hadPinnedAccount) {
+            return;
+        }
+
+        SetNativeAccountSlotId(activeSlot, string.Empty);
+        _localProviderOpenAIAccountId = string.Empty;
+        SyncNativeAccountSlotsToAppState();
+        QueuePersistAppState();
+
+        var client = _client;
+        if (client is null) {
+            return;
+        }
+
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            _ = await client.ApplyRuntimeSettingsAsync(
+                    openAIAccountId: string.Empty,
+                    cancellationToken: cts.Token)
+                .ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Account switch will continue, but runtime account pin reset failed: " + ex.Message);
+            }
+        }
     }
 
     private static string ResolveAuthPath() {
