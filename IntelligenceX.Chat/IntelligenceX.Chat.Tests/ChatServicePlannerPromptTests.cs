@@ -135,5 +135,24 @@ public sealed class ChatServicePlannerPromptTests {
         var value = Assert.IsType<int>(result);
         Assert.Equal(17, value);
     }
-}
 
+    [Fact]
+    public void ResolveMaxCandidateToolsSetting_ZeroUsesTransportDefaultForCompatibleHttp() {
+        var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { 0, OpenAITransportKind.CompatibleHttp });
+        var value = Assert.IsType<int>(result);
+        Assert.Equal(8, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsSetting_ZeroUsesNoOverrideForNativeTransport() {
+        var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { 0, OpenAITransportKind.Native });
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsSetting_ClampsOversizedRequestToSafetyLimit() {
+        var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { 999, OpenAITransportKind.CompatibleHttp });
+        var value = Assert.IsType<int>(result);
+        Assert.Equal(256, value);
+    }
+}

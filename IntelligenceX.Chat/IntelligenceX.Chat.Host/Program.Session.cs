@@ -115,7 +115,8 @@ internal static partial class Program {
             }
             TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(input, chatOptions, turnToken).ConfigureAwait(false);
 
-            for (var round = 0; round < Math.Max(1, _options.MaxToolRounds); round++) {
+            var maxRounds = Math.Clamp(_options.MaxToolRounds, 1, MaxToolRoundsLimit);
+            for (var round = 0; round < maxRounds; round++) {
                 var extracted = ToolCallParser.Extract(turn);
                 if (extracted.Count == 0) {
                     var finalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
@@ -148,11 +149,24 @@ internal static partial class Program {
                 turn = await ChatWithToolSchemaRecoveryAsync(next, chatOptions, turnToken).ConfigureAwait(false);
             }
 
-            throw new InvalidOperationException($"Tool runner exceeded max rounds ({_options.MaxToolRounds}).");
+            throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
         }
 
         private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, CancellationToken cancellationToken) {
-            if (!_options.ParallelToolCalls || calls.Count <= 1) {
+            var runInParallel = ShouldRunParallelToolExecution(calls, out var mutatingToolNames);
+            if (_options.LiveProgress
+                && _options.ParallelToolCalls
+                && calls.Count > 1
+                && !runInParallel
+                && mutatingToolNames.Length > 0) {
+                var listed = string.Join(", ", mutatingToolNames.Take(3));
+                var suffix = mutatingToolNames.Length > 3 ? ", ..." : string.Empty;
+                _status?.Invoke(
+                    $"parallel safety: running sequentially because write-capable tools were requested ({listed}{suffix}). " +
+                    "Use --allow-mutating-parallel-tools to override.");
+            }
+
+            if (!runInParallel || calls.Count <= 1) {
                 var outputs = new List<ToolOutput>(calls.Count);
                 foreach (var call in calls) {
                     outputs.Add(await ExecuteToolAsync(call, cancellationToken).ConfigureAwait(false));
@@ -165,6 +179,45 @@ internal static partial class Program {
                 tasks[i] = ExecuteToolAsync(calls[i], cancellationToken);
             }
             return await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+
+        private bool ShouldRunParallelToolExecution(IReadOnlyList<ToolCall> calls, out string[] mutatingToolNames) {
+            mutatingToolNames = Array.Empty<string>();
+            if (!_options.ParallelToolCalls || calls.Count <= 1) {
+                return false;
+            }
+
+            if (_options.AllowMutatingParallelToolCalls) {
+                return true;
+            }
+
+            var mutating = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < calls.Count; i++) {
+                var toolName = (calls[i].Name ?? string.Empty).Trim();
+                if (toolName.Length == 0) {
+                    continue;
+                }
+
+                if (!_registry.TryGetDefinition(toolName, out var definition)) {
+                    continue;
+                }
+
+                if (definition.WriteGovernance?.IsWriteCapable != true) {
+                    continue;
+                }
+
+                if (seen.Add(toolName)) {
+                    mutating.Add(toolName);
+                }
+            }
+
+            if (mutating.Count == 0) {
+                return true;
+            }
+
+            mutatingToolNames = mutating.ToArray();
+            return false;
         }
 
         private async Task<ToolOutput> ExecuteToolAsync(ToolCall call, CancellationToken cancellationToken) {
@@ -225,28 +278,7 @@ internal static partial class Program {
         }
 
         private static bool ShouldRetryWithoutTools(Exception ex, ChatOptions options) {
-            if (options.Tools is not { Count: > 0 }) {
-                return false;
-            }
-
-            var message = ex.Message ?? string.Empty;
-            if (message.Length == 0) {
-                return false;
-            }
-
-            var missingToolName = message.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
-                                  && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
-                                  && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
-            if (missingToolName) {
-                return true;
-            }
-
-            return message.IndexOf("cannot truncate prompt with n_keep", StringComparison.OrdinalIgnoreCase) >= 0
-                   || message.IndexOf("n_ctx", StringComparison.OrdinalIgnoreCase) >= 0
-                   || message.IndexOf("context length", StringComparison.OrdinalIgnoreCase) >= 0
-                   || message.IndexOf("context window", StringComparison.OrdinalIgnoreCase) >= 0
-                   || message.IndexOf("maximum context length", StringComparison.OrdinalIgnoreCase) >= 0
-                   || message.IndexOf("prompt too long", StringComparison.OrdinalIgnoreCase) >= 0;
+            return ToolSchemaRecoveryClassifier.ShouldRetryWithoutTools(ex, options);
         }
     }
 

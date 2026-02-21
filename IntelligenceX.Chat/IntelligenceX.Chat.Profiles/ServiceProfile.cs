@@ -31,6 +31,7 @@ internal sealed class ServiceProfile {
 
     public int MaxToolRounds { get; set; } = 24;
     public bool ParallelTools { get; set; } = true;
+    public bool AllowMutatingParallelToolCalls { get; set; }
     public int TurnTimeoutSeconds { get; set; }
     public int ToolTimeoutSeconds { get; set; }
     public List<string> AllowedRoots { get; set; } = new();

@@ -37,6 +37,7 @@ internal static partial class Program {
         Console.WriteLine($"Profile: {(string.IsNullOrWhiteSpace(options.ProfileName) ? "(none)" : options.ProfileName)}");
         Console.WriteLine($"Model: {options.Model}");
         Console.WriteLine($"Parallel tool calls: {options.ParallelToolCalls}");
+        Console.WriteLine($"Allow mutating parallel calls: {options.AllowMutatingParallelToolCalls}");
         Console.WriteLine($"Max tool rounds: {options.MaxToolRounds}");
         Console.WriteLine($"Turn timeout: {(options.TurnTimeoutSeconds <= 0 ? "(none)" : $"{options.TurnTimeoutSeconds}s")}");
         Console.WriteLine($"Tool timeout: {(options.ToolTimeoutSeconds <= 0 ? "(none)" : $"{options.ToolTimeoutSeconds}s")}");
@@ -520,8 +521,11 @@ internal static partial class Program {
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
-        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 24).");
-        Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible.");
+        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (1..256; default: 24).");
+        Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible (default: on).");
+        Console.WriteLine("  --no-parallel-tools     Disable parallel tool calls.");
+        Console.WriteLine("  --allow-mutating-parallel-tools  Allow parallel execution for write-capable tool calls (default: off).");
+        Console.WriteLine("  --disallow-mutating-parallel-tools  Disable mutating parallel override.");
         Console.WriteLine("  --turn-timeout-seconds <N>  Per-turn timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --tool-timeout-seconds <N>  Per-tool timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --echo-tool-outputs     Print tool outputs to console (default: off).");

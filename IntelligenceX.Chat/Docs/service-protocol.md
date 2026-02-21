@@ -56,7 +56,11 @@ Login flow messages:
 
 Chat execution messages:
 
-- `chat_status` (event; progress status such as `thinking`, `tool_call`, `tool_running`, `tool_completed`)
+- `chat_status` (event; progress status)
+  - Common statuses: `thinking`, `tool_call`, `tool_running`, `tool_completed`
+  - Long tool-loop statuses: `tool_round_started`, `tool_round_completed`, `tool_round_limit_reached`
+  - Safety/normalization statuses: `tool_round_cap_applied`, `review_passes_clamped`, `model_heartbeat_clamped`
+  - Batch/recovery statuses: `tool_batch_started`, `tool_batch_progress`, `tool_batch_recovered`, `tool_batch_completed`
 - `chat_delta` (event; streaming text deltas)
 - `chat_result` (response; final text + optional tool trace)
 
@@ -81,20 +85,31 @@ Hello request:
 Hello response:
 
 ```json
-{"type":"hello","kind":"response","requestId":"1","name":"IntelligenceX.Chat.Service","version":"0.0.0.0","processId":"12345","policy":{"readOnly":true,"allowedRoots":[],"packs":[{"id":"system","name":"System","tier":0,"enabled":true,"isDangerous":false}],"dangerousToolsEnabled":false,"maxToolRounds":3,"parallelTools":true,"maxTableRows":20,"maxSample":10,"redact":false}}
+{"type":"hello","kind":"response","requestId":"1","name":"IntelligenceX.Chat.Service","version":"0.0.0.0","processId":"12345","policy":{"readOnly":true,"allowedRoots":[],"packs":[{"id":"system","name":"System","tier":0,"enabled":true,"isDangerous":false}],"dangerousToolsEnabled":false,"maxToolRounds":24,"parallelTools":true,"allowMutatingParallelToolCalls":false,"turnTimeoutSeconds":0,"toolTimeoutSeconds":0,"maxTableRows":20,"maxSample":10,"redact":false}}
 ```
 
 Chat request:
 
 ```json
-{"type":"chat","requestId":"2","text":"List files in C:\\\\Support\\\\GitHub","options":{"maxToolRounds":3,"parallelTools":true,"turnTimeoutSeconds":0,"toolTimeoutSeconds":0}}
+{"type":"chat","requestId":"2","text":"List files in C:\\\\Support\\\\GitHub","options":{"maxToolRounds":24,"parallelTools":true,"parallelToolMode":"auto","maxCandidateTools":0,"turnTimeoutSeconds":0,"toolTimeoutSeconds":0,"planExecuteReviewLoop":true,"maxReviewPasses":1,"modelHeartbeatSeconds":20}}
 ```
+
+`chat.options` notes:
+
+- `maxToolRounds`: `1..256`
+- `parallelToolMode`: `auto | force_serial | allow_parallel`
+- `maxCandidateTools`: `0..256` (`0` means service-selected default)
+- `turnTimeoutSeconds` / `toolTimeoutSeconds`: `0..3600` (`0` means no explicit timeout)
+- `maxReviewPasses`: `0` disables review passes (service may clamp oversized values and emit status)
+- `modelHeartbeatSeconds`: `0` disables model-phase heartbeats (service may clamp oversized values and emit status)
 
 During execution, the service emits streaming events:
 
 ```json
 {"type":"chat_status","kind":"event","requestId":"2","threadId":"thread1","status":"thinking"}
+{"type":"chat_status","kind":"event","requestId":"2","threadId":"thread1","status":"tool_round_started","message":"Tool round 1 started."}
 {"type":"chat_status","kind":"event","requestId":"2","threadId":"thread1","status":"tool_running","toolName":"fs_list","toolCallId":"call1"}
+{"type":"chat_status","kind":"event","requestId":"2","threadId":"thread1","status":"tool_round_completed","message":"Tool round 1 completed."}
 {"type":"chat_delta","kind":"event","requestId":"2","threadId":"thread1","text":"..."}
 ```
 

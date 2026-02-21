@@ -205,7 +205,8 @@ public sealed class ToolWriteGovernanceRegistryTests {
     public async Task InvokeAsync_WriteIntentInYoloMode_BypassesGovernanceAndInvokesTool() {
         var tool = new StubTool(CreateWriteToolDefinition());
         var registry = new ToolRegistry {
-            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
+            RequireWriteGovernanceRuntime = false
         };
         registry.Register(tool);
 
@@ -217,6 +218,25 @@ public sealed class ToolWriteGovernanceRegistryTests {
         using JsonDocument doc = JsonDocument.Parse(output);
         Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("invoked", doc.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WriteIntentInYoloMode_WithRequiredRuntime_StillEnforcesRuntimeRequirement() {
+        var tool = new StubTool(CreateWriteToolDefinition());
+        var registry = new ToolRegistry {
+            WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
+            RequireWriteGovernanceRuntime = true
+        };
+        registry.Register(tool);
+
+        Assert.True(registry.TryGet("stub_write", out var registeredTool));
+        string output = await registeredTool.InvokeAsync(
+            new JsonObject().Add("send", true).Add("allow_write", true),
+            CancellationToken.None);
+
+        using JsonDocument doc = JsonDocument.Parse(output);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("write_governance_runtime_required", doc.RootElement.GetProperty("error_code").GetString());
     }
 
     [Fact]

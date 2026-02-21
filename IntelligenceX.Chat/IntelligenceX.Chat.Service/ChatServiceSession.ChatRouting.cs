@@ -96,8 +96,10 @@ internal sealed partial class ChatServiceSession {
             RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
         }
 
-        var (parallelTools, allowMutatingParallel, parallelToolMode) = ResolveParallelToolExecutionMode(request.Options, _options.ParallelTools);
-        var maxRounds = request.Options?.MaxToolRounds ?? _options.MaxToolRounds;
+        var (parallelTools, allowMutatingParallel, parallelToolMode) =
+            ResolveParallelToolExecutionMode(request.Options, _options.ParallelTools, _options.AllowMutatingParallelToolCalls);
+        var requestedMaxRounds = Math.Max(1, request.Options?.MaxToolRounds ?? _options.MaxToolRounds);
+        var maxRounds = ResolveMaxToolRounds(request.Options, _options.MaxToolRounds);
         var turnTimeoutSeconds = request.Options?.TurnTimeoutSeconds ?? _options.TurnTimeoutSeconds;
         var toolTimeoutSeconds = request.Options?.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
         using var turnCts = CreateTimeoutCts(cancellationToken, turnTimeoutSeconds);
@@ -118,6 +120,8 @@ internal sealed partial class ChatServiceSession {
         var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? true;
         var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
         var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
+        var requestedReviewPasses = request.Options?.MaxReviewPasses;
+        var requestedModelHeartbeatSeconds = request.Options?.ModelHeartbeatSeconds;
         await TryWriteStatusAsync(
                 writer,
                 request.RequestId,
@@ -125,6 +129,36 @@ internal sealed partial class ChatServiceSession {
                 status: "model_selected",
                 message: "Using model: " + resolvedModel)
             .ConfigureAwait(false);
+
+        if (requestedReviewPasses.HasValue && requestedReviewPasses.Value != maxReviewPasses) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "review_passes_clamped",
+                    message: BuildReviewPassClampMessage(requestedReviewPasses.Value, maxReviewPasses))
+                .ConfigureAwait(false);
+        }
+
+        if (requestedModelHeartbeatSeconds.HasValue && requestedModelHeartbeatSeconds.Value != modelHeartbeatSeconds) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "model_heartbeat_clamped",
+                    message: BuildModelHeartbeatClampMessage(requestedModelHeartbeatSeconds.Value, modelHeartbeatSeconds))
+                .ConfigureAwait(false);
+        }
+
+        if (requestedMaxRounds > maxRounds) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "tool_round_cap_applied",
+                    message: BuildToolRoundCapAppliedMessage(requestedMaxRounds, maxRounds))
+                .ConfigureAwait(false);
+        }
 
         if (!string.Equals(parallelToolMode, ParallelToolModeAuto, StringComparison.Ordinal)) {
             await TryWriteStatusAsync(
@@ -208,7 +242,8 @@ internal sealed partial class ChatServiceSession {
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
 
-        for (var round = 0; round < Math.Max(1, maxRounds); round++) {
+        var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
+        for (var round = 0; round < maxRounds; round++) {
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
@@ -565,6 +600,17 @@ internal sealed partial class ChatServiceSession {
             }
 
             toolRounds++;
+            var roundNumber = round + 1;
+            await WriteToolRoundStartedStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    roundNumber,
+                    maxRounds,
+                    extracted.Count,
+                    parallelTools,
+                    allowMutatingParallel)
+                .ConfigureAwait(false);
             if (planExecuteReviewLoop) {
                 await TryWriteStatusAsync(
                         writer,
@@ -585,9 +631,18 @@ internal sealed partial class ChatServiceSession {
                 });
             }
 
-            var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
             var executed = await ExecuteToolsAsync(writer, request.RequestId, threadId, extracted, parallelTools, allowMutatingParallel,
                     mutatingToolHints, toolTimeoutSeconds, turnToken)
+                .ConfigureAwait(false);
+            var failedCallsThisRound = CountFailedToolOutputs(executed);
+            await WriteToolRoundCompletedStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    roundNumber,
+                    maxRounds,
+                    executed.Count,
+                    failedCallsThisRound)
                 .ConfigureAwait(false);
             UpdateToolRoutingStats(extracted, executed);
             foreach (var output in executed) {
@@ -630,6 +685,15 @@ internal sealed partial class ChatServiceSession {
                     heartbeatSeconds: modelHeartbeatSeconds)
                 .ConfigureAwait(false);
         }
+
+        await WriteToolRoundLimitReachedStatusAsync(
+                writer,
+                request.RequestId,
+                threadId,
+                maxRounds,
+                toolCalls.Count,
+                toolOutputs.Count)
+            .ConfigureAwait(false);
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
     }

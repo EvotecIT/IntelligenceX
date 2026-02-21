@@ -1,0 +1,522 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service;
+using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.CompatibleHttp;
+using IntelligenceX.Tools;
+using Xunit;
+
+namespace IntelligenceX.Chat.Tests;
+
+public sealed partial class ChatServiceRoutingTrimTests {
+    private static readonly FieldInfo RegistryField =
+        typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_registry not found.");
+
+    private static readonly MethodInfo RunChatOnCurrentThreadAsyncMethod =
+        typeof(ChatServiceSession).GetMethod("RunChatOnCurrentThreadAsync", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RunChatOnCurrentThreadAsync not found.");
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_ChainsToolRoundsAndEmitsOrderedLifecycleStatuses() {
+        using var server = new DeterministicCompatibleHttpServer();
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-e2e-rounds",
+            ThreadId = thread.Id,
+            Text = "Run the diagnostics workflow to completion.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        AssertStatusSubsequence(
+            statuses,
+            "phase_plan",
+            "tool_round_started",
+            "phase_execute",
+            "tool_round_completed",
+            "phase_review",
+            "tool_round_started",
+            "phase_execute",
+            "tool_round_completed",
+            "phase_review");
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(3, server.ChatCompletionRequestCount);
+        Assert.True(CountRoleMessages(server.GetChatRequestBody(0), "tool") == 0);
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(1), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(2), "call_round_2"));
+
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Final answer after two tool rounds.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(2, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(2, resultMessage.Tools.Outputs.Count);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_EmitsToolRoundCapApplied_WhenRequestedMaxToolRoundsExceedsSupportedLimit() {
+        using var server = new DeterministicCompatibleHttpServer();
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 24,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-tool-round-cap",
+            ThreadId = thread.Id,
+            Text = "Run the diagnostics workflow to completion.",
+            Options = new ChatRequestOptions {
+                MaxToolRounds = 500,
+                WeightedToolRouting = false,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Contains(statuses, static s => string.Equals(s, "tool_round_cap_applied", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+    }
+
+    private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
+        ChatRequest request, string threadId, CancellationToken cancellationToken) {
+        var taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
+        var task = Assert.IsAssignableFrom<Task>(taskObj);
+        await task.ConfigureAwait(false);
+
+        var resultProperty = taskObj!.GetType().GetProperty("Result", BindingFlags.Public | BindingFlags.Instance)
+                             ?? throw new InvalidOperationException("Task result property not found.");
+        return resultProperty.GetValue(taskObj)
+               ?? throw new InvalidOperationException("RunChatOnCurrentThreadAsync returned null.");
+    }
+
+    private static T GetPropertyValue<T>(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)
+                       ?? throw new InvalidOperationException($"Property '{propertyName}' not found.");
+        return Assert.IsType<T>(property.GetValue(instance));
+    }
+
+    private static void AssertStatusSubsequence(IReadOnlyList<string> statuses, params string[] expectedSequence) {
+        var currentIndex = 0;
+        for (var i = 0; i < expectedSequence.Length; i++) {
+            var expected = expectedSequence[i];
+            var found = false;
+            for (; currentIndex < statuses.Count; currentIndex++) {
+                if (!string.Equals(statuses[currentIndex], expected, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                found = true;
+                currentIndex++;
+                break;
+            }
+
+            if (!found) {
+                throw new Xunit.Sdk.XunitException($"Expected status subsequence item '{expected}' was not found in order.");
+            }
+        }
+    }
+
+    private static int CountRoleMessages(string requestBody, string role) {
+        using var doc = JsonDocument.Parse(requestBody);
+        if (!doc.RootElement.TryGetProperty("messages", out var messages)
+            || messages.ValueKind != System.Text.Json.JsonValueKind.Array) {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var message in messages.EnumerateArray()) {
+            if (!message.TryGetProperty("role", out var roleEl)) {
+                continue;
+            }
+
+            if (string.Equals(roleEl.GetString(), role, StringComparison.OrdinalIgnoreCase)) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool ContainsToolMessageForCallId(string requestBody, string callId) {
+        using var doc = JsonDocument.Parse(requestBody);
+        if (!doc.RootElement.TryGetProperty("messages", out var messages)
+            || messages.ValueKind != System.Text.Json.JsonValueKind.Array) {
+            return false;
+        }
+
+        foreach (var message in messages.EnumerateArray()) {
+            if (!message.TryGetProperty("role", out var roleEl)
+                || !string.Equals(roleEl.GetString(), "tool", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (message.TryGetProperty("tool_call_id", out var callIdEl)
+                && string.Equals(callIdEl.GetString(), callId, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private sealed class RoundTripStubTool : ITool {
+        private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
+
+        public RoundTripStubTool(string name, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
+            Definition = new ToolDefinition(name, description: "roundtrip stub");
+            _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            return _invoke(arguments, cancellationToken);
+        }
+    }
+
+    private sealed class DeterministicCompatibleHttpServer : IDisposable {
+        private readonly TcpListener _listener;
+        private readonly Task _acceptLoop;
+        private readonly object _sync = new();
+        private readonly List<string> _chatCompletionRequestBodies = new();
+        private volatile bool _disposed;
+
+        public DeterministicCompatibleHttpServer() {
+            _listener = new TcpListener(IPAddress.Loopback, 0);
+            _listener.Start();
+            var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            BaseUrl = $"http://127.0.0.1:{port}/v1";
+            _acceptLoop = Task.Run(AcceptLoopAsync);
+        }
+
+        public string BaseUrl { get; }
+
+        public int ChatCompletionRequestCount {
+            get {
+                lock (_sync) {
+                    return _chatCompletionRequestBodies.Count;
+                }
+            }
+        }
+
+        public string GetChatRequestBody(int index) {
+            lock (_sync) {
+                return _chatCompletionRequestBodies[index];
+            }
+        }
+
+        private async Task AcceptLoopAsync() {
+            while (!_disposed) {
+                TcpClient? client = null;
+                try {
+                    client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                } catch (ObjectDisposedException) {
+                    break;
+                } catch (SocketException) when (_disposed) {
+                    break;
+                }
+
+                if (client is null) {
+                    continue;
+                }
+
+                _ = Task.Run(() => HandleClientAsync(client));
+            }
+        }
+
+        private async Task HandleClientAsync(TcpClient client) {
+            using var _ = client;
+            using var stream = client.GetStream();
+
+            var headerBytes = new List<byte>(1024);
+            var delimiter = new byte[] { 13, 10, 13, 10 };
+            var matched = 0;
+            var singleByte = new byte[1];
+
+            while (true) {
+                var read = await stream.ReadAsync(singleByte, 0, 1).ConfigureAwait(false);
+                if (read == 0) {
+                    return;
+                }
+
+                var b = singleByte[0];
+                headerBytes.Add(b);
+                if (b == delimiter[matched]) {
+                    matched++;
+                    if (matched == delimiter.Length) {
+                        break;
+                    }
+                } else {
+                    matched = b == delimiter[0] ? 1 : 0;
+                }
+            }
+
+            var headerText = Encoding.ASCII.GetString(headerBytes.ToArray());
+            var lines = headerText.Split(new[] { "\r\n" }, StringSplitOptions.None);
+            var requestLine = lines.Length > 0 ? lines[0] : string.Empty;
+            var parts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) {
+                return;
+            }
+
+            var method = parts[0];
+            var path = NormalizePath(parts[1]);
+
+            var contentLength = 0;
+            for (var i = 1; i < lines.Length; i++) {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) {
+                    break;
+                }
+
+                var colon = line.IndexOf(':');
+                if (colon <= 0) {
+                    continue;
+                }
+
+                var key = line.Substring(0, colon).Trim();
+                var value = line[(colon + 1)..].Trim();
+                if (key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) {
+                    int.TryParse(value, out contentLength);
+                }
+            }
+
+            var body = string.Empty;
+            if (contentLength > 0) {
+                var buffer = new byte[contentLength];
+                var total = 0;
+                while (total < contentLength) {
+                    var read = await stream.ReadAsync(buffer, total, contentLength - total).ConfigureAwait(false);
+                    if (read == 0) {
+                        break;
+                    }
+                    total += read;
+                }
+
+                body = Encoding.UTF8.GetString(buffer, 0, total);
+            }
+
+            var responseBody = HandleRequest(method, path, body, out var responseCode, out var responseStatus);
+            var responsePayloadBytes = Encoding.UTF8.GetBytes(responseBody);
+            var responseHeader = $"HTTP/1.1 {responseCode} {responseStatus}\r\n"
+                                 + "Content-Type: application/json\r\n"
+                                 + $"Content-Length: {responsePayloadBytes.Length}\r\n"
+                                 + "Connection: close\r\n\r\n";
+            var responseHeaderBytes = Encoding.ASCII.GetBytes(responseHeader);
+            await stream.WriteAsync(responseHeaderBytes, 0, responseHeaderBytes.Length).ConfigureAwait(false);
+            await stream.WriteAsync(responsePayloadBytes, 0, responsePayloadBytes.Length).ConfigureAwait(false);
+        }
+
+        private string HandleRequest(string method, string path, string body, out int code, out string status) {
+            if (string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/v1/models", StringComparison.OrdinalIgnoreCase)) {
+                code = 200;
+                status = "OK";
+                return JsonSerializer.Serialize(new {
+                    @object = "list",
+                    data = new[] {
+                        new { id = "mock-local-model", @object = "model" }
+                    }
+                });
+            }
+
+            if (string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                int callIndex;
+                lock (_sync) {
+                    _chatCompletionRequestBodies.Add(body);
+                    callIndex = _chatCompletionRequestBodies.Count;
+                }
+
+                code = 200;
+                status = "OK";
+                return callIndex switch {
+                    1 => BuildToolCallCompletionBody("call_round_1", "one"),
+                    2 => BuildToolCallCompletionBody("call_round_2", "two"),
+                    3 => BuildTextCompletionBody("Final answer after two tool rounds."),
+                    _ => BuildTextCompletionBody("Unexpected extra chat request.")
+                };
+            }
+
+            code = 404;
+            status = "Not Found";
+            return """{"error":"not_found"}""";
+        }
+
+        private static string BuildToolCallCompletionBody(string callId, string step) {
+            return JsonSerializer.Serialize(new {
+                id = $"chatcmpl-{callId}",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = callId,
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+
+        private static string BuildTextCompletionBody(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+
+        private static string NormalizePath(string rawPath) {
+            if (Uri.TryCreate(rawPath, UriKind.Absolute, out var absolute)) {
+                return absolute.AbsolutePath;
+            }
+
+            var queryIndex = rawPath.IndexOf('?', StringComparison.Ordinal);
+            return queryIndex < 0 ? rawPath : rawPath[..queryIndex];
+        }
+
+        public void Dispose() {
+            if (_disposed) {
+                return;
+            }
+
+            _disposed = true;
+            _listener.Stop();
+            try {
+                _acceptLoop.Wait(TimeSpan.FromSeconds(1));
+            } catch {
+                // Ignore loop teardown failures in tests.
+            }
+        }
+    }
+}

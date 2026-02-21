@@ -29,7 +29,10 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         };
 
         var policy = ChatServiceSession.BuildSessionPolicy(
-            new ServiceOptions(),
+            new ServiceOptions {
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = true
+            },
             Array.Empty<ToolPackAvailabilityInfo>(),
             Array.Empty<string>(),
             Array.Empty<string>(),
@@ -46,7 +49,11 @@ public sealed class SessionRuntimePolicyHelloContractTests {
 
         var json = JsonSerializer.Serialize<ChatServiceMessage>(hello, ChatServiceJsonContext.Default.ChatServiceMessage);
         using var doc = JsonDocument.Parse(json);
-        var runtime = doc.RootElement.GetProperty("policy").GetProperty("runtimePolicy");
+        var serializedPolicy = doc.RootElement.GetProperty("policy");
+        Assert.True(serializedPolicy.GetProperty("parallelTools").GetBoolean());
+        Assert.True(serializedPolicy.GetProperty("allowMutatingParallelToolCalls").GetBoolean());
+
+        var runtime = serializedPolicy.GetProperty("runtimePolicy");
 
         Assert.Equal("yolo", runtime.GetProperty("writeGovernanceMode").GetString());
         Assert.False(runtime.GetProperty("requireWriteGovernanceRuntime").GetBoolean());
@@ -62,5 +69,57 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.Equal(600, runtime.GetProperty("smtpProbeMaxAgeSeconds").GetInt32());
         Assert.Equal("C:\\profiles\\run-as.json", runtime.GetProperty("runAsProfilePath").GetString());
         Assert.Equal("C:\\profiles\\auth.json", runtime.GetProperty("authenticationProfilePath").GetString());
+    }
+
+    [Fact]
+    public void BuildSessionPolicy_NormalizesMaxToolRoundsToAtLeastOne() {
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions {
+                MaxToolRounds = 0
+            },
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            });
+
+        Assert.Equal(1, policy.MaxToolRounds);
+    }
+
+    [Fact]
+    public void BuildSessionPolicy_ClampsMaxToolRoundsToSafetyLimit() {
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions {
+                MaxToolRounds = 500
+            },
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            });
+
+        Assert.Equal(256, policy.MaxToolRounds);
     }
 }

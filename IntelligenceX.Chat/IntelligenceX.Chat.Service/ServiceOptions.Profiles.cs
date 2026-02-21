@@ -36,8 +36,9 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         TextVerbosity = profile.TextVerbosity;
         Temperature = profile.Temperature;
 
-        MaxToolRounds = profile.MaxToolRounds;
+        MaxToolRounds = Math.Clamp(profile.MaxToolRounds, 1, MaxToolRoundsLimit);
         ParallelTools = profile.ParallelTools;
+        AllowMutatingParallelToolCalls = profile.AllowMutatingParallelToolCalls;
         TurnTimeoutSeconds = profile.TurnTimeoutSeconds;
         ToolTimeoutSeconds = profile.ToolTimeoutSeconds;
 
@@ -101,8 +102,9 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             ReasoningSummary = ReasoningSummary,
             TextVerbosity = TextVerbosity,
             Temperature = Temperature,
-            MaxToolRounds = MaxToolRounds,
+            MaxToolRounds = Math.Clamp(MaxToolRounds, 1, MaxToolRoundsLimit),
             ParallelTools = ParallelTools,
+            AllowMutatingParallelToolCalls = AllowMutatingParallelToolCalls,
             TurnTimeoutSeconds = TurnTimeoutSeconds,
             ToolTimeoutSeconds = ToolTimeoutSeconds,
             AllowedRoots = new List<string>(AllowedRoots),

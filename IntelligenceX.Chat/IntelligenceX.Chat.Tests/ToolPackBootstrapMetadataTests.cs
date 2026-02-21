@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -172,6 +176,35 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("reviewersetup", reviewerPackId);
     }
 
+    [Fact]
+    public void RegisterAll_Throws_WhenDistinctPackIdsCollideAfterNormalization() {
+        var packs = new IToolPack[] {
+            new TestPack("event-log", "EventLog A"),
+            new TestPack("event_log", "EventLog B")
+        };
+        var registry = new ToolRegistry();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ToolPackBootstrap.RegisterAll(registry, packs));
+
+        Assert.Contains("both normalize to 'eventlog'", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UpdatePackMetadataIndexes_Throws_WhenDescriptorIdsCollideAfterNormalization() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var descriptors = new[] {
+            new ToolPackDescriptor { Id = "event-log", Name = "EventLog A", Tier = ToolCapabilityTier.ReadOnly, SourceKind = "open_source" },
+            new ToolPackDescriptor { Id = "event_log", Name = "EventLog B", Tier = ToolCapabilityTier.ReadOnly, SourceKind = "open_source" }
+        };
+        var method = typeof(ChatServiceSession).GetMethod("UpdatePackMetadataIndexes", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        var ex = Assert.Throws<TargetInvocationException>(() => method!.Invoke(session, new object[] { descriptors }));
+        var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
+
+        Assert.Contains("both normalize to 'eventlog'", inner.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class TestPackRuntimeSettings : IToolPackRuntimeSettings {
         public IReadOnlyList<string> AllowedRoots { get; init; } = Array.Empty<string>();
         public string? AdDomainController { get; init; }
@@ -183,5 +216,22 @@ public sealed class ToolPackBootstrapMetadataTests {
         public bool EnableOfficeImoPack { get; init; } = true;
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
+    }
+
+    private sealed class TestPack : IToolPack {
+        public TestPack(string id, string name) {
+            Descriptor = new ToolPackDescriptor {
+                Id = id,
+                Name = name,
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "open_source"
+            };
+        }
+
+        public ToolPackDescriptor Descriptor { get; }
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
     }
 }

@@ -53,11 +53,15 @@ public static partial class ToolPackBootstrap {
         var knownDefinitions = new HashSet<string>(
             registry.GetDefinitions().Select(static definition => definition.Name),
             StringComparer.OrdinalIgnoreCase);
+        var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var pack in packs) {
+            var descriptorId = (pack.Descriptor.Id ?? string.Empty).Trim();
+            var normalizedPackId = NormalizePackId(descriptorId);
+            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedPackId);
+
             pack.Register(registry);
 
-            var normalizedPackId = NormalizePackId(pack.Descriptor.Id);
             if (normalizedPackId.Length == 0) {
                 foreach (var definition in registry.GetDefinitions()) {
                     knownDefinitions.Add(definition.Name);
@@ -165,6 +169,29 @@ public static partial class ToolPackBootstrap {
             .Replace(".", string.Empty, StringComparison.Ordinal);
 
         return normalized;
+    }
+
+    private static void EnsureNoPackIdNormalizationCollision(
+        IDictionary<string, string> descriptorIdsByNormalizedPackId,
+        string descriptorId,
+        string normalizedPackId) {
+        if (normalizedPackId.Length == 0) {
+            return;
+        }
+
+        var normalizedDescriptorId = NormalizeCollisionDescriptorId(descriptorId);
+        if (descriptorIdsByNormalizedPackId.TryGetValue(normalizedPackId, out var existingDescriptorId)
+            && !string.Equals(existingDescriptorId, normalizedDescriptorId, StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException(
+                $"Tool pack ids '{existingDescriptorId}' and '{normalizedDescriptorId}' both normalize to '{normalizedPackId}'.");
+        }
+
+        descriptorIdsByNormalizedPackId[normalizedPackId] = normalizedDescriptorId;
+    }
+
+    private static string NormalizeCollisionDescriptorId(string descriptorId) {
+        var normalized = (descriptorId ?? string.Empty).Trim();
+        return normalized.Length == 0 ? "<empty>" : normalized;
     }
 
     internal static IToolPack WithSourceKind(IToolPack pack, string sourceKind) {

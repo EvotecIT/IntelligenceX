@@ -92,20 +92,29 @@ internal sealed partial class ChatServiceSession {
         _packDisplayNamesById.Clear();
         _packDescriptionsById.Clear();
         _packSourceKindsById.Clear();
+        var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < descriptors.Count; i++) {
             var descriptor = descriptors[i];
-            var normalizedPackId = NormalizePackId(descriptor.Id);
+            var descriptorId = (descriptor.Id ?? string.Empty).Trim();
+            var normalizedPackId = NormalizePackId(descriptorId);
             if (normalizedPackId.Length == 0) {
                 continue;
             }
 
+            if (descriptorIdsByNormalizedPackId.TryGetValue(normalizedPackId, out var existingDescriptorId)
+                && !string.Equals(existingDescriptorId, descriptorId, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Tool pack ids '{existingDescriptorId}' and '{descriptorId}' both normalize to '{normalizedPackId}'.");
+            }
+
+            descriptorIdsByNormalizedPackId[normalizedPackId] = descriptorId;
             _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
             var description = (descriptor.Description ?? string.Empty).Trim();
             if (description.Length > 0) {
                 _packDescriptionsById[normalizedPackId] = description;
             }
-            _packSourceKindsById[normalizedPackId] = MapSourceKind(descriptor.SourceKind, descriptor.Id);
+            _packSourceKindsById[normalizedPackId] = MapSourceKind(descriptor.SourceKind, descriptorId);
         }
     }
 

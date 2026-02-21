@@ -28,6 +28,8 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private const int SafeDefaultMaxToolRounds = 24;
+    private const int AutonomyMaxToolRoundsLimit = 256;
+    private const int AutonomyMaxCandidateToolsLimit = 256;
     private const bool SafeDefaultParallelTools = true;
     private const string ParallelToolModeAuto = "auto";
     private const string ParallelToolModeForceSerial = "force_serial";
@@ -346,7 +348,7 @@ Quick start prompts:
         var defaultMaxToolRounds = isLocalCompatibleRuntime ? 8 : SafeDefaultMaxToolRounds;
 
         var effectiveMaxToolRounds = _autonomyMaxToolRounds
-            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 64)
+            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: AutonomyMaxToolRoundsLimit)
             ?? defaultMaxToolRounds;
 
         var serviceDefaultParallelTools = _sessionPolicy?.ParallelTools ?? SafeDefaultParallelTools;
@@ -395,12 +397,12 @@ Quick start prompts:
 
     private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout,
         string? weightedRouting, string? maxCandidates, string? planExecuteReviewLoop, string? maxReviewPasses, string? modelHeartbeatSeconds) {
-        _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: 64);
+        _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: AutonomyMaxToolRoundsLimit);
         _autonomyParallelTools = ParseAutonomyParallelToolMode(parallelMode);
         _autonomyTurnTimeoutSeconds = ParseAutonomyInt(turnTimeout, min: 0, max: 3600);
         _autonomyToolTimeoutSeconds = ParseAutonomyInt(toolTimeout, min: 0, max: 3600);
         _autonomyWeightedToolRouting = ParseAutonomyParallelMode(weightedRouting);
-        _autonomyMaxCandidateTools = ParseAutonomyInt(maxCandidates, min: 0, max: 64);
+        _autonomyMaxCandidateTools = ParseAutonomyInt(maxCandidates, min: 0, max: AutonomyMaxCandidateToolsLimit);
         _autonomyPlanExecuteReviewLoop = ParseAutonomyParallelMode(planExecuteReviewLoop);
         _autonomyMaxReviewPasses = ParseAutonomyInt(maxReviewPasses, min: 0, max: 3);
         _autonomyModelHeartbeatSeconds = ParseAutonomyInt(modelHeartbeatSeconds, min: 0, max: 60);

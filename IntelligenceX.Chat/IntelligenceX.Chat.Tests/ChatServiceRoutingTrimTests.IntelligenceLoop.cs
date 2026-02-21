@@ -11,6 +11,24 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
+    [Theory]
+    [InlineData(null, 24, 24)]
+    [InlineData(null, 500, 256)]
+    [InlineData(0, 24, 1)]
+    [InlineData(1, 24, 1)]
+    [InlineData(24, 24, 24)]
+    [InlineData(300, 24, 256)]
+    public void ResolveMaxToolRounds_ClampsToSupportedRange(int? requested, int serviceDefault, int expected) {
+        ChatRequestOptions? options = requested is null
+            ? null
+            : new ChatRequestOptions {
+                MaxToolRounds = requested.Value
+            };
+
+        var result = ChatServiceSession.ResolveMaxToolRounds(options, serviceDefault);
+        Assert.Equal(expected, result);
+    }
+
     [Fact]
     public void ResolveMaxReviewPasses_DefaultsToSafeValueWhenUnset() {
         var result = ChatServiceSession.ResolveMaxReviewPasses(null);
@@ -47,6 +65,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ChatServiceSession.ResolveModelHeartbeatSeconds(options);
         Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void BuildReviewPassClampMessage_ReportsRequestedAndEffectiveValues() {
+        var result = BuildReviewPassClampMessageMethod.Invoke(null, new object?[] { 9, 3 });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("requested review passes (9)", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adjusted to 3", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0..3", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelHeartbeatClampMessage_ReportsRequestedAndEffectiveValues() {
+        var result = BuildModelHeartbeatClampMessageMethod.Invoke(null, new object?[] { 120, 60 });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("requested model heartbeat seconds (120)", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adjusted to 60", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0..60", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

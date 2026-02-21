@@ -811,6 +811,7 @@
     var rows = [
       ["Read-only", p.readOnly ? "Yes" : "No"],
       ["Parallel tools", p.parallelTools ? "Yes" : "No"],
+      ["Mutating parallel", p.allowMutatingParallelToolCalls ? "Yes" : "No"],
       ["Max tool rounds", p.maxToolRounds == null ? "Default" : String(p.maxToolRounds)],
       ["Turn timeout", p.turnTimeoutSeconds == null ? "Default" : (String(p.turnTimeoutSeconds) + "s")],
       ["Tool timeout", p.toolTimeoutSeconds == null ? "Default" : (String(p.toolTimeoutSeconds) + "s")],

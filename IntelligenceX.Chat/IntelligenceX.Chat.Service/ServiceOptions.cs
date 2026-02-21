@@ -13,6 +13,8 @@ using IntelligenceX.Tools;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
+    private const int MaxToolRoundsLimit = 256;
+
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
     public string Model { get; set; } = "gpt-5.3-codex";
@@ -41,6 +43,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
 
     public int MaxToolRounds { get; set; } = 24;
     public bool ParallelTools { get; set; } = true;
+    public bool AllowMutatingParallelToolCalls { get; set; }
     public int TurnTimeoutSeconds { get; set; }
     public int ToolTimeoutSeconds { get; set; }
     public List<string> AllowedRoots { get; } = new();
@@ -318,8 +321,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
-                if (!int.TryParse(value, out var n) || n < 1) {
-                    error = "--max-tool-rounds must be a positive integer.";
+                if (!int.TryParse(value, out var n) || n < 1 || n > MaxToolRoundsLimit) {
+                    error = $"--max-tool-rounds must be between 1 and {MaxToolRoundsLimit}.";
                     return options;
                 }
                 options.MaxToolRounds = n;
@@ -331,6 +334,14 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             }
             if (arg is "--no-parallel-tools") {
                 options.ParallelTools = false;
+                continue;
+            }
+            if (arg is "--allow-mutating-parallel-tools") {
+                options.AllowMutatingParallelToolCalls = true;
+                continue;
+            }
+            if (arg is "--disallow-mutating-parallel-tools") {
+                options.AllowMutatingParallelToolCalls = false;
                 continue;
             }
             if (arg is "--turn-timeout-seconds") {
@@ -527,9 +538,11 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --no-state-db           Disable SQLite state storage (profiles unavailable).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
-        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 24).");
+        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (1..256; default: 24).");
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible (default: on).");
         Console.WriteLine("  --no-parallel-tools     Disable parallel tool calls.");
+        Console.WriteLine("  --allow-mutating-parallel-tools  Allow mutating/write-capable tool calls to run in parallel (default: off).");
+        Console.WriteLine("  --disallow-mutating-parallel-tools  Disable mutating parallel override.");
         Console.WriteLine("  --turn-timeout-seconds <N>  Per-turn timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --tool-timeout-seconds <N>  Per-tool timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --ad-domain-controller  Active Directory domain controller host/FQDN (optional).");

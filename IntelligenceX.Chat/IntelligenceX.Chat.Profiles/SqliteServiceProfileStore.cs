@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   temperature REAL NULL,
   max_tool_rounds INTEGER NOT NULL,
   parallel_tools INTEGER NOT NULL,
+  allow_mutating_parallel_tool_calls INTEGER NOT NULL DEFAULT 0,
   turn_timeout_seconds INTEGER NOT NULL,
   tool_timeout_seconds INTEGER NOT NULL,
   instructions_file TEXT NULL,
@@ -124,6 +125,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_auth_mode", "TEXT NOT NULL DEFAULT 'bearer'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_basic_username", "TEXT NULL");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_basic_password", "BLOB NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "allow_mutating_parallel_tool_calls", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "authentication_runtime_preset", "TEXT NOT NULL DEFAULT 'default'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_authentication_runtime", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "run_as_profile_path", "TEXT NULL");
@@ -274,6 +276,7 @@ LIMIT 1;",
             Temperature = ReadDouble(r, "temperature"),
             MaxToolRounds = ReadInt(r, "max_tool_rounds", defaultValue: 24),
             ParallelTools = ReadBool(r, "parallel_tools", defaultValue: true),
+            AllowMutatingParallelToolCalls = ReadBool(r, "allow_mutating_parallel_tool_calls", defaultValue: false),
             TurnTimeoutSeconds = ReadInt(r, "turn_timeout_seconds", defaultValue: 0),
             ToolTimeoutSeconds = ReadInt(r, "tool_timeout_seconds", defaultValue: 0),
             InstructionsFile = ReadString(r, "instructions_file"),
@@ -329,7 +332,7 @@ INSERT INTO {ProfileTable} (
   name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming,
   openai_allow_insecure_http, openai_allow_insecure_http_non_loopback,
   reasoning_effort, reasoning_summary, text_verbosity, temperature,
-  max_tool_rounds, parallel_tools, turn_timeout_seconds, tool_timeout_seconds,
+  max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds,
   instructions_file, max_table_rows, max_sample, redact,
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
   enable_powershell_pack, powershell_allow_write, enable_testimox_pack, enable_officeimo_pack,
@@ -343,7 +346,7 @@ VALUES (
   @name, @model, @transport_kind, @openai_base_url, @openai_auth_mode, @openai_api_key, @openai_basic_username, @openai_basic_password, @openai_account_id, @openai_streaming,
   @openai_allow_insecure_http, @openai_allow_insecure_http_non_loopback,
   @reasoning_effort, @reasoning_summary, @text_verbosity, @temperature,
-  @max_tool_rounds, @parallel_tools, @turn_timeout_seconds, @tool_timeout_seconds,
+  @max_tool_rounds, @parallel_tools, @allow_mutating_parallel_tool_calls, @turn_timeout_seconds, @tool_timeout_seconds,
   @instructions_file, @max_table_rows, @max_sample, @redact,
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
   @enable_powershell_pack, @powershell_allow_write, @enable_testimox_pack, @enable_officeimo_pack,
@@ -371,6 +374,7 @@ ON CONFLICT(name) DO UPDATE SET
   temperature = excluded.temperature,
   max_tool_rounds = excluded.max_tool_rounds,
   parallel_tools = excluded.parallel_tools,
+  allow_mutating_parallel_tool_calls = excluded.allow_mutating_parallel_tool_calls,
   turn_timeout_seconds = excluded.turn_timeout_seconds,
   tool_timeout_seconds = excluded.tool_timeout_seconds,
   instructions_file = excluded.instructions_file,
@@ -415,6 +419,7 @@ ON CONFLICT(name) DO UPDATE SET
                     ["@temperature"] = profile.Temperature,
                     ["@max_tool_rounds"] = profile.MaxToolRounds,
                     ["@parallel_tools"] = profile.ParallelTools ? 1 : 0,
+                    ["@allow_mutating_parallel_tool_calls"] = profile.AllowMutatingParallelToolCalls ? 1 : 0,
                     ["@turn_timeout_seconds"] = profile.TurnTimeoutSeconds,
                     ["@tool_timeout_seconds"] = profile.ToolTimeoutSeconds,
                     ["@instructions_file"] = string.IsNullOrWhiteSpace(profile.InstructionsFile) ? null : profile.InstructionsFile.Trim(),

@@ -21,6 +21,7 @@ internal sealed partial class ChatServiceSession {
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
     private const int DefaultMaxReviewPasses = 1;
     private const int MaxReviewPassesLimit = 3;
+    private const int MaxToolRoundsLimit = 256;
     private const int DefaultModelHeartbeatSeconds = 8;
     private const int MaxModelHeartbeatSeconds = 60;
 
@@ -34,13 +35,14 @@ internal sealed partial class ChatServiceSession {
         string? ResolvedModel);
 
     private static (bool ParallelTools, bool AllowMutatingParallel, string Mode) ResolveParallelToolExecutionMode(ChatRequestOptions? options,
-        bool serviceDefaultParallelTools) {
+        bool serviceDefaultParallelTools,
+        bool serviceDefaultAllowMutatingParallel) {
         var requestedParallelTools = options?.ParallelTools ?? serviceDefaultParallelTools;
         var mode = NormalizeParallelToolMode(options?.ParallelToolMode);
         return mode switch {
             ParallelToolModeForceSerial => (false, false, ParallelToolModeForceSerial),
             ParallelToolModeAllowParallel => (true, true, ParallelToolModeAllowParallel),
-            _ => (requestedParallelTools, false, ParallelToolModeAuto)
+            _ => (requestedParallelTools, serviceDefaultAllowMutatingParallel, ParallelToolModeAuto)
         };
     }
 
@@ -58,6 +60,13 @@ internal sealed partial class ChatServiceSession {
             "off" => ParallelToolModeForceSerial,
             _ => ParallelToolModeAuto
         };
+    }
+
+    // Internal seam for deterministic chat-loop tests and shared routing behavior.
+    internal static int ResolveMaxToolRounds(ChatRequestOptions? options, int serviceDefaultMaxToolRounds) {
+        var serviceDefault = Math.Max(1, serviceDefaultMaxToolRounds);
+        var requested = options?.MaxToolRounds ?? serviceDefault;
+        return Math.Clamp(requested, 1, MaxToolRoundsLimit);
     }
 
     // Internal seam for deterministic chat-loop tests and shared routing behavior.
@@ -118,6 +127,15 @@ internal sealed partial class ChatServiceSession {
         }
 
         return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
+    }
+
+    private static string BuildReviewPassClampMessage(int requestedReviewPasses, int effectiveReviewPasses) {
+        return $"Requested review passes ({requestedReviewPasses}) adjusted to {effectiveReviewPasses} (supported range: 0..{MaxReviewPassesLimit}).";
+    }
+
+    private static string BuildModelHeartbeatClampMessage(int requestedHeartbeatSeconds, int effectiveHeartbeatSeconds) {
+        return
+            $"Requested model heartbeat seconds ({requestedHeartbeatSeconds}) adjusted to {effectiveHeartbeatSeconds} (supported range: 0..{MaxModelHeartbeatSeconds}).";
     }
 
     internal static bool TryReadProactiveModeFromRequestText(string? requestText, out bool enabled) {

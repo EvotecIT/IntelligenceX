@@ -525,12 +525,12 @@ public sealed partial class MainWindow : Window {
     }
 
     private void RestoreAutonomyOverridesFromAppState() {
-        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: 64);
+        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: AutonomyMaxToolRoundsLimit);
         _autonomyParallelTools = _appState.AutonomyParallelTools;
         _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyTurnTimeoutSeconds, min: 0, max: 3600);
         _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
         _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
-        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
+        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: AutonomyMaxCandidateToolsLimit);
         _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
         _autonomyMaxReviewPasses = NormalizeAutonomyInt(_appState.AutonomyMaxReviewPasses, min: 0, max: 3);
         _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(_appState.AutonomyModelHeartbeatSeconds, min: 0, max: 60);

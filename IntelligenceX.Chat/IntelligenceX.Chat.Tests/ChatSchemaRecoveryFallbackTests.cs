@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -74,6 +75,58 @@ public sealed class ChatSchemaRecoveryFallbackTests {
         ex.Data["openai:error_param"] = "input";
 
         var shouldRetry = InvokeShouldRetry(ServiceShouldRetryWithoutToolsMethod, ex, options);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryWithoutTools_RetriesWhenContextFailureIsInInnerException() {
+        var options = BuildOptionsWithTools();
+        var ex = new AggregateException(
+            "provider batch failed",
+            new InvalidOperationException(
+                "Chat request failed (400): {\"error\":\"Cannot truncate prompt with n_keep (8192) >= n_ctx (4096)\"}"));
+
+        var shouldRetry = InvokeShouldRetry(ServiceShouldRetryWithoutToolsMethod, ex, options);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void SharedClassifier_MatchesServiceResult_ForStructuredSchemaError() {
+        var options = BuildOptionsWithTools();
+        var ex = new InvalidOperationException("request failed");
+        ex.Data["openai:native_transport"] = true;
+        ex.Data["openai:error_code"] = "missing_required_parameter";
+        ex.Data["openai:error_param"] = "tools[0].name";
+
+        var serviceShouldRetry = InvokeShouldRetry(ServiceShouldRetryWithoutToolsMethod, ex, options);
+        var sharedShouldRetry = ToolSchemaRecoveryClassifier.ShouldRetryWithoutTools(ex, options);
+
+        Assert.Equal(serviceShouldRetry, sharedShouldRetry);
+    }
+
+    [Fact]
+    public void SharedClassifier_RetriesWhenContextFailureIsInInnerException() {
+        var options = BuildOptionsWithTools();
+        var ex = new InvalidOperationException(
+            "transport failed",
+            new InvalidOperationException("maximum context length exceeded"));
+
+        var shouldRetry = ToolSchemaRecoveryClassifier.ShouldRetryWithoutTools(ex, options);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void SharedClassifier_DoesNotRetry_WhenToolsAreMissing() {
+        var options = new ChatOptions {
+            Tools = null,
+            ToolChoice = null
+        };
+        var ex = new InvalidOperationException("maximum context length exceeded");
+
+        var shouldRetry = ToolSchemaRecoveryClassifier.ShouldRetryWithoutTools(ex, options);
 
         Assert.False(shouldRetry);
     }

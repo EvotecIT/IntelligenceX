@@ -26,6 +26,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int MaxRequestTimeoutSeconds = 3600;
+    private const int MaxCandidateToolsLimit = 256;
 
     private async Task TryWriteDeltaAsync(StreamWriter writer, string requestId, string threadId, string delta) {
         try {
@@ -378,6 +380,44 @@ internal sealed partial class ChatServiceSession {
         error = null;
         if (options is null) {
             return true;
+        }
+
+        if (options.MaxToolRounds < 1 || options.MaxToolRounds > MaxToolRoundsLimit) {
+            error = $"maxToolRounds must be between 1 and {MaxToolRoundsLimit}.";
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.ParallelToolMode)) {
+            var normalizedParallelMode = NormalizeParallelToolMode(options.ParallelToolMode);
+            var explicitAuto = string.Equals(options.ParallelToolMode.Trim(), ParallelToolModeAuto, StringComparison.OrdinalIgnoreCase);
+            if (normalizedParallelMode == ParallelToolModeAuto && !explicitAuto) {
+                error = "parallelToolMode must be one of: auto, force_serial, allow_parallel.";
+                return false;
+            }
+        }
+
+        if (options.MaxCandidateTools.HasValue) {
+            var maxCandidateTools = options.MaxCandidateTools.Value;
+            if (maxCandidateTools < 0 || maxCandidateTools > MaxCandidateToolsLimit) {
+                error = $"maxCandidateTools must be between 0 and {MaxCandidateToolsLimit}.";
+                return false;
+            }
+        }
+
+        if (options.TurnTimeoutSeconds.HasValue) {
+            var turnTimeout = options.TurnTimeoutSeconds.Value;
+            if (turnTimeout < 0 || turnTimeout > MaxRequestTimeoutSeconds) {
+                error = $"turnTimeoutSeconds must be between 0 and {MaxRequestTimeoutSeconds}.";
+                return false;
+            }
+        }
+
+        if (options.ToolTimeoutSeconds.HasValue) {
+            var toolTimeout = options.ToolTimeoutSeconds.Value;
+            if (toolTimeout < 0 || toolTimeout > MaxRequestTimeoutSeconds) {
+                error = $"toolTimeoutSeconds must be between 0 and {MaxRequestTimeoutSeconds}.";
+                return false;
+            }
         }
 
         if (options.Temperature.HasValue) {

@@ -13,7 +13,14 @@ internal static partial class Program {
     }
 
     private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {
-        var transport = new FakeToolTransport(turn);
+        var transport = new FakeToolTransport(new[] { turn }, onStartTurn: null);
+        return CreateTestClient(transport);
+    }
+
+    private static IntelligenceXClient CreateToolRunnerClient(
+        IReadOnlyList<TurnInfo> turns,
+        Action<ChatInput, ChatOptions?>? onStartTurn = null) {
+        var transport = new FakeToolTransport(turns, onStartTurn);
         return CreateTestClient(transport);
     }
 
@@ -77,10 +84,16 @@ internal static partial class Program {
     }
 
     private sealed class FakeToolTransport : IOpenAITransport {
-        private readonly TurnInfo _turn;
+        private readonly Queue<TurnInfo> _turns;
+        private readonly Action<ChatInput, ChatOptions?>? _onStartTurn;
 
-        public FakeToolTransport(TurnInfo turn) {
-            _turn = turn;
+        public FakeToolTransport(IReadOnlyList<TurnInfo> turns, Action<ChatInput, ChatOptions?>? onStartTurn) {
+            if (turns is null || turns.Count == 0) {
+                throw new InvalidOperationException("At least one turn is required.");
+            }
+
+            _turns = new Queue<TurnInfo>(turns);
+            _onStartTurn = onStartTurn;
         }
 
         public OpenAITransportKind Kind => OpenAITransportKind.Native;
@@ -115,7 +128,16 @@ internal static partial class Program {
             => Task.FromResult(new ThreadInfo(threadId, null, null, null, null, new JsonObject(), null));
         public Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
             string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken)
-            => Task.FromResult(_turn);
+            => Task.FromResult(DequeueTurn(input, options));
+
+        private TurnInfo DequeueTurn(ChatInput input, ChatOptions? options) {
+            _onStartTurn?.Invoke(input, options);
+            if (_turns.Count == 0) {
+                throw new InvalidOperationException("No queued turns remaining for fake tool transport.");
+            }
+
+            return _turns.Dequeue();
+        }
 
         public void Dispose() { }
     }
