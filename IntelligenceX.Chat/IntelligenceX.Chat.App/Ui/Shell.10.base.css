@@ -567,6 +567,7 @@ body.sidebar-collapsed.sidebar-hover-mode.sidebar-hover-open .chat-sidebar-list 
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-anchor: none;
   padding: 14px 14px 8px;
   display: flex;
   flex-direction: column;

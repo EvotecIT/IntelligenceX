@@ -327,8 +327,10 @@
   var TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX = 28;
   var TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX = 84;
   var TRANSCRIPT_FOLLOW_DISABLE_SENDING_THRESHOLD_PX = 180;
+  var TRANSCRIPT_FOLLOW_USER_UPWARD_SCROLL_MIN_PX = 2;
   var TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS = 1400;
   var transcriptLastUserScrollIntentAt = 0;
+  var transcriptLastObservedScrollTop = transcript ? transcript.scrollTop : 0;
 
   function markTranscriptUserScrollIntent() {
     transcriptLastUserScrollIntentAt = Date.now();
@@ -364,6 +366,7 @@
     transcriptFollowState.suppressScrollEvent = true;
     transcript.scrollTop = top;
     transcriptFollowState.suppressScrollEvent = false;
+    transcriptLastObservedScrollTop = transcript.scrollTop;
   }
 
   function scrollToBottom(el) {
@@ -376,6 +379,7 @@
       el.scrollTop = el.scrollHeight;
       transcriptFollowState.suppressScrollEvent = false;
       transcriptFollowState.enabled = true;
+      transcriptLastObservedScrollTop = transcript.scrollTop;
       return;
     }
 
@@ -412,10 +416,16 @@
       return;
     }
 
+    var currentTop = transcript.scrollTop;
+    var scrollDelta = currentTop - transcriptLastObservedScrollTop;
+    transcriptLastObservedScrollTop = currentTop;
+
     var allowDisable = true;
     if (state.sending === true && transcriptFollowState.enabled) {
       var userIntentAge = Date.now() - transcriptLastUserScrollIntentAt;
-      allowDisable = userIntentAge >= 0 && userIntentAge <= TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS;
+      var hasRecentUserIntent = userIntentAge >= 0 && userIntentAge <= TRANSCRIPT_USER_SCROLL_INTENT_WINDOW_MS;
+      var userScrolledUp = scrollDelta <= -TRANSCRIPT_FOLLOW_USER_UPWARD_SCROLL_MIN_PX;
+      allowDisable = hasRecentUserIntent && userScrolledUp;
     }
 
     refreshTranscriptFollowState({ allowDisable: allowDisable, allowEnable: true });
