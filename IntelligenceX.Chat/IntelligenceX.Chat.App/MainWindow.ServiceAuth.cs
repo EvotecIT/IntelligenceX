@@ -257,13 +257,6 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task AutoReconnectLoopAsync(CancellationToken cancellationToken) {
-        var delays = new[] {
-            TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(20),
-            TimeSpan.FromSeconds(30)
-        };
         var attempt = 0;
 
         while (!cancellationToken.IsCancellationRequested) {
@@ -271,7 +264,7 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
-            var delay = delays[Math.Min(attempt, delays.Length - 1)];
+            var delay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
             attempt++;
 
             try {

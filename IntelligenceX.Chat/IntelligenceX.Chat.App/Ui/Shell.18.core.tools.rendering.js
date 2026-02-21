@@ -416,6 +416,7 @@
   window.ixSetActivity = function(text, timeline) {
     var el = byId("activity");
     var label = el.querySelector(".activity-text");
+    var wasActive = el.classList.contains("active");
     if (text) {
       var timelineSummary = "";
       if (Array.isArray(timeline) && timeline.length > 0) {
@@ -426,7 +427,9 @@
       }
       label.textContent = text + timelineSummary;
       el.classList.add("active");
-      refreshTranscriptFollowState();
+      if (!wasActive) {
+        refreshTranscriptFollowState();
+      }
     } else {
       el.classList.remove("active");
     }

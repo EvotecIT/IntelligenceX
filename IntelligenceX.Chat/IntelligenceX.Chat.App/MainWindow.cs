@@ -78,6 +78,13 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan AliveProbeCacheTtl = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan AliveProbeTimeout = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan AliveProbeFastTimeout = TimeSpan.FromMilliseconds(700);
+    private static readonly TimeSpan[] AutoReconnectBackoffDelays = {
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(6),
+        TimeSpan.FromSeconds(12),
+        TimeSpan.FromSeconds(20)
+    };
     private static readonly TimeSpan KickoffRecoverySettleDelay = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(750);
