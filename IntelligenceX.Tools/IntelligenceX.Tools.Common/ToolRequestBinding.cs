@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Tools.Common;
@@ -9,6 +10,8 @@ namespace IntelligenceX.Tools.Common;
 /// </summary>
 /// <typeparam name="TRequest">Typed request model.</typeparam>
 public sealed class ToolRequestBindingResult<TRequest> where TRequest : notnull {
+    private IReadOnlyList<string> _hints = Array.Empty<string>();
+
     private ToolRequestBindingResult() { }
 
     /// <summary>
@@ -34,7 +37,10 @@ public sealed class ToolRequestBindingResult<TRequest> where TRequest : notnull 
     /// <summary>
     /// Optional guidance for callers.
     /// </summary>
-    public IReadOnlyList<string> Hints { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Hints {
+        get => _hints;
+        init => _hints = NormalizeHints(value);
+    }
 
     /// <summary>
     /// Optional transient marker for bind-time failures.
@@ -67,6 +73,26 @@ public sealed class ToolRequestBindingResult<TRequest> where TRequest : notnull 
             Hints = hints ?? Array.Empty<string>(),
             IsTransient = isTransient
         };
+    }
+
+    private static IReadOnlyList<string> NormalizeHints(IReadOnlyList<string>? hints) {
+        if (hints is null || hints.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(hints.Count);
+        for (var i = 0; i < hints.Count; i++) {
+            var hint = hints[i];
+            if (!string.IsNullOrWhiteSpace(hint)) {
+                normalized.Add(hint.Trim());
+            }
+        }
+
+        if (normalized.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return new ReadOnlyCollection<string>(normalized);
     }
 }
 
