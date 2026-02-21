@@ -375,6 +375,33 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures DOCX transcript export still embeds allow-listed local images after fallback removal.
+    /// </summary>
+    [Fact]
+    public void WriteDocxTranscript_EmbedsAllowListedLocalImage() {
+        var root = CreateTempDirectory();
+        try {
+            var imagesDirectory = Path.Combine(root, "images");
+            Directory.CreateDirectory(imagesDirectory);
+            var imagePath = Path.Combine(imagesDirectory, "dot.png");
+            var imageBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2Bg+P8fAAMCAf/Jsq3uAAAAAElFTkSuQmCC");
+            File.WriteAllBytes(imagePath, imageBytes);
+
+            var markdownImagePath = imagePath.Replace('\\', '/');
+            var markdown = "# Transcript\n\n![dot](" + markdownImagePath + ")";
+            var docxPath = Path.Combine(root, "transcript-allowlisted-image.docx");
+
+            OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { imagesDirectory });
+            Assert.True(File.Exists(docxPath));
+
+            var imageCount = CountMainDocumentImageParts(docxPath);
+            Assert.Equal(1, imageCount);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Ensures invalid visual fences remain as raw code and are not materialized into images.
     /// </summary>
     [Fact]
