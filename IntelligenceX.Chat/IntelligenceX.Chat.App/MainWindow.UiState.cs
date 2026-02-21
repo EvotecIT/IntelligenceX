@@ -148,6 +148,7 @@ public sealed partial class MainWindow : Window {
         if (!_webViewReady) {
             lock (_uiPublishSync) {
                 _lastStatusScriptPayload = null;
+                _lastStatusDrivenOptionsStamp = null;
             }
             return;
         }
@@ -176,8 +177,20 @@ public sealed partial class MainWindow : Window {
                 throw;
             }
         }
+
+        var statusDrivenOptionsStamp = BuildStatusDrivenOptionsStamp();
+        var publishOptionsFromStatus = false;
+        lock (_uiPublishSync) {
+            if (!string.Equals(_lastStatusDrivenOptionsStamp, statusDrivenOptionsStamp, StringComparison.Ordinal)) {
+                _lastStatusDrivenOptionsStamp = statusDrivenOptionsStamp;
+                publishOptionsFromStatus = true;
+            }
+        }
+
         await PublishSessionStateAsync().ConfigureAwait(false);
-        await PublishOptionsStateAsync().ConfigureAwait(false);
+        if (publishOptionsFromStatus) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
     }
 
     private Task SetStatusAsync(SessionStatus status) {
@@ -267,6 +280,16 @@ public sealed partial class MainWindow : Window {
         }
 
         return SessionStatusTone.Neutral;
+    }
+
+    private string BuildStatusDrivenOptionsStamp() {
+        return string.Join(
+            "|",
+            _isConnected ? "1" : "0",
+            IsEffectivelyAuthenticatedForCurrentTransport() ? "1" : "0",
+            _authenticatedAccountId ?? string.Empty,
+            _localProviderTransport,
+            _activeNativeAccountSlot.ToString(CultureInfo.InvariantCulture));
     }
 
     private static bool InferUsageLimitSwitchRecommendation(string text) {
