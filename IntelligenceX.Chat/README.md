@@ -101,7 +101,9 @@ By default, Host + Service + WinUI app share auth and use separate local state s
 
 - Auth token cache (shared): `%USERPROFILE%\\.intelligencex\\auth.json`
   - Override: `INTELLIGENCEX_AUTH_PATH`
+  - Account switching in Chat no longer deletes this store; it clears only runtime account pinning so existing accounts stay reusable without full reauth.
 - WinUI app state (profiles, chats, UI options): `%LOCALAPPDATA%\\IntelligenceX.Chat\\app-state.db`
+  - Native account slot count defaults to `3`; override with `IXCHAT_NATIVE_ACCOUNT_SLOTS` (range `1..32`) when you want more per-profile slots.
 - Service profile state (service CLI profiles): `%LOCALAPPDATA%\\IntelligenceX.Chat\\state.db`
 - Runtime staging (temporary service runtime copy): `%TEMP%\\IntelligenceX.Chat\\service-runtime\\<guid>`
 - IPC channel: named pipe `intelligencex.chat`

@@ -581,6 +581,7 @@
       || lower.indexOf("switch account") >= 0
       || lower.indexOf("usage limit") >= 0
       || lower.indexOf("account limit") >= 0
+      || lower.indexOf("post-login verification") >= 0
       || lower.indexOf("paused") >= 0
       || lower.indexOf("remaining") >= 0
       || lower.indexOf("applying") >= 0

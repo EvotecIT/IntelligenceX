@@ -1,3 +1,5 @@
+  var MAX_NATIVE_ACCOUNT_SLOTS = 32;
+
   function isNoDragTarget(target) {
     if (!target || !target.closest) {
       return false;
@@ -756,18 +758,51 @@
     };
   }
 
-  function normalizeNativeSlot(value) {
+  function resolveNativeSlotCount(local) {
+    var runtimeCapabilities = local && local.runtimeCapabilities && typeof local.runtimeCapabilities === "object"
+      ? local.runtimeCapabilities
+      : {};
+    var slotCount = Number(runtimeCapabilities.nativeAccountSlots);
+    if (!Number.isFinite(slotCount) || slotCount < 1) {
+      slotCount = Array.isArray(local && local.nativeAccountSlots) ? local.nativeAccountSlots.length : 0;
+    }
+    if (!Number.isFinite(slotCount) || slotCount < 1) {
+      slotCount = 3;
+    }
+    slotCount = Math.floor(slotCount);
+    if (slotCount < 1) {
+      slotCount = 1;
+    }
+    if (slotCount > MAX_NATIVE_ACCOUNT_SLOTS) {
+      slotCount = MAX_NATIVE_ACCOUNT_SLOTS;
+    }
+    return slotCount;
+  }
+
+  function normalizeNativeSlot(value, maxSlots) {
     var parsed = Number(value);
     if (!Number.isFinite(parsed)) {
       return 1;
+    }
+
+    var max = Number(maxSlots);
+    if (!Number.isFinite(max) || max < 1) {
+      max = 3;
+    } else {
+      max = Math.floor(max);
+    }
+    if (max < 1) {
+      max = 1;
+    } else if (max > MAX_NATIVE_ACCOUNT_SLOTS) {
+      max = MAX_NATIVE_ACCOUNT_SLOTS;
     }
 
     var normalized = Math.floor(parsed);
     if (normalized < 1) {
       return 1;
     }
-    if (normalized > 3) {
-      return 3;
+    if (normalized > max) {
+      return max;
     }
     return normalized;
   }
@@ -777,10 +812,10 @@
       return "";
     }
 
-    var selectedSlot = normalizeNativeSlot(slot);
+    var selectedSlot = normalizeNativeSlot(slot, resolveNativeSlotCount(local));
     for (var i = 0; i < local.nativeAccountSlots.length; i++) {
       var item = local.nativeAccountSlots[i] || {};
-      var itemSlot = normalizeNativeSlot(item.slot);
+      var itemSlot = normalizeNativeSlot(item.slot, resolveNativeSlotCount(local));
       if (itemSlot === selectedSlot) {
         return String(item.accountId || "").trim();
       }
@@ -963,7 +998,7 @@
       ? (byId("optLocalBaseUrl").value || "").trim()
       : "";
     var model = (byId("optLocalModelInput").value || "").trim();
-    var activeNativeAccountSlot = normalizeNativeSlot(byId("optNativeAccountSlot").value || "1");
+    var activeNativeAccountSlot = normalizeNativeSlot(byId("optNativeAccountSlot").value || "1", resolveNativeSlotCount(local));
     var activeSlotAccountId = (byId("optNativeAccountId").value || "").trim();
     var openAIAccountId = activeSlotAccountId;
     var reasoningEffort = (byId("optReasoningEffort").value || "").trim();
@@ -1038,7 +1073,7 @@
       var updatedSlot = false;
       for (var slotIndex = 0; slotIndex < state.options.localModel.nativeAccountSlots.length; slotIndex++) {
         var slotItem = state.options.localModel.nativeAccountSlots[slotIndex] || {};
-        if (normalizeNativeSlot(slotItem.slot) === activeNativeAccountSlot) {
+        if (normalizeNativeSlot(slotItem.slot, resolveNativeSlotCount(state.options.localModel)) === activeNativeAccountSlot) {
           slotItem.slot = activeNativeAccountSlot;
           slotItem.accountId = activeSlotAccountId;
           state.options.localModel.nativeAccountSlots[slotIndex] = slotItem;
@@ -1100,7 +1135,8 @@
     var currentOpenAIAuthMode = normalizeCompatibleAuthMode(local.openAIAuthMode || "bearer");
     var currentOpenAIBasicUsername = String(local.openAIBasicUsername || "").trim();
     var currentOpenAIAccountId = String(local.openAIAccountId || "").trim();
-    var currentActiveNativeAccountSlot = normalizeNativeSlot(local.activeNativeAccountSlot || 1);
+    var currentNativeSlotCount = resolveNativeSlotCount(local);
+    var currentActiveNativeAccountSlot = normalizeNativeSlot(local.activeNativeAccountSlot || 1, currentNativeSlotCount);
     var currentSlotAccountId = resolveNativeSlotAccountId(local, currentActiveNativeAccountSlot);
 
     var draftTransport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
@@ -1108,7 +1144,7 @@
       ? (byId("optLocalBaseUrl").value || "").trim().toLowerCase()
       : "";
     var draftModel = (byId("optLocalModelInput").value || "").trim();
-    var draftActiveNativeAccountSlot = normalizeNativeSlot(byId("optNativeAccountSlot").value || "1");
+    var draftActiveNativeAccountSlot = normalizeNativeSlot(byId("optNativeAccountSlot").value || "1", currentNativeSlotCount);
     var draftSlotAccountId = (byId("optNativeAccountId").value || "").trim();
     var draftOpenAIAccountId = draftSlotAccountId;
     var draftReasoningEffort = (byId("optReasoningEffort").value || "").trim().toLowerCase();
@@ -1344,11 +1380,11 @@
   });
 
   byId("optNativeAccountSlot").addEventListener("change", function(e) {
-    var slot = normalizeNativeSlot(e.target.value || "1");
+    var local = (state.options || {}).localModel || {};
+    var slot = normalizeNativeSlot(e.target.value || "1", resolveNativeSlotCount(local));
     e.target.value = String(slot);
     syncCustomSelect(e.target);
 
-    var local = (state.options || {}).localModel || {};
     var accountIdInput = byId("optNativeAccountId");
     if (accountIdInput) {
       accountIdInput.value = resolveNativeSlotAccountId(local, slot);

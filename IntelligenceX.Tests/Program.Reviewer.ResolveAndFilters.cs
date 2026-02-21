@@ -40,6 +40,16 @@ internal static partial class Program {
             "openai account order round-robin second run");
     }
 
+    private static void TestOpenAiAccountOrderRoundRobinSupportsManyAccounts() {
+        var ordered = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3", "acc-4", "acc-5", "acc-6" },
+            rotation: "round-robin",
+            stickyAccountId: null,
+            rotationSeed: 5);
+        AssertSequenceEqual(new[] { "acc-5", "acc-6", "acc-1", "acc-2", "acc-3", "acc-4" }, ordered.ToArray(),
+            "openai account order round-robin many accounts");
+    }
+
     private static void TestOpenAiAccountOrderSticky() {
         var ordered = CallOrderOpenAiAccounts(
             new[] { "acc-1", "acc-2", "acc-3" },

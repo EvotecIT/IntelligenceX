@@ -519,6 +519,7 @@ internal static partial class Program {
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
+        failed += Run("OpenAI account order round-robin many accounts", TestOpenAiAccountOrderRoundRobinSupportsManyAccounts);
         failed += Run("OpenAI account order sticky", TestOpenAiAccountOrderSticky);
         failed += Run("Normalize account id list dedupes case-insensitive", TestNormalizeAccountIdListDedupesCaseInsensitive);
         failed += Run("Try resolve OpenAI account stores rotated order", TestTryResolveOpenAiAccountStoresRotatedOrder);
