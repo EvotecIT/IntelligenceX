@@ -1,0 +1,14 @@
+[
+  {
+    "match": "blog/**",
+    "requireImageDimensions": false
+  },
+  {
+    "match": "tags/**",
+    "requireImageDimensions": false
+  },
+  {
+    "match": "categories/**",
+    "requireImageDimensions": false
+  }
+]
