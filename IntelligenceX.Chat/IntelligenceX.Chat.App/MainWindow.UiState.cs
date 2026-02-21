@@ -193,6 +193,8 @@ public sealed partial class MainWindow : Window {
             cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId),
             activityTimeline = SnapshotActivityTimeline(),
             lastTurnMetrics = BuildLastTurnMetricsState(),
+            latencySummary = BuildActiveProviderLatencySummaryState(),
+            providerCircuit = BuildActiveProviderCircuitState(),
             debugMode = _debugMode,
             windowMaximized = IsWindowMaximized()
         });

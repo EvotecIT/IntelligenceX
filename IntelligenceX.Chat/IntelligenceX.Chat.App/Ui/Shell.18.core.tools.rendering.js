@@ -211,6 +211,16 @@
     } else if (nextState.lastTurnMetrics === null) {
       state.lastTurnMetrics = null;
     }
+    if (nextState.latencySummary && typeof nextState.latencySummary === "object") {
+      state.latencySummary = nextState.latencySummary;
+    } else if (nextState.latencySummary === null) {
+      state.latencySummary = null;
+    }
+    if (nextState.providerCircuit && typeof nextState.providerCircuit === "object") {
+      state.providerCircuit = nextState.providerCircuit;
+    } else if (nextState.providerCircuit === null) {
+      state.providerCircuit = null;
+    }
     if (typeof nextState.windowMaximized === "boolean") {
       state.windowMaximized = nextState.windowMaximized;
     }

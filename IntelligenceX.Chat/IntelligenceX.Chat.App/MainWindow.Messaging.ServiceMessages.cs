@@ -42,6 +42,7 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
 
+                    MarkTurnDeltaStage(delta);
                     _assistantStreaming.Append(delta.Text);
                     _activeTurnReceivedDelta = true;
                     ReplaceLastAssistantText(
@@ -57,6 +58,7 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
 
+                    MarkTurnStatusStage(status);
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
                     AppendActivityTimeline(status, activityText ?? string.Empty);
@@ -235,20 +237,69 @@ public sealed partial class MainWindow : Window {
     }
 
     private void ApplyTurnMetrics(ChatMetricsMessage metrics) {
+        var normalizedRequestId = NormalizeRequestId(metrics.RequestId);
         var completedUtc = metrics.CompletedAtUtc.Kind == DateTimeKind.Utc
             ? metrics.CompletedAtUtc
             : DateTime.SpecifyKind(metrics.CompletedAtUtc, DateTimeKind.Utc);
+        var startedUtc = metrics.StartedAtUtc.Kind == DateTimeKind.Utc
+            ? metrics.StartedAtUtc
+            : DateTime.SpecifyKind(metrics.StartedAtUtc, DateTimeKind.Utc);
         var outcome = (metrics.Outcome ?? string.Empty).Trim();
         if (outcome.Length == 0) {
             outcome = "unknown";
         }
+        var normalizedDurationMs = Math.Max(0L, metrics.DurationMs);
+        var completion = CompleteTurnLatencyTracking(
+            normalizedRequestId,
+            completedUtc,
+            explicitDurationMs: normalizedDurationMs);
+        if (completion is not null && string.Equals(outcome, "ok", StringComparison.OrdinalIgnoreCase)) {
+            RegisterTurnSuccessReliability(completion);
+        }
 
         lock (_turnDiagnosticsSync) {
+            var prior = _lastTurnMetrics;
+            var sameRequestAsPrior = prior is not null
+                                     && string.Equals(prior.RequestId, normalizedRequestId, StringComparison.OrdinalIgnoreCase);
+            var queueWaitMs = completion?.QueueWaitMs
+                              ?? (sameRequestAsPrior ? prior!.QueueWaitMs : _activeTurnQueueWaitMs);
+            var authProbeMs = completion?.AuthProbeMs
+                              ?? (sameRequestAsPrior ? prior!.AuthProbeMs : null);
+            var connectMs = completion?.ConnectMs
+                            ?? (sameRequestAsPrior ? prior!.ConnectMs : null);
+            var dispatchToFirstStatusMs = completion?.DispatchToFirstStatusMs
+                                         ?? (sameRequestAsPrior ? prior!.DispatchToFirstStatusMs : null);
+            var dispatchToModelSelectedMs = completion?.DispatchToModelSelectedMs
+                                            ?? (sameRequestAsPrior ? prior!.DispatchToModelSelectedMs : null);
+            var dispatchToFirstToolRunningMs = completion?.DispatchToFirstToolRunningMs
+                                              ?? (sameRequestAsPrior ? prior!.DispatchToFirstToolRunningMs : null);
+            var dispatchToFirstDeltaMs = completion?.DispatchToFirstDeltaMs
+                                        ?? (sameRequestAsPrior ? prior!.DispatchToFirstDeltaMs : null);
+            var dispatchToLastDeltaMs = completion?.DispatchToLastDeltaMs
+                                       ?? (sameRequestAsPrior ? prior!.DispatchToLastDeltaMs : null);
+            var streamDurationMs = completion?.StreamDurationMs
+                                   ?? (sameRequestAsPrior ? prior!.StreamDurationMs : null);
+            if (!dispatchToFirstDeltaMs.HasValue && metrics.FirstDeltaAtUtc.HasValue) {
+                var firstDeltaAtUtc = metrics.FirstDeltaAtUtc.Value.Kind == DateTimeKind.Utc
+                    ? metrics.FirstDeltaAtUtc.Value
+                    : DateTime.SpecifyKind(metrics.FirstDeltaAtUtc.Value, DateTimeKind.Utc);
+                dispatchToFirstDeltaMs = TryComputeElapsedMs(startedUtc, firstDeltaAtUtc);
+            }
+
             _lastTurnMetrics = new TurnMetricsSnapshot(
+                RequestId: normalizedRequestId,
                 CompletedUtc: completedUtc,
-                DurationMs: Math.Max(0, metrics.DurationMs),
+                DurationMs: normalizedDurationMs,
                 TtftMs: metrics.TtftMs,
-                QueueWaitMs: _activeTurnQueueWaitMs,
+                QueueWaitMs: queueWaitMs,
+                AuthProbeMs: authProbeMs,
+                ConnectMs: connectMs,
+                DispatchToFirstStatusMs: dispatchToFirstStatusMs,
+                DispatchToModelSelectedMs: dispatchToModelSelectedMs,
+                DispatchToFirstToolRunningMs: dispatchToFirstToolRunningMs,
+                DispatchToFirstDeltaMs: dispatchToFirstDeltaMs,
+                DispatchToLastDeltaMs: dispatchToLastDeltaMs,
+                StreamDurationMs: streamDurationMs,
                 ToolCallsCount: Math.Max(0, metrics.ToolCallsCount),
                 ToolRounds: Math.Max(0, metrics.ToolRounds),
                 ProjectionFallbackCount: Math.Max(0, metrics.ProjectionFallbackCount),

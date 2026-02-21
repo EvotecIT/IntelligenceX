@@ -17,7 +17,8 @@ public sealed partial class MainWindow : Window {
         string RequestId,
         string UserText,
         string RequestText,
-        string? AssistantModelLabel);
+        string? AssistantModelLabel,
+        long? AuthProbeMs);
 
     private async Task<ChatTurnContext?> PrepareChatTurnAsync(string text, bool skipUserBubble) {
         var conversation = GetActiveConversation();
@@ -30,8 +31,11 @@ public sealed partial class MainWindow : Window {
         await SetActivityAsync("Checking account and runtime status...").ConfigureAwait(false);
 
         var dispatchAuthProbeOutcome = DispatchAuthenticationProbeOutcome.Authenticated;
+        long? authProbeMs = null;
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
+            var authProbeStartedUtc = DateTime.UtcNow;
             dispatchAuthProbeOutcome = await ProbeAuthenticationStateForDispatchAsync(EnsureLoginFastPathProbeTimeout).ConfigureAwait(false);
+            authProbeMs = TryComputeElapsedMs(authProbeStartedUtc, DateTime.UtcNow);
             if (dispatchAuthProbeOutcome == DispatchAuthenticationProbeOutcome.Authenticated) {
                 _isAuthenticated = true;
             }
@@ -106,7 +110,8 @@ public sealed partial class MainWindow : Window {
             NextId(),
             text,
             BuildRequestTextForService(text),
-            assistantModelLabel);
+            assistantModelLabel,
+            authProbeMs);
     }
 
     private async Task AppendUserMessageAsync(ConversationRuntime conversation, string text) {
@@ -266,6 +271,30 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyChatResultAsync(ChatTurnContext turn, ChatResultMessage result) {
+        var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
+        if (completion is not null) {
+            RegisterTurnSuccessReliability(completion);
+            lock (_turnDiagnosticsSync) {
+                if (_lastTurnMetrics is null
+                    || !string.Equals(_lastTurnMetrics.RequestId, completion.RequestId, StringComparison.OrdinalIgnoreCase)) {
+                    _lastTurnMetrics = BuildTurnMetricsSnapshotFromCompletion(
+                        completion,
+                        outcome: "ok",
+                        errorCode: null,
+                        ttftMs: completion.DispatchToFirstDeltaMs,
+                        promptTokens: null,
+                        completionTokens: null,
+                        totalTokens: null,
+                        cachedPromptTokens: null,
+                        reasoningTokens: null,
+                        model: null,
+                        requestedModel: null,
+                        transport: null,
+                        endpointHost: null);
+                }
+            }
+        }
+
         var conversation = turn.Conversation;
         conversation.ThreadId = result.ThreadId;
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
@@ -298,6 +327,27 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
+        var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
+        if (completion is not null) {
+            RegisterTurnFailureReliability(completion, outcome);
+            lock (_turnDiagnosticsSync) {
+                _lastTurnMetrics = BuildTurnMetricsSnapshotFromCompletion(
+                    completion,
+                    outcome: MapOutcomeToMetricsToken(outcome),
+                    errorCode: MapErrorCodeToMetricsToken(outcome),
+                    ttftMs: completion.DispatchToFirstDeltaMs,
+                    promptTokens: null,
+                    completionTokens: null,
+                    totalTokens: null,
+                    cachedPromptTokens: null,
+                    reasoningTokens: null,
+                    model: null,
+                    requestedModel: null,
+                    transport: null,
+                    endpointHost: null);
+            }
+        }
+
         if (TryGetPartialTurnFailureNotice(turn.Conversation, outcome, out var notice)) {
             turn.Conversation.Messages.Add(("System", notice, DateTime.Now, null));
         } else {

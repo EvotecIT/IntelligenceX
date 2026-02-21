@@ -2775,6 +2775,25 @@
         parts.push("Last turn: " + outcome + " in " + durationText + ", tools " + callsText + queueWaitText + tokenText + ".");
       }
 
+      var latencySummary = state.latencySummary;
+      if (latencySummary && typeof latencySummary === "object") {
+        var p50Ms = Number(latencySummary.p50Ms);
+        var p95Ms = Number(latencySummary.p95Ms);
+        var sampleCount = Number(latencySummary.samples);
+        if (Number.isFinite(p50Ms) && Number.isFinite(p95Ms) && Number.isFinite(sampleCount) && sampleCount > 0) {
+          parts.push(
+            "Provider latency: p50 " + Math.floor(p50Ms) + "ms, p95 " + Math.floor(p95Ms) + "ms (" + Math.floor(sampleCount) + " samples).");
+        }
+      }
+
+      var providerCircuit = state.providerCircuit;
+      if (providerCircuit && typeof providerCircuit === "object") {
+        var retryAfterSeconds = Number(providerCircuit.retryAfterSeconds);
+        if (providerCircuit.open === true && Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+          parts.push("Provider circuit: cooling down (" + Math.ceil(retryAfterSeconds) + "s).");
+        }
+      }
+
       var queuedTurnCount = Number(state.queuedTurnCount);
       if (Number.isFinite(queuedTurnCount) && queuedTurnCount > 0) {
         parts.push("Turn queue: " + Math.floor(queuedTurnCount) + ".");

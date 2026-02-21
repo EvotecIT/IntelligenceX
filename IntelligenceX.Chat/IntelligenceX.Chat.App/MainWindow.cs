@@ -422,10 +422,19 @@ public sealed partial class MainWindow : Window {
         long RequestId);
 
     private sealed record TurnMetricsSnapshot(
+        string RequestId,
         DateTime CompletedUtc,
         long DurationMs,
         long? TtftMs,
         long? QueueWaitMs,
+        long? AuthProbeMs,
+        long? ConnectMs,
+        long? DispatchToFirstStatusMs,
+        long? DispatchToModelSelectedMs,
+        long? DispatchToFirstToolRunningMs,
+        long? DispatchToFirstDeltaMs,
+        long? DispatchToLastDeltaMs,
+        long? StreamDurationMs,
         int ToolCallsCount,
         int ToolRounds,
         int ProjectionFallbackCount,

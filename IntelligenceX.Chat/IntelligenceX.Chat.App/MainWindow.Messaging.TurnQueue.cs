@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window {
         string? preferredConversationId = null,
         DateTime? queuedAtUtc = null,
         bool skipUserBubble = false) {
+        var dispatchStartedUtc = DateTime.UtcNow;
         text = (text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(text)) {
             return;
@@ -48,25 +49,17 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
-        if (turn is null) {
-            return;
-        }
-
-        if (_modelKickoffInProgress) {
-            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
-        }
-
-        // Keep user bubble rendering immediate, but still validate connectivity
-        // before we enter active send state.
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
-            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
-            return;
-        }
-        if (_client is null) {
-            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+        var activeUsageIdentity = ResolveActiveUsageIdentity();
+        if (TryGetActiveProviderCircuitOpen(activeUsageIdentity, out var circuitRemaining, out _)) {
+            var waitSeconds = Math.Max(1, (int)Math.Ceiling(circuitRemaining.TotalSeconds));
+            await SetStatusAsync(
+                    "Provider cooldown active (" + waitSeconds + "s). Retrying now would likely fail.",
+                    SessionStatusTone.Warn)
+                .ConfigureAwait(false);
+            await SetActivityAsync(
+                    "Runtime is cooling down after transient failures. Retry in about " + waitSeconds + "s.")
+                .ConfigureAwait(false);
+            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
@@ -76,6 +69,35 @@ public sealed partial class MainWindow : Window {
             if (elapsed.TotalMilliseconds > 0) {
                 queueWaitMs = (long)Math.Round(elapsed.TotalMilliseconds);
             }
+        }
+
+        var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
+        if (turn is null) {
+            return;
+        }
+
+        RegisterTurnDispatchStart(turn.RequestId, activeUsageIdentity, dispatchStartedUtc, queueWaitMs, turn.AuthProbeMs);
+
+        if (_modelKickoffInProgress) {
+            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
+        }
+
+        // Keep user bubble rendering immediate, but still validate connectivity
+        // before we enter active send state.
+        var connectStartedUtc = DateTime.UtcNow;
+        var connected = await EnsureConnectedAsync().ConfigureAwait(false);
+        var connectCompletedUtc = DateTime.UtcNow;
+        MarkTurnConnectStage(turn.RequestId, connectStartedUtc, connectCompletedUtc, connected);
+        if (!connected) {
+            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            return;
+        }
+        if (_client is null) {
+            MarkTurnConnectStage(turn.RequestId, connectStartedUtc, DateTime.UtcNow, connected: false);
+            await ApplyTurnFailureAsync(turn, AssistantTurnOutcome.Disconnected()).ConfigureAwait(false);
+            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            return;
         }
 
         var requestId = turn.RequestId;
