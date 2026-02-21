@@ -267,8 +267,21 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private static string BuildUsageLimitQueuedPromptStatus(int? retryAfterMinutes) {
+        if (retryAfterMinutes.HasValue && retryAfterMinutes.Value > 0) {
+            return "Queued prompt paused by account limit (" + retryAfterMinutes.Value + "m remaining). Use Switch Account to run now.";
+        }
+
+        return "Queued prompt paused by account limit. Use Switch Account to run now.";
+    }
+
     private async Task<bool> TryDispatchQueuedPromptAfterLoginAsync(bool honorAutoDispatch = true) {
         if (_isSending || !IsEffectivelyAuthenticatedForCurrentTransport() || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
+            return false;
+        }
+
+        if (IsActiveUsageLimitDispatchBlocked(out var retryAfterMinutes)) {
+            await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
             return false;
         }
 
@@ -330,6 +343,11 @@ public sealed partial class MainWindow : Window {
 
         if (!IsEffectivelyAuthenticatedForCurrentTransport() && queuedSignIn > 0) {
             await SetStatusAsync($"Waiting for sign-in... ({queuedSignIn}/{MaxQueuedTurns} queued)").ConfigureAwait(false);
+            return;
+        }
+
+        if (queuedSignIn > 0 && IsActiveUsageLimitDispatchBlocked(out var retryAfterMinutes)) {
+            await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
             return;
         }
 

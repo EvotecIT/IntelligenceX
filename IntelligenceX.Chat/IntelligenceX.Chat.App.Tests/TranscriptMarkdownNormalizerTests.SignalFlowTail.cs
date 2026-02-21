@@ -6,6 +6,10 @@ using Xunit;
 namespace IntelligenceX.Chat.App.Tests;
 
 public sealed partial class TranscriptMarkdownNormalizerTests {
+    /// <summary>
+    /// Ensures malformed signal-flow bullets with tight label spacing normalize into readable markdown.
+    /// </summary>
+    [Fact]
     public void NormalizeForRendering_FixesTightLabelSpacingInWrappedSignalFlowBullets() {
         var text =
             "- Signal **Only total count checked, not origin split ->**Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**";

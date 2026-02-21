@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window {
         ConversationRuntime Conversation,
         string ConversationId,
         string RequestId,
+        string UserText,
         string RequestText,
         string? AssistantModelLabel);
 
@@ -89,6 +90,7 @@ public sealed partial class MainWindow : Window {
             conversation,
             conversationId,
             NextId(),
+            text,
             BuildRequestTextForService(text),
             assistantModelLabel);
     }
@@ -134,7 +136,7 @@ public sealed partial class MainWindow : Window {
                         var promptQueued = false;
                         if (IsUsageLimitError(resolvedRetryEx)) {
                             MarkUsageLimitForActiveAccount(resolvedRetryEx.Message);
-                            promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
+                            promptQueued = QueuePromptAfterSignIn(turn.UserText, turn.ConversationId);
                             await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                             if (promptQueued) {
                                 AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
@@ -161,7 +163,7 @@ public sealed partial class MainWindow : Window {
                 var promptQueued = false;
                 if (IsUsageLimitError(resolvedEx)) {
                     MarkUsageLimitForActiveAccount(resolvedEx.Message);
-                    promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
+                    promptQueued = QueuePromptAfterSignIn(turn.UserText, turn.ConversationId);
                     await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                     if (promptQueued) {
                         AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
@@ -488,8 +490,8 @@ public sealed partial class MainWindow : Window {
                || text.StartsWith("[canceled]", StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool QueuePromptAfterSignIn(string requestText, string conversationId) {
-        var text = (requestText ?? string.Empty).Trim();
+    private bool QueuePromptAfterSignIn(string userText, string conversationId) {
+        var text = (userText ?? string.Empty).Trim();
         if (text.Length == 0) {
             return false;
         }

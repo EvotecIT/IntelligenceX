@@ -528,8 +528,4 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
         Assert.Equal(expected, normalized);
     }
 
-    /// <summary>
-    /// Ensures malformed signal-flow bullets with tight label spacing normalize into readable markdown.
-    /// </summary>
-    [Fact]
 }
