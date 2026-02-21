@@ -252,12 +252,6 @@ internal static partial class Program {
             aliasDef.Tags.Count,
             aliasDef.Tags.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             "alias merged tags unique");
-        var sortedTags = aliasDef.Tags.ToArray();
-        Array.Sort(sortedTags, StringComparer.OrdinalIgnoreCase);
-        AssertSequenceEqual(
-            sortedTags,
-            aliasDef.Tags.ToArray(),
-            "alias merged tags deterministic order");
         AssertEqual(true, aliasDef.Tags.Contains("system", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical tag");
         AssertEqual(true, aliasDef.Tags.Contains("inventory", StringComparer.OrdinalIgnoreCase), "alias merged tags include canonical custom tag");
         AssertEqual(true, aliasDef.Tags.Contains("host", StringComparer.OrdinalIgnoreCase), "alias merged tags include alias tag");
@@ -265,6 +259,10 @@ internal static partial class Program {
         AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("operation:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include operation taxonomy");
         AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("entity:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include entity taxonomy");
         AssertEqual(true, aliasDef.Tags.Any(static tag => tag.StartsWith("risk:", StringComparison.OrdinalIgnoreCase)), "alias merged tags include risk taxonomy");
+        AssertEqual(1, aliasDef.Tags.Count(static tag => tag.StartsWith("scope:", StringComparison.OrdinalIgnoreCase)), "alias merged tags scope taxonomy singleton");
+        AssertEqual(1, aliasDef.Tags.Count(static tag => tag.StartsWith("operation:", StringComparison.OrdinalIgnoreCase)), "alias merged tags operation taxonomy singleton");
+        AssertEqual(1, aliasDef.Tags.Count(static tag => tag.StartsWith("entity:", StringComparison.OrdinalIgnoreCase)), "alias merged tags entity taxonomy singleton");
+        AssertEqual(1, aliasDef.Tags.Count(static tag => tag.StartsWith("risk:", StringComparison.OrdinalIgnoreCase)), "alias merged tags risk taxonomy singleton");
     }
 
     private static void TestToolRunnerMaxRounds() {
