@@ -170,6 +170,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task PublishSessionStateCoreAsync() {
         if (!_webViewReady) {
+            _lastPublishedSessionStateJson = null;
             return;
         }
 
@@ -198,6 +199,11 @@ public sealed partial class MainWindow : Window {
             debugMode = _debugMode,
             windowMaximized = IsWindowMaximized()
         });
+        if (string.Equals(_lastPublishedSessionStateJson, json, StringComparison.Ordinal)) {
+            return;
+        }
+
+        _lastPublishedSessionStateJson = json;
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetSessionState(" + json + ");").AsTask()).ConfigureAwait(false);
     }
 
@@ -445,6 +451,7 @@ public sealed partial class MainWindow : Window {
 
     private async Task PublishOptionsStateCoreAsync() {
         if (!_webViewReady) {
+            _lastPublishedOptionsStateJson = null;
             return;
         }
 
@@ -558,6 +565,11 @@ public sealed partial class MainWindow : Window {
                 pluginSearchPaths = _sessionPolicy.PluginSearchPaths
             }
         });
+        if (string.Equals(_lastPublishedOptionsStateJson, json, StringComparison.Ordinal)) {
+            return;
+        }
+
+        _lastPublishedOptionsStateJson = json;
 
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
     }
