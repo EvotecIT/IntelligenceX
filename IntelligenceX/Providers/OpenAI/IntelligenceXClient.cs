@@ -273,10 +273,11 @@ public sealed class IntelligenceXClient : IDisposable
     /// <param name="threadId">Thread id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that resolves to ThreadInfo.</returns>
-    public Task<ThreadInfo> UseThreadAsync(string threadId, CancellationToken cancellationToken = default) {
+    public async Task<ThreadInfo> UseThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        var resumed = await _transport.ResumeThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
         _currentThreadId = threadId;
-        return _transport.ResumeThreadAsync(threadId, cancellationToken);
+        return resumed;
     }
 
     /// <summary>

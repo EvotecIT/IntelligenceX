@@ -355,6 +355,12 @@ internal sealed partial class ChatServiceSession {
         string phaseMessage,
         string heartbeatLabel,
         int heartbeatSeconds) {
+        // Defensive rebind: planner routing may temporarily switch threads.
+        // Reassert the active conversation thread before each model phase.
+        if (!string.IsNullOrWhiteSpace(threadId)) {
+            await client.UseThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+        }
+
         var chatTask = ChatWithToolSchemaRecoveryAsync(client, input, options, cancellationToken);
         await RunPhaseProgressLoopAsync(
                 writer,

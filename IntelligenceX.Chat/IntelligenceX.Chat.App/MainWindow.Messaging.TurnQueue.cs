@@ -74,31 +74,57 @@ public sealed partial class MainWindow : Window {
 
         var requestId = turn.RequestId;
         _isSending = true;
-        _activeTurnRequestId = requestId;
-        _latestTurnRequestId = requestId;
-        _cancelRequestedTurnRequestId = null;
         _latestServiceActivityText = string.Empty;
         _activeTurnQueueWaitMs = queueWaitMs;
         ResetActivityTimeline();
         StartTurnWatchdog();
-        _activeRequestConversationId = turn.ConversationId;
-        ClearToolRoutingInsights();
-        await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
+        CancellationTokenSource? turnRequestCts = null;
         try {
-            await PublishSessionStateAsync().ConfigureAwait(false);
-        } finally {
-            // Ensure tools state is refreshed after routing reset even if session publish faults.
-            await PublishOptionsStateSafeAsync().ConfigureAwait(false);
-        }
+            turnRequestCts = new CancellationTokenSource();
+            lock (_activeTurnLifecycleSync) {
+                _activeTurnRequestId = requestId;
+                _latestTurnRequestId = requestId;
+                _cancelRequestedTurnRequestId = null;
+                _activeTurnRequestCts = turnRequestCts;
+                _activeRequestConversationId = turn.ConversationId;
+            }
+            ClearToolRoutingInsights();
+            await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
+            try {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            } finally {
+                // Ensure tools state is refreshed after routing reset even if session publish faults.
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+            }
 
-        try {
-            await ExecuteChatTurnWithReconnectAsync(turn).ConfigureAwait(false);
+            await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
         } finally {
             StopTurnWatchdog();
             _isSending = false;
-            _activeTurnRequestId = null;
-            _cancelRequestedTurnRequestId = null;
-            _activeRequestConversationId = null;
+            lock (_activeTurnLifecycleSync) {
+                if (string.Equals(_activeTurnRequestId, requestId, StringComparison.Ordinal)) {
+                    _activeTurnRequestId = null;
+                    if (string.Equals(_activeRequestConversationId, turn.ConversationId, StringComparison.OrdinalIgnoreCase)) {
+                        _activeRequestConversationId = null;
+                    }
+                }
+
+                if (string.Equals(_cancelRequestedTurnRequestId, requestId, StringComparison.Ordinal)) {
+                    _cancelRequestedTurnRequestId = null;
+                }
+
+                if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
+                    _activeTurnRequestCts = null;
+                }
+
+                if (turnRequestCts is not null) {
+                    try {
+                        turnRequestCts.Dispose();
+                    } catch (ObjectDisposedException) {
+                        // Cancellation may race with completion; disposed CTS is safe to ignore.
+                    }
+                }
+            }
             _activeTurnReceivedDelta = false;
             _activeTurnQueueWaitMs = null;
             try {
@@ -326,7 +352,22 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task CancelActiveTurnAsync() {
-        if (!_isSending || string.IsNullOrWhiteSpace(_activeTurnRequestId)) {
+        string chatRequestId;
+        lock (_activeTurnLifecycleSync) {
+            if (!_isSending || string.IsNullOrWhiteSpace(_activeTurnRequestId)) {
+                chatRequestId = string.Empty;
+            } else {
+                chatRequestId = _activeTurnRequestId!;
+                _cancelRequestedTurnRequestId = chatRequestId;
+                try {
+                    _activeTurnRequestCts?.Cancel();
+                } catch (ObjectDisposedException) {
+                    // Turn completion may dispose the CTS before cancellation request arrives.
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(chatRequestId)) {
             await SetStatusAsync(SessionStatus.NoActiveTurnToCancel()).ConfigureAwait(false);
             return;
         }
@@ -337,8 +378,6 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var chatRequestId = _activeTurnRequestId!;
-        _cancelRequestedTurnRequestId = chatRequestId;
         await SetStatusAsync(SessionStatus.Canceling()).ConfigureAwait(false);
         await PublishSessionStateAsync().ConfigureAwait(false);
 

@@ -191,7 +191,10 @@ public sealed partial class MainWindow : Window {
                 CompletionTokens: metrics.Usage?.CompletionTokens,
                 TotalTokens: metrics.Usage?.TotalTokens,
                 CachedPromptTokens: metrics.Usage?.CachedPromptTokens,
-                ReasoningTokens: metrics.Usage?.ReasoningTokens);
+                ReasoningTokens: metrics.Usage?.ReasoningTokens,
+                Model: string.IsNullOrWhiteSpace(metrics.Model) ? null : metrics.Model.Trim(),
+                Transport: string.IsNullOrWhiteSpace(metrics.Transport) ? null : metrics.Transport.Trim(),
+                EndpointHost: string.IsNullOrWhiteSpace(metrics.EndpointHost) ? null : metrics.EndpointHost.Trim());
         }
 
         UpdateAccountUsageFromMetrics(metrics.Usage);
@@ -205,6 +208,9 @@ public sealed partial class MainWindow : Window {
                + (metrics.Usage?.TotalTokens is null ? string.Empty : " tokens=" + metrics.Usage.TotalTokens.Value.ToString(CultureInfo.InvariantCulture))
                + " tools=" + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
                + " rounds=" + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture)
+               + (string.IsNullOrWhiteSpace(metrics.Model) ? string.Empty : " model=" + metrics.Model.Trim())
+               + (string.IsNullOrWhiteSpace(metrics.Transport) ? string.Empty : " transport=" + metrics.Transport.Trim())
+               + (string.IsNullOrWhiteSpace(metrics.EndpointHost) ? string.Empty : " endpoint=" + metrics.EndpointHost.Trim())
                + " outcome=" + (metrics.Outcome ?? "unknown");
     }
 
