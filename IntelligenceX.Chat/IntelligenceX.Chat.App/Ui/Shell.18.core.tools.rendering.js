@@ -629,9 +629,6 @@
     var visualRenderTask = null;
     var nextHtml = html || "";
     if (transcriptLastHtml === nextHtml) {
-      if (shouldStickBottom && transcriptFollowState.enabled && isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX)) {
-        scrollToBottom(transcript);
-      }
       return;
     }
     if (window.ixDisposeTranscriptVisuals) {

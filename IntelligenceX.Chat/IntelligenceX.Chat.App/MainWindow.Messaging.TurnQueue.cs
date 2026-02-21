@@ -49,20 +49,6 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var activeUsageIdentity = ResolveActiveUsageIdentity();
-        if (TryGetActiveProviderCircuitOpen(activeUsageIdentity, out var circuitRemaining, out _)) {
-            var waitSeconds = Math.Max(1, (int)Math.Ceiling(circuitRemaining.TotalSeconds));
-            await SetStatusAsync(
-                    "Provider cooldown active (" + waitSeconds + "s). Retrying now would likely fail.",
-                    SessionStatusTone.Warn)
-                .ConfigureAwait(false);
-            await SetActivityAsync(
-                    "Runtime is cooling down after transient failures. Retry in about " + waitSeconds + "s.")
-                .ConfigureAwait(false);
-            await PublishSessionStateAsync().ConfigureAwait(false);
-            return;
-        }
-
         long? queueWaitMs = null;
         if (queuedAtUtc.HasValue && queuedAtUtc.Value.Kind == DateTimeKind.Utc) {
             var elapsed = DateTime.UtcNow - queuedAtUtc.Value;
@@ -73,6 +59,26 @@ public sealed partial class MainWindow : Window {
 
         var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
         if (turn is null) {
+            return;
+        }
+
+        var activeUsageIdentity = ResolveActiveUsageIdentity();
+        if (TryGetActiveProviderCircuitOpen(activeUsageIdentity, out var circuitRemaining, out _)) {
+            var waitSeconds = Math.Max(1, (int)Math.Ceiling(circuitRemaining.TotalSeconds));
+            await ApplyTurnFailureAsync(
+                    turn,
+                    AssistantTurnOutcome.Error(
+                        "Provider cooldown active (" + waitSeconds + "s). "
+                        + "Retry in about " + waitSeconds + " seconds."))
+                .ConfigureAwait(false);
+            await SetStatusAsync(
+                    "Provider cooldown active (" + waitSeconds + "s). Retrying now would likely fail.",
+                    SessionStatusTone.Warn)
+                .ConfigureAwait(false);
+            await SetActivityAsync(
+                    "Runtime is cooling down after transient failures. Retry in about " + waitSeconds + "s.")
+                .ConfigureAwait(false);
+            await PublishSessionStateAsync().ConfigureAwait(false);
             return;
         }
 
