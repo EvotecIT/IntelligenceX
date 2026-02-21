@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.IO;
+using System.Threading;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -214,7 +215,7 @@ public sealed class ToolPipelineTests {
             cancellationToken: CancellationToken.None,
             binder: _ => ToolRequestBindingResult<StubRequest>.Success(new StubRequest(7)),
             terminal: async (_, cancellationToken) => {
-                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
                 return ToolResultV2.OkModel(new { Attempt = 1 });
             },
             reliability: new ToolPipelineReliabilityOptions {
@@ -312,6 +313,69 @@ public sealed class ToolPipelineTests {
 
         Assert.Equal(cancellationSource.Token, cancellation.CancellationToken);
         Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public async Task Reliability_WhenCallerCancellationOccurs_ShouldNotInvokeRetryDelay() {
+        var definition = new ToolDefinition(
+            "pipeline_stub",
+            "Pipeline stub",
+            ToolSchema.Object().NoAdditionalProperties());
+        using var cancellationSource = new CancellationTokenSource();
+        var delayCalls = 0;
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => {
+            await ToolPipeline.RunAsync(
+                definition: definition,
+                arguments: null,
+                cancellationToken: cancellationSource.Token,
+                binder: _ => ToolRequestBindingResult<StubRequest>.Success(new StubRequest(7)),
+                terminal: (_, cancellationToken) => {
+                    cancellationSource.Cancel();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return Task.FromResult(ToolResultV2.OkModel(new { Attempt = 1 }));
+                },
+                reliability: new ToolPipelineReliabilityOptions {
+                    MaxAttempts = 3,
+                    RetryTransientErrors = true,
+                    RetryExceptions = true,
+                    BaseDelayMs = 1,
+                    MaxDelayMs = 1,
+                    DelayAsync = (_, _) => {
+                        Interlocked.Increment(ref delayCalls);
+                        return Task.CompletedTask;
+                    }
+                });
+        });
+
+        Assert.Equal(0, delayCalls);
+    }
+
+    [Fact]
+    public void ReliabilityProfiles_ShouldReturnEquivalentButDistinctInstances() {
+        var firstReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        var secondReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        Assert.NotSame(firstReadOnly, secondReadOnly);
+        Assert.Equal(firstReadOnly.MaxAttempts, secondReadOnly.MaxAttempts);
+        Assert.Equal(firstReadOnly.AttemptTimeoutMs, secondReadOnly.AttemptTimeoutMs);
+        Assert.Equal(firstReadOnly.BaseDelayMs, secondReadOnly.BaseDelayMs);
+        Assert.Equal(firstReadOnly.MaxDelayMs, secondReadOnly.MaxDelayMs);
+
+        var firstProbe = ToolPipelineReliabilityProfiles.FastNetworkProbe;
+        var secondProbe = ToolPipelineReliabilityProfiles.FastNetworkProbe;
+        Assert.NotSame(firstProbe, secondProbe);
+        Assert.Equal(firstProbe.MaxAttempts, secondProbe.MaxAttempts);
+        Assert.Equal(firstProbe.AttemptTimeoutMs, secondProbe.AttemptTimeoutMs);
+        Assert.Equal(firstProbe.BaseDelayMs, secondProbe.BaseDelayMs);
+        Assert.Equal(firstProbe.MaxDelayMs, secondProbe.MaxDelayMs);
+
+        var clone = firstProbe.Clone();
+        Assert.NotSame(firstProbe, clone);
+        Assert.Equal(firstProbe.MaxAttempts, clone.MaxAttempts);
+        Assert.Equal(firstProbe.RetryTransientErrors, clone.RetryTransientErrors);
+        Assert.Equal(firstProbe.RetryExceptions, clone.RetryExceptions);
+        Assert.Equal(firstProbe.CircuitFailureThreshold, clone.CircuitFailureThreshold);
+        Assert.Equal(firstProbe.CircuitOpenMs, clone.CircuitOpenMs);
     }
 
     [Fact]
