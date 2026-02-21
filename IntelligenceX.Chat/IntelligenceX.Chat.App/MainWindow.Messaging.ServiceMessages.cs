@@ -131,8 +131,9 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task CompleteLoginAndDispatchQueuedTurnAsync() {
+        var refreshSucceeded = false;
         try {
-            await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+            refreshSucceeded = await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 try {
@@ -144,6 +145,12 @@ public sealed partial class MainWindow : Window {
                     // Best-effort diagnostic only.
                 }
             }
+        }
+
+        if (RequiresInteractiveSignInForCurrentTransport() && !refreshSucceeded) {
+            await SetStatusAsync(SessionStatus.SignInRequired()).ConfigureAwait(false);
+            await SetActivityAsync("Post-login verification failed. Waiting for account confirmation...").ConfigureAwait(false);
+            return;
         }
 
         await HandlePostLoginCompletionAsync().ConfigureAwait(false);
