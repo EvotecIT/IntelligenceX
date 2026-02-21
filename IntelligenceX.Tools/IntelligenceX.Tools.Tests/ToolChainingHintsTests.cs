@@ -99,6 +99,7 @@ public sealed class ToolChainingHintsTests {
 
         var actionsList = Assert.IsAssignableFrom<IList<ToolNextActionModel>>(chain.NextActions);
         Assert.Throws<NotSupportedException>(() => actionsList.Add(new ToolNextActionModel { Tool = "z", Reason = "r" }));
+        Assert.Throws<NotSupportedException>(() => actionsList[0] = new ToolNextActionModel { Tool = "z", Reason = "r" });
         var handoffMap = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
         Assert.Throws<NotSupportedException>(() => handoffMap.Add("x", "1"));
     }

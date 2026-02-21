@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json.Serialization;
 using IntelligenceX.Json;
@@ -96,7 +97,8 @@ public static partial class ToolPackGuidance {
             query = query.Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
-        return query.ToArray();
+        var list = query.ToList();
+        return ToReadOnlyList(list);
     }
 
     private static IReadOnlyList<ToolPackFlowStepModel> NormalizeFlowSteps(IEnumerable<ToolPackFlowStepModel>? flowSteps) {
@@ -114,7 +116,7 @@ public static partial class ToolPackGuidance {
             });
         }
 
-        return list;
+        return ToReadOnlyList(list);
     }
 
     private static IReadOnlyList<ToolPackCapabilityModel> NormalizeCapabilities(IEnumerable<ToolPackCapabilityModel>? capabilities) {
@@ -133,7 +135,7 @@ public static partial class ToolPackGuidance {
             });
         }
 
-        return list;
+        return ToReadOnlyList(list);
     }
 
     private static IReadOnlyList<ToolPackEntityHandoffModel> NormalizeEntityHandoffs(IEnumerable<ToolPackEntityHandoffModel>? handoffs) {
@@ -161,7 +163,7 @@ public static partial class ToolPackGuidance {
             });
         }
 
-        return list;
+        return ToReadOnlyList(list);
     }
 
     private static IReadOnlyList<ToolPackEntityFieldMappingModel> NormalizeEntityFieldMappings(IEnumerable<ToolPackEntityFieldMappingModel>? mappings) {
@@ -187,7 +189,7 @@ public static partial class ToolPackGuidance {
             });
         }
 
-        return list;
+        return ToReadOnlyList(list);
     }
 
     private static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalog(IEnumerable<ToolPackToolCatalogEntryModel>? entries) {
@@ -237,7 +239,7 @@ public static partial class ToolPackGuidance {
             });
         }
 
-        return list;
+        return ToReadOnlyList(list);
     }
 
     private static ToolPackToolTraitsModel BuildToolTraits(IEnumerable<string>? argumentNames, bool supportsTableViewProjection) {
@@ -351,7 +353,7 @@ public static partial class ToolPackGuidance {
         }
 
         list.Sort(StringComparer.OrdinalIgnoreCase);
-        return list.ToArray();
+        return ToReadOnlyList(list);
     }
 
     private static string NormalizeRoutingToken(string? value, string fallback) {
@@ -420,7 +422,7 @@ public static partial class ToolPackGuidance {
             });
         }
 
-        return list;
+        return ToReadOnlyList(list);
     }
 
     private static IReadOnlyList<string> ReadRequiredArguments(JsonObject? schema) {
@@ -496,10 +498,11 @@ public static partial class ToolPackGuidance {
     private static IReadOnlyList<string> GetObjectKeys(JsonObject obj) {
         var keysProperty = obj.GetType().GetProperty("Keys");
         if (keysProperty?.GetValue(obj) is IEnumerable<string> keys) {
-            return keys
+            var list = keys
                 .Where(static x => !string.IsNullOrWhiteSpace(x))
                 .Select(static x => x.Trim())
-                .ToArray();
+                .ToList();
+            return ToReadOnlyList(list);
         }
 
         if (obj is System.Collections.IEnumerable enumerable) {
@@ -516,7 +519,7 @@ public static partial class ToolPackGuidance {
                 }
             }
 
-            return list;
+            return ToReadOnlyList(list);
         }
 
         return Array.Empty<string>();
@@ -547,7 +550,15 @@ public static partial class ToolPackGuidance {
             }
         }
 
-        return result;
+        return ToReadOnlyList(result);
+    }
+
+    private static IReadOnlyList<T> ToReadOnlyList<T>(List<T> source) {
+        if (source.Count == 0) {
+            return Array.Empty<T>();
+        }
+
+        return new ReadOnlyCollection<T>(source);
     }
 
     private static string? ToAuthenticationModeId(ToolAuthenticationContract? contract) {

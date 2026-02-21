@@ -42,6 +42,8 @@ public sealed class ToolTableViewRequest {
             return Array.Empty<string>();
         }
 
+        // Keep object-initializer and parser semantics aligned:
+        // snapshot caller input, trim entries, and drop case-insensitive duplicates.
         var normalized = new List<string>(columns.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < columns.Count; i++) {
@@ -152,6 +154,7 @@ public sealed class ToolTableViewResult {
             return Array.Empty<ToolColumn>();
         }
 
+        // Snapshot to prevent callers from mutating object-initializer source collections.
         return new ReadOnlyCollection<ToolColumn>(columns.ToList());
     }
 
@@ -164,10 +167,12 @@ public sealed class ToolTableViewResult {
         for (var i = 0; i < previewRows.Count; i++) {
             var row = previewRows[i];
             if (row is null || row.Count == 0) {
+                // Represent missing/empty rows consistently as empty row snapshots.
                 normalized.Add(Array.Empty<string>());
                 continue;
             }
 
+            // Null cells are normalized to empty strings for stable markdown/json rendering.
             normalized.Add(new ReadOnlyCollection<string>(row.Select(static cell => cell ?? string.Empty).ToList()));
         }
 
