@@ -149,7 +149,27 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task<bool> RefreshAuthenticationStateAsync(bool updateStatus) {
+    private async Task AppendSystemBestEffortAsync(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        try {
+            await RunOnUiThreadAsync(() => {
+                AppendSystem(normalized);
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        } catch {
+            // Best-effort diagnostic only.
+        }
+    }
+
+    private Task AppendSystemBestEffortAsync(SystemNotice notice) {
+        return AppendSystemBestEffortAsync(SystemNoticeFormatter.Format(notice));
+    }
+
+    private async Task<bool> RefreshAuthenticationStateAsync(bool updateStatus, bool requireFreshProbe = false) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
             if (updateStatus) {
@@ -189,14 +209,14 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             // Transient ensure_login probe failures should not automatically force a new browser login.
             if (VerboseServiceLogs || _debugMode) {
-                AppendSystem(SystemNotice.EnsureLoginFailed(ex.Message));
+                await AppendSystemBestEffortAsync(SystemNotice.EnsureLoginFailed(ex.Message)).ConfigureAwait(false);
             }
 
             if (updateStatus) {
                 await PublishSessionStateAsync().ConfigureAwait(false);
             }
 
-            return _isAuthenticated;
+            return requireFreshProbe ? false : _isAuthenticated;
         }
     }
 
@@ -269,7 +289,7 @@ public sealed partial class MainWindow : Window {
             _isConnected = _client is not null;
             _authenticatedAccountId = null;
             await SetStatusAsync(SessionStatus.SignInFailed()).ConfigureAwait(false);
-            AppendSystem(SystemNotice.SignInFailed(ex.Message));
+            await AppendSystemBestEffortAsync(SystemNotice.SignInFailed(ex.Message)).ConfigureAwait(false);
             return false;
         }
     }
@@ -320,7 +340,8 @@ public sealed partial class MainWindow : Window {
             await PersistAppStateAsync().ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Account switch will continue, but clearing saved account pin failed: " + ex.Message);
+                await AppendSystemBestEffortAsync("Account switch will continue, but clearing saved account pin failed: " + ex.Message)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -337,7 +358,8 @@ public sealed partial class MainWindow : Window {
                 .ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Account switch will continue, but runtime account pin reset failed: " + ex.Message);
+                await AppendSystemBestEffortAsync("Account switch will continue, but runtime account pin reset failed: " + ex.Message)
+                    .ConfigureAwait(false);
             }
         }
     }

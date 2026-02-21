@@ -46,13 +46,13 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        if (_modelKickoffInProgress) {
-            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
-        }
-
         var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
         if (turn is null) {
             return;
+        }
+
+        if (_modelKickoffInProgress) {
+            await CancelModelKickoffIfRunningAsync().ConfigureAwait(false);
         }
 
         // Keep user bubble rendering immediate, but still validate connectivity
@@ -285,6 +285,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string BuildUsageLimitQueuedPromptStatus(int? retryAfterMinutes) {
+        _ = retryAfterMinutes;
+        return SessionStatusFormatter.Format(SessionStatus.UsageLimitReached());
+    }
+
+    private static string BuildUsageLimitQueuedPromptActivity(int? retryAfterMinutes) {
         if (retryAfterMinutes.HasValue && retryAfterMinutes.Value > 0) {
             return "Queued prompt paused by account limit (" + retryAfterMinutes.Value + "m remaining). Use Switch Account to run now.";
         }
@@ -299,6 +304,7 @@ public sealed partial class MainWindow : Window {
 
         if (IsActiveUsageLimitDispatchBlocked(out var retryAfterMinutes)) {
             await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
+            await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(retryAfterMinutes)).ConfigureAwait(false);
             return false;
         }
 
@@ -375,6 +381,7 @@ public sealed partial class MainWindow : Window {
 
         if (queuedSignIn > 0 && IsActiveUsageLimitDispatchBlocked(out var retryAfterMinutes)) {
             await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
+            await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(retryAfterMinutes)).ConfigureAwait(false);
             return;
         }
 
