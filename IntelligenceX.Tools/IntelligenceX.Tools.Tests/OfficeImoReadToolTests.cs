@@ -14,6 +14,70 @@ namespace IntelligenceX.Tools.Tests;
 
 public class OfficeImoReadToolTests {
     [Fact]
+    public void OfficeImoChunkTable_WhenColumnsAndRowsAssignedMutableLists_AreCopiedAndReadOnly() {
+        var columns = new List<string> { "name", "value" };
+        var row = new List<string> { "alpha", "1" };
+        var rows = new List<IReadOnlyList<string>> { row };
+
+        var table = new OfficeImoChunkTable {
+            Columns = columns,
+            Rows = rows
+        };
+
+        columns.Add("extra");
+        row.Add("2");
+        rows.Add(new List<string> { "beta", "3" });
+
+        Assert.Equal(new[] { "name", "value" }, table.Columns);
+        Assert.Single(table.Rows);
+        Assert.Equal(new[] { "alpha", "1" }, table.Rows[0]);
+
+        var columnsList = Assert.IsAssignableFrom<IList<string>>(table.Columns);
+        Assert.Throws<NotSupportedException>(() => columnsList.Add("x"));
+        var rowsList = Assert.IsAssignableFrom<IList<IReadOnlyList<string>>>(table.Rows);
+        Assert.Throws<NotSupportedException>(() => rowsList.Add(Array.Empty<string>()));
+        var rowList = Assert.IsAssignableFrom<IList<string>>(table.Rows[0]);
+        Assert.Throws<NotSupportedException>(() => rowList.Add("x"));
+    }
+
+    [Fact]
+    public void OfficeImoChunk_WhenTablesAndWarningsAssignedMutableLists_AreCopiedAndReadOnly() {
+        var table = new OfficeImoChunkTable { Columns = new[] { "name" }, Rows = new[] { new[] { "alpha" } } };
+        var tables = new List<OfficeImoChunkTable> { table };
+        var warnings = new List<string> { "one" };
+
+        var chunk = new OfficeImoChunk {
+            Tables = tables,
+            Warnings = warnings
+        };
+
+        tables.Add(new OfficeImoChunkTable { Columns = new[] { "value" }, Rows = new[] { new[] { "1" } } });
+        warnings.Add("two");
+
+        Assert.NotNull(chunk.Tables);
+        Assert.NotNull(chunk.Warnings);
+        Assert.Single(chunk.Tables!);
+        Assert.Single(chunk.Warnings!);
+        Assert.Equal("one", chunk.Warnings![0]);
+
+        var tablesList = Assert.IsAssignableFrom<IList<OfficeImoChunkTable>>(chunk.Tables!);
+        Assert.Throws<NotSupportedException>(() => tablesList.Add(table));
+        var warningsList = Assert.IsAssignableFrom<IList<string>>(chunk.Warnings!);
+        Assert.Throws<NotSupportedException>(() => warningsList.Add("x"));
+    }
+
+    [Fact]
+    public void OfficeImoChunk_WhenTablesAndWarningsAssignedNull_RemainNull() {
+        var chunk = new OfficeImoChunk {
+            Tables = null,
+            Warnings = null
+        };
+
+        Assert.Null(chunk.Tables);
+        Assert.Null(chunk.Warnings);
+    }
+
+    [Fact]
     public void OfficeImoReadResult_WhenNextActionsAssignedNullOrEmpty_UsesEmptyList() {
         var result = new OfficeImoReadResult {
             NextActions = null!

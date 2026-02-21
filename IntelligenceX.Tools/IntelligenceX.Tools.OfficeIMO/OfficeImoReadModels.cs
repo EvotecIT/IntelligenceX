@@ -264,6 +264,9 @@ public sealed class OfficeImoChunkLocation {
 /// Normalized table payload for chunk outputs.
 /// </summary>
 public sealed class OfficeImoChunkTable {
+    private IReadOnlyList<string> _columns = Array.Empty<string>();
+    private IReadOnlyList<IReadOnlyList<string>> _rows = Array.Empty<IReadOnlyList<string>>();
+
     /// <summary>
     /// Optional title/label.
     /// </summary>
@@ -272,12 +275,18 @@ public sealed class OfficeImoChunkTable {
     /// <summary>
     /// Column headers.
     /// </summary>
-    public IReadOnlyList<string> Columns { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> Columns {
+        get => _columns;
+        set => _columns = NormalizeStringList(value);
+    }
 
     /// <summary>
     /// Rows aligned with <see cref="Columns"/>.
     /// </summary>
-    public IReadOnlyList<IReadOnlyList<string>> Rows { get; set; } = Array.Empty<IReadOnlyList<string>>();
+    public IReadOnlyList<IReadOnlyList<string>> Rows {
+        get => _rows;
+        set => _rows = NormalizeNestedStringList(value);
+    }
 
     /// <summary>
     /// Total row count before truncation.
@@ -288,12 +297,38 @@ public sealed class OfficeImoChunkTable {
     /// True when <see cref="Rows"/> was truncated.
     /// </summary>
     public bool Truncated { get; set; }
+
+    private static IReadOnlyList<string> NormalizeStringList(IReadOnlyList<string>? value) {
+        if (value is null || value.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return new ReadOnlyCollection<string>(value.ToList());
+    }
+
+    private static IReadOnlyList<IReadOnlyList<string>> NormalizeNestedStringList(IReadOnlyList<IReadOnlyList<string>>? value) {
+        if (value is null || value.Count == 0) {
+            return Array.Empty<IReadOnlyList<string>>();
+        }
+
+        var normalized = value
+            .Where(static row => row is not null)
+            .Select(static row => (IReadOnlyList<string>)new ReadOnlyCollection<string>(row.ToList()))
+            .ToList();
+
+        return normalized.Count == 0
+            ? Array.Empty<IReadOnlyList<string>>()
+            : new ReadOnlyCollection<IReadOnlyList<string>>(normalized);
+    }
 }
 
 /// <summary>
 /// Minimal chunk shape intended for stable tool contracts.
 /// </summary>
 public sealed class OfficeImoChunk {
+    private IReadOnlyList<OfficeImoChunkTable>? _tables;
+    private IReadOnlyList<string>? _warnings;
+
     /// <summary>
     /// Stable chunk identifier.
     /// </summary>
@@ -322,12 +357,18 @@ public sealed class OfficeImoChunk {
     /// <summary>
     /// Optional table data (Excel or extracted tables).
     /// </summary>
-    public IReadOnlyList<OfficeImoChunkTable>? Tables { get; set; }
+    public IReadOnlyList<OfficeImoChunkTable>? Tables {
+        get => _tables;
+        set => _tables = NormalizeTableList(value);
+    }
 
     /// <summary>
     /// Optional per-chunk warnings.
     /// </summary>
-    public IReadOnlyList<string>? Warnings { get; set; }
+    public IReadOnlyList<string>? Warnings {
+        get => _warnings;
+        set => _warnings = NormalizeOptionalStringList(value);
+    }
 
     /// <summary>
     /// Stable source identifier when available.
@@ -358,4 +399,26 @@ public sealed class OfficeImoChunk {
     /// Best-effort token estimate for prompt budgeting.
     /// </summary>
     public int? TokenEstimate { get; set; }
+
+    private static IReadOnlyList<OfficeImoChunkTable>? NormalizeTableList(IReadOnlyList<OfficeImoChunkTable>? value) {
+        if (value is null) {
+            return null;
+        }
+        if (value.Count == 0) {
+            return Array.Empty<OfficeImoChunkTable>();
+        }
+
+        return new ReadOnlyCollection<OfficeImoChunkTable>(value.ToList());
+    }
+
+    private static IReadOnlyList<string>? NormalizeOptionalStringList(IReadOnlyList<string>? value) {
+        if (value is null) {
+            return null;
+        }
+        if (value.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return new ReadOnlyCollection<string>(value.ToList());
+    }
 }
