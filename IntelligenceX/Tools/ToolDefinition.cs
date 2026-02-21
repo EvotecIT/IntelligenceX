@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Tools;
@@ -9,7 +10,7 @@ namespace IntelligenceX.Tools;
 /// </summary>
 public sealed class ToolDefinition {
     private static readonly StringComparer TagComparer = StringComparer.OrdinalIgnoreCase;
-    internal static Action<string>? MalformedTaxonomyTagDroppedObserver { get; set; }
+    private static readonly AsyncLocal<Action<string>?> MalformedTaxonomyTagDroppedObserver = new();
 
     /// <summary>
     /// Initializes a new tool definition.
@@ -108,6 +109,16 @@ public sealed class ToolDefinition {
     /// Gets the canonical tool name for this definition.
     /// </summary>
     public string CanonicalName => AliasOf ?? Name;
+
+    internal static IDisposable RegisterMalformedTaxonomyTagDroppedObserver(Action<string> observer) {
+        if (observer is null) {
+            throw new ArgumentNullException(nameof(observer));
+        }
+
+        var previous = MalformedTaxonomyTagDroppedObserver.Value;
+        MalformedTaxonomyTagDroppedObserver.Value = observer;
+        return new MalformedTaxonomyTagDroppedObserverScope(previous);
+    }
 
     /// <summary>
     /// Creates an alias definition derived from the current canonical definition.
@@ -265,7 +276,7 @@ public sealed class ToolDefinition {
     }
 
     private static void OnMalformedTaxonomyTagDropped(string tag) {
-        var observer = MalformedTaxonomyTagDroppedObserver;
+        var observer = MalformedTaxonomyTagDroppedObserver.Value;
         if (observer is null) {
             return;
         }
@@ -274,6 +285,24 @@ public sealed class ToolDefinition {
             observer(tag);
         } catch {
             // Diagnostics observers must never influence normalization behavior.
+        }
+    }
+
+    private sealed class MalformedTaxonomyTagDroppedObserverScope : IDisposable {
+        private readonly Action<string>? _previous;
+        private bool _disposed;
+
+        public MalformedTaxonomyTagDroppedObserverScope(Action<string>? previous) {
+            _previous = previous;
+        }
+
+        public void Dispose() {
+            if (_disposed) {
+                return;
+            }
+
+            MalformedTaxonomyTagDroppedObserver.Value = _previous;
+            _disposed = true;
         }
     }
 }

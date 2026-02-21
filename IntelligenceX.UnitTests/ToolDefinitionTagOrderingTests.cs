@@ -108,16 +108,12 @@ public sealed class ToolDefinitionTagOrderingTests {
     [Fact]
     public void Constructor_ShouldReportDroppedMalformedTaxonomyTags_WhenObserverConfigured() {
         var observed = new List<string>();
-        ToolDefinition.MalformedTaxonomyTagDroppedObserver = observed.Add;
-        try {
-            _ = new ToolDefinition(
-                name: "custom_probe",
-                description: "Probe",
-                parameters: null,
-                tags: new[] { "risk:", "scope:   ", "alpha" });
-        } finally {
-            ToolDefinition.MalformedTaxonomyTagDroppedObserver = null;
-        }
+        using var observerScope = ToolDefinition.RegisterMalformedTaxonomyTagDroppedObserver(observed.Add);
+        _ = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: null,
+            tags: new[] { "risk:", "scope:   ", "alpha" });
 
         Assert.Contains("risk:", observed, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("scope:", observed, StringComparer.OrdinalIgnoreCase);
@@ -125,17 +121,37 @@ public sealed class ToolDefinitionTagOrderingTests {
 
     [Fact]
     public void Constructor_ShouldIgnoreObserverFailures_WhenDroppingMalformedTaxonomyTags() {
-        ToolDefinition.MalformedTaxonomyTagDroppedObserver = _ => throw new InvalidOperationException("observer-failure");
-        try {
-            var definition = new ToolDefinition(
-                name: "custom_probe",
+        using var observerScope = ToolDefinition.RegisterMalformedTaxonomyTagDroppedObserver(
+            static _ => throw new InvalidOperationException("observer-failure"));
+        var definition = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: null,
+            tags: new[] { "risk:", "alpha" });
+        Assert.Contains("alpha", definition.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ObserverRegistration_ShouldRestorePreviousObserver_OnDispose() {
+        var observed = new List<string>();
+        using (ToolDefinition.RegisterMalformedTaxonomyTagDroppedObserver(observed.Add)) {
+            using (ToolDefinition.RegisterMalformedTaxonomyTagDroppedObserver(static _ => { })) {
+                _ = new ToolDefinition(
+                    name: "custom_probe_inner",
+                    description: "Probe",
+                    parameters: null,
+                    tags: new[] { "risk:" });
+            }
+
+            _ = new ToolDefinition(
+                name: "custom_probe_outer",
                 description: "Probe",
                 parameters: null,
-                tags: new[] { "risk:", "alpha" });
-            Assert.Contains("alpha", definition.Tags, StringComparer.OrdinalIgnoreCase);
-        } finally {
-            ToolDefinition.MalformedTaxonomyTagDroppedObserver = null;
+                tags: new[] { "routing:" });
         }
+
+        Assert.Single(observed);
+        Assert.Contains("routing:", observed, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
