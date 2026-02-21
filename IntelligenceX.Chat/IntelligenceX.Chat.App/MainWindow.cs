@@ -396,7 +396,7 @@ public sealed partial class MainWindow : Window {
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     }
 
-    private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc);
+    private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc, bool SkipUserBubbleOnDispatch = false);
     private sealed record LocalProviderApplyRequest(
         string? Transport,
         string? BaseUrl,

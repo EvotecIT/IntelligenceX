@@ -30,6 +30,21 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures top header status chip remains scoped to compact runtime/session states
+    /// and rejects long queue/usage-limit operational messages.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesHeaderStatusChipGate_ForOperationalStatusMessages() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("function shouldRenderHeaderStatusChip(value)", script, StringComparison.Ordinal);
+        Assert.Contains("lower.indexOf(\"usage limit\") >= 0", script, StringComparison.Ordinal);
+        Assert.Contains("lower.indexOf(\"queue \") >= 0", script, StringComparison.Ordinal);
+        Assert.Contains("if (!shouldRenderHeaderStatusChip(value)) {", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures split JavaScript files are explicitly tracked by manifest,
     /// so adding/renaming files cannot silently change runtime composition.
     /// </summary>
