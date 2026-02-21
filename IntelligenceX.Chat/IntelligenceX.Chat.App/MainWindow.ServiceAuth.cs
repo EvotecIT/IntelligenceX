@@ -317,6 +317,8 @@ public sealed partial class MainWindow : Window {
         var hadPinnedAccount = runtimeAccountId.Length > 0;
 
         if (hadPinnedAccount) {
+            // Keep slot-bound account history for UX/account telemetry, but clear the live
+            // runtime account pin so the next login can bind to whichever account authenticates.
             _localProviderOpenAIAccountId = string.Empty;
             SyncNativeAccountSlotsToAppState();
             try {

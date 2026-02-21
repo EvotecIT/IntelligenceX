@@ -1,3 +1,5 @@
+  var MAX_NATIVE_ACCOUNT_SLOTS = 32;
+
   function isNoDragTarget(target) {
     if (!target || !target.closest) {
       return false;
@@ -771,8 +773,8 @@
     if (slotCount < 1) {
       slotCount = 1;
     }
-    if (slotCount > 64) {
-      slotCount = 64;
+    if (slotCount > MAX_NATIVE_ACCOUNT_SLOTS) {
+      slotCount = MAX_NATIVE_ACCOUNT_SLOTS;
     }
     return slotCount;
   }
@@ -791,8 +793,8 @@
     }
     if (max < 1) {
       max = 1;
-    } else if (max > 64) {
-      max = 64;
+    } else if (max > MAX_NATIVE_ACCOUNT_SLOTS) {
+      max = MAX_NATIVE_ACCOUNT_SLOTS;
     }
 
     var normalized = Math.floor(parsed);

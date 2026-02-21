@@ -153,6 +153,14 @@ public sealed partial class MainWindow : Window {
             }
         }
 
+        if (VerboseServiceLogs || _debugMode) {
+            await AppendSystemBestEffortAsync(
+                    "Post-login verification did not confirm an authenticated account after "
+                    + maxProbeAttempts
+                    + " probes.")
+                .ConfigureAwait(false);
+        }
+
         return false;
     }
 

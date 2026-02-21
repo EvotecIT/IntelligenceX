@@ -74,11 +74,29 @@ public sealed partial class MainWindow : Window {
     }
 
     private static IReadOnlyList<string> ResolvePersistedNativeAccountSlotState(ChatAppState state) {
+        // Migration contract:
+        // - New dynamic list (NativeAccountSlots) is authoritative when present.
+        // - Legacy slot1/slot2/slot3 fields are fallback for older state records.
         if (state.NativeAccountSlots is { Count: > 0 }) {
             return state.NativeAccountSlots;
         }
 
         return ResolveLegacyNativeAccountSlotState(state);
+    }
+
+    private string[] NormalizePersistedNativeAccountSlots(IReadOnlyList<string> persistedSlots) {
+        // Clamp to configured runtime slot capacity and normalize account-id values.
+        var normalized = new string[_nativeAccountSlots.Length];
+        if (persistedSlots is null || persistedSlots.Count == 0) {
+            return normalized;
+        }
+
+        var copyLength = Math.Min(normalized.Length, persistedSlots.Count);
+        for (var i = 0; i < copyLength; i++) {
+            normalized[i] = NormalizeLocalProviderOpenAIAccountId(persistedSlots[i]);
+        }
+
+        return normalized;
     }
 
     private string[] SnapshotNativeAccountSlots() {
@@ -115,12 +133,8 @@ public sealed partial class MainWindow : Window {
 
     private void RestoreNativeAccountSlotsFromAppState() {
         _activeNativeAccountSlot = NormalizeNativeAccountSlot(_appState.ActiveNativeAccountSlot);
-        Array.Fill(_nativeAccountSlots, string.Empty);
-        var persistedSlots = ResolvePersistedNativeAccountSlotState(_appState);
-        var copyLength = Math.Min(_nativeAccountSlots.Length, persistedSlots.Count);
-        for (var i = 0; i < copyLength; i++) {
-            _nativeAccountSlots[i] = NormalizeLocalProviderOpenAIAccountId(persistedSlots[i]);
-        }
+        var normalizedSlots = NormalizePersistedNativeAccountSlots(ResolvePersistedNativeAccountSlotState(_appState));
+        Array.Copy(normalizedSlots, _nativeAccountSlots, _nativeAccountSlots.Length);
 
         _localProviderOpenAIAccountId = NormalizeLocalProviderOpenAIAccountId(_appState.LocalProviderOpenAIAccountId);
         if (_localProviderOpenAIAccountId.Length == 0) {

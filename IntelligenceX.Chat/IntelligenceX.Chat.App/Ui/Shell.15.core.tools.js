@@ -1,3 +1,5 @@
+  var MAX_NATIVE_ACCOUNT_SLOTS = 32;
+
   function truncateJsonValue(value, maxLen) {
     var text = String(value || "");
     if (text.length <= maxLen) {
@@ -1107,7 +1109,7 @@
     if (!Number.isFinite(nativeAccountSlots) || nativeAccountSlots <= 0) {
       nativeAccountSlots = 3;
     }
-    nativeAccountSlots = Math.max(1, Math.min(64, Math.floor(nativeAccountSlots)));
+    nativeAccountSlots = Math.max(1, Math.min(MAX_NATIVE_ACCOUNT_SLOTS, Math.floor(nativeAccountSlots)));
 
     appendRuntimeCapabilityRow(
       listEl,
@@ -1313,7 +1315,7 @@
     if (!Number.isFinite(maxNativeAccountSlots) || maxNativeAccountSlots <= 0) {
       maxNativeAccountSlots = 3;
     }
-    maxNativeAccountSlots = Math.max(1, Math.min(64, Math.floor(maxNativeAccountSlots)));
+    maxNativeAccountSlots = Math.max(1, Math.min(MAX_NATIVE_ACCOUNT_SLOTS, Math.floor(maxNativeAccountSlots)));
     var openAIAccountId = normalizeModelText(local.openAIAccountId || "");
     var activeNativeAccountSlot = Number(local.activeNativeAccountSlot);
     if (!Number.isFinite(activeNativeAccountSlot)) {
