@@ -252,7 +252,7 @@ internal sealed partial class ChatServiceSession {
         if (requestedLimit.HasValue) {
             var requested = requestedLimit.Value;
             if (requested > 0) {
-                return Math.Min(requested, MaxCandidateToolsLimit);
+                return Math.Min(requested, ChatRequestOptionLimits.MaxCandidateTools);
             }
         }
 

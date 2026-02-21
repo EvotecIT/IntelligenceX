@@ -19,12 +19,6 @@ internal sealed partial class ChatServiceSession {
     private const string ResponseReviewMarker = "ix:response-review:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
-    private const int DefaultMaxReviewPasses = ChatRequestOptionLimits.DefaultReviewPasses;
-    private const int MaxReviewPassesLimit = ChatRequestOptionLimits.MaxReviewPasses;
-    private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
-    private const int DefaultModelHeartbeatSeconds = ChatRequestOptionLimits.DefaultModelHeartbeatSeconds;
-    private const int MaxModelHeartbeatSeconds = ChatRequestOptionLimits.MaxModelHeartbeatSeconds;
-
     private sealed record ChatTurnRunResult(
         ChatResultMessage Result,
         TurnUsage? Usage,
@@ -66,21 +60,21 @@ internal sealed partial class ChatServiceSession {
     internal static int ResolveMaxToolRounds(ChatRequestOptions? options, int serviceDefaultMaxToolRounds) {
         var serviceDefault = Math.Max(1, serviceDefaultMaxToolRounds);
         var requested = options?.MaxToolRounds ?? serviceDefault;
-        return Math.Clamp(requested, 1, MaxToolRoundsLimit);
+        return Math.Clamp(requested, 1, ChatRequestOptionLimits.MaxToolRounds);
     }
 
     // Internal seam for deterministic chat-loop tests and shared routing behavior.
     internal static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
         var configured = options?.MaxReviewPasses;
         if (!configured.HasValue) {
-            return DefaultMaxReviewPasses;
+            return ChatRequestOptionLimits.DefaultReviewPasses;
         }
 
         if (configured.Value <= 0) {
             return 0;
         }
 
-        return Math.Clamp(configured.Value, 0, MaxReviewPassesLimit);
+        return Math.Clamp(configured.Value, 0, ChatRequestOptionLimits.MaxReviewPasses);
     }
 
     internal static bool IsComplexReviewCandidateRequest(string userRequest) {
@@ -123,19 +117,20 @@ internal sealed partial class ChatServiceSession {
     internal static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
         var configured = options?.ModelHeartbeatSeconds;
         if (!configured.HasValue) {
-            return DefaultModelHeartbeatSeconds;
+            return ChatRequestOptionLimits.DefaultModelHeartbeatSeconds;
         }
 
-        return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
+        return Math.Clamp(configured.Value, 0, ChatRequestOptionLimits.MaxModelHeartbeatSeconds);
     }
 
     private static string BuildReviewPassClampMessage(int requestedReviewPasses, int effectiveReviewPasses) {
-        return $"Requested review passes ({requestedReviewPasses}) adjusted to {effectiveReviewPasses} (supported range: 0..{MaxReviewPassesLimit}).";
+        return
+            $"Requested review passes ({requestedReviewPasses}) adjusted to {effectiveReviewPasses} (supported range: 0..{ChatRequestOptionLimits.MaxReviewPasses}).";
     }
 
     private static string BuildModelHeartbeatClampMessage(int requestedHeartbeatSeconds, int effectiveHeartbeatSeconds) {
         return
-            $"Requested model heartbeat seconds ({requestedHeartbeatSeconds}) adjusted to {effectiveHeartbeatSeconds} (supported range: 0..{MaxModelHeartbeatSeconds}).";
+            $"Requested model heartbeat seconds ({requestedHeartbeatSeconds}) adjusted to {effectiveHeartbeatSeconds} (supported range: 0..{ChatRequestOptionLimits.MaxModelHeartbeatSeconds}).";
     }
 
     internal static bool TryReadProactiveModeFromRequestText(string? requestText, out bool enabled) {

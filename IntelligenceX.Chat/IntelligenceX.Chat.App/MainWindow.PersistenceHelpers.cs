@@ -528,7 +528,7 @@ public sealed partial class MainWindow : Window {
         _autonomyMaxToolRounds = NormalizeAutonomyInt(
             _appState.AutonomyMaxToolRounds,
             min: ChatRequestOptionLimits.MinToolRounds,
-            max: AutonomyMaxToolRoundsLimit);
+            max: ChatRequestOptionLimits.MaxToolRounds);
         _autonomyParallelTools = _appState.AutonomyParallelTools;
         _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(
             _appState.AutonomyTurnTimeoutSeconds,
@@ -542,7 +542,7 @@ public sealed partial class MainWindow : Window {
         _autonomyMaxCandidateTools = NormalizeAutonomyInt(
             _appState.AutonomyMaxCandidateTools,
             min: ChatRequestOptionLimits.MinCandidateTools,
-            max: AutonomyMaxCandidateToolsLimit);
+            max: ChatRequestOptionLimits.MaxCandidateTools);
         _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
         _autonomyMaxReviewPasses = NormalizeAutonomyInt(
             _appState.AutonomyMaxReviewPasses,

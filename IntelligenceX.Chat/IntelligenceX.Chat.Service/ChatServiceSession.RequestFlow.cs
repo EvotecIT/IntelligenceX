@@ -26,9 +26,6 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private const int MaxRequestTimeoutSeconds = ChatRequestOptionLimits.MaxTimeoutSeconds;
-    private const int MaxCandidateToolsLimit = ChatRequestOptionLimits.MaxCandidateTools;
-
     private async Task TryWriteDeltaAsync(StreamWriter writer, string requestId, string threadId, string delta) {
         try {
             await WriteAsync(writer, new ChatDeltaMessage {
@@ -382,8 +379,8 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        if (options.MaxToolRounds < ChatRequestOptionLimits.MinToolRounds || options.MaxToolRounds > MaxToolRoundsLimit) {
-            error = $"maxToolRounds must be between {ChatRequestOptionLimits.MinToolRounds} and {MaxToolRoundsLimit}.";
+        if (options.MaxToolRounds < ChatRequestOptionLimits.MinToolRounds || options.MaxToolRounds > ChatRequestOptionLimits.MaxToolRounds) {
+            error = $"maxToolRounds must be between {ChatRequestOptionLimits.MinToolRounds} and {ChatRequestOptionLimits.MaxToolRounds}.";
             return false;
         }
 
@@ -398,24 +395,24 @@ internal sealed partial class ChatServiceSession {
 
         if (options.MaxCandidateTools.HasValue) {
             var maxCandidateTools = options.MaxCandidateTools.Value;
-            if (maxCandidateTools < ChatRequestOptionLimits.MinCandidateTools || maxCandidateTools > MaxCandidateToolsLimit) {
-                error = $"maxCandidateTools must be between {ChatRequestOptionLimits.MinCandidateTools} and {MaxCandidateToolsLimit}.";
+            if (maxCandidateTools < ChatRequestOptionLimits.MinCandidateTools || maxCandidateTools > ChatRequestOptionLimits.MaxCandidateTools) {
+                error = $"maxCandidateTools must be between {ChatRequestOptionLimits.MinCandidateTools} and {ChatRequestOptionLimits.MaxCandidateTools}.";
                 return false;
             }
         }
 
         if (options.TurnTimeoutSeconds.HasValue) {
             var turnTimeout = options.TurnTimeoutSeconds.Value;
-            if (turnTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || turnTimeout > MaxRequestTimeoutSeconds) {
-                error = $"turnTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {MaxRequestTimeoutSeconds}.";
+            if (turnTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || turnTimeout > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+                error = $"turnTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
                 return false;
             }
         }
 
         if (options.ToolTimeoutSeconds.HasValue) {
             var toolTimeout = options.ToolTimeoutSeconds.Value;
-            if (toolTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || toolTimeout > MaxRequestTimeoutSeconds) {
-                error = $"toolTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {MaxRequestTimeoutSeconds}.";
+            if (toolTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || toolTimeout > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+                error = $"toolTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
                 return false;
             }
         }
