@@ -364,16 +364,19 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  function refreshTranscriptFollowState() {
+  function refreshTranscriptFollowState(options) {
+    options = options || {};
+    var allowDisable = options.allowDisable === true;
+    var allowEnable = options.allowEnable !== false;
     var distance = distanceFromBottom(transcript);
     if (transcriptFollowState.enabled) {
-      if (distance > TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX) {
+      if (allowDisable && distance > TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX) {
         transcriptFollowState.enabled = false;
       }
       return transcriptFollowState.enabled;
     }
 
-    if (distance <= TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX) {
+    if (allowEnable && distance <= TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX) {
       transcriptFollowState.enabled = true;
     }
     return transcriptFollowState.enabled;
@@ -383,7 +386,7 @@
     if (transcriptFollowState.suppressScrollEvent) {
       return;
     }
-    refreshTranscriptFollowState();
+    refreshTranscriptFollowState({ allowDisable: true, allowEnable: true });
   });
   refreshTranscriptFollowState();
 
@@ -624,6 +627,8 @@
     var shouldStickBottom = transcriptFollowState.enabled;
     var previousTop = transcript.scrollTop;
     var previousDistance = distanceFromBottom(transcript);
+    var preserveDistanceAfterVisual = null;
+    var nonFollowAnchorTop = previousTop;
     var stickAnchorTop = -1;
     var renderRevision = ++transcriptRenderRevision;
     var visualRenderTask = null;
@@ -651,6 +656,7 @@
       scrollToBottom(transcript);
       stickAnchorTop = transcript.scrollTop;
     } else {
+      preserveDistanceAfterVisual = Number.isFinite(previousDistance) ? previousDistance : null;
       var restoreTop = previousTop;
       if (Number.isFinite(previousDistance)) {
         var maxScrollTop = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
@@ -660,24 +666,45 @@
         }
       }
       setTranscriptScrollTop(restoreTop);
+      nonFollowAnchorTop = transcript.scrollTop;
     }
 
-    if (shouldStickBottom && visualRenderTask && typeof visualRenderTask.then === "function") {
+    if (visualRenderTask && typeof visualRenderTask.then === "function") {
       visualRenderTask.then(function() {
         if (renderRevision !== transcriptRenderRevision) {
           return;
         }
 
-        if (!transcriptFollowState.enabled) {
+        if (shouldStickBottom) {
+          if (!transcriptFollowState.enabled) {
+            return;
+          }
+
+          // If user intentionally scrolled away from the follow position, do not force-pin.
+          if (stickAnchorTop >= 0 && transcript.scrollTop < (stickAnchorTop - 40)) {
+            return;
+          }
+
+          scrollToBottom(transcript);
           return;
         }
 
-        // If user intentionally scrolled away from the follow position, do not force-pin.
-        if (stickAnchorTop >= 0 && transcript.scrollTop < (stickAnchorTop - 40)) {
+        if (preserveDistanceAfterVisual === null) {
           return;
         }
 
-        scrollToBottom(transcript);
+        // Keep non-follow views stable through async diagram/chart expansion unless user scrolled.
+        if (Math.abs(transcript.scrollTop - nonFollowAnchorTop) > 40) {
+          return;
+        }
+
+        var maxScrollTopAfterVisual = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
+        var anchoredTopAfterVisual = maxScrollTopAfterVisual - preserveDistanceAfterVisual;
+        if (!Number.isFinite(anchoredTopAfterVisual)) {
+          return;
+        }
+
+        setTranscriptScrollTop(Math.max(0, Math.min(maxScrollTopAfterVisual, anchoredTopAfterVisual)));
       }).catch(function() {
         // Ignore visual rendering failures; transcript already has raw fallback blocks.
       });
