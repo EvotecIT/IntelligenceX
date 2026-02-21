@@ -26,13 +26,19 @@ public static class ToolChainingHints {
         string? cursor = null,
         string? resumeToken = null,
         IReadOnlyDictionary<string, string>? handoff = null,
-        double confidence = 0.5d) {
+        double confidence = 0.5d,
+        string? flowId = null,
+        string? stepId = null,
+        IReadOnlyDictionary<string, string>? checkpoint = null) {
         return new ToolChainContractModel {
             NextActions = NormalizeActionsForContract(nextActions),
             Cursor = NormalizeTokenForContract(cursor),
             ResumeToken = NormalizeTokenForContract(resumeToken),
             Handoff = NormalizeMapForContract(handoff),
-            Confidence = NormalizeConfidenceForContract(confidence)
+            Confidence = NormalizeConfidenceForContract(confidence),
+            FlowId = NormalizeTokenForContract(flowId),
+            StepId = NormalizeTokenForContract(stepId),
+            Checkpoint = NormalizeMapForContract(checkpoint)
         };
     }
 
@@ -188,6 +194,9 @@ public sealed class ToolChainContractModel {
     private string _resumeToken = string.Empty;
     private IReadOnlyDictionary<string, string> _handoff = ToolChainingHints.EmptyMap;
     private double _confidence = 0.5d;
+    private string _flowId = string.Empty;
+    private string _stepId = string.Empty;
+    private IReadOnlyDictionary<string, string> _checkpoint = ToolChainingHints.EmptyMap;
 
     /// <summary>
     /// Optional follow-up actions for the model (advisory only).
@@ -227,6 +236,30 @@ public sealed class ToolChainContractModel {
     public double Confidence {
         get => _confidence;
         init => _confidence = ToolChainingHints.NormalizeConfidenceForContract(value);
+    }
+
+    /// <summary>
+    /// Stable flow identifier for multi-step orchestration across tool calls.
+    /// </summary>
+    public string FlowId {
+        get => _flowId;
+        init => _flowId = ToolChainingHints.NormalizeTokenForContract(value);
+    }
+
+    /// <summary>
+    /// Current flow step identifier (for example phase/page marker).
+    /// </summary>
+    public string StepId {
+        get => _stepId;
+        init => _stepId = ToolChainingHints.NormalizeTokenForContract(value);
+    }
+
+    /// <summary>
+    /// Structured checkpoint map for resumable long-flow progression.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Checkpoint {
+        get => _checkpoint;
+        init => _checkpoint = ToolChainingHints.NormalizeMapForContract(value);
     }
 }
 

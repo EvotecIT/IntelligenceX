@@ -140,6 +140,21 @@ public class OfficeImoReadToolTests {
     }
 
     [Fact]
+    public void OfficeImoReadResult_WhenCheckpointAssignedNullOrEmpty_UsesSharedEmptyMap() {
+        var result = new OfficeImoReadResult {
+            Checkpoint = null!
+        };
+
+        Assert.Same(ToolChainingHints.EmptyMap, result.Checkpoint);
+
+        result.Checkpoint = new Dictionary<string, string>(StringComparer.Ordinal);
+        Assert.Same(ToolChainingHints.EmptyMap, result.Checkpoint);
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(result.Checkpoint);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
+    [Fact]
     public void OfficeImoReadResult_WhenHandoffAssignedMutableMap_IsNormalizedAndReadOnly() {
         var source = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             [" contract "] = "officeimo_read_handoff",
@@ -156,6 +171,26 @@ public class OfficeImoReadToolTests {
         Assert.False(result.Handoff.ContainsKey("new_key"));
 
         var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(result.Handoff);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
+    [Fact]
+    public void OfficeImoReadResult_WhenCheckpointAssignedMutableMap_IsNormalizedAndReadOnly() {
+        var source = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            [" phase "] = "collect",
+            [" "] = "ignored"
+        };
+
+        var result = new OfficeImoReadResult {
+            Checkpoint = source
+        };
+        source["new_key"] = "new_value";
+
+        Assert.True(result.Checkpoint.TryGetValue("phase", out var phase));
+        Assert.Equal("collect", phase);
+        Assert.False(result.Checkpoint.ContainsKey("new_key"));
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(result.Checkpoint);
         Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
     }
 
@@ -244,6 +279,9 @@ public class OfficeImoReadToolTests {
             Assert.True(root.TryGetProperty("next_actions", out var nextActions));
             Assert.True(root.TryGetProperty("cursor", out var cursor));
             Assert.True(root.TryGetProperty("resume_token", out var resumeToken));
+            Assert.True(root.TryGetProperty("flow_id", out var flowId));
+            Assert.True(root.TryGetProperty("step_id", out var stepId));
+            Assert.True(root.TryGetProperty("checkpoint", out var checkpoint));
             Assert.True(root.TryGetProperty("handoff", out var handoff));
             Assert.True(root.TryGetProperty("confidence", out var confidence));
             Assert.True(nextActions.ValueKind == global::System.Text.Json.JsonValueKind.Array);
@@ -251,6 +289,9 @@ public class OfficeImoReadToolTests {
             Assert.Equal("officeimo_read_handoff", handoff.GetProperty("contract").GetString());
             Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
             Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(flowId.GetString()));
+            Assert.Equal("read_result", stepId.GetString());
+            Assert.True(checkpoint.TryGetProperty("files", out _));
             Assert.InRange(confidence.GetDouble(), 0d, 1d);
             Assert.True(root.TryGetProperty("documents", out var documents));
             Assert.True(root.TryGetProperty("chunks", out var chunks));
