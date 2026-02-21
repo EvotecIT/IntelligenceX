@@ -257,6 +257,9 @@ public sealed partial class MainWindow : Window {
                 _uiPublishPumpRunning = false;
             }
         }
+        lock (_serviceSessionPublishSync) {
+            _serviceSessionPublishPending = false;
+        }
 
         // Queue teardown is a cancellation boundary: pending awaiters should observe cancellation.
         CancelUiPublishAwaiter(pendingSession);
@@ -277,48 +280,69 @@ public sealed partial class MainWindow : Window {
     }
 
     private void RequestServiceDrivenSessionPublish() {
-        TimeSpan delay = TimeSpan.Zero;
         lock (_serviceSessionPublishSync) {
-            if (_shutdownRequested || _serviceSessionPublishScheduled) {
+            if (_shutdownRequested) {
                 return;
             }
 
-            if (_serviceSessionPublishLastUtcTicks > 0) {
-                var elapsedTicks = DateTime.UtcNow.Ticks - _serviceSessionPublishLastUtcTicks;
-                if (elapsedTicks < 0) {
-                    elapsedTicks = 0;
-                }
-
-                var minIntervalTicks = ServiceDrivenSessionPublishMinInterval.Ticks;
-                if (elapsedTicks < minIntervalTicks) {
-                    delay = TimeSpan.FromTicks(minIntervalTicks - elapsedTicks);
-                }
+            _serviceSessionPublishPending = true;
+            if (_serviceSessionPublishScheduled) {
+                return;
             }
 
             _serviceSessionPublishScheduled = true;
         }
 
         _ = Task.Run(async () => {
-            try {
-                if (delay > TimeSpan.Zero) {
-                    await Task.Delay(delay).ConfigureAwait(false);
-                }
-
-                if (_shutdownRequested) {
-                    return;
-                }
-
-                await PublishSessionStateAsync().ConfigureAwait(false);
-            } catch (OperationCanceledException) {
-                // Shutdown may cancel pending publish work.
-            } catch (Exception ex) {
-                if (VerboseServiceLogs || _debugMode) {
-                    await AppendSystemBestEffortAsync("Service-driven session publish failed: " + ex.Message).ConfigureAwait(false);
-                }
-            } finally {
+            while (true) {
+                TimeSpan delay = TimeSpan.Zero;
                 lock (_serviceSessionPublishSync) {
-                    _serviceSessionPublishScheduled = false;
-                    _serviceSessionPublishLastUtcTicks = DateTime.UtcNow.Ticks;
+                    if (_shutdownRequested) {
+                        _serviceSessionPublishScheduled = false;
+                        _serviceSessionPublishPending = false;
+                        break;
+                    }
+
+                    if (!_serviceSessionPublishPending) {
+                        _serviceSessionPublishScheduled = false;
+                        break;
+                    }
+
+                    _serviceSessionPublishPending = false;
+
+                    if (_serviceSessionPublishLastUtcTicks > 0) {
+                        var elapsedTicks = DateTime.UtcNow.Ticks - _serviceSessionPublishLastUtcTicks;
+                        if (elapsedTicks < 0) {
+                            elapsedTicks = 0;
+                        }
+
+                        var minIntervalTicks = ServiceDrivenSessionPublishMinInterval.Ticks;
+                        if (elapsedTicks < minIntervalTicks) {
+                            delay = TimeSpan.FromTicks(minIntervalTicks - elapsedTicks);
+                        }
+                    }
+                }
+
+                try {
+                    if (delay > TimeSpan.Zero) {
+                        await Task.Delay(delay).ConfigureAwait(false);
+                    }
+
+                    if (_shutdownRequested) {
+                        continue;
+                    }
+
+                    await PublishSessionStateAsync().ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    // Shutdown may cancel pending publish work.
+                } catch (Exception ex) {
+                    if (VerboseServiceLogs || _debugMode) {
+                        await AppendSystemBestEffortAsync("Service-driven session publish failed: " + ex.Message).ConfigureAwait(false);
+                    }
+                } finally {
+                    lock (_serviceSessionPublishSync) {
+                        _serviceSessionPublishLastUtcTicks = DateTime.UtcNow.Ticks;
+                    }
                 }
             }
         });

@@ -391,6 +391,7 @@ public sealed partial class MainWindow : Window {
     private string? _lastStatusDrivenOptionsStamp;
     private readonly object _serviceSessionPublishSync = new();
     private bool _serviceSessionPublishScheduled;
+    private bool _serviceSessionPublishPending;
     private long _serviceSessionPublishLastUtcTicks;
     private CancellationTokenSource? _uiPublishPumpCts;
     private readonly object _persistDebounceSync = new();
