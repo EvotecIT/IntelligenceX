@@ -128,6 +128,22 @@ public sealed class ToolDefinitionTagOrderingTests {
     }
 
     [Fact]
+    public void Constructor_ShouldPreferLastTaxonomyValue_ForDuplicateKeysWithinSameTagSet() {
+        var definition = new ToolDefinition(
+            name: "custom_probe",
+            description: "Probe",
+            parameters: null,
+            tags: new[] { "risk:low", "RISK:HIGH", "scope:general", "scope:domain", "alpha" });
+
+        Assert.Contains("risk:high", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("risk:low", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("scope:domain", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scope:general", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertSingleTaxonomyTag(definition.Tags, "risk:");
+        AssertSingleTaxonomyTag(definition.Tags, "scope:");
+    }
+
+    [Fact]
     public void CreateAliasDefinition_ShouldEmitDeterministicSortedTags_AcrossMergeSources() {
         var definition = new ToolDefinition(
             name: "custom_probe",
