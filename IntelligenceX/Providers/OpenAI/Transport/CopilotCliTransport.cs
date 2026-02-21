@@ -51,7 +51,6 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
 
     public OpenAITransportKind Kind => OpenAITransportKind.CopilotCli;
     public AppServerClient? RawAppServerClient => null;
-    internal bool IsDisposedForDiagnostics => Volatile.Read(ref _disposeState) != 0;
 
     public event EventHandler<string>? DeltaReceived;
     public event EventHandler<LoginEventArgs>? LoginStarted;
@@ -60,6 +59,16 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     public event EventHandler<string>? StandardErrorReceived;
     public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
+
+    internal static class Diagnostics {
+        internal static bool IsDisposed(CopilotCliTransport transport) {
+            if (transport is null) {
+                throw new ArgumentNullException(nameof(transport));
+            }
+
+            return Volatile.Read(ref transport._disposeState) != 0;
+        }
+    }
 
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken) {
         ThrowIfDisposed();

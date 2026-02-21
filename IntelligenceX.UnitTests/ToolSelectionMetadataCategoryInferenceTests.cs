@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.Tools;
+using IntelligenceX.UnitTests.TestDoubles;
 using Xunit;
 
 namespace IntelligenceX.UnitTests {
@@ -12,7 +13,7 @@ namespace IntelligenceX.UnitTests {
                 description: "Probe",
                 parameters: null);
 
-            var enriched = ToolSelectionMetadata.Enrich(definition, typeof(IntelligenceX.Tools.System.FakeSystemDecorator));
+            var enriched = ToolSelectionMetadata.Enrich(definition, ToolSelectionMetadataNamespaceTypes.SystemDecoratorType);
 
             Assert.Equal("active_directory", enriched.Category);
             Assert.Contains("active_directory", enriched.Tags, StringComparer.OrdinalIgnoreCase);
@@ -25,18 +26,10 @@ namespace IntelligenceX.UnitTests {
                 description: "Probe",
                 parameters: null);
 
-            var enriched = ToolSelectionMetadata.Enrich(definition, typeof(IntelligenceX.Tools.EventLog.FakeEventLogDecorator));
+            var enriched = ToolSelectionMetadata.Enrich(definition, ToolSelectionMetadataNamespaceTypes.EventLogDecoratorType);
 
             Assert.Equal("eventlog", enriched.Category);
             Assert.Contains("eventlog", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         }
     }
-}
-
-namespace IntelligenceX.Tools.System {
-    internal sealed class FakeSystemDecorator { }
-}
-
-namespace IntelligenceX.Tools.EventLog {
-    internal sealed class FakeEventLogDecorator { }
 }

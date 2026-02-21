@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -124,9 +123,8 @@ public sealed class CopilotCliTransportLifecycleTests {
 
     private static async Task<bool> WaitUntilDisposedAsync(CopilotCliTransport transport, TimeSpan timeout) {
         using var cts = new CancellationTokenSource(timeout);
-        var stopwatch = Stopwatch.StartNew();
-        while (!cts.IsCancellationRequested && stopwatch.Elapsed < timeout) {
-            if (transport.IsDisposedForDiagnostics) {
+        while (!cts.IsCancellationRequested) {
+            if (CopilotCliTransport.Diagnostics.IsDisposed(transport)) {
                 return true;
             }
 
