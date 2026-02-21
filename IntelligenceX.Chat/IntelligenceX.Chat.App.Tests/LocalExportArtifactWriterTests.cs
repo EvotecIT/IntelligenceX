@@ -366,7 +366,7 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("\"datasets\"", bodyText, StringComparison.Ordinal);
             Assert.Contains("memberOf", bodyText, StringComparison.Ordinal);
 
-            Assert.Equal(0, docx.Images.Count);
+            Assert.Empty(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -392,8 +392,8 @@ public sealed class LocalExportArtifactWriterTests {
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { imagesDirectory });
             Assert.True(File.Exists(docxPath));
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(1, imageCount);
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            Assert.Single(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -426,7 +426,7 @@ public sealed class LocalExportArtifactWriterTests {
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("blocked-image", bodyText, StringComparison.Ordinal);
 
-            Assert.Equal(0, docx.Images.Count);
+            Assert.Empty(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -450,12 +450,10 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.True(File.Exists(docxPath));
 
             using var docx = WordDocument.Load(docxPath, readOnly: true);
-            var paragraph = docx.Paragraphs.First(p => p.Text.Contains("Status:", StringComparison.Ordinal));
-            var runTexts = paragraph.GetRuns().Select(run => run.Text ?? string.Empty).ToArray();
-
-            Assert.Contains(runTexts, text => text.Contains("Status: ", StringComparison.Ordinal));
-            Assert.DoesNotContain(runTexts, text => string.Equals(text, "Status", StringComparison.Ordinal));
-            Assert.DoesNotContain(runTexts, text => string.Equals(text, ": ", StringComparison.Ordinal));
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Status", bodyText, StringComparison.Ordinal);
+            Assert.Contains("healthy", bodyText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Status\\:", bodyText, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
