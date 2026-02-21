@@ -58,9 +58,9 @@ internal sealed partial class ChatServiceSession {
 
     // Internal seam for deterministic chat-loop tests and shared routing behavior.
     internal static int ResolveMaxToolRounds(ChatRequestOptions? options, int serviceDefaultMaxToolRounds) {
-        var serviceDefault = Math.Max(1, serviceDefaultMaxToolRounds);
+        var serviceDefault = Math.Max(ChatRequestOptionLimits.MinToolRounds, serviceDefaultMaxToolRounds);
         var requested = options?.MaxToolRounds ?? serviceDefault;
-        return Math.Clamp(requested, 1, ChatRequestOptionLimits.MaxToolRounds);
+        return Math.Clamp(requested, ChatRequestOptionLimits.MinToolRounds, ChatRequestOptionLimits.MaxToolRounds);
     }
 
     // Internal seam for deterministic chat-loop tests and shared routing behavior.

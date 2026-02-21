@@ -12,12 +12,13 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
-    [InlineData(null, 24, 24)]
-    [InlineData(null, 500, 256)]
-    [InlineData(0, 24, 1)]
-    [InlineData(1, 24, 1)]
-    [InlineData(24, 24, 24)]
-    [InlineData(300, 24, 256)]
+    [InlineData(null, ChatRequestOptionLimits.DefaultToolRounds, ChatRequestOptionLimits.DefaultToolRounds)]
+    [InlineData(null, 500, ChatRequestOptionLimits.MaxToolRounds)]
+    [InlineData(null, 0, ChatRequestOptionLimits.MinToolRounds)]
+    [InlineData(0, ChatRequestOptionLimits.DefaultToolRounds, ChatRequestOptionLimits.MinToolRounds)]
+    [InlineData(ChatRequestOptionLimits.MinToolRounds, ChatRequestOptionLimits.DefaultToolRounds, ChatRequestOptionLimits.MinToolRounds)]
+    [InlineData(ChatRequestOptionLimits.DefaultToolRounds, ChatRequestOptionLimits.DefaultToolRounds, ChatRequestOptionLimits.DefaultToolRounds)]
+    [InlineData(300, ChatRequestOptionLimits.DefaultToolRounds, ChatRequestOptionLimits.MaxToolRounds)]
     public void ResolveMaxToolRounds_ClampsToSupportedRange(int? requested, int serviceDefault, int expected) {
         ChatRequestOptions? options = requested is null
             ? null

@@ -62,7 +62,7 @@ internal sealed partial class ChatServiceSession {
             DangerousToolsEnabled = dangerousEnabled,
             ToolTimeoutSeconds = options.ToolTimeoutSeconds <= 0 ? null : options.ToolTimeoutSeconds,
             TurnTimeoutSeconds = options.TurnTimeoutSeconds <= 0 ? null : options.TurnTimeoutSeconds,
-            MaxToolRounds = Math.Clamp(options.MaxToolRounds, 1, ChatRequestOptionLimits.MaxToolRounds),
+            MaxToolRounds = Math.Clamp(options.MaxToolRounds, ChatRequestOptionLimits.MinToolRounds, ChatRequestOptionLimits.MaxToolRounds),
             ParallelTools = options.ParallelTools,
             AllowMutatingParallelToolCalls = options.AllowMutatingParallelToolCalls,
             MaxTableRows = options.MaxTableRows <= 0 ? null : options.MaxTableRows,
