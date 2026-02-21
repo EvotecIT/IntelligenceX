@@ -30,7 +30,10 @@ public sealed partial class MainWindow : Window {
         await SetActivityAsync("Checking account and runtime status...").ConfigureAwait(false);
 
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
-            var authenticatedNow = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+            var authenticatedNow = await RefreshAuthenticationStateAsync(
+                    updateStatus: true,
+                    probeTimeout: EnsureLoginFastPathProbeTimeout)
+                .ConfigureAwait(false);
             if (authenticatedNow) {
                 _isAuthenticated = true;
             }

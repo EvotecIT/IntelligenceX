@@ -131,10 +131,16 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> VerifyPostLoginAuthenticationAsync() {
-        const int maxProbeAttempts = 8;
+        const int maxProbeAttempts = 5;
         var runtimePinCleared = false;
         for (var attempt = 0; attempt < maxProbeAttempts; attempt++) {
-            if (await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false)) {
+            var allowCachedFallback = attempt >= 2;
+            if (await RefreshAuthenticationStateAsync(
+                    updateStatus: true,
+                    requireFreshProbe: true,
+                    allowCachedAuthenticatedFallback: allowCachedFallback,
+                    probeTimeout: EnsureLoginFreshProbeTimeout)
+                .ConfigureAwait(false)) {
                 return true;
             }
 
@@ -185,7 +191,7 @@ public sealed partial class MainWindow : Window {
 
         if (RequiresInteractiveSignInForCurrentTransport() && !refreshSucceeded) {
             await SetStatusAsync(SessionStatus.SignInRequired()).ConfigureAwait(false);
-            await SetActivityAsync("Post-login verification failed. Waiting for account confirmation...").ConfigureAwait(false);
+            await SetActivityAsync("Post-login verification did not confirm account state. Use Sign In or Switch Account.").ConfigureAwait(false);
             return;
         }
 

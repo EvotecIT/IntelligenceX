@@ -28,6 +28,10 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private static readonly TimeSpan EnsureLoginProbeTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan EnsureLoginFreshProbeTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan EnsureLoginFastPathProbeTimeout = TimeSpan.FromSeconds(2);
+
     private bool IsNativeRuntimeTransport() {
         return string.Equals(_localProviderTransport, TransportNative, StringComparison.OrdinalIgnoreCase);
     }
@@ -169,7 +173,11 @@ public sealed partial class MainWindow : Window {
         return AppendSystemBestEffortAsync(SystemNoticeFormatter.Format(notice));
     }
 
-    private async Task<bool> RefreshAuthenticationStateAsync(bool updateStatus, bool requireFreshProbe = false) {
+    private async Task<bool> RefreshAuthenticationStateAsync(
+        bool updateStatus,
+        bool requireFreshProbe = false,
+        bool allowCachedAuthenticatedFallback = true,
+        TimeSpan? probeTimeout = null) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
             if (updateStatus) {
@@ -191,7 +199,10 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
-            var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+            var timeout = probeTimeout.GetValueOrDefault(requireFreshProbe ? EnsureLoginFreshProbeTimeout : EnsureLoginProbeTimeout);
+            using var probeCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
+            var probeToken = probeCts?.Token ?? CancellationToken.None;
+            var login = await client.RequestAsync<LoginStatusMessage>(new EnsureLoginRequest { RequestId = NextId() }, probeToken).ConfigureAwait(false);
             _isAuthenticated = login.IsAuthenticated;
             _authenticatedAccountId = login.IsAuthenticated ? (login.AccountId ?? string.Empty).Trim() : null;
             if (login.IsAuthenticated) {
@@ -206,6 +217,19 @@ public sealed partial class MainWindow : Window {
             }
 
             return login.IsAuthenticated;
+        } catch (OperationCanceledException) when (!requireFreshProbe) {
+            // Regular auth probes should not force user-visible auth churn when the service is briefly slow.
+            if (updateStatus) {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            }
+
+            return allowCachedAuthenticatedFallback && _isAuthenticated;
+        } catch (OperationCanceledException) when (requireFreshProbe) {
+            if (updateStatus) {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            }
+
+            return allowCachedAuthenticatedFallback && _isAuthenticated;
         } catch (Exception ex) {
             // Transient ensure_login probe failures should not automatically force a new browser login.
             if (VerboseServiceLogs || _debugMode) {
@@ -216,7 +240,7 @@ public sealed partial class MainWindow : Window {
                 await PublishSessionStateAsync().ConfigureAwait(false);
             }
 
-            return requireFreshProbe ? false : _isAuthenticated;
+            return allowCachedAuthenticatedFallback && _isAuthenticated;
         }
     }
 

@@ -99,7 +99,7 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void SelectWeightedToolSubset_UsesRequestedLimit_WhenWeightedRoutingIsSkippedForShortPrompt() {
+    public void SelectWeightedToolSubset_UsesFullToolSet_WhenWeightedRoutingIsSkippedForShortPrompt() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 20; i++) {
@@ -117,9 +117,9 @@ public sealed class ChatServicePlannerPromptTests {
         };
         var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
 
-        Assert.Equal(6, selected.Count);
+        Assert.Equal(definitions.Count, selected.Count);
         Assert.Equal("ix_probe_tool_00", selected[0].Name);
-        Assert.Equal("ix_probe_tool_05", selected[5].Name);
+        Assert.Equal("ix_probe_tool_19", selected[19].Name);
     }
 
     [Fact]
