@@ -95,7 +95,8 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        await PersistAppStateAsync().ConfigureAwait(false);
+        // Keep the turn startup path responsive; state durability is still preserved via debounced persistence.
+        QueuePersistAppState();
         try {
             await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -123,7 +124,8 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        await PersistAppStateAsync().ConfigureAwait(false);
+        // Avoid blocking request dispatch on storage I/O; debounce persistence instead.
+        QueuePersistAppState();
     }
 
     private async Task ExecuteChatTurnWithReconnectAsync(ChatTurnContext turn, CancellationToken cancellationToken) {
