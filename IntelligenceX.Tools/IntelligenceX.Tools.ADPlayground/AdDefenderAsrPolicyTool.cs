@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Gpo;
@@ -27,16 +28,46 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
             .Required("domain_name")
             .NoAdditionalProperties());
 
+    internal sealed record AdDefenderAsrEntryResponse(
+        string RuleId,
+        uint? Value,
+        string RuleName,
+        string Mode);
+
+    internal sealed record AdDefenderAsrFriendlyEntryResponse(
+        string RuleName,
+        string RuleId,
+        string Mode);
+
+    internal sealed record AdDefenderAsrResponse(
+        string DomainName,
+        string TargetDn,
+        IReadOnlyList<AdDefenderAsrEntryResponse> Entries,
+        bool AnyEnabled,
+        IReadOnlyList<AdDefenderAsrFriendlyEntryResponse> EntriesFriendly);
+
+    internal sealed record AdDefenderCloudResponse(
+        string DomainName,
+        string TargetDn,
+        uint? DisableBlockAtFirstSeen,
+        uint? SpynetReporting,
+        uint? SubmitSamplesConsent);
+
+    internal sealed record AdDefenderCloudFriendlyResponse(
+        string BlockAtFirstSight,
+        string Maps,
+        string SampleSubmission);
+
     private sealed record AdDefenderAsrPolicyResult(
         string DomainName,
         bool IncludeAttribution,
         bool ConfiguredAttributionOnly,
         int Scanned,
         bool Truncated,
-        object Asr,
-        object Cloud,
-        IReadOnlyList<object> AsrEntriesFriendly,
-        object CloudFriendly,
+        AdDefenderAsrResponse Asr,
+        AdDefenderCloudResponse Cloud,
+        IReadOnlyList<AdDefenderAsrFriendlyEntryResponse> AsrEntriesFriendly,
+        AdDefenderCloudFriendlyResponse CloudFriendly,
         string? AttributionTopWriters,
         string? NetworkProtectionMode,
         bool? NetworkProtectionNotOff,
@@ -66,25 +97,101 @@ public sealed class AdDefenderAsrPolicyTool : ActiveDirectoryToolBase, ITool {
             query: static domainName => DefenderAsrPolicyService.Get(domainName),
             attributionSelector: static view => view.Attribution,
             additionalUnconfiguredValues: AdditionalUnconfiguredAttributionValues,
-            resultFactory: static (request, view, scanned, truncated, rows) => new AdDefenderAsrPolicyResult(
-                DomainName: request.DomainName,
-                IncludeAttribution: request.IncludeAttribution,
-                ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
-                Scanned: scanned,
-                Truncated: truncated,
-                Asr: view.Asr,
-                Cloud: view.Cloud,
-                AsrEntriesFriendly: view.AsrEntriesFriendly,
-                CloudFriendly: view.CloudFriendly,
-                AttributionTopWriters: view.AttributionTopWriters,
-                NetworkProtectionMode: view.NetworkProtectionMode,
-                NetworkProtectionNotOff: view.NetworkProtectionNotOff,
-                PuaProtectionMode: view.PuaProtectionMode,
-                PuaNotDisabled: view.PuaNotDisabled,
-                RtpRealtimeEnabled: view.RtpRealtimeEnabled,
-                RtpBehaviorEnabled: view.RtpBehaviorEnabled,
-                RtpIoavEnabled: view.RtpIoavEnabled,
-                RtpScriptEnabled: view.RtpScriptEnabled,
-                Attribution: rows));
+            resultFactory: static (request, view, scanned, truncated, rows) => {
+                var asr = MapAsrForResponse(view.Asr);
+                return new AdDefenderAsrPolicyResult(
+                    DomainName: request.DomainName,
+                    IncludeAttribution: request.IncludeAttribution,
+                    ConfiguredAttributionOnly: request.ConfiguredAttributionOnly,
+                    Scanned: scanned,
+                    Truncated: truncated,
+                    Asr: asr,
+                    Cloud: MapCloudForResponse(view.Cloud),
+                    AsrEntriesFriendly: asr.EntriesFriendly,
+                    CloudFriendly: MapCloudFriendlyForResponse(view.Cloud),
+                    AttributionTopWriters: view.AttributionTopWriters,
+                    NetworkProtectionMode: view.NetworkProtectionMode,
+                    NetworkProtectionNotOff: view.NetworkProtectionNotOff,
+                    PuaProtectionMode: view.PuaProtectionMode,
+                    PuaNotDisabled: view.PuaNotDisabled,
+                    RtpRealtimeEnabled: view.RtpRealtimeEnabled,
+                    RtpBehaviorEnabled: view.RtpBehaviorEnabled,
+                    RtpIoavEnabled: view.RtpIoavEnabled,
+                    RtpScriptEnabled: view.RtpScriptEnabled,
+                    Attribution: rows);
+            });
+    }
+
+    internal static AdDefenderAsrResponse MapAsrForResponse(DefenderAsrEvaluator.View? asr) {
+        var mappedEntries = asr?.Entries is { Count: > 0 }
+            ? asr.Entries.Select(static entry => new AdDefenderAsrEntryResponse(
+                RuleId: entry.RuleId ?? string.Empty,
+                Value: entry.Value,
+                RuleName: entry.RuleName ?? string.Empty,
+                Mode: entry.Mode ?? string.Empty)).ToArray()
+            : Array.Empty<AdDefenderAsrEntryResponse>();
+
+        var friendlyEntries = mappedEntries.Select(static entry => new AdDefenderAsrFriendlyEntryResponse(
+            RuleName: entry.RuleName,
+            RuleId: entry.RuleId,
+            Mode: entry.Mode)).ToArray();
+
+        return new AdDefenderAsrResponse(
+            DomainName: asr?.DomainName ?? string.Empty,
+            TargetDn: asr?.TargetDn ?? string.Empty,
+            Entries: mappedEntries,
+            AnyEnabled: asr?.AnyEnabled ?? false,
+            EntriesFriendly: friendlyEntries);
+    }
+
+    internal static AdDefenderCloudResponse MapCloudForResponse(DefenderCloudEvaluator.View? cloud) {
+        return new AdDefenderCloudResponse(
+            DomainName: cloud?.DomainName ?? string.Empty,
+            TargetDn: cloud?.TargetDn ?? string.Empty,
+            DisableBlockAtFirstSeen: cloud?.DisableBlockAtFirstSeen,
+            SpynetReporting: cloud?.SpynetReporting,
+            SubmitSamplesConsent: cloud?.SubmitSamplesConsent);
+    }
+
+    internal static AdDefenderCloudFriendlyResponse MapCloudFriendlyForResponse(DefenderCloudEvaluator.View? cloud) {
+        return new AdDefenderCloudFriendlyResponse(
+            BlockAtFirstSight: ToBlockAtFirstSightLabel(cloud?.DisableBlockAtFirstSeen),
+            Maps: ToMapsLabel(cloud?.SpynetReporting),
+            SampleSubmission: ToSampleSubmissionLabel(cloud?.SubmitSamplesConsent));
+    }
+
+    private static string ToBlockAtFirstSightLabel(uint? value) {
+        if (!value.HasValue) {
+            return "Not configured";
+        }
+
+        return value.Value == 1u ? "Off (disabled)" : "On";
+    }
+
+    private static string ToMapsLabel(uint? value) {
+        if (!value.HasValue) {
+            return "Not configured";
+        }
+
+        return value.Value switch {
+            0u => "Disabled",
+            1u => "Basic",
+            2u => "Advanced",
+            _ => $"Unknown ({value.Value})"
+        };
+    }
+
+    private static string ToSampleSubmissionLabel(uint? value) {
+        if (!value.HasValue) {
+            return "Not configured";
+        }
+
+        return value.Value switch {
+            0u => "Always prompt",
+            1u => "Send safe samples automatically",
+            2u => "Never send",
+            3u => "Send all samples",
+            _ => $"Unknown ({value.Value})"
+        };
     }
 }
