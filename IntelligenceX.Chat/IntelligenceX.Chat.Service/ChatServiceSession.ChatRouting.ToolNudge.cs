@@ -201,7 +201,13 @@ internal sealed partial class ChatServiceSession {
         var echoedCallToAction = UserMatchesAssistantCallToAction(request, draft);
         var compactFollowUp = LooksLikeCompactFollowUp(request);
         var contextualFollowUp = !compactFollowUp && LooksLikeContextualFollowUpForExecutionNudge(request, draft);
+        var hasSingleReadOnlyPendingActionEnvelope = HasSingleReadOnlyPendingActionEnvelope(draft);
         if (!usedContinuationSubset && !echoedCallToAction && !contextualFollowUp) {
+            if (hasSingleReadOnlyPendingActionEnvelope && !ContainsQuestionSignal(draft)) {
+                reason = "single_readonly_pending_action_envelope";
+                return true;
+            }
+
             reason = "no_continuation_subset_and_no_cta_or_contextual_follow_up";
             return false;
         }
@@ -229,6 +235,11 @@ internal sealed partial class ChatServiceSession {
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
         if (hasStructuredOutput) {
+            if (hasSingleReadOnlyPendingActionEnvelope && !asksAnotherQuestion) {
+                reason = "structured_draft_single_readonly_pending_action_envelope";
+                return true;
+            }
+
             // Multi-line drafts are usually results/explanations; avoid retrying tools based on incidental quoted text
             // inside structured output (for example JSON like `"run now",`). Only allow the nudge when the CTA quote
             // is formatted as an explicit option/bullet on its own line.
@@ -263,6 +274,16 @@ internal sealed partial class ChatServiceSession {
 
         reason = "assistant_draft_not_linked_to_follow_up";
         return false;
+    }
+
+    private static bool HasSingleReadOnlyPendingActionEnvelope(string assistantDraft) {
+        var actions = ExtractPendingActions(assistantDraft);
+        if (actions.Count != 1) {
+            return false;
+        }
+
+        var action = actions[0];
+        return action.Mutability == ActionMutability.ReadOnly && !string.IsNullOrWhiteSpace(action.Id);
     }
 
     private static bool LooksLikeActionSelectionPayload(string text) {
