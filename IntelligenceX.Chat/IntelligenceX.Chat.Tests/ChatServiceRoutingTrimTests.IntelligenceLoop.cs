@@ -268,18 +268,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkerAndSections() {
+    public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkerAndFlexibleGuidance() {
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt("analyze failed logons", "Current findings...");
 
         Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Potential issues to verify", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Recommended next fixes", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Signal <text> -> Why it matters: <text> -> Next action: <text>", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Fix action: <text>", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("exactly one space after each colon", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("do not use `*` or `**` inside the signal chain", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("\"<label>: <text>\"", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("natural and conversational", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("short paragraphs, bullets, compact tables, or simple diagrams/charts", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("without asking for permission first", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not force that label on every line", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("avoid repeating rigid templates", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Signal <text> -> Why it matters: <text> -> Next action: <text>", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hidden regressions", text, StringComparison.OrdinalIgnoreCase);
     }
 
