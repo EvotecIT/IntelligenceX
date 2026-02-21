@@ -283,16 +283,13 @@ internal sealed partial class ChatServiceSession {
 
             Requirements:
             - Keep all existing factual findings that are already supported by tool output.
-            - Add a short "Potential issues to verify" section (1-3 bullets).
-            - Add a short "Recommended next fixes" section (1-3 bullets).
-            - For each bullet, include signal -> why it matters -> exact next validation/fix action.
-            - Use one-line chain format per bullet:
-              "- Signal <text> -> Why it matters: <text> -> Next action: <text>"
-              or
-              "- Signal <text> -> Why it matters: <text> -> Fix action: <text>"
-            - Keep exactly one space after each colon and around each "->" separator.
-            - Do not use `*` or `**` inside the signal chain (except inside inline code spans).
-            - If writing in another language, keep the same punctuation contract: "<label>: <text>".
+            - Keep the response natural and conversational, not scripted.
+            - Add proactive follow-ups only when they provide real value (typically 1-3 key items).
+            - You may present results in the format that best fits the findings: short paragraphs, bullets, compact tables, or simple diagrams/charts.
+            - If a diagram/chart improves clarity, include it directly without asking for permission first.
+            - When listing checks/fixes, make each item actionable and specific.
+            - Include "why it matters" context when the impact is not obvious, but do not force that label on every line.
+            - Vary structure naturally across turns; avoid repeating rigid templates.
             - If confidence is uncertain, say what evidence is missing and how to collect it.
             - Prefer proactive checks that can catch hidden regressions, not just obvious follow-ups.
             - Do not invent tool outputs or claim completed actions that were not executed.
