@@ -402,6 +402,69 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures DOCX transcript export does not embed local images outside allow-listed directories.
+    /// </summary>
+    [Fact]
+    public void WriteDocxTranscript_DoesNotEmbedDisallowedLocalImage() {
+        var root = CreateTempDirectory();
+        try {
+            var disallowedDirectory = Path.Combine(root, "disallowed");
+            Directory.CreateDirectory(disallowedDirectory);
+            var imagePath = Path.Combine(disallowedDirectory, "dot.png");
+            var imageBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2Bg+P8fAAMCAf/Jsq3uAAAAAElFTkSuQmCC");
+            File.WriteAllBytes(imagePath, imageBytes);
+
+            var allowedDirectory = Path.Combine(root, "allowed");
+            Directory.CreateDirectory(allowedDirectory);
+
+            var markdownImagePath = imagePath.Replace('\\', '/');
+            var markdown = "# Transcript\n\n![blocked-image](" + markdownImagePath + ")";
+            var docxPath = Path.Combine(root, "transcript-disallowed-image.docx");
+
+            OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { allowedDirectory });
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("blocked-image", bodyText, StringComparison.Ordinal);
+
+            var imageCount = CountMainDocumentImageParts(docxPath);
+            Assert.Equal(0, imageCount);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures single-line "Label: value" content is rendered as narrative text, not definition-list separator runs.
+    /// </summary>
+    [Fact]
+    public void WriteDocxTranscript_RendersSingleLineDefinitionsAsNarrativeText() {
+        const string markdown = """
+            # Transcript
+
+            Status: **healthy**
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-single-line-definition.docx");
+            OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, additionalAllowedImageDirectories: null);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var paragraph = docx.Paragraphs.First(p => p.Text.Contains("Status:", StringComparison.Ordinal));
+            var runTexts = paragraph.GetRuns().Select(run => run.Text ?? string.Empty).ToArray();
+
+            Assert.Contains(runTexts, text => text.Contains("Status: ", StringComparison.Ordinal));
+            Assert.DoesNotContain(runTexts, text => string.Equals(text, "Status", StringComparison.Ordinal));
+            Assert.DoesNotContain(runTexts, text => string.Equals(text, ": ", StringComparison.Ordinal));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Ensures invalid visual fences remain as raw code and are not materialized into images.
     /// </summary>
     [Fact]
