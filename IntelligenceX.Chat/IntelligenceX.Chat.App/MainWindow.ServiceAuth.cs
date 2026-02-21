@@ -281,10 +281,15 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            var delay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
+            var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+            var prioritizeLatency = ShouldPrioritizeAutoReconnectLatency();
+            var baseDelay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
+            var delay = ResolveAutoReconnectDelay(baseDelay, prioritizeLatency, hasTrackedRunningServiceProcess, attempt);
 
             try {
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                if (delay > TimeSpan.Zero) {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
             } catch (OperationCanceledException) {
                 return;
             }
@@ -295,11 +300,59 @@ public sealed partial class MainWindow : Window {
 
             await ConnectAsync(fromUserAction: false, connectBudgetOverride: AutoReconnectConnectBudget).ConfigureAwait(false);
             attempt++;
+            if (prioritizeLatency || hasTrackedRunningServiceProcess) {
+                attempt = Math.Min(attempt, 2);
+            }
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 return;
             }
         }
+    }
+
+    private bool ShouldPrioritizeAutoReconnectLatency() {
+        if (_loginInProgress) {
+            return true;
+        }
+
+        return GetQueuedPromptAfterLoginCount() > 0 || GetQueuedTurnCount() > 0;
+    }
+
+    private static TimeSpan ResolveAutoReconnectDelay(
+        TimeSpan baseDelay,
+        bool prioritizeLatency,
+        bool hasTrackedRunningServiceProcess,
+        int attempt) {
+        if (baseDelay <= TimeSpan.Zero) {
+            return TimeSpan.Zero;
+        }
+
+        if (prioritizeLatency && attempt <= 0) {
+            return TimeSpan.Zero;
+        }
+
+        if (prioritizeLatency) {
+            var scaledDelay = TimeSpan.FromMilliseconds(Math.Max(0, baseDelay.TotalMilliseconds / 2d));
+            if (scaledDelay < AutoReconnectPriorityFirstDelay) {
+                scaledDelay = AutoReconnectPriorityFirstDelay;
+            }
+            if (scaledDelay > AutoReconnectPriorityDelayCap) {
+                scaledDelay = AutoReconnectPriorityDelayCap;
+            }
+
+            return scaledDelay;
+        }
+
+        if (hasTrackedRunningServiceProcess) {
+            var scaledDelay = TimeSpan.FromMilliseconds(Math.Max(0, baseDelay.TotalMilliseconds / 2d));
+            if (scaledDelay > AutoReconnectTrackedServiceDelayCap) {
+                scaledDelay = AutoReconnectTrackedServiceDelayCap;
+            }
+
+            return scaledDelay;
+        }
+
+        return baseDelay;
     }
 
     private async Task AppendSystemBestEffortAsync(string text) {
