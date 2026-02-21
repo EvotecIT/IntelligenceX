@@ -54,7 +54,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_parallel_safety_off",
+                    status: ChatStatusCodes.ToolParallelSafetyOff,
                     message: BuildToolParallelSafetyOffMessage(mutatingToolNames))
                 .ConfigureAwait(false);
         } else if (parallel && calls.Count > 1 && allowMutatingParallel && hasMutatingCalls) {
@@ -62,7 +62,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_parallel_forced",
+                    status: ChatStatusCodes.ToolParallelForced,
                     message: BuildToolParallelForcedMessage(mutatingToolNames))
                 .ConfigureAwait(false);
         }
@@ -82,7 +82,7 @@ internal sealed partial class ChatServiceSession {
                 writer,
                 requestId,
                 threadId,
-                status: "tool_batch_started",
+                status: ChatStatusCodes.ToolBatchStarted,
                 message: BuildToolBatchStartedMessage(calls.Count, maxConcurrency))
             .ConfigureAwait(false);
 
@@ -135,7 +135,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_batch_recovering",
+                    status: ChatStatusCodes.ToolBatchRecovering,
                     message: BuildToolBatchRecoveringMessage(recoveryIndexes.Length, calls.Count))
                 .ConfigureAwait(false);
 
@@ -150,7 +150,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_batch_recovered",
+                    status: ChatStatusCodes.ToolBatchRecovered,
                     message: BuildToolBatchRecoveredMessage(
                         recoveryIndexes.Length,
                         CountFailedToolOutputs(outputsInCallOrder)))
@@ -161,7 +161,7 @@ internal sealed partial class ChatServiceSession {
                 writer,
                 requestId,
                 threadId,
-                status: "tool_batch_completed",
+                status: ChatStatusCodes.ToolBatchCompleted,
                 message: BuildToolBatchCompletedMessage(calls.Count, maxConcurrency, CountFailedToolOutputs(outputsInCallOrder)))
             .ConfigureAwait(false);
         return outputsInCallOrder;
@@ -187,7 +187,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_batch_progress",
+                    status: ChatStatusCodes.ToolBatchProgress,
                     message: BuildToolBatchProgressMessage(
                         completedCount,
                         calls.Count,
@@ -247,7 +247,7 @@ internal sealed partial class ChatServiceSession {
                         writer,
                         requestId,
                         threadId,
-                        status: "tool_batch_heartbeat",
+                        status: ChatStatusCodes.ToolBatchHeartbeat,
                         durationMs: batchStopwatch.ElapsedMilliseconds,
                         message: BuildToolBatchHeartbeatMessage(
                             completed,

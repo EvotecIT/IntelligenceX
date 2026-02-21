@@ -324,6 +324,7 @@ public static class ToolSchemaExtensions {
 
     private static string GetWriteGovernanceDescription(string argumentName) {
         return argumentName switch {
+            ToolWriteGovernanceArgumentNames.OperationId => "Idempotency key for safe write retries and deduplicated execution.",
             ToolWriteGovernanceArgumentNames.ExecutionId => "Write execution identifier for audit correlation.",
             ToolWriteGovernanceArgumentNames.ActorId => "Actor identifier responsible for the write intent.",
             ToolWriteGovernanceArgumentNames.ChangeReason => "Change reason, ticket, or approval reference.",

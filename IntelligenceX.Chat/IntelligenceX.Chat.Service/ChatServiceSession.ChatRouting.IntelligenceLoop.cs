@@ -19,11 +19,11 @@ internal sealed partial class ChatServiceSession {
     private const string ResponseReviewMarker = "ix:response-review:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
-    private const int DefaultMaxReviewPasses = 1;
-    private const int MaxReviewPassesLimit = 3;
-    private const int MaxToolRoundsLimit = 256;
-    private const int DefaultModelHeartbeatSeconds = 8;
-    private const int MaxModelHeartbeatSeconds = 60;
+    private const int DefaultMaxReviewPasses = ChatRequestOptionLimits.DefaultReviewPasses;
+    private const int MaxReviewPassesLimit = ChatRequestOptionLimits.MaxReviewPasses;
+    private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
+    private const int DefaultModelHeartbeatSeconds = ChatRequestOptionLimits.DefaultModelHeartbeatSeconds;
+    private const int MaxModelHeartbeatSeconds = ChatRequestOptionLimits.MaxModelHeartbeatSeconds;
 
     private sealed record ChatTurnRunResult(
         ChatResultMessage Result,
@@ -345,7 +345,7 @@ internal sealed partial class ChatServiceSession {
                         writer,
                         requestId,
                         threadId,
-                        status: "phase_heartbeat",
+                        status: ChatStatusCodes.PhaseHeartbeat,
                         durationMs: sw.ElapsedMilliseconds,
                         message: $"{heartbeatLabel}... ({elapsedSeconds}s)")
                     .ConfigureAwait(false);

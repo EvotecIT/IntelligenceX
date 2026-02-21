@@ -79,7 +79,7 @@ public partial class ToolSchemaSnapshotTests {
 
         yield return new object[] {
             "powershell_run",
-            new[] { "host", "intent", "allow_write", "command", "script", "working_directory", "timeout_ms", "max_output_chars", "include_error_stream", "write_execution_id", "write_actor_id", "write_change_reason", "write_rollback_plan_id", "write_rollback_provider_id", "write_audit_correlation_id" },
+            new[] { "host", "intent", "allow_write", "command", "script", "working_directory", "timeout_ms", "max_output_chars", "include_error_stream", "write_operation_id", "write_execution_id", "write_actor_id", "write_change_reason", "write_rollback_plan_id", "write_rollback_provider_id", "write_audit_correlation_id" },
             Array.Empty<string>()
         };
     }

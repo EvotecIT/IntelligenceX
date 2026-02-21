@@ -40,6 +40,11 @@ public sealed class ToolWriteAuditRecord {
     public string Error { get; init; } = string.Empty;
 
     /// <summary>
+    /// Idempotency key for write operation replay safety.
+    /// </summary>
+    public string OperationId { get; init; } = string.Empty;
+
+    /// <summary>
     /// Correlation identifier for this write execution attempt.
     /// </summary>
     public string ExecutionId { get; init; } = string.Empty;

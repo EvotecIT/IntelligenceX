@@ -75,7 +75,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private string FormatActivityText(ChatStatusMessage status) {
-        if (string.Equals(status.Status, "routing_tool", StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(status.Status, ChatStatusCodes.RoutingTool, StringComparison.OrdinalIgnoreCase)) {
             var routingToolLabel = string.IsNullOrWhiteSpace(status.ToolName)
                 ? "tool"
                 : ResolveToolActivityName(status.ToolName!);
@@ -85,7 +85,7 @@ public sealed partial class MainWindow : Window {
             return $"Routing {routingToolLabel}...";
         }
 
-        if (string.Equals(status.Status, "routing_meta", StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(status.Status, ChatStatusCodes.RoutingMeta, StringComparison.OrdinalIgnoreCase)) {
             if (TryParseRoutingMetaPayload(status.Message, out var strategy, out var selectedToolCount, out var totalToolCount)) {
                 return $"Routing strategy {strategy} ({selectedToolCount}/{totalToolCount} tools)";
             }
@@ -102,38 +102,38 @@ public sealed partial class MainWindow : Window {
             : ResolveToolActivityName(status.ToolName!);
 
         return status.Status switch {
-            "thinking" => "Thinking...",
+            ChatStatusCodes.Thinking => "Thinking...",
             "tool_call" when toolLabel.Length > 0 => "Preparing " + toolLabel + "...",
-            "tool_running" when toolLabel.Length > 0 => "Running " + toolLabel + "...",
-            "tool_heartbeat" when toolLabel.Length > 0 =>
+            ChatStatusCodes.ToolRunning when toolLabel.Length > 0 => "Running " + toolLabel + "...",
+            ChatStatusCodes.ToolHeartbeat when toolLabel.Length > 0 =>
                 status.DurationMs is not null
                     ? toolLabel + " still running (" + FormatDuration(status.DurationMs.Value) + ")"
                     : toolLabel + " still running...",
-            "tool_completed" when toolLabel.Length > 0 =>
+            ChatStatusCodes.ToolCompleted when toolLabel.Length > 0 =>
                 status.DurationMs is not null
                     ? toolLabel + " done (" + FormatDuration(status.DurationMs.Value) + ")"
                     : toolLabel + " done",
-            "tool_canceled" when toolLabel.Length > 0 => toolLabel + " canceled",
-            "tool_recovered" when toolLabel.Length > 0 => toolLabel + " recovered with safe defaults",
-            "tool_parallel_mode" => "Parallel mode changed for this turn...",
-            "tool_parallel_forced" => "Parallel mode forced for mutating tools...",
-            "tool_parallel_safety_off" => "Using sequential mode for mutating tools...",
-            "tool_batch_started" => "Starting parallel tool batch...",
-            "tool_batch_progress" => "Parallel tool batch in progress...",
-            "tool_batch_heartbeat" => "Parallel tool batch still running...",
-            "tool_batch_recovering" => "Recovering transient tool failures...",
-            "tool_batch_recovered" => "Recovery pass complete",
-            "tool_batch_completed" => "Parallel tool batch complete",
-            "tool_round_started" => "Starting tool round...",
-            "tool_round_completed" => "Tool round complete",
-            "tool_round_limit_reached" => "Tool round limit reached for this turn",
-            "tool_round_cap_applied" => "Applied safe tool-round cap for this turn",
-            "review_passes_clamped" => "Applied safe review-pass cap for this turn",
-            "model_heartbeat_clamped" => "Applied safe model-heartbeat cap for this turn",
-            "phase_plan" => "Planning...",
-            "phase_execute" => "Executing plan...",
-            "phase_review" => "Reviewing...",
-            "phase_heartbeat" => "Still working...",
+            ChatStatusCodes.ToolCanceled when toolLabel.Length > 0 => toolLabel + " canceled",
+            ChatStatusCodes.ToolRecovered when toolLabel.Length > 0 => toolLabel + " recovered with safe defaults",
+            ChatStatusCodes.ToolParallelMode => "Parallel mode changed for this turn...",
+            ChatStatusCodes.ToolParallelForced => "Parallel mode forced for mutating tools...",
+            ChatStatusCodes.ToolParallelSafetyOff => "Using sequential mode for mutating tools...",
+            ChatStatusCodes.ToolBatchStarted => "Starting parallel tool batch...",
+            ChatStatusCodes.ToolBatchProgress => "Parallel tool batch in progress...",
+            ChatStatusCodes.ToolBatchHeartbeat => "Parallel tool batch still running...",
+            ChatStatusCodes.ToolBatchRecovering => "Recovering transient tool failures...",
+            ChatStatusCodes.ToolBatchRecovered => "Recovery pass complete",
+            ChatStatusCodes.ToolBatchCompleted => "Parallel tool batch complete",
+            ChatStatusCodes.ToolRoundStarted => "Starting tool round...",
+            ChatStatusCodes.ToolRoundCompleted => "Tool round complete",
+            ChatStatusCodes.ToolRoundLimitReached => "Tool round limit reached for this turn",
+            ChatStatusCodes.ToolRoundCapApplied => "Applied safe tool-round cap for this turn",
+            ChatStatusCodes.ReviewPassesClamped => "Applied safe review-pass cap for this turn",
+            ChatStatusCodes.ModelHeartbeatClamped => "Applied safe model-heartbeat cap for this turn",
+            ChatStatusCodes.PhasePlan => "Planning...",
+            ChatStatusCodes.PhaseExecute => "Executing plan...",
+            ChatStatusCodes.PhaseReview => "Reviewing...",
+            ChatStatusCodes.PhaseHeartbeat => "Still working...",
             _ => string.IsNullOrWhiteSpace(status.Status)
                 ? "Working..."
                 : char.ToUpperInvariant(status.Status[0]) + status.Status[1..]
@@ -206,34 +206,34 @@ public sealed partial class MainWindow : Window {
         var toolLabel = string.IsNullOrWhiteSpace(status.ToolName) ? string.Empty : ResolveToolActivityName(status.ToolName!);
         var normalizedStatus = (status.Status ?? string.Empty).Trim().ToLowerInvariant();
         var label = normalizedStatus switch {
-            "thinking" => "thinking",
-            "routing_tool" when toolLabel.Length > 0 => "route " + toolLabel,
-            "routing_meta" => "route strategy",
-            "tool_call" when toolLabel.Length > 0 => "prepare " + toolLabel,
-            "tool_running" when toolLabel.Length > 0 => "run " + toolLabel,
-            "tool_heartbeat" when toolLabel.Length > 0 => "run " + toolLabel,
-            "tool_completed" when toolLabel.Length > 0 => "done " + toolLabel,
-            "tool_canceled" when toolLabel.Length > 0 => "cancel " + toolLabel,
-            "tool_recovered" when toolLabel.Length > 0 => "recover " + toolLabel,
-            "tool_parallel_mode" => "mode parallel",
-            "tool_parallel_forced" => "mode forced",
-            "tool_parallel_safety_off" => "safety serialized",
-            "tool_batch_started" => "batch start",
-            "tool_batch_progress" => "batch progress",
-            "tool_batch_heartbeat" => "batch wait",
-            "tool_batch_recovering" => "batch recovery",
-            "tool_batch_recovered" => "batch recovered",
-            "tool_batch_completed" => "batch completed",
-            "tool_round_started" => "round start",
-            "tool_round_completed" => "round complete",
-            "tool_round_limit_reached" => "round limit",
-            "tool_round_cap_applied" => "round cap",
-            "review_passes_clamped" => "review cap",
-            "model_heartbeat_clamped" => "heartbeat cap",
-            "phase_plan" => "plan",
-            "phase_execute" => "execute",
-            "phase_review" => "review",
-            "phase_heartbeat" => "phase wait",
+            ChatStatusCodes.Thinking => "thinking",
+            ChatStatusCodes.RoutingTool when toolLabel.Length > 0 => "route " + toolLabel,
+            ChatStatusCodes.RoutingMeta => "route strategy",
+            ChatStatusCodes.ToolCall when toolLabel.Length > 0 => "prepare " + toolLabel,
+            ChatStatusCodes.ToolRunning when toolLabel.Length > 0 => "run " + toolLabel,
+            ChatStatusCodes.ToolHeartbeat when toolLabel.Length > 0 => "run " + toolLabel,
+            ChatStatusCodes.ToolCompleted when toolLabel.Length > 0 => "done " + toolLabel,
+            ChatStatusCodes.ToolCanceled when toolLabel.Length > 0 => "cancel " + toolLabel,
+            ChatStatusCodes.ToolRecovered when toolLabel.Length > 0 => "recover " + toolLabel,
+            ChatStatusCodes.ToolParallelMode => "mode parallel",
+            ChatStatusCodes.ToolParallelForced => "mode forced",
+            ChatStatusCodes.ToolParallelSafetyOff => "safety serialized",
+            ChatStatusCodes.ToolBatchStarted => "batch start",
+            ChatStatusCodes.ToolBatchProgress => "batch progress",
+            ChatStatusCodes.ToolBatchHeartbeat => "batch wait",
+            ChatStatusCodes.ToolBatchRecovering => "batch recovery",
+            ChatStatusCodes.ToolBatchRecovered => "batch recovered",
+            ChatStatusCodes.ToolBatchCompleted => "batch completed",
+            ChatStatusCodes.ToolRoundStarted => "round start",
+            ChatStatusCodes.ToolRoundCompleted => "round complete",
+            ChatStatusCodes.ToolRoundLimitReached => "round limit",
+            ChatStatusCodes.ToolRoundCapApplied => "round cap",
+            ChatStatusCodes.ReviewPassesClamped => "review cap",
+            ChatStatusCodes.ModelHeartbeatClamped => "heartbeat cap",
+            ChatStatusCodes.PhasePlan => "plan",
+            ChatStatusCodes.PhaseExecute => "execute",
+            ChatStatusCodes.PhaseReview => "review",
+            ChatStatusCodes.PhaseHeartbeat => "phase wait",
             "completed" => "completed",
             "finished" => "finished",
             "done" => "done",

@@ -18,6 +18,11 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
     public string RollbackProviderId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Requires operation id (idempotency key) argument.
+    /// </summary>
+    public bool RequireOperationId { get; set; } = true;
+
+    /// <summary>
     /// Requires execution id argument.
     /// </summary>
     public bool RequireExecutionId { get; set; } = true;
@@ -36,6 +41,11 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
     /// Requires rollback plan argument.
     /// </summary>
     public bool RequireRollbackPlanId { get; set; } = true;
+
+    /// <summary>
+    /// Operation id argument name.
+    /// </summary>
+    public string OperationIdArgumentName { get; set; } = ToolWriteGovernanceArgumentNames.OperationId;
 
     /// <summary>
     /// Execution id argument name.
@@ -73,6 +83,7 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
             throw new ArgumentNullException(nameof(request));
         }
 
+        string operationId = ResolveArgumentValue(request, request.OperationId, OperationIdArgumentName);
         string executionId = ResolveArgumentValue(request, request.ExecutionId, ExecutionIdArgumentName);
         string actorId = ResolveArgumentValue(request, request.ActorId, ActorIdArgumentName);
         string changeReason = ResolveArgumentValue(request, request.ChangeReason, ChangeReasonArgumentName);
@@ -80,7 +91,7 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
         string rollbackProviderId = ResolveArgumentValue(request, request.RollbackProviderId, RollbackProviderIdArgumentName);
         string auditCorrelationId = ResolveArgumentValue(request, request.AuditCorrelationId, AuditCorrelationIdArgumentName);
         if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
-            auditCorrelationId = executionId;
+            auditCorrelationId = string.IsNullOrWhiteSpace(operationId) ? executionId : operationId;
         }
 
         List<string> missing = new();
@@ -92,6 +103,9 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
             missing.Add("rollback_provider_id");
         }
 
+        if (RequireOperationId && string.IsNullOrWhiteSpace(operationId)) {
+            missing.Add(OperationIdArgumentName);
+        }
         if (RequireExecutionId && string.IsNullOrWhiteSpace(executionId)) {
             missing.Add(ExecutionIdArgumentName);
         }
@@ -113,6 +127,7 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
                 MissingRequirements = missing.ToArray(),
                 Hints = BuildHints(missing),
                 IsTransient = false,
+                OperationId = operationId,
                 ExecutionId = executionId,
                 AuditCorrelationId = auditCorrelationId,
                 ImmutableAuditProviderId = ImmutableAuditProviderId,
@@ -122,11 +137,12 @@ public sealed class ToolWriteGovernanceStrictRuntime : IToolWriteGovernanceRunti
             };
         }
 
-        return new ToolWriteGovernanceResult {
-            IsAuthorized = true,
-            ExecutionId = executionId,
-            AuditCorrelationId = auditCorrelationId,
-            ImmutableAuditProviderId = ImmutableAuditProviderId,
+            return new ToolWriteGovernanceResult {
+                IsAuthorized = true,
+                OperationId = operationId,
+                ExecutionId = executionId,
+                AuditCorrelationId = auditCorrelationId,
+                ImmutableAuditProviderId = ImmutableAuditProviderId,
             RollbackProviderId = string.IsNullOrWhiteSpace(rollbackProviderId)
                 ? RollbackProviderId
                 : rollbackProviderId

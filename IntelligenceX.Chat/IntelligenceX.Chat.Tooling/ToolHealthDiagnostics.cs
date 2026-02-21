@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using JsonValueKind = System.Text.Json.JsonValueKind;
@@ -56,8 +57,10 @@ public static class ToolHealthDiagnostics {
             throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
         }
 
-        if (timeoutSeconds < 0 || timeoutSeconds > 3600) {
-            throw new ArgumentOutOfRangeException(nameof(timeoutSeconds), "Timeout must be between 0 and 3600 seconds.");
+        if (timeoutSeconds < ChatRequestOptionLimits.MinTimeoutSeconds || timeoutSeconds > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeoutSeconds),
+                $"Timeout must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds} seconds.");
         }
 
         var sw = Stopwatch.StartNew();

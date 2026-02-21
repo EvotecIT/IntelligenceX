@@ -13,7 +13,7 @@ using IntelligenceX.Tools;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
-    private const int MaxToolRoundsLimit = 256;
+    private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
 
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
@@ -41,7 +41,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public string? StateDbPath { get; set; }
     public bool NoStateDb { get; set; }
 
-    public int MaxToolRounds { get; set; } = 24;
+    public int MaxToolRounds { get; set; } = ChatRequestOptionLimits.DefaultToolRounds;
     public bool ParallelTools { get; set; } = true;
     public bool AllowMutatingParallelToolCalls { get; set; }
     public int TurnTimeoutSeconds { get; set; }
@@ -321,8 +321,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
-                if (!int.TryParse(value, out var n) || n < 1 || n > MaxToolRoundsLimit) {
-                    error = $"--max-tool-rounds must be between 1 and {MaxToolRoundsLimit}.";
+                if (!int.TryParse(value, out var n) || n < ChatRequestOptionLimits.MinToolRounds || n > MaxToolRoundsLimit) {
+                    error = $"--max-tool-rounds must be between {ChatRequestOptionLimits.MinToolRounds} and {MaxToolRoundsLimit}.";
                     return options;
                 }
                 options.MaxToolRounds = n;
@@ -538,7 +538,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --no-state-db           Disable SQLite state storage (profiles unavailable).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
-        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (1..256; default: 24).");
+        Console.WriteLine(
+            $"  --max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).");
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible (default: on).");
         Console.WriteLine("  --no-parallel-tools     Disable parallel tool calls.");
         Console.WriteLine("  --allow-mutating-parallel-tools  Allow mutating/write-capable tool calls to run in parallel (default: off).");

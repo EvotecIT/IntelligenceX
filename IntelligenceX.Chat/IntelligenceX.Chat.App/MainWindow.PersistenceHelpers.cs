@@ -525,15 +525,33 @@ public sealed partial class MainWindow : Window {
     }
 
     private void RestoreAutonomyOverridesFromAppState() {
-        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: AutonomyMaxToolRoundsLimit);
+        _autonomyMaxToolRounds = NormalizeAutonomyInt(
+            _appState.AutonomyMaxToolRounds,
+            min: ChatRequestOptionLimits.MinToolRounds,
+            max: AutonomyMaxToolRoundsLimit);
         _autonomyParallelTools = _appState.AutonomyParallelTools;
-        _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyTurnTimeoutSeconds, min: 0, max: 3600);
-        _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
+        _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(
+            _appState.AutonomyTurnTimeoutSeconds,
+            min: ChatRequestOptionLimits.MinTimeoutSeconds,
+            max: ChatRequestOptionLimits.MaxTimeoutSeconds);
+        _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(
+            _appState.AutonomyToolTimeoutSeconds,
+            min: ChatRequestOptionLimits.MinTimeoutSeconds,
+            max: ChatRequestOptionLimits.MaxTimeoutSeconds);
         _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
-        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: AutonomyMaxCandidateToolsLimit);
+        _autonomyMaxCandidateTools = NormalizeAutonomyInt(
+            _appState.AutonomyMaxCandidateTools,
+            min: ChatRequestOptionLimits.MinCandidateTools,
+            max: AutonomyMaxCandidateToolsLimit);
         _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
-        _autonomyMaxReviewPasses = NormalizeAutonomyInt(_appState.AutonomyMaxReviewPasses, min: 0, max: 3);
-        _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(_appState.AutonomyModelHeartbeatSeconds, min: 0, max: 60);
+        _autonomyMaxReviewPasses = NormalizeAutonomyInt(
+            _appState.AutonomyMaxReviewPasses,
+            min: 0,
+            max: ChatRequestOptionLimits.MaxReviewPasses);
+        _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(
+            _appState.AutonomyModelHeartbeatSeconds,
+            min: 0,
+            max: ChatRequestOptionLimits.MaxModelHeartbeatSeconds);
 
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;

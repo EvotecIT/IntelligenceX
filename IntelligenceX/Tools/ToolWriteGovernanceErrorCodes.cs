@@ -5,6 +5,11 @@ namespace IntelligenceX.Tools;
 /// </summary>
 public static class ToolWriteGovernanceErrorCodes {
     /// <summary>
+    /// Write operation id (idempotency key) is missing.
+    /// </summary>
+    public const string WriteOperationIdRequired = "write_operation_id_required";
+
+    /// <summary>
     /// Explicit write confirmation argument is missing.
     /// </summary>
     public const string WriteConfirmationRequired = "write_confirmation_required";

@@ -216,9 +216,10 @@ public class ToolPackGuidanceTests {
         Assert.Equal("stub_b", b.Name);
         Assert.True(b.RequiredArguments.Count == 0);
         Assert.True(b.SupportsTableViewProjection);
-        Assert.Equal(16, b.Arguments.Count);
+        Assert.Equal(17, b.Arguments.Count);
         Assert.Contains(b.Arguments, static arg => arg.Name == "columns" && arg.Type == "array<string>" && !arg.Required);
         Assert.Contains(b.Arguments, static arg => arg.Name == "sort_by" && arg.Type == "string" && !arg.Required);
+        Assert.Contains(b.Arguments, static arg => arg.Name == ToolWriteGovernanceArgumentNames.OperationId && arg.Type == "string" && !arg.Required);
         Assert.NotNull(b.Traits);
         Assert.True(b.Traits.SupportsTableViewProjection);
         Assert.Equal(new[] { "columns", "sort_by" }, b.Traits.TableViewArguments);

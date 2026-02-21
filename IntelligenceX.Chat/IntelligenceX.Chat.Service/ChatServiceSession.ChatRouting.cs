@@ -126,7 +126,7 @@ internal sealed partial class ChatServiceSession {
                 writer,
                 request.RequestId,
                 threadId,
-                status: "model_selected",
+                status: ChatStatusCodes.ModelSelected,
                 message: "Using model: " + resolvedModel)
             .ConfigureAwait(false);
 
@@ -135,7 +135,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "review_passes_clamped",
+                    status: ChatStatusCodes.ReviewPassesClamped,
                     message: BuildReviewPassClampMessage(requestedReviewPasses.Value, maxReviewPasses))
                 .ConfigureAwait(false);
         }
@@ -145,7 +145,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "model_heartbeat_clamped",
+                    status: ChatStatusCodes.ModelHeartbeatClamped,
                     message: BuildModelHeartbeatClampMessage(requestedModelHeartbeatSeconds.Value, modelHeartbeatSeconds))
                 .ConfigureAwait(false);
         }
@@ -155,7 +155,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "tool_round_cap_applied",
+                    status: ChatStatusCodes.ToolRoundCapApplied,
                     message: BuildToolRoundCapAppliedMessage(requestedMaxRounds, maxRounds))
                 .ConfigureAwait(false);
         }
@@ -165,7 +165,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "tool_parallel_mode",
+                    status: ChatStatusCodes.ToolParallelMode,
                     message: $"Tool parallel mode: {parallelToolMode}.")
                 .ConfigureAwait(false);
         }
@@ -185,7 +185,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "routing",
+                    status: ChatStatusCodes.Routing,
                     message: BuildRoutingSelectionMessage(routingSelectedToolCount, routingTotalToolCount, routingStrategy))
                 .ConfigureAwait(false);
 
@@ -202,7 +202,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     request.RequestId,
                     threadId,
-                    status: "routing_meta",
+                    status: ChatStatusCodes.RoutingMeta,
                     message: routingMetaPayload)
                 .ConfigureAwait(false);
 
@@ -225,7 +225,7 @@ internal sealed partial class ChatServiceSession {
                 ChatInput.FromText(request.Text),
                 CopyChatOptions(options),
                 turnToken,
-                phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                 phaseMessage: planExecuteReviewLoop ? "Planning next steps with available tools..." : "Reasoning with available tools...",
                 heartbeatLabel: planExecuteReviewLoop ? "Planning next steps" : "Reasoning",
                 heartbeatSeconds: modelHeartbeatSeconds)
@@ -269,7 +269,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(autoSelectionPayload),
                             CopyChatOptions(options, newThreadOverride: false),
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? "phase_execute" : "thinking",
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseExecute : ChatStatusCodes.Thinking,
                             phaseMessage: $"Executing follow-up action {autoActionId} directly.",
                             heartbeatLabel: "Executing selected action",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -318,7 +318,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(nudgePrompt),
                             CopyChatOptions(options, newThreadOverride: false),
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                             phaseMessage: "Re-planning to execute available tools in this turn.",
                             heartbeatLabel: "Re-planning execution",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -355,7 +355,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(correctionPrompt),
                             CopyChatOptions(options, newThreadOverride: false),
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                             phaseMessage: "Re-planning to correct an inconsistent tool receipt in this turn.",
                             heartbeatLabel: "Re-planning tool receipt",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -403,7 +403,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(watchdogPrompt),
                             CopyChatOptions(options, newThreadOverride: false),
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? "phase_review" : "thinking",
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
                             phaseMessage: "Re-validating tool execution for this turn.",
                             heartbeatLabel: "Re-validating execution",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -432,7 +432,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(escapePrompt),
                             CopyChatOptions(options, newThreadOverride: false),
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                             phaseMessage: "Selected action had no tool activity; retrying with full tool availability.",
                             heartbeatLabel: "Re-planning with full tools",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -465,7 +465,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(subsetEscapePrompt),
                             CopyChatOptions(options, newThreadOverride: false),
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? "phase_plan" : "thinking",
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                             phaseMessage: "Follow-up subset had no tool activity; retrying with full tool availability.",
                             heartbeatLabel: "Expanding follow-up tools",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -506,7 +506,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(reviewPrompt),
                             options,
                             turnToken,
-                            phaseStatus: "phase_review",
+                            phaseStatus: ChatStatusCodes.PhaseReview,
                             phaseMessage: $"Reviewing response quality ({reviewPassesUsed}/{maxReviewPasses})...",
                             heartbeatLabel: "Reviewing response",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -529,7 +529,7 @@ internal sealed partial class ChatServiceSession {
                             ChatInput.FromText(proactivePrompt),
                             options,
                             turnToken,
-                            phaseStatus: "phase_review",
+                            phaseStatus: ChatStatusCodes.PhaseReview,
                             phaseMessage: "Generating proactive next checks and fixes...",
                             heartbeatLabel: "Preparing proactive follow-up",
                             heartbeatSeconds: modelHeartbeatSeconds)
@@ -564,7 +564,7 @@ internal sealed partial class ChatServiceSession {
                                 ChatInput.FromText(directRetryPrompt),
                                 CopyChatOptionsWithoutTools(options, newThreadOverride: false),
                                 turnToken,
-                                phaseStatus: "phase_review",
+                                phaseStatus: ChatStatusCodes.PhaseReview,
                                 phaseMessage: controlPayloadDetected
                                     ? "Retrying direct response after runtime control-payload artifact..."
                                     : "Retrying response in direct mode (without tools)...",
@@ -616,13 +616,19 @@ internal sealed partial class ChatServiceSession {
                         writer,
                         request.RequestId,
                         threadId,
-                        status: "phase_execute",
+                        status: ChatStatusCodes.PhaseExecute,
                         message: $"Executing {extracted.Count} planned tool call(s)...")
                     .ConfigureAwait(false);
             }
 
             foreach (var call in extracted) {
-                await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "tool_call", toolName: call.Name, toolCallId: call.CallId)
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.ToolCall,
+                        toolName: call.Name,
+                        toolCallId: call.CallId)
                     .ConfigureAwait(false);
                 toolCalls.Add(new ToolCallDto {
                     CallId = call.CallId,
@@ -677,7 +683,7 @@ internal sealed partial class ChatServiceSession {
                     next,
                     CopyChatOptions(options, newThreadOverride: false),
                     turnToken,
-                    phaseStatus: planExecuteReviewLoop ? "phase_review" : "thinking",
+                    phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
                     phaseMessage: planExecuteReviewLoop
                         ? $"Reviewing {executed.Count} tool result(s) and deciding next steps..."
                         : $"Analyzing {executed.Count} tool result(s)...",

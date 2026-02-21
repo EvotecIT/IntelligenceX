@@ -528,7 +528,8 @@ public class ToolDefinitionContractTests {
         foreach (var definition in writeCapableDefinitions) {
             var properties = definition.Parameters?.GetObject("properties");
             Assert.NotNull(properties);
-            Assert.NotNull(properties!.GetObject(ToolWriteGovernanceArgumentNames.ExecutionId));
+            Assert.NotNull(properties!.GetObject(ToolWriteGovernanceArgumentNames.OperationId));
+            Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ExecutionId));
             Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ActorId));
             Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.ChangeReason));
             Assert.NotNull(properties.GetObject(ToolWriteGovernanceArgumentNames.RollbackPlanId));
