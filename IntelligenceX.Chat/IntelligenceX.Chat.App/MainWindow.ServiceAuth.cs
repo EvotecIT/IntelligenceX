@@ -270,8 +270,17 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
+            if (IsTurnDispatchInProgress()) {
+                try {
+                    await Task.Delay(AutoReconnectBusyTurnDelay, cancellationToken).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return;
+                }
+
+                continue;
+            }
+
             var delay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
-            attempt++;
 
             try {
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
@@ -284,6 +293,7 @@ public sealed partial class MainWindow : Window {
             }
 
             await ConnectAsync(fromUserAction: false, connectBudgetOverride: AutoReconnectConnectBudget).ConfigureAwait(false);
+            attempt++;
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 return;

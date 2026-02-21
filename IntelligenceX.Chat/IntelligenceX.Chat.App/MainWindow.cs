@@ -69,7 +69,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan DispatchConnectBudget = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan DispatchConnectFailureCooldown = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan AutoReconnectConnectBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan AutoReconnectConnectBudget = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan AutoReconnectBusyTurnDelay = TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan StartupConnectMinAttemptTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StartupConnectRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan StartupConnectRetryAttemptCapNonInteractive = TimeSpan.FromSeconds(3);
