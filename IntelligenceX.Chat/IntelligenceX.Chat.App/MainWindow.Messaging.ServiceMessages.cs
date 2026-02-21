@@ -414,7 +414,8 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private async Task<bool> EnsureConnectedAsync() {
+    private async Task<bool> EnsureConnectedAsync(TimeSpan? connectBudgetOverride = null) {
+        var connectBudget = connectBudgetOverride.GetValueOrDefault(DispatchConnectBudget);
         if (_client is not null
             && await IsClientAliveAsync(
                     _client,
@@ -425,7 +426,7 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
-        await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
+        await ConnectAsync(fromUserAction: false, connectBudgetOverride: connectBudget).ConfigureAwait(false);
         var connected = _client is not null;
         _isConnected = connected;
         if (!connected) {

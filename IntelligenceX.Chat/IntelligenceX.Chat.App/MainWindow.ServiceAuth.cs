@@ -422,7 +422,7 @@ public sealed partial class MainWindow : Window {
     private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false, bool skipPreLoginAuthProbe = false) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
-            if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+            if (!await EnsureConnectedAsync(connectBudgetOverride: StartupConnectBudget).ConfigureAwait(false)) {
                 return false;
             }
 
@@ -446,7 +446,7 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
-        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+        if (!await EnsureConnectedAsync(connectBudgetOverride: StartupConnectBudget).ConfigureAwait(false)) {
             return false;
         }
 
