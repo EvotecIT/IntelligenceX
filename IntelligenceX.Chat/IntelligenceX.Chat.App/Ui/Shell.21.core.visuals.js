@@ -1854,19 +1854,7 @@
   }
 
   function normalizeDocxVisualMaxWidthPx(value) {
-    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
-    if (!Number.isFinite(parsed)) {
-      return 760;
-    }
-
-    if (parsed < 320) {
-      return 320;
-    }
-    if (parsed > 2000) {
-      return 2000;
-    }
-
-    return Math.floor(parsed);
+    return normalizeDocxVisualMaxWidthPxContract(value);
   }
 
   function normalizeVisualRenderDimension(value, fallback, minValue, maxValue) {
@@ -1890,18 +1878,18 @@
     var width = normalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
     if (normalizedType === "ix-chart") {
       return {
-        width: normalizeVisualRenderDimension(width, ixVisualExportState.chartWidth, 320, 2000),
+        width: normalizeVisualRenderDimension(width, ixVisualExportState.chartWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
         height: normalizeVisualRenderDimension(Math.round(width * 0.63), 480, 220, 1600)
       };
     }
     if (normalizedType === "ix-network") {
       return {
-        width: normalizeVisualRenderDimension(width, ixVisualExportState.networkWidth, 320, 2000),
+        width: normalizeVisualRenderDimension(width, ixVisualExportState.networkWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
         height: normalizeVisualRenderDimension(Math.round(width * 0.62), 500, 240, 1700)
       };
     }
     return {
-      width: normalizeVisualRenderDimension(width, 760, 320, 2000),
+      width: normalizeVisualRenderDimension(width, exportDocxVisualMaxWidthContract.defaultPx, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
       height: null
     };
   }

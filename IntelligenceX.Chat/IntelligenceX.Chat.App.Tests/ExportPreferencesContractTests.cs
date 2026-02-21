@@ -96,10 +96,27 @@ public sealed class ExportPreferencesContractTests {
         Assert.Contains("case \"theme\":", shell, StringComparison.Ordinal);
         Assert.Contains("return \"print_friendly\";", shell, StringComparison.Ordinal);
         Assert.Contains("return \"preserve_ui_theme\";", shell, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures DOCX visual width normalization uses one shared shell contract consumed by both tools and visuals modules.
+    /// </summary>
+    [Fact]
+    public void DocxVisualMaxWidth_ParityWithSharedShellContract() {
+        Assert.Equal(ExportPreferencesContract.MinDocxVisualMaxWidthPx, ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(0));
+        Assert.Equal(ExportPreferencesContract.MaxDocxVisualMaxWidthPx, ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(5000));
+        Assert.Equal(ExportPreferencesContract.DefaultDocxVisualMaxWidthPx, ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx((string?)null));
+
+        var shell = UiShellAssets.Load();
+        Assert.Contains("var exportDocxVisualMaxWidthContract = {", shell, StringComparison.Ordinal);
+        Assert.Contains("minPx: 320", shell, StringComparison.Ordinal);
+        Assert.Contains("maxPx: 2000", shell, StringComparison.Ordinal);
+        Assert.Contains("defaultPx: 760", shell, StringComparison.Ordinal);
+        Assert.Contains("function normalizeDocxVisualMaxWidthPxContract(value)", shell, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(shell, "function normalizeDocxVisualMaxWidthPxContract(value)"));
         Assert.Contains("function normalizeExportDocxVisualMaxWidthPx(value)", shell, StringComparison.Ordinal);
-        Assert.Contains("return 760;", shell, StringComparison.Ordinal);
-        Assert.Contains("if (parsed < 320)", shell, StringComparison.Ordinal);
-        Assert.Contains("if (parsed > 2000)", shell, StringComparison.Ordinal);
+        Assert.Contains("function normalizeDocxVisualMaxWidthPx(value)", shell, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(shell, "return normalizeDocxVisualMaxWidthPxContract(value);"));
     }
 
     /// <summary>
@@ -136,6 +153,24 @@ public sealed class ExportPreferencesContractTests {
             Assert.Equal(root, normalized);
         } finally {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static int CountOccurrences(string text, string token) {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(token)) {
+            return 0;
+        }
+
+        var count = 0;
+        var offset = 0;
+        while (true) {
+            var index = text.IndexOf(token, offset, StringComparison.Ordinal);
+            if (index < 0) {
+                return count;
+            }
+
+            count++;
+            offset = index + token.Length;
         }
     }
 }

@@ -2476,21 +2476,7 @@
   }
 
   function normalizeExportDocxVisualMaxWidthPx(value) {
-    // Keep bounds/default parity with ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx (C# host).
-    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
-    if (!Number.isFinite(parsed)) {
-      return 760;
-    }
-
-    if (parsed < 320) {
-      return 320;
-    }
-
-    if (parsed > 2000) {
-      return 2000;
-    }
-
-    return Math.floor(parsed);
+    return normalizeDocxVisualMaxWidthPxContract(value);
   }
 
   function exportFormatDisplayName(format) {
