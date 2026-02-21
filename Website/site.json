@@ -85,7 +85,19 @@
     "AutoGenerateCards": true,
     "GeneratedCardsPath": "/assets/social/generated",
     "GeneratedCardWidth": 1200,
-    "GeneratedCardHeight": 630
+    "GeneratedCardHeight": 630,
+    "GeneratedCardStyle": "default",
+    "GeneratedCardVariant": "standard",
+    "GeneratedCardStylesByCollection": {
+      "pages": "default",
+      "docs": "docs",
+      "blog": "editorial"
+    },
+    "GeneratedCardVariantsByCollection": {
+      "pages": "hero",
+      "docs": "compact",
+      "blog": "compact"
+    }
   },
   "StructuredData": {
     "Enabled": true,
