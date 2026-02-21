@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.DirectoryServices.ActiveDirectory;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +16,30 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+
+    internal sealed record AdReplicationConnectionSchedule(
+        int Days,
+        int HoursPerDay,
+        int SlotsPerHour,
+        int AllowedSlots,
+        int TotalSlots,
+        IReadOnlyList<int> AllowedSlotsByDay,
+        IReadOnlyList<IReadOnlyList<bool>> AllowedHoursGrid);
+
+    internal sealed record AdReplicationConnectionRow(
+        string Name,
+        string Site,
+        string? SourceServer,
+        string DestinationServer,
+        ActiveDirectoryTransportType Transport,
+        bool Enabled,
+        bool GeneratedByKcc,
+        bool ReciprocalReplicationEnabled,
+        NotificationStatus ChangeNotificationStatus,
+        bool DataCompressionEnabled,
+        bool ReplicationScheduleOwnedByUser,
+        ReplicationSpan ReplicationSpan,
+        AdReplicationConnectionSchedule? ReplicationSchedule);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_replication_connections",
@@ -44,7 +69,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         string State,
         string Origin,
         string SummaryBy,
-        IReadOnlyList<SiteConnectionInfo> Connections,
+        IReadOnlyList<AdReplicationConnectionRow> Connections,
         IReadOnlyList<ConnectionSummary> SummaryRows);
 
     /// <summary>
@@ -111,7 +136,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 State: state,
                 Origin: origin,
                 SummaryBy: summaryBy,
-                Connections: Array.Empty<SiteConnectionInfo>(),
+                Connections: Array.Empty<AdReplicationConnectionRow>(),
                 SummaryRows: rows);
 
             return Task.FromResult(BuildAutoTableResponse(
@@ -131,9 +156,9 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 }));
         }
 
-        var scannedConnections = filtered.Count;
-        var connectionRows = scannedConnections > maxResults ? filtered.Take(maxResults).ToArray() : filtered;
-        var truncatedConnections = scannedConnections > connectionRows.Count;
+        var connectionRows = CapRows(filtered, maxResults, out var scannedConnections, out var truncatedConnections)
+            .Select(MapConnectionForResponse)
+            .ToArray();
 
         var rawResult = new AdReplicationConnectionsResult(
             Mode: "raw",
@@ -160,6 +185,88 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 meta.Add("mode", "raw");
                 AddMaxResultsMeta(meta, maxResults);
             }));
+    }
+
+    internal static AdReplicationConnectionRow MapConnectionForResponse(SiteConnectionInfo connection) {
+        if (connection is null) {
+            throw new ArgumentNullException(nameof(connection));
+        }
+
+        return new AdReplicationConnectionRow(
+            Name: connection.Name,
+            Site: connection.Site,
+            SourceServer: connection.SourceServer,
+            DestinationServer: connection.DestinationServer,
+            Transport: connection.Transport,
+            Enabled: connection.Enabled,
+            GeneratedByKcc: connection.GeneratedByKcc,
+            ReciprocalReplicationEnabled: connection.ReciprocalReplicationEnabled,
+            ChangeNotificationStatus: connection.ChangeNotificationStatus,
+            DataCompressionEnabled: connection.DataCompressionEnabled,
+            ReplicationScheduleOwnedByUser: connection.ReplicationScheduleOwnedByUser,
+            ReplicationSpan: connection.ReplicationSpan,
+            ReplicationSchedule: MapReplicationScheduleForResponse(connection.ReplicationSchedule));
+    }
+
+    internal static AdReplicationConnectionSchedule? MapReplicationScheduleForResponse(ActiveDirectorySchedule? schedule) {
+        if (schedule is null) {
+            return null;
+        }
+
+        bool[,,]? rawSchedule;
+        try {
+            rawSchedule = schedule.RawSchedule;
+        } catch {
+            // DirectoryServices can throw when schedule materialization fails on partial objects.
+            return null;
+        }
+
+        if (rawSchedule is null) {
+            return null;
+        }
+
+        var days = rawSchedule.GetLength(0);
+        var hoursPerDay = rawSchedule.GetLength(1);
+        var slotsPerHour = rawSchedule.GetLength(2);
+        if (days <= 0 || hoursPerDay <= 0 || slotsPerHour <= 0) {
+            return null;
+        }
+
+        var allowedSlotsByDay = new int[days];
+        var allowedHoursGrid = new List<IReadOnlyList<bool>>(days);
+        var allowedSlots = 0;
+
+        for (var day = 0; day < days; day++) {
+            var hourRow = new bool[hoursPerDay];
+            var allowedDaySlots = 0;
+
+            for (var hour = 0; hour < hoursPerDay; hour++) {
+                var hourAllowed = false;
+                for (var slot = 0; slot < slotsPerHour; slot++) {
+                    if (!rawSchedule[day, hour, slot]) {
+                        continue;
+                    }
+
+                    hourAllowed = true;
+                    allowedDaySlots++;
+                    allowedSlots++;
+                }
+
+                hourRow[hour] = hourAllowed;
+            }
+
+            allowedSlotsByDay[day] = allowedDaySlots;
+            allowedHoursGrid.Add(hourRow);
+        }
+
+        return new AdReplicationConnectionSchedule(
+            Days: days,
+            HoursPerDay: hoursPerDay,
+            SlotsPerHour: slotsPerHour,
+            AllowedSlots: allowedSlots,
+            TotalSlots: days * hoursPerDay * slotsPerHour,
+            AllowedSlotsByDay: allowedSlotsByDay,
+            AllowedHoursGrid: allowedHoursGrid);
     }
 
     private static IReadOnlyList<string>? ReadStringArrayOrNull(JsonArray? array) {
@@ -210,4 +317,3 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         };
     }
 }
-
