@@ -635,8 +635,10 @@ internal sealed partial class ChatServiceSession {
         bool currentInsecureHttpNonLoopback,
         string? previousModel,
         string? currentModel) {
+        var previousBaseUrlNormalized = NormalizeRuntimeBaseUrlForComparison(previousBaseUrl);
+        var currentBaseUrlNormalized = NormalizeRuntimeBaseUrlForComparison(currentBaseUrl);
         var reconnect = previousTransport != currentTransport
-                        || !string.Equals(previousBaseUrl, currentBaseUrl, StringComparison.Ordinal)
+                        || !string.Equals(previousBaseUrlNormalized, currentBaseUrlNormalized, StringComparison.Ordinal)
                         || previousAuthMode != currentAuthMode
                         || !string.Equals(previousApiKey, currentApiKey, StringComparison.Ordinal)
                         || !string.Equals(previousBasicUsername, currentBasicUsername, StringComparison.Ordinal)
@@ -646,7 +648,37 @@ internal sealed partial class ChatServiceSession {
                         || previousInsecureHttp != currentInsecureHttp
                         || previousInsecureHttpNonLoopback != currentInsecureHttpNonLoopback;
 
-        var modelChanged = !string.Equals(previousModel, currentModel, StringComparison.Ordinal);
+        var modelChanged = !string.Equals(
+            NormalizeRuntimeModelForComparison(previousModel),
+            NormalizeRuntimeModelForComparison(currentModel),
+            StringComparison.Ordinal);
         return (reconnect, modelChanged);
+    }
+
+    internal static string? NormalizeRuntimeBaseUrlForComparison(string? baseUrl) {
+        var trimmed = (baseUrl ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
+            return null;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) || uri is null) {
+            return trimmed;
+        }
+
+        var scheme = uri.Scheme.ToLowerInvariant();
+        var host = uri.IdnHost.ToLowerInvariant();
+        var port = uri.IsDefaultPort ? string.Empty : ":" + uri.Port;
+        var path = (uri.AbsolutePath ?? string.Empty).TrimEnd('/');
+        if (path.Length == 0) {
+            path = string.Empty;
+        }
+
+        var query = uri.Query ?? string.Empty;
+        return scheme + "://" + host + port + path + query;
+    }
+
+    private static string? NormalizeRuntimeModelForComparison(string? model) {
+        var normalized = (model ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 }

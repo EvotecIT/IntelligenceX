@@ -250,7 +250,12 @@ internal sealed partial class ChatServiceSession {
             var outcome = "ok";
             string? outcomeCode = null;
             var threadIdForDelta = run.ThreadId ?? string.Empty;
-            var usedModel = request.Options?.Model ?? _options.Model;
+            var requestedModel = NormalizeModelTelemetryValue(request.Options?.Model);
+            var runtimeDefaultModel = NormalizeModelTelemetryValue(_options.Model);
+            var telemetryModel = ResolveEffectiveTurnModelForTelemetry(
+                resolvedModel: null,
+                requestedModel,
+                runtimeDefaultModel);
             var bufferDraftDeltasForSmartReview = ShouldBufferDraftDeltasForSmartReview(request);
             try {
                 if (bufferDraftDeltasForSmartReview) {
@@ -280,9 +285,13 @@ internal sealed partial class ChatServiceSession {
                 toolRounds = result.ToolRounds;
                 projectionFallbackCount = result.ProjectionFallbackCount;
                 toolErrors = result.ToolErrors;
+                telemetryModel = ResolveEffectiveTurnModelForTelemetry(
+                    result.ResolvedModel,
+                    requestedModel,
+                    runtimeDefaultModel);
                 await WriteAsync(writer, result.Result, CancellationToken.None).ConfigureAwait(false);
 
-                await TryRecordRecentModelAsync(usedModel, CancellationToken.None).ConfigureAwait(false);
+                await TryRecordRecentModelAsync(telemetryModel, CancellationToken.None).ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) {
                 outcome = "error";
                 outcomeCode = "not_authenticated";
@@ -341,7 +350,8 @@ internal sealed partial class ChatServiceSession {
                         ToolRounds = toolRounds,
                         ProjectionFallbackCount = projectionFallbackCount,
                         ToolErrors = toolErrors is { Count: > 0 } ? toolErrors : null,
-                        Model = string.IsNullOrWhiteSpace(usedModel) ? null : usedModel.Trim(),
+                        Model = telemetryModel,
+                        RequestedModel = requestedModel,
                         Transport = metricsTransport,
                         EndpointHost = metricsEndpointHost,
                         Outcome = outcome,
@@ -392,6 +402,25 @@ internal sealed partial class ChatServiceSession {
             CachedPromptTokens = usage.CachedInputTokens,
             ReasoningTokens = usage.ReasoningTokens
         };
+    }
+
+    internal static string? ResolveEffectiveTurnModelForTelemetry(string? resolvedModel, string? requestedModel, string? runtimeDefaultModel) {
+        var resolved = NormalizeModelTelemetryValue(resolvedModel);
+        if (resolved is not null) {
+            return resolved;
+        }
+
+        var requested = NormalizeModelTelemetryValue(requestedModel);
+        if (requested is not null) {
+            return requested;
+        }
+
+        return NormalizeModelTelemetryValue(runtimeDefaultModel);
+    }
+
+    private static string? NormalizeModelTelemetryValue(string? model) {
+        var normalized = (model ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private string ResolveMetricsTransport() {

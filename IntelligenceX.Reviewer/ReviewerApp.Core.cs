@@ -375,6 +375,8 @@ public static partial class ReviewerApp {
 
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 cancellationToken).ConfigureAwait(false);
+            // Merge-blocker detection depends on the review markdown contract (Todo/Critical sections)
+            // produced by ReviewFormatter and prompts. Keep parser + formatter in sync.
             var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(reviewBody);
             var effectiveProvider = runner.EffectiveProvider;
             if (runner.FallbackActivated && settings.Diagnostics) {

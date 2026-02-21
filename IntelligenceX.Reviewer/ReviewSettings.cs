@@ -287,7 +287,7 @@ internal sealed partial class ReviewSettings {
     /// When enabled, sweep and resolve remaining bot-only kept threads after a no-blockers review.
     /// Useful for repositories that enforce resolved review conversations before merge.
     /// </summary>
-    public bool ReviewThreadsAutoResolveSweepNoBlockers { get; set; }
+    public bool ReviewThreadsAutoResolveSweepNoBlockers { get; set; } = false;
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     /// <summary>

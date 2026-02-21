@@ -193,6 +193,7 @@ public sealed partial class MainWindow : Window {
                 CachedPromptTokens: metrics.Usage?.CachedPromptTokens,
                 ReasoningTokens: metrics.Usage?.ReasoningTokens,
                 Model: string.IsNullOrWhiteSpace(metrics.Model) ? null : metrics.Model.Trim(),
+                RequestedModel: string.IsNullOrWhiteSpace(metrics.RequestedModel) ? null : metrics.RequestedModel.Trim(),
                 Transport: string.IsNullOrWhiteSpace(metrics.Transport) ? null : metrics.Transport.Trim(),
                 EndpointHost: string.IsNullOrWhiteSpace(metrics.EndpointHost) ? null : metrics.EndpointHost.Trim());
         }
@@ -208,6 +209,7 @@ public sealed partial class MainWindow : Window {
                + (metrics.Usage?.TotalTokens is null ? string.Empty : " tokens=" + metrics.Usage.TotalTokens.Value.ToString(CultureInfo.InvariantCulture))
                + " tools=" + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
                + " rounds=" + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture)
+               + (string.IsNullOrWhiteSpace(metrics.RequestedModel) ? string.Empty : " requestedModel=" + metrics.RequestedModel.Trim())
                + (string.IsNullOrWhiteSpace(metrics.Model) ? string.Empty : " model=" + metrics.Model.Trim())
                + (string.IsNullOrWhiteSpace(metrics.Transport) ? string.Empty : " transport=" + metrics.Transport.Trim())
                + (string.IsNullOrWhiteSpace(metrics.EndpointHost) ? string.Empty : " endpoint=" + metrics.EndpointHost.Trim())

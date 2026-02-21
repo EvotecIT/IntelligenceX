@@ -433,6 +433,7 @@ public sealed partial class MainWindow : Window {
         long? CachedPromptTokens,
         long? ReasoningTokens,
         string? Model,
+        string? RequestedModel,
         string? Transport,
         string? EndpointHost);
 

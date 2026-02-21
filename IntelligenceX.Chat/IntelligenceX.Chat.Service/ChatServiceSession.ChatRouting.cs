@@ -560,7 +560,8 @@ internal sealed partial class ChatServiceSession {
                     ToolCallsCount: toolCalls.Count,
                     ToolRounds: toolRounds,
                     ProjectionFallbackCount: projectionFallbackCount,
-                    ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs));
+                    ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs),
+                    ResolvedModel: resolvedModel);
             }
 
             toolRounds++;

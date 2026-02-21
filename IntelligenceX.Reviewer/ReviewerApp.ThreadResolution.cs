@@ -635,7 +635,7 @@ public static partial class ReviewerApp {
 
             sweepResolved++;
             sweepResolvedIds.Add(normalizedId);
-            resolved.Add(new ThreadAssessment(item.Id, "resolve", $"{item.Reason} (no-blockers sweep)", item.Evidence));
+            resolved.Add(new ThreadAssessment(item.Id, "resolve", FormatNoBlockersSweepReason(item.Reason), item.Evidence));
         }
 
         if (sweepResolvedIds.Count > 0) {
@@ -643,6 +643,11 @@ public static partial class ReviewerApp {
         }
 
         return sweepResolved;
+    }
+
+    private static string FormatNoBlockersSweepReason(string reason) {
+        const string suffix = "(no-blockers sweep)";
+        return string.IsNullOrWhiteSpace(reason) ? suffix : $"{reason} {suffix}";
     }
 
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
