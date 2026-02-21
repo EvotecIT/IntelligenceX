@@ -106,6 +106,39 @@ public sealed class ToolDefinitionTagOrderingTests {
     }
 
     [Fact]
+    public void Constructor_ShouldReportDroppedMalformedTaxonomyTags_WhenObserverConfigured() {
+        var observed = new List<string>();
+        ToolDefinition.MalformedTaxonomyTagDroppedObserver = observed.Add;
+        try {
+            _ = new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: null,
+                tags: new[] { "risk:", "scope:   ", "alpha" });
+        } finally {
+            ToolDefinition.MalformedTaxonomyTagDroppedObserver = null;
+        }
+
+        Assert.Contains("risk:", observed, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("scope:", observed, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Constructor_ShouldIgnoreObserverFailures_WhenDroppingMalformedTaxonomyTags() {
+        ToolDefinition.MalformedTaxonomyTagDroppedObserver = _ => throw new InvalidOperationException("observer-failure");
+        try {
+            var definition = new ToolDefinition(
+                name: "custom_probe",
+                description: "Probe",
+                parameters: null,
+                tags: new[] { "risk:", "alpha" });
+            Assert.Contains("alpha", definition.Tags, StringComparer.OrdinalIgnoreCase);
+        } finally {
+            ToolDefinition.MalformedTaxonomyTagDroppedObserver = null;
+        }
+    }
+
+    [Fact]
     public void CreateAliasDefinition_ShouldApplyCaseInsensitiveTaxonomyOverrides() {
         var canonical = ToolSelectionMetadata.Enrich(
             new ToolDefinition(

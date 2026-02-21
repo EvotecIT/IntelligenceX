@@ -9,6 +9,7 @@ namespace IntelligenceX.Tools;
 /// </summary>
 public sealed class ToolDefinition {
     private static readonly StringComparer TagComparer = StringComparer.OrdinalIgnoreCase;
+    internal static Action<string>? MalformedTaxonomyTagDroppedObserver { get; set; }
 
     /// <summary>
     /// Initializes a new tool definition.
@@ -239,6 +240,7 @@ public sealed class ToolDefinition {
             return;
         }
         if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
+            OnMalformedTaxonomyTagDropped(normalized);
             return;
         }
 
@@ -260,5 +262,18 @@ public sealed class ToolDefinition {
 
         merged.Sort(TagComparer);
         return merged.ToArray();
+    }
+
+    private static void OnMalformedTaxonomyTagDropped(string tag) {
+        var observer = MalformedTaxonomyTagDroppedObserver;
+        if (observer is null) {
+            return;
+        }
+
+        try {
+            observer(tag);
+        } catch {
+            // Diagnostics observers must never influence normalization behavior.
+        }
     }
 }
