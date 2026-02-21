@@ -260,12 +260,16 @@ public sealed partial class MainWindow : Window {
             debugMode = _debugMode,
             windowMaximized = IsWindowMaximized()
         });
-        if (string.Equals(_lastPublishedSessionStateJson, json, StringComparison.Ordinal)) {
+        if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedSessionStateJson, json)) {
             return;
         }
 
-        _lastPublishedSessionStateJson = json;
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetSessionState(" + json + ");").AsTask()).ConfigureAwait(false);
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetSessionState(" + json + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            UiPublishDedupe.RollbackFailedPublish(_uiPublishSync, ref _lastPublishedSessionStateJson, json);
+            throw;
+        }
     }
 
     private static string MapStatusTone(SessionStatusTone tone) {
@@ -660,13 +664,16 @@ public sealed partial class MainWindow : Window {
                 pluginSearchPaths = _sessionPolicy.PluginSearchPaths
             }
         });
-        if (string.Equals(_lastPublishedOptionsStateJson, json, StringComparison.Ordinal)) {
+        if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json)) {
             return;
         }
 
-        _lastPublishedOptionsStateJson = json;
-
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            UiPublishDedupe.RollbackFailedPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json);
+            throw;
+        }
     }
 
 }
