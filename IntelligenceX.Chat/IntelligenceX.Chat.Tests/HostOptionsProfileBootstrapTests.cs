@@ -111,6 +111,24 @@ public sealed class HostOptionsProfileBootstrapTests {
         }
     }
 
+    [Fact]
+    public void Parse_CliMutatingParallelFlags_EnableThenDisable_LastFlagWins() {
+        var options = ParseHostOptions(new[] { "--allow-mutating-parallel-tools", "--disallow-mutating-parallel-tools" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.False(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
+    }
+
+    [Fact]
+    public void Parse_CliMutatingParallelFlags_DisableThenEnable_LastFlagWins() {
+        var options = ParseHostOptions(new[] { "--disallow-mutating-parallel-tools", "--allow-mutating-parallel-tools" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.True(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
+    }
+
     private static object? ParseHostOptions(string[] args, out string? error) {
         var replOptionsType = ResolveHostOptionsType();
         var parse = replOptionsType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static);

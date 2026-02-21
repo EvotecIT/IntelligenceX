@@ -119,6 +119,74 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, resultMessage.Tools.Outputs.Count);
     }
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_EmitsToolRoundCapApplied_WhenRequestedMaxToolRoundsExceedsSupportedLimit() {
+        using var server = new DeterministicCompatibleHttpServer();
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 24,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-tool-round-cap",
+            ThreadId = thread.Id,
+            Text = "Run the diagnostics workflow to completion.",
+            Options = new ChatRequestOptions {
+                MaxToolRounds = 500,
+                WeightedToolRouting = false,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Contains(statuses, static s => string.Equals(s, "tool_round_cap_applied", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+    }
+
     private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
         ChatRequest request, string threadId, CancellationToken cancellationToken) {
         var taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
