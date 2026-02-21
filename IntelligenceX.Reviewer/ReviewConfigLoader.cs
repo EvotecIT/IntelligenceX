@@ -89,6 +89,11 @@ internal static class ReviewConfigLoader {
         settings.Mode = obj.GetString("mode") ?? settings.Mode;
         settings.Strictness = obj.GetString("strictness") ?? settings.Strictness;
         settings.Tone = obj.GetString("tone") ?? settings.Tone;
+        var narrativeMode = obj.GetString("narrativeMode");
+        if (!string.IsNullOrWhiteSpace(narrativeMode)) {
+            settings.NarrativeMode =
+                ReviewSettings.NormalizeNarrativeMode(narrativeMode, settings.NarrativeMode);
+        }
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
         settings.Model = obj.GetString("model") ?? obj.GetString("openaiModel") ?? obj.GetString("openAiModel") ?? settings.Model;

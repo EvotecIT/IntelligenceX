@@ -542,6 +542,8 @@ internal static partial class Program {
         failed += Run("Secrets audit records", TestSecretsAuditRecords);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
+        failed += Run("Prompt narrative mode structured default", TestPromptBuilderNarrativeModeStructuredDefault);
+        failed += Run("Prompt narrative mode freedom", TestPromptBuilderNarrativeModeFreedom);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

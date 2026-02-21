@@ -21,6 +21,7 @@ internal static class PromptBuilder {
         var severityBlock = string.IsNullOrWhiteSpace(settings.SeverityThreshold)
             ? string.Empty
             : $"Only include issues with severity >= {settings.SeverityThreshold}.\n";
+        var narrativeContractBlock = BuildNarrativeContractBlock(settings.NarrativeMode);
         var nextStepsSection = settings.IncludeNextSteps ? "- Next Steps 🚀\n" : string.Empty;
         var diffRangeBlock = string.IsNullOrWhiteSpace(diffNote) ? string.Empty : $"Diff range: {diffNote}\n";
         var summaryStabilityBlock = string.IsNullOrWhiteSpace(previousSummary)
@@ -38,6 +39,7 @@ internal static class PromptBuilder {
             ["NotesBlock"] = notesBlock,
             ["LanguageHintsBlock"] = languageHintsBlock,
             ["SeverityBlock"] = severityBlock,
+            ["NarrativeContractBlock"] = narrativeContractBlock,
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["MaxInlineComments"] = settings.MaxInlineComments.ToString(),
@@ -93,5 +95,19 @@ internal static class PromptBuilder {
         return sb.ToString().TrimEnd();
     }
 
-    
+    private static string BuildNarrativeContractBlock(ReviewNarrativeMode narrativeMode) {
+        return narrativeMode switch {
+            ReviewNarrativeMode.Freedom => """
+Use a natural reviewer voice. You may use concise bullets, short paragraphs, or tables where helpful.
+You do not need to force a fixed phrasing pattern for every item.
+Still keep outcomes explicit: what is wrong, impact (when not obvious), and what change is required to unblock.
+Avoid chain-of-thought.
+""",
+            _ => """
+For each issue or todo item, include a one-sentence rationale (why it matters).
+Keep wording crisp and deterministic to make merge-blockers easy to action.
+Avoid chain-of-thought.
+"""
+        };
+    }
 }

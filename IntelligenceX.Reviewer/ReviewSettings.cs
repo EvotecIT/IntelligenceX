@@ -19,6 +19,11 @@ internal enum ReviewCommentMode {
     Fresh
 }
 
+internal enum ReviewNarrativeMode {
+    Structured,
+    Freedom
+}
+
 internal enum ReviewCodeHost {
     GitHub,
     AzureDevOps
@@ -83,6 +88,7 @@ internal sealed partial class ReviewSettings {
     public string? Tone { get; set; }
     public string? Style { get; set; }
     public string? OutputStyle { get; set; }
+    public ReviewNarrativeMode NarrativeMode { get; set; } = ReviewNarrativeMode.Structured;
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
     public string? Persona { get; set; }
     public string? Notes { get; set; }
