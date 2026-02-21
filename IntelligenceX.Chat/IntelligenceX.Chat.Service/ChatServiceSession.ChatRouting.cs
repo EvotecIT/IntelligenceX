@@ -69,10 +69,15 @@ internal sealed partial class ChatServiceSession {
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
+        var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!executionContractApplies) {
-                if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
+                if (compactFollowUpTurn) {
+                    // Keep follow-up turns unconstrained so users don't see "subset retry" rewrites for
+                    // short continuation requests (for example "go ahead", "run it", "check replication").
+                    routingInsights = new List<ToolRoutingInsight>();
+                } else if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
                     var routed = await SelectWeightedToolSubsetAsync(
                             client,
                             threadId,

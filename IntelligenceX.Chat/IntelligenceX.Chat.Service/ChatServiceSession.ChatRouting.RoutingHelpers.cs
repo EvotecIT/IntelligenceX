@@ -223,7 +223,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (ShouldSkipWeightedRouting(userRequest)) {
-            return (SelectDeterministicToolSubset(definitions, limit), new List<ToolRoutingInsight>());
+            return (definitions, new List<ToolRoutingInsight>());
         }
 
         var plannerCandidates = BuildModelPlannerCandidates(definitions, limit);
@@ -265,7 +265,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (ShouldSkipWeightedRouting(userRequest)) {
-            return SelectDeterministicToolSubset(definitions, limit);
+            return definitions;
         }
 
         var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);

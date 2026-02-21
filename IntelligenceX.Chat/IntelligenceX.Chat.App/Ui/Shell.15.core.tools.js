@@ -1526,6 +1526,25 @@
       return null;
     }
 
+    function resolveNativeAccountEmail(accountId) {
+      var normalizedAccountId = normalizeModelText(accountId || "");
+      if (!normalizedAccountId) {
+        return "";
+      }
+      var expectedKey = "native:" + normalizedAccountId.toLowerCase();
+      for (var i = 0; i < accountUsage.length; i++) {
+        var usage = accountUsage[i] || {};
+        var usageKey = normalizeModelText(usage.key || "").toLowerCase();
+        if (usageKey !== expectedKey) {
+          continue;
+        }
+
+        return normalizeModelText(usage.email || "");
+      }
+
+      return "";
+    }
+
     var nativeSlotSelectRow = byId("optNativeAccountSlotRow");
     var nativeAccountIdRow = byId("optNativeAccountIdRow");
     var nativeAccountHint = byId("optNativeAccountHint");
@@ -1546,9 +1565,13 @@
       for (var slotIndex = 1; slotIndex <= maxNativeAccountSlots; slotIndex++) {
         var slotState = resolveNativeSlotState(slotIndex) || {};
         var slotAccountId = normalizeModelText(slotState.accountId || "");
+        var slotAccountEmail = resolveNativeAccountEmail(slotAccountId);
         var slotLabel = "Slot " + String(slotIndex);
         if (slotAccountId) {
           slotLabel += " | " + slotAccountId;
+          if (slotAccountEmail) {
+            slotLabel += " | " + slotAccountEmail;
+          }
           var slotUsageTokens = Number(slotState.usageTotalTokens);
           if (Number.isFinite(slotUsageTokens) && slotUsageTokens > 0) {
             slotLabel += " | " + formatTokenCount(slotUsageTokens) + " tok";
@@ -1569,8 +1592,10 @@
     var selectedSlotAccountId = selectedSlotState
       ? normalizeModelText(selectedSlotState.accountId || "")
       : "";
+    var selectedSlotAccountEmail = resolveNativeAccountEmail(selectedSlotAccountId);
     if (!selectedSlotAccountId) {
       selectedSlotAccountId = openAIAccountId;
+      selectedSlotAccountEmail = resolveNativeAccountEmail(selectedSlotAccountId);
     }
     if (nativeAccountIdInput) {
       nativeAccountIdInput.value = selectedSlotAccountId;
@@ -1580,10 +1605,17 @@
       var hintParts = ["Select a slot to switch accounts quickly."];
       hintParts.push("Available slots: " + String(maxNativeAccountSlots) + ".");
       if (selectedSlotAccountId) {
-        hintParts.push("Selected slot account: " + selectedSlotAccountId + ".");
+        var selectedSlotAccountText = selectedSlotAccountEmail
+          ? (selectedSlotAccountId + " (" + selectedSlotAccountEmail + ")")
+          : selectedSlotAccountId;
+        hintParts.push("Selected slot account: " + selectedSlotAccountText + ".");
       }
       if (authenticatedAccountId) {
-        hintParts.push("Authenticated now: " + authenticatedAccountId + ".");
+        var authenticatedAccountEmail = resolveNativeAccountEmail(authenticatedAccountId);
+        var authenticatedAccountText = authenticatedAccountEmail
+          ? (authenticatedAccountId + " (" + authenticatedAccountEmail + ")")
+          : authenticatedAccountId;
+        hintParts.push("Authenticated now: " + authenticatedAccountText + ".");
       }
       if (selectedSlotState) {
         var slotPlanType = normalizeModelText(selectedSlotState.planType || "");
@@ -2109,7 +2141,12 @@
 
           var usageLabel = document.createElement("div");
           usageLabel.className = "options-usage-label";
-          usageLabel.textContent = normalizeModelText(usage.label || usage.key || "account");
+          var usageLabelText = normalizeModelText(usage.label || usage.key || "account");
+          var usageEmail = normalizeModelText(usage.email || "");
+          if (usageEmail && usageLabelText.toLowerCase().indexOf(usageEmail.toLowerCase()) < 0) {
+            usageLabelText += " | " + usageEmail;
+          }
+          usageLabel.textContent = usageLabelText;
           usageHead.appendChild(usageLabel);
 
           var usageTurns = Number(usage.turns);

@@ -146,13 +146,19 @@ public sealed partial class MainWindow : Window {
         return canonical;
     }
 
-    private static ActiveUsageIdentity ResolveNativeUsageIdentity(string? accountId) {
+    private static ActiveUsageIdentity ResolveNativeUsageIdentity(string? accountId, string? email = null) {
         var normalized = (accountId ?? string.Empty).Trim();
+        var normalizedEmail = (email ?? string.Empty).Trim();
         if (normalized.Length == 0) {
-            return new ActiveUsageIdentity("native:unknown", "ChatGPT (unknown account)");
+            return normalizedEmail.Length == 0
+                ? new ActiveUsageIdentity("native:unknown", "ChatGPT (unknown account)")
+                : new ActiveUsageIdentity("native:unknown", "ChatGPT (" + normalizedEmail + ")");
         }
 
-        return new ActiveUsageIdentity(BuildNativeUsageKey(normalized), "ChatGPT (" + normalized + ")");
+        var label = normalizedEmail.Length == 0
+            ? "ChatGPT (" + normalized + ")"
+            : "ChatGPT (" + normalizedEmail + " | " + normalized + ")";
+        return new ActiveUsageIdentity(BuildNativeUsageKey(normalized), label);
     }
 
     private static AccountUsageSnapshot CreateEmptyUsageSnapshot(ActiveUsageIdentity identity) {
@@ -324,7 +330,7 @@ public sealed partial class MainWindow : Window {
             }
 
             _accountUsageByKey[identity.Key] = current with {
-                Label = identity.Label,
+                Label = string.IsNullOrWhiteSpace(current.Label) ? identity.Label : current.Label,
                 PromptTokens = checked(current.PromptTokens + promptTokens),
                 CompletionTokens = checked(current.CompletionTokens + completionTokens),
                 TotalTokens = checked(current.TotalTokens + totalTokens),
@@ -350,7 +356,9 @@ public sealed partial class MainWindow : Window {
             accountId = NormalizeLocalProviderOpenAIAccountId(login.AccountId);
         }
 
-        var identity = ResolveNativeUsageIdentity(accountId);
+        var planType = NormalizeOptionalText(usage.PlanType);
+        var email = NormalizeOptionalText(usage.Email);
+        var identity = ResolveNativeUsageIdentity(accountId, email);
         var nowUtc = DateTime.UtcNow;
         var rateLimit = usage.RateLimit;
         var rateLimitResetUtc = TryResolveRateLimitResetUtc(rateLimit, nowUtc);
@@ -360,8 +368,6 @@ public sealed partial class MainWindow : Window {
         var usageRetrievedAtUtc = usage.RetrievedAtUtc.HasValue
             ? EnsureUtc(usage.RetrievedAtUtc.Value)
             : (DateTime?)null;
-        var planType = NormalizeOptionalText(usage.PlanType);
-        var email = NormalizeOptionalText(usage.Email);
         var snapshotSource = NormalizeOptionalText(usage.Source);
 
         var credits = usage.Credits;
@@ -431,7 +437,7 @@ public sealed partial class MainWindow : Window {
             }
 
             _accountUsageByKey[identity.Key] = current with {
-                Label = identity.Label,
+                Label = string.IsNullOrWhiteSpace(current.Label) ? identity.Label : current.Label,
                 UsageLimitHitUtc = nowUtc,
                 UsageLimitRetryAfterUtc = retryAfterUtc
             };
