@@ -303,6 +303,21 @@
     enabled: true,
     suppressScrollEvent: false
   };
+  var TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX = 28;
+  var TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX = 84;
+
+  function distanceFromBottom(el) {
+    if (!el) {
+      return 0;
+    }
+
+    var distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (!Number.isFinite(distance)) {
+      return 0;
+    }
+
+    return distance < 0 ? 0 : distance;
+  }
 
   function isNearBottom(el, thresholdPx) {
     if (!el) {
@@ -314,7 +329,7 @@
       threshold = 80;
     }
 
-    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    return distanceFromBottom(el) < threshold;
   }
 
   function setTranscriptScrollTop(top) {
@@ -340,7 +355,18 @@
   }
 
   function refreshTranscriptFollowState() {
-    transcriptFollowState.enabled = isNearBottom(transcript, 16);
+    var distance = distanceFromBottom(transcript);
+    if (transcriptFollowState.enabled) {
+      if (distance > TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX) {
+        transcriptFollowState.enabled = false;
+      }
+      return transcriptFollowState.enabled;
+    }
+
+    if (distance <= TRANSCRIPT_FOLLOW_ENABLE_THRESHOLD_PX) {
+      transcriptFollowState.enabled = true;
+    }
+    return transcriptFollowState.enabled;
   }
 
   transcript.addEventListener("scroll", function() {
@@ -364,7 +390,8 @@
       }
       label.textContent = text + timelineSummary;
       el.classList.add("active");
-      if (transcriptFollowState.enabled && isNearBottom(transcript)) {
+      refreshTranscriptFollowState();
+      if (transcriptFollowState.enabled && isNearBottom(transcript, TRANSCRIPT_FOLLOW_DISABLE_THRESHOLD_PX)) {
         scrollToBottom(transcript);
       }
     } else {
@@ -585,6 +612,7 @@
   var transcriptRenderRevision = 0;
 
   window.ixSetTranscript = function(html) {
+    refreshTranscriptFollowState();
     var shouldStickBottom = transcriptFollowState.enabled;
     var previousTop = transcript.scrollTop;
     var stickAnchorTop = -1;

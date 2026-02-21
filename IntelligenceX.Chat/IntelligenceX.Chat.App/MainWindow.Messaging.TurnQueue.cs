@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        MarkStartupInteractivePriorityRequested();
+
         if (_isSending) {
             var queueConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
                 ? _activeConversationId

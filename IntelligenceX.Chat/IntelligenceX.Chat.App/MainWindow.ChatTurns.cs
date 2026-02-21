@@ -29,17 +29,17 @@ public sealed partial class MainWindow : Window {
 
         await SetActivityAsync("Checking account and runtime status...").ConfigureAwait(false);
 
+        var dispatchAuthProbeOutcome = DispatchAuthenticationProbeOutcome.Authenticated;
         if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
-            var authenticatedNow = await RefreshAuthenticationStateAsync(
-                    updateStatus: true,
-                    probeTimeout: EnsureLoginFastPathProbeTimeout)
-                .ConfigureAwait(false);
-            if (authenticatedNow) {
+            dispatchAuthProbeOutcome = await ProbeAuthenticationStateForDispatchAsync(EnsureLoginFastPathProbeTimeout).ConfigureAwait(false);
+            if (dispatchAuthProbeOutcome == DispatchAuthenticationProbeOutcome.Authenticated) {
                 _isAuthenticated = true;
             }
         }
 
-        if (!IsEffectivelyAuthenticatedForCurrentTransport()) {
+        var requireSignInBeforeDispatch = !IsEffectivelyAuthenticatedForCurrentTransport()
+                                          && dispatchAuthProbeOutcome == DispatchAuthenticationProbeOutcome.Unauthenticated;
+        if (requireSignInBeforeDispatch) {
             // User bubble is already rendered for this prompt, so retries after sign-in
             // must reuse that bubble instead of appending duplicate user messages.
             var promptQueued = TryEnqueuePromptAfterLogin(text, conversationId, out var queuedCount, skipUserBubbleOnDispatch: true);
@@ -159,6 +159,10 @@ public sealed partial class MainWindow : Window {
                             }
                         }
 
+                        if (await TryHandleAuthenticationRequiredTurnFailureAsync(turn, resolvedRetryEx).ConfigureAwait(false)) {
+                            return;
+                        }
+
                         var promptQueued = false;
                         if (IsUsageLimitError(resolvedRetryEx)) {
                             MarkUsageLimitForActiveAccount(resolvedRetryEx.Message);
@@ -184,6 +188,10 @@ public sealed partial class MainWindow : Window {
                     } catch (Exception kickoffRetryEx) {
                         resolvedEx = kickoffRetryEx;
                     }
+                }
+
+                if (await TryHandleAuthenticationRequiredTurnFailureAsync(turn, resolvedEx).ConfigureAwait(false)) {
+                    return;
                 }
 
                 var promptQueued = false;
@@ -523,6 +531,49 @@ public sealed partial class MainWindow : Window {
         }
 
         return TryEnqueuePromptAfterLogin(text, (conversationId ?? string.Empty).Trim(), out _);
+    }
+
+    private async Task<bool> TryHandleAuthenticationRequiredTurnFailureAsync(ChatTurnContext turn, Exception ex) {
+        if (!RequiresInteractiveSignInForCurrentTransport() || !IsAuthenticationRequiredError(ex)) {
+            return false;
+        }
+
+        _isAuthenticated = false;
+        _authenticatedAccountId = null;
+        var promptQueued = TryEnqueuePromptAfterLogin(
+            turn.UserText,
+            turn.ConversationId,
+            out var queuedCount,
+            skipUserBubbleOnDispatch: true);
+        var loginStarted = await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
+        if (loginStarted) {
+            var waitingText = promptQueued
+                ? $"Waiting for sign-in... ({queuedCount}/{MaxQueuedTurns} queued)"
+                : "Waiting for sign-in... (queue full)";
+            await SetStatusAsync(waitingText).ConfigureAwait(false);
+        } else {
+            await SetStatusAsync(SessionStatus.SignInRequired()).ConfigureAwait(false);
+        }
+
+        if (!loginStarted) {
+            AppendSystem(turn.Conversation, SystemNotice.SignInRequiredBeforeSendingMessages());
+            await SetActivityAsync("Sign-in required. Prompt will run after login.").ConfigureAwait(false);
+        } else if (!promptQueued) {
+            AppendSystem(turn.Conversation, "Sign-in queue is full. Complete sign-in or wait for queued prompts to run.");
+            await SetActivityAsync("Sign-in queue is full. Waiting for available retry slot.").ConfigureAwait(false);
+        } else {
+            AppendSystem(turn.Conversation, SystemNotice.SignInRequiredBeforeSendingMessages());
+            await SetActivityAsync("Prompt queued for retry after sign-in.").ConfigureAwait(false);
+        }
+
+        var failureMessage = promptQueued
+            ? "Authentication required. Prompt queued for retry after sign-in."
+            : "Authentication required. Sign-in queue is full; complete sign-in and resend.";
+        await ApplyTurnFailureAsync(
+                turn,
+                AssistantTurnOutcome.Error(failureMessage))
+            .ConfigureAwait(false);
+        return true;
     }
 
     internal static bool IsActiveTurnCancellation(Exception ex, CancellationToken cancellationToken) {

@@ -371,6 +371,23 @@ public sealed partial class MainWindow : Window {
                || message.Contains(" 429", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool IsAuthenticationRequiredError(Exception ex) {
+        if (ex is ChatServiceRequestException requestEx
+            && string.Equals(requestEx.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        var message = (ex.Message ?? string.Empty).Trim();
+        if (message.Length == 0) {
+            return false;
+        }
+
+        return message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("authentication required", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("login required", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("sign in", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsMissingTransportThreadError(Exception ex) {
         return ChatThreadRecoveryHeuristics.IsMissingTransportThreadError(ex);
     }
