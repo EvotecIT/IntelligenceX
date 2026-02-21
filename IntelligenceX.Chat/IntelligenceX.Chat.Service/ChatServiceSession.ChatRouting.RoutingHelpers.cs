@@ -226,7 +226,9 @@ internal sealed partial class ChatServiceSession {
             return (SelectDeterministicToolSubset(definitions, limit), new List<ToolRoutingInsight>());
         }
 
-        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, userRequest, definitions, limit, cancellationToken).ConfigureAwait(false);
+        var plannerCandidates = BuildModelPlannerCandidates(definitions, limit);
+        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, userRequest, plannerCandidates, limit, cancellationToken)
+            .ConfigureAwait(false);
         if (planned.Count > 0) {
             var selected = EnsureMinimumToolSelection(userRequest, definitions, planned, limit);
             if (selected.Count > 0 && selected.Count < definitions.Count) {
@@ -237,6 +239,16 @@ internal sealed partial class ChatServiceSession {
 
         var fallback = SelectWeightedToolSubset(definitions, userRequest, maxCandidateTools, out var fallbackInsights);
         return (fallback, fallbackInsights);
+    }
+
+    private static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(IReadOnlyList<ToolDefinition> definitions, int limit) {
+        if (definitions.Count <= 64) {
+            return definitions;
+        }
+
+        var minCandidateLimit = Math.Max(24, limit);
+        var candidateLimit = Math.Clamp(Math.Max(limit * 3, minCandidateLimit), minCandidateLimit, Math.Min(definitions.Count, 96));
+        return SelectDeterministicToolSubset(definitions, candidateLimit);
     }
 
     private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools,

@@ -1,0 +1,519 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.Client;
+using Microsoft.UI;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using OfficeIMO.MarkdownRenderer;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
+
+namespace IntelligenceX.Chat.App;
+
+public sealed partial class MainWindow : Window {
+    private Task QueueUiPublishAsync(bool requestSessionState, bool requestOptionsState) {
+        if (!requestSessionState && !requestOptionsState) {
+            return Task.CompletedTask;
+        }
+
+        Task sessionTask = Task.CompletedTask;
+        Task optionsTask = Task.CompletedTask;
+        var shouldStartPump = false;
+        CancellationToken pumpToken = CancellationToken.None;
+
+        lock (_uiPublishSync) {
+            if (_shutdownRequested) {
+                return Task.CompletedTask;
+            }
+
+            if (requestSessionState) {
+                _pendingSessionStatePublish = true;
+                _pendingSessionStatePublishTcs ??= new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                sessionTask = _pendingSessionStatePublishTcs.Task;
+            }
+
+            if (requestOptionsState) {
+                _pendingOptionsStatePublish = true;
+                _pendingOptionsStatePublishTcs ??= new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                optionsTask = _pendingOptionsStatePublishTcs.Task;
+            }
+
+            if (!_uiPublishPumpRunning || _uiPublishPumpCts is null || _uiPublishPumpCts.IsCancellationRequested) {
+                _uiPublishPumpCts?.Dispose();
+                _uiPublishPumpCts = new CancellationTokenSource();
+                pumpToken = _uiPublishPumpCts.Token;
+                _uiPublishPumpRunning = true;
+                shouldStartPump = true;
+            }
+        }
+
+        if (shouldStartPump) {
+            _ = Task.Run(() => ProcessUiPublishQueueAsync(pumpToken));
+        }
+
+        var queuedTask = requestSessionState && requestOptionsState
+            ? Task.WhenAll(sessionTask, optionsTask)
+            : requestSessionState
+                ? sessionTask
+                : optionsTask;
+
+        // Public publish calls are best-effort and must not surface queue cancellation races.
+        return CompleteUiPublishBestEffortAsync(queuedTask);
+    }
+
+    private static async Task CompleteUiPublishBestEffortAsync(Task publishTask) {
+        try {
+            await publishTask.ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Queue cancellation during shutdown is expected and intentionally non-fatal.
+        }
+    }
+
+    private async Task ProcessUiPublishQueueAsync(CancellationToken cancellationToken) {
+        try {
+            while (true) {
+                bool publishSession;
+                bool publishOptions;
+                TaskCompletionSource<object?>? sessionTcs;
+                TaskCompletionSource<object?>? optionsTcs;
+
+                lock (_uiPublishSync) {
+                    publishSession = _pendingSessionStatePublish;
+                    publishOptions = _pendingOptionsStatePublish;
+                    sessionTcs = _pendingSessionStatePublishTcs;
+                    optionsTcs = _pendingOptionsStatePublishTcs;
+                    _pendingSessionStatePublish = false;
+                    _pendingOptionsStatePublish = false;
+                    _pendingSessionStatePublishTcs = null;
+                    _pendingOptionsStatePublishTcs = null;
+                    _activeSessionStatePublishTcs = sessionTcs;
+                    _activeOptionsStatePublishTcs = optionsTcs;
+                }
+
+                try {
+                    var coalesceDelayApplied = false;
+                    if (!publishSession && !publishOptions) {
+                        // Re-check after one coalesce window so requests arriving during idle transition are not dropped.
+                        try {
+                            await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                            coalesceDelayApplied = true;
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
+                            break;
+                        }
+
+                        lock (_uiPublishSync) {
+                            publishSession = _pendingSessionStatePublish;
+                            publishOptions = _pendingOptionsStatePublish;
+                            sessionTcs = _pendingSessionStatePublishTcs;
+                            optionsTcs = _pendingOptionsStatePublishTcs;
+                            _pendingSessionStatePublish = false;
+                            _pendingOptionsStatePublish = false;
+                            _pendingSessionStatePublishTcs = null;
+                            _pendingOptionsStatePublishTcs = null;
+                            _activeSessionStatePublishTcs = sessionTcs;
+                            _activeOptionsStatePublishTcs = optionsTcs;
+                        }
+
+                        if (!publishSession && !publishOptions) {
+                            // Idle transition: no-op publish requests should complete rather than cancel.
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: false);
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: false);
+                            break;
+                        }
+                    }
+
+                    if (!coalesceDelayApplied) {
+                        try {
+                            await Task.Delay(UiPublishCoalesceInterval, cancellationToken).ConfigureAwait(false);
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
+                            break;
+                        }
+                    }
+
+                    if (publishSession) {
+                        try {
+                            await RunOnUiThreadAsync(() => PublishSessionStateCoreAsync()).ConfigureAwait(false);
+                            sessionTcs?.TrySetResult(null);
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(sessionTcs, preferCancel: _shutdownRequested);
+                        } catch (Exception ex) {
+                            sessionTcs?.TrySetException(ex);
+                        }
+                    }
+
+                    if (publishOptions) {
+                        try {
+                            await RunOnUiThreadAsync(() => PublishOptionsStateCoreAsync()).ConfigureAwait(false);
+                            optionsTcs?.TrySetResult(null);
+                        } catch (OperationCanceledException) {
+                            FinalizeUiPublishAwaiter(optionsTcs, preferCancel: _shutdownRequested);
+                        } catch (Exception ex) {
+                            optionsTcs?.TrySetException(ex);
+                        }
+                    }
+                } finally {
+                    lock (_uiPublishSync) {
+                        if (ReferenceEquals(_activeSessionStatePublishTcs, sessionTcs)) {
+                            _activeSessionStatePublishTcs = null;
+                        }
+
+                        if (ReferenceEquals(_activeOptionsStatePublishTcs, optionsTcs)) {
+                            _activeOptionsStatePublishTcs = null;
+                        }
+                    }
+                }
+            }
+        } finally {
+            var shouldRestart = false;
+            CancellationToken restartToken = CancellationToken.None;
+
+            lock (_uiPublishSync) {
+                // Ignore stale pump finalizers after ownership moved to a newer token/worker.
+                if (_uiPublishPumpCts is { } activePumpCts && activePumpCts.Token == cancellationToken) {
+                    _uiPublishPumpRunning = false;
+
+                    if (!_shutdownRequested && (_pendingSessionStatePublish || _pendingOptionsStatePublish)) {
+                        if (activePumpCts.IsCancellationRequested) {
+                            activePumpCts.Dispose();
+                            activePumpCts = new CancellationTokenSource();
+                            _uiPublishPumpCts = activePumpCts;
+                        }
+
+                        restartToken = activePumpCts.Token;
+                        _uiPublishPumpRunning = true;
+                        shouldRestart = true;
+                    } else {
+                        activePumpCts.Dispose();
+                        _uiPublishPumpCts = null;
+                    }
+                }
+            }
+
+            if (shouldRestart) {
+                _ = Task.Run(() => ProcessUiPublishQueueAsync(restartToken));
+            }
+        }
+    }
+
+    private void FinalizeUiPublishAwaiter(TaskCompletionSource<object?>? tcs, bool preferCancel) {
+        if (tcs is null) {
+            return;
+        }
+
+        if (preferCancel) {
+            tcs.TrySetCanceled();
+            return;
+        }
+
+        tcs.TrySetResult(null);
+    }
+
+    private static void CancelUiPublishAwaiter(TaskCompletionSource<object?>? tcs) {
+        tcs?.TrySetCanceled();
+    }
+
+    private void CancelQueuedUiPublishesForShutdown() {
+        TaskCompletionSource<object?>? pendingSession;
+        TaskCompletionSource<object?>? pendingOptions;
+        TaskCompletionSource<object?>? activeSession;
+        TaskCompletionSource<object?>? activeOptions;
+        CancellationTokenSource? pumpCts;
+
+        lock (_uiPublishSync) {
+            // Terminal shutdown boundary only: cancel queue state and freeze new publishes.
+            _shutdownRequested = true;
+            pendingSession = _pendingSessionStatePublishTcs;
+            pendingOptions = _pendingOptionsStatePublishTcs;
+            activeSession = _activeSessionStatePublishTcs;
+            activeOptions = _activeOptionsStatePublishTcs;
+            pumpCts = _uiPublishPumpCts;
+            _pendingSessionStatePublish = false;
+            _pendingOptionsStatePublish = false;
+            _pendingSessionStatePublishTcs = null;
+            _pendingOptionsStatePublishTcs = null;
+            _activeSessionStatePublishTcs = null;
+            _activeOptionsStatePublishTcs = null;
+            if (_uiPublishPumpCts is null) {
+                _uiPublishPumpRunning = false;
+            }
+        }
+
+        // Queue teardown is a cancellation boundary: pending awaiters should observe cancellation.
+        CancelUiPublishAwaiter(pendingSession);
+        CancelUiPublishAwaiter(pendingOptions);
+        CancelUiPublishAwaiter(activeSession);
+        CancelUiPublishAwaiter(activeOptions);
+
+        if (pumpCts is null) {
+            return;
+        }
+
+        try {
+            // Preserve token ownership semantics: the running pump finalizer disposes and clears state.
+            pumpCts.Cancel();
+        } catch (ObjectDisposedException) {
+            // Pump already finalized/disposed concurrently.
+        }
+    }
+
+    private object[] BuildConversationState() {
+        if (_conversations.Count == 0) {
+            return Array.Empty<object>();
+        }
+
+        var ordered = new List<ConversationRuntime>(_conversations);
+        ordered.Sort(CompareConversationsForDisplay);
+        var list = new List<object>(ordered.Count);
+        foreach (var conversation in ordered) {
+            var isSystem = IsSystemConversation(conversation);
+            var updatedUtc = conversation.UpdatedUtc == default ? DateTime.UtcNow : conversation.UpdatedUtc;
+            var updatedLocal = EnsureUtc(updatedUtc).ToLocalTime();
+            var preview = string.Empty;
+            for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
+                var text = (conversation.Messages[i].Text ?? string.Empty).Trim();
+                if (text.Length == 0) {
+                    continue;
+                }
+
+                preview = BuildConversationTitleFromText(text);
+                break;
+            }
+
+            list.Add(new {
+                id = conversation.Id,
+                title = isSystem
+                    ? SystemConversationTitle
+                    : string.IsNullOrWhiteSpace(conversation.Title)
+                        ? DefaultConversationTitle
+                        : conversation.Title,
+                messageCount = conversation.Messages.Count,
+                preview,
+                isActive = string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase),
+                isSystem,
+                runtimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
+                modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
+                modelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
+                updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
+            });
+        }
+
+        return list.ToArray();
+    }
+
+    private static object[] BuildPackState(ToolPackInfoDto[] packs) {
+        var ordered = new List<ToolPackInfoDto>(packs.Length);
+        ordered.AddRange(packs);
+        ordered.Sort(static (a, b) => {
+            var byName = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            if (byName != 0) {
+                return byName;
+            }
+
+            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var list = new List<object>(ordered.Count);
+        foreach (var pack in ordered) {
+            var normalizedPackId = NormalizePackId(pack.Id);
+            list.Add(new {
+                id = string.IsNullOrWhiteSpace(normalizedPackId) ? pack.Id : normalizedPackId,
+                name = ResolvePackDisplayName(normalizedPackId, pack.Name),
+                description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
+                tier = pack.Tier.ToString(),
+                enabled = pack.Enabled,
+                disabledReason = string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
+                isDangerous = pack.IsDangerous,
+                sourceKind = pack.SourceKind switch {
+                    ToolPackSourceKind.Builtin => "builtin",
+                    ToolPackSourceKind.ClosedSource => "closed_source",
+                    _ => "open_source"
+                }
+            });
+        }
+        return list.ToArray();
+    }
+
+    private static string ResolvePackDisplayName(string? id, string? fallbackName) {
+        var normalized = NormalizePackId(id);
+        if (!string.IsNullOrWhiteSpace(fallbackName)) {
+            return fallbackName.Trim();
+        }
+
+        return normalized;
+    }
+
+    private object BuildMemoryState() {
+        var normalizedFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        _appState.MemoryFacts = normalizedFacts;
+        var facts = new List<object>(normalizedFacts.Count);
+        for (var i = 0; i < normalizedFacts.Count; i++) {
+            var memory = normalizedFacts[i];
+            var updatedLocal = EnsureUtc(memory.UpdatedUtc).ToLocalTime();
+            facts.Add(new {
+                id = memory.Id,
+                fact = memory.Fact,
+                weight = memory.Weight,
+                tags = memory.Tags ?? Array.Empty<string>(),
+                updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
+            });
+        }
+
+        return new {
+            enabled = _persistentMemoryEnabled,
+            count = normalizedFacts.Count,
+            facts = facts.ToArray()
+        };
+    }
+
+    private object? BuildMemoryDebugState() {
+        MemoryDebugSnapshot? snapshot;
+        MemoryDebugSnapshot[] history;
+        lock (_memoryDiagnosticsSync) {
+            snapshot = _lastMemoryDebugSnapshot;
+            if (_memoryDebugHistory.Count == 0) {
+                history = Array.Empty<MemoryDebugSnapshot>();
+            } else {
+                var start = Math.Max(0, _memoryDebugHistory.Count - 12);
+                var count = _memoryDebugHistory.Count - start;
+                history = new MemoryDebugSnapshot[count];
+                for (var i = 0; i < count; i++) {
+                    history[i] = _memoryDebugHistory[start + i];
+                }
+            }
+        }
+
+        if (snapshot is null) {
+            return null;
+        }
+
+        var updatedLocal = EnsureUtc(snapshot.UpdatedUtc).ToLocalTime();
+        var historyState = BuildMemoryDebugHistoryState(history);
+        return new {
+            updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
+            sequence = snapshot.Sequence,
+            availableFacts = snapshot.AvailableFacts,
+            candidateFacts = snapshot.CandidateFacts,
+            selectedFacts = snapshot.SelectedFacts,
+            userTokenCount = snapshot.UserTokenCount,
+            topScore = snapshot.TopScore,
+            topSemanticSimilarity = snapshot.TopSemanticSimilarity,
+            averageSelectedSimilarity = snapshot.AverageSelectedSimilarity,
+            averageSelectedRelevance = snapshot.AverageSelectedRelevance,
+            cacheEntries = snapshot.CacheEntries,
+            quality = snapshot.Quality,
+            history = historyState
+        };
+    }
+
+    private object[] BuildMemoryDebugHistoryState(MemoryDebugSnapshot[] history) {
+        if (history.Length == 0) {
+            return Array.Empty<object>();
+        }
+
+        var list = new List<object>(history.Length);
+        for (var i = 0; i < history.Length; i++) {
+            var item = history[i];
+            var updatedLocal = EnsureUtc(item.UpdatedUtc).ToLocalTime();
+            list.Add(new {
+                updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
+                sequence = item.Sequence,
+                selectedFacts = item.SelectedFacts,
+                userTokenCount = item.UserTokenCount,
+                averageSelectedSimilarity = item.AverageSelectedSimilarity,
+                averageSelectedRelevance = item.AverageSelectedRelevance,
+                quality = item.Quality
+            });
+        }
+
+        return list.ToArray();
+    }
+
+    private static object[] BuildToolParameterState(ToolParameterDto[]? parameters) {
+        if (parameters is not { Length: > 0 }) {
+            return Array.Empty<object>();
+        }
+
+        var list = new List<object>(parameters.Length);
+        for (var i = 0; i < parameters.Length; i++) {
+            var parameter = parameters[i];
+            if (parameter is null || string.IsNullOrWhiteSpace(parameter.Name)) {
+                continue;
+            }
+
+            list.Add(new {
+                name = parameter.Name,
+                type = string.IsNullOrWhiteSpace(parameter.Type) ? "any" : parameter.Type,
+                description = parameter.Description ?? string.Empty,
+                required = parameter.Required,
+                enumValues = parameter.EnumValues ?? Array.Empty<string>(),
+                defaultJson = parameter.DefaultJson,
+                exampleJson = parameter.ExampleJson
+            });
+        }
+
+        return list.ToArray();
+    }
+
+    private object[] BuildToolState() {
+        if (_toolStates.Count == 0) {
+            return Array.Empty<object>();
+        }
+
+        var names = new List<string>(_toolStates.Keys);
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        var list = new List<object>(names.Count);
+        foreach (var name in names) {
+            _toolDescriptions.TryGetValue(name, out var description);
+            _toolDisplayNames.TryGetValue(name, out var displayName);
+            _toolCategories.TryGetValue(name, out var category);
+            _toolTags.TryGetValue(name, out var tags);
+            _toolPackIds.TryGetValue(name, out var packId);
+            _toolPackNames.TryGetValue(name, out var packName);
+            _toolParameters.TryGetValue(name, out var parameters);
+            _toolStates.TryGetValue(name, out var enabled);
+            _toolRoutingConfidence.TryGetValue(name, out var routingConfidence);
+            _toolRoutingReason.TryGetValue(name, out var routingReason);
+            _toolRoutingScore.TryGetValue(name, out var routingScore);
+            var normalizedPackId = NormalizePackId(packId);
+            var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
+            var parameterState = BuildToolParameterState(parameters);
+            list.Add(new {
+                name,
+                displayName = string.IsNullOrWhiteSpace(displayName) ? FormatToolDisplayName(name) : displayName,
+                description = description ?? string.Empty,
+                category = string.IsNullOrWhiteSpace(category) ? "other" : category,
+                packId = string.IsNullOrWhiteSpace(normalizedPackId) ? null : normalizedPackId,
+                packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
+                tags = tags ?? Array.Empty<string>(),
+                parameters = parameterState,
+                routingConfidence = string.IsNullOrWhiteSpace(routingConfidence) ? null : routingConfidence,
+                routingReason = string.IsNullOrWhiteSpace(routingReason) ? null : routingReason,
+                routingScore = _toolRoutingScore.ContainsKey(name) ? Math.Round(routingScore, 3) : (double?)null,
+                enabled
+            });
+        }
+
+        return list.ToArray();
+    }
+
+}

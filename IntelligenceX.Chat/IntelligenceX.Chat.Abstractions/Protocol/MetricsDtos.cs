@@ -53,6 +53,18 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// Optional per-tool error-code counts for this turn.
     /// </summary>
     public IReadOnlyList<ToolErrorMetricDto>? ToolErrors { get; init; }
+    /// <summary>
+    /// Effective model identifier used for the turn.
+    /// </summary>
+    public string? Model { get; init; }
+    /// <summary>
+    /// Runtime transport used for the turn (native/appserver/compatible-http/copilot-cli).
+    /// </summary>
+    public string? Transport { get; init; }
+    /// <summary>
+    /// Sanitized runtime endpoint host (when available).
+    /// </summary>
+    public string? EndpointHost { get; init; }
 
     /// <summary>
     /// Outcome identifier (ok, canceled, error).

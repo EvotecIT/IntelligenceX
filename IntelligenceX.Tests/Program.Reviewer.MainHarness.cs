@@ -1,0 +1,576 @@
+namespace IntelligenceX.Tests;
+
+internal static partial class Program {
+    private static int RunReviewerTests() {
+#if INTELLIGENCEX_REVIEWER
+        var failed = 0;
+        failed += Run("Cleanup normalize allowed edits", TestCleanupNormalizeAllowedEdits);
+        failed += Run("Cleanup clamp confidence", TestCleanupClampConfidence);
+        failed += Run("Cleanup result parse fenced", TestCleanupResultParseFenced);
+        failed += Run("Cleanup result parse embedded", TestCleanupResultParseEmbedded);
+        failed += Run("Cleanup template path guard", TestCleanupTemplatePathGuard);
+        failed += Run("Inline comments extract", TestInlineCommentsExtract);
+        failed += Run("Inline comments backticks", TestInlineCommentsBackticks);
+        failed += Run("Inline comments snippet header", TestInlineCommentsSnippetHeader);
+        failed += Run("Review thread inline key", TestReviewThreadInlineKey);
+        failed += Run("Review thread inline key bots only", TestReviewThreadInlineKeyBotsOnly);
+        failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
+        failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
+        failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
+        failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
+        failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
+        failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
+        failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
+        failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);
+        failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
+        failed += Run("Resolve thread payload parser rejects invalid JSON", TestResolveThreadPayloadParserRejectsInvalidJson);
+        failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
+        failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
+        failed += Run("Auto-resolve missing inline gate empty mapped keys", TestAutoResolveMissingInlineGateRejectsEmptyWhenInlineCommentsPresent);
+        failed += Run("Review retry transient", TestReviewRetryTransient);
+        failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
+        failed += Run("Review retry rethrows", TestReviewRetryRethrows);
+        failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
+        failed += Run("Review failure marker", TestReviewFailureMarker);
+        failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
+        failed += Run("Failure summary comment update", TestFailureSummaryCommentUpdate);
+        failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
+        failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
+        failed += Run("Preflight timeout", TestPreflightTimeout);
+        failed += Run("Preflight socket failure", TestPreflightSocketFailure);
+        failed += Run("Preflight auth statuses are reachable", TestPreflightAuthStatusesAreReachable);
+        failed += Run("Preflight non-2xx", TestPreflightNonSuccessStatus);
+        failed += Run("Preflight DNS failure mapping", TestPreflightDnsFailureMapping);
+        failed += Run("Preflight socket failure mapping", TestPreflightSocketFailureMapping);
+        failed += Run("Preflight HTTP status mapping bypass", TestPreflightHttpStatusMappingBypass);
+        failed += Run("Preflight cancellation mapping bypass", TestPreflightCancellationRequestedMappingBypass);
+        failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
+        failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
+        failed += Run("Analysis severity critical", TestAnalysisSeverityCritical);
+        failed += Run("Analysis config export tool ids", TestAnalysisConfigExportToolIds);
+        failed += Run("Analysis catalog rule docs path", TestAnalysisCatalogRuleDocsPath);
+        failed += Run("Analysis policy resolves overrides", TestAnalysisPolicyResolvesOverrides);
+        failed += Run("Analysis policy resolves included packs", TestAnalysisPolicyResolvesIncludedPacks);
+        failed += Run("Analysis policy included pack cycle warning", TestAnalysisPolicyIncludedPackCycleWarning);
+        failed += Run("Analysis policy disable tool rule id", TestAnalysisPolicyDisableToolRuleId);
+        failed += Run("Analysis catalog validator passes built-in catalog", TestAnalysisCatalogValidatorPassesBuiltInCatalog);
+        failed += Run("Analysis catalog loader root check rejects sibling prefix path",
+            TestAnalysisCatalogLoaderUnderRootRejectsSiblingPrefixPath);
+        failed += Run("Analysis catalog loader root check follows platform case sensitivity",
+            TestAnalysisCatalogLoaderUnderRootCaseSensitivityByPlatform);
+        failed += Run("Analysis catalog loader root check accepts mixed separators",
+            TestAnalysisCatalogLoaderUnderRootAcceptsMixedSeparators);
+        failed += Run("Analysis catalog loader trim preserves filesystem root",
+            TestAnalysisCatalogLoaderTrimPreservesFilesystemRoot);
+        failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
+        failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
+        failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);
+        failed += Run("Analysis packs: powershell-default resolves", TestAnalysisPacksPowerShellDefaultResolves);
+        failed += Run("Analysis packs: powershell-50 resolves to 50 rules", TestAnalysisPacksPowerShell50ResolvesTo50Rules);
+        failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
+        failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
+        failed += Run("Analysis catalog PowerShell docs links", TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern);
+        failed += Run("PowerShell docs snippets use exported cmdlets", TestPowerShellDocsSnippetsUseExportedCmdlets);
+        failed += Run("PowerShell example scripts use exported cmdlets", TestPowerShellExampleScriptsUseExportedCmdlets);
+        failed += Run("PowerShell cmdlet source XML docs are rich", TestPowerShellCmdletSourceXmlDocsAreRich);
+        failed += Run("PowerShell help XML covers all cmdlets with rich docs", TestPowerShellHelpXmlCoversAllCmdletsWithRichDocs);
+        failed += Run("OpenAI client C# XML docs are complete", TestOpenAiClientCSharpXmlDocsAreComplete);
+        failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
+        failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
+        failed += Run("Analysis hotspots render and state snippet", TestAnalysisHotspotsRenderAndStateSnippet);
+        failed += Run("Hotspots redact absolute state path", TestAnalysisHotspotsRedactsAbsoluteStatePath);
+        failed += Run("Hotspots reviewer state path is workspace-bound", TestAnalysisHotspotsReviewerStatePathIsWorkspaceBound);
+        failed += Run("Hotspots maxItems semantics", TestAnalysisHotspotsMaxItemsSemantics);
+        failed += Run("Hotspots suppressed count semantics", TestAnalysisHotspotsSuppressedCountSemantics);
+        failed += Run("Hotspots key hashing uses UTF-8 bytes", TestAnalysisHotspotsKeyHashingUsesUtf8Bytes);
+        failed += Run("Hotspots output escapes markdown injection", TestAnalysisHotspotsOutputEscapesMarkdownInjection);
+        failed += Run("Analysis loader includes hotspots below minSeverity", TestAnalysisLoaderIncludesHotspotsBelowMinSeverity);
+        failed += Run("Analysis loader ignores inputs outside workspace", TestAnalysisFindingsLoaderIgnoresInputsOutsideWorkspace);
+        failed += Run("Analysis loader rejects sibling prefix paths", TestAnalysisFindingsLoaderWorkspaceBoundRejectsSiblingPrefix);
+        failed += Run("Analysis loader does not relativize sibling-prefix absolute path",
+            TestAnalysisFindingsLoaderDoesNotRelativizeSiblingPrefixAbsoluteFindingPath);
+        failed += Run("Analysis loader normalize path follows platform case semantics",
+            TestAnalysisFindingsLoaderNormalizePathCaseSensitivityByPlatform);
+        failed += Run("Analysis loader normalize path accepts mixed separators",
+            TestAnalysisFindingsLoaderNormalizePathAcceptsMixedSeparatorsWithinWorkspace);
+        failed += Run("Analyze hotspots sync-state writes state file", TestAnalyzeHotspotsSyncStateWritesStateFile);
+        failed += Run("Analyze hotspots help has no side effects", TestAnalyzeHotspotsHelpHasNoSideEffects);
+        failed += Run("Analyze hotspots state path is workspace-bound", TestAnalyzeHotspotsStatePathIsWorkspaceBound);
+        failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
+        failed += Run("Analyze list-packs --ids", TestAnalyzeListPacksIds);
+        failed += Run("Analyze list-packs help", TestAnalyzeListPacksHelp);
+        failed += Run("Analyze list-rules markdown format", TestAnalyzeListRulesMarkdownFormat);
+        failed += Run("Analyze list-rules json with pack filter", TestAnalyzeListRulesJsonWithPackFilter);
+        failed += Run("Analyze list-rules tier counts", TestAnalyzeListRulesTierCounts);
+        failed += Run("Analyze list-rules invalid format", TestAnalyzeListRulesInvalidFormat);
+        failed += Run("Analyze list-rules help", TestAnalyzeListRulesHelp);
+        failed += Run("Analyze list-rules json warnings to stderr", TestAnalyzeListRulesJsonWarningsToStderr);
+        failed += Run("Analyze list-rules json empty outputs array", TestAnalyzeListRulesJsonEmptyOutputsArray);
+        failed += Run("Analyze gate disabled skips", TestAnalyzeGateDisabledSkips);
+        failed += Run("Analyze gate fails on violations", TestAnalyzeGateFailsOnViolations);
+        failed += Run("Analyze gate passes on clean", TestAnalyzeGatePassesOnClean);
+        failed += Run("Analyze gate fails on no enabled rules", TestAnalyzeGateFailsOnNoEnabledRules);
+        failed += Run("Analyze gate minSeverity filters", TestAnalyzeGateMinSeverityFilters);
+        failed += Run("Analyze gate ruleIds-only filter narrows scope",
+            TestAnalyzeGateRuleIdsFilterCanNarrowScopeWithoutTypes);
+        failed += Run("Analyze gate ruleIds filter adds to type filtering",
+            TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering);
+        failed += Run("Analyze gate filters normalize whitespace and case",
+            TestAnalyzeGateFiltersNormalizeWhitespaceAndCase);
+        failed += Run("Analyze gate filters missing type does not match type-only filter",
+            TestAnalyzeGateFiltersMissingTypeDoesNotMatchTypeOnlyFilter);
+        failed += Run("Analyze gate new-only suppresses baseline findings", TestAnalyzeGateNewIssuesOnlySuppressesBaselineFindings);
+        failed += Run("Analyze gate new-only fails for new findings", TestAnalyzeGateNewIssuesOnlyFailsForNewFindings);
+        failed += Run("Analyze gate new-only missing baseline schema logs inference", TestAnalyzeGateNewIssuesOnlyMissingSchemaLogsInference);
+        failed += Run("Analyze gate new-only large legacy line does not wrap to zero",
+            TestAnalyzeGateNewIssuesOnlyLargeLegacyLineDoesNotWrapToZero);
+        failed += Run("Analyze gate new-only legacy line int-max matches int-max finding",
+            TestAnalyzeGateNewIssuesOnlyLegacyLineIntMaxMatchesIntMaxFinding);
+        failed += Run("Analyze gate new-only missing baseline unavailable", TestAnalyzeGateNewIssuesOnlyMissingBaselineIsUnavailable);
+        failed += Run("Analyze gate new-only missing baseline can pass when unavailable allowed",
+            TestAnalyzeGateNewIssuesOnlyMissingBaselineCanPassWhenUnavailableAllowed);
+        failed += Run("Analyze gate new-only suppresses legacy baseline key path normalization",
+            TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyPathNormalization);
+        failed += Run("Analyze gate new-only suppresses legacy baseline key dot-relative prefix",
+            TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyDotRelativePrefix);
+        failed += Run("Analyze gate write baseline contract schema", TestAnalyzeGateWriteBaselineCreatesContractSchema);
+        failed += Run("Reviewer schema includes analysis gate baseline properties", TestReviewerSchemaIncludesAnalysisGateBaselineProperties);
+        failed += Run("Reviewer schema includes OpenAI-compatible provider and config", TestReviewerSchemaIncludesOpenAiCompatibleProviderAndConfig);
+        failed += Run("Analyze gate duplication per-file threshold blocks", TestAnalyzeGateDuplicationFailsOnPerFileThreshold);
+        failed += Run("Analyze gate duplication per-file threshold passes", TestAnalyzeGateDuplicationPassesWhenWithinThreshold);
+        failed += Run("Analyze gate duplication uses per-file configured threshold",
+            TestAnalyzeGateDuplicationUsesPerFileConfiguredThreshold);
+        failed += Run("Analyze gate duplication unavailable can pass when allowed", TestAnalyzeGateDuplicationUnavailableCanPassWhenAllowed);
+        failed += Run("Analyze gate duplication unavailable fails when configured", TestAnalyzeGateDuplicationUnavailableFailsWhenConfigured);
+        failed += Run("Analyze gate duplication overall threshold blocks", TestAnalyzeGateDuplicationFailsOnOverallThreshold);
+        failed += Run("Analyze gate duplication overall new-only suppresses baseline finding",
+            TestAnalyzeGateDuplicationOverallNewOnlySuppressesBaselineFinding);
+        failed += Run("Analyze gate duplication changed-files scope ignores untouched file",
+            TestAnalyzeGateDuplicationScopeChangedFilesIgnoresUnchangedFiles);
+        failed += Run("Analyze gate duplication changed-files scope blocks changed file",
+            TestAnalyzeGateDuplicationScopeChangedFilesBlocksChangedFiles);
+        failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
+        failed += Run("Analyze gate duplication overall delta blocks when increase exceeds allowed",
+            TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication overall delta window mismatch unavailable",
+            TestAnalyzeGateDuplicationOverallDeltaWindowMismatchIsUnavailable);
+        failed += Run("Analyze gate duplication overall delta uses baseline written by write-baseline",
+            TestAnalyzeGateDuplicationOverallDeltaUsesBaselineWrittenByWriteBaseline);
+        failed += Run("Analyze gate duplication overall delta missing baseline unavailable",
+            TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
+        failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
+            TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication file delta normalizes ./ paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesDotRelativePaths);
+        failed += Run("Analyze gate duplication file delta normalizes ../ paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesParentRelativePaths);
+        failed += Run("Analyze gate duplication file delta normalizes // paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesDoubleSlashes);
+        failed += Run("Analyze gate duplication file delta window mismatch unavailable",
+            TestAnalyzeGateDuplicationFileDeltaWindowMismatchIsUnavailable);
+        failed += Run("Analyze gate duplication overall baseline skips null items", TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems);
+        failed += Run("Analyze gate duplication overall baseline rejects malformed fingerprints",
+            TestAnalyzeGateDuplicationOverallBaselineRejectsMalformedFingerprints);
+        failed += Run("Analyze gate duplication file baseline skips null items", TestAnalyzeGateDuplicationFileBaselineSkipsNullItems);
+        failed += Run("Analyze gate duplication file baseline loads paths with colon",
+            TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon);
+        failed += Run("Analyze gate duplication file baseline loads paths containing scope suffix tokens",
+            TestAnalyzeGateDuplicationFileBaselineLoadsPathsContainingScopeSuffixTokens);
+        failed += Run("Analyze gate duplication file baseline missing path returns not provided",
+            TestAnalyzeGateDuplicationFileBaselineMissingPathReturnsNotProvided);
+        failed += Run("Analyze gate write baseline includes duplication file snapshots when configured",
+            TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured);
+        failed += Run("Analyze gate write baseline includes duplication overall snapshot",
+            TestAnalyzeGateWriteBaselineIncludesDuplicationOverallSnapshot);
+        failed += Run("Analysis config reader normalizes duplication ruleIds",
+            TestAnalysisConfigReaderNormalizesDuplicationRuleIds);
+        failed += Run("Analysis config reader normalizes gate ruleIds",
+            TestAnalysisConfigReaderNormalizesGateRuleIds);
+        failed += Run("Analysis config reader keeps default duplication ruleIds on empty input",
+            TestAnalysisConfigReaderKeepsDefaultDuplicationRuleIdsWhenConfiguredListEmpty);
+        failed += Run("Analysis config reader reads run strict",
+            TestAnalysisConfigReaderReadsRunStrict);
+        failed += Run("Analysis config reader reads duplication maxOverallPercentIncrease",
+            TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease);
+        failed += Run("Analysis config reader reads duplication maxFilePercentIncrease",
+            TestAnalysisConfigReaderReadsDuplicationMaxFilePercentIncrease);
+        failed += Run("Analyze gate changed-files accepts absolute in-workspace path",
+            TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace);
+        failed += Run("Analyze gate changed-files rejects absolute outside-workspace path",
+            TestAnalyzeGateChangedFilesRejectsAbsoluteOutsideWorkspace);
+        failed += Run("Analyze gate changed-files rejects relative traversal outside workspace",
+            TestAnalyzeGateChangedFilesRejectsRelativeTraversalOutsideWorkspace);
+        failed += Run("Analyze gate hotspots to-review blocks when threshold exceeded",
+            TestAnalyzeGateHotspotsToReviewBlocksWhenAboveThreshold);
+        failed += Run("Analyze gate hotspots honor ruleIds with baseline suppression",
+            TestAnalyzeGateHotspotsHonorRuleIdFiltersWithBaselineSuppression);
+        failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
+        failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
+        failed += Run("Doctor help", TestDoctorHelp);
+        failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
+        failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);
+        failed += Run("Todo help", TestTodoHelp);
+        failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
+        failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
+        failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
+        failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndOrder);
+        failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
+        failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
+        failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
+        failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
+        failed += Run("Todo triage index PR-issue explicit match", TestTriageIndexMatchPullRequestToIssuesSupportsExplicitReference);
+        failed += Run("Todo triage index PR-issue direct match", TestTriageIndexMatchPullRequestToIssuesSupportsDirectIssueReference);
+        failed += Run("Todo triage index issue-PR direct match", TestTriageIndexMatchIssueToPullRequestsSupportsDirectPullRequestReference);
+        failed += Run("Todo triage index issue-PR URL match", TestTriageIndexMatchIssueToPullRequestsSupportsPullRequestUrlReference);
+        failed += Run("Todo triage index category/tag inference", TestTriageIndexInferCategoryAndTagsDetectsSecurity);
+        failed += Run("Todo triage index category/tag confidence inference", TestTriageIndexInferCategoryAndTagsWithConfidenceUsesEvidenceStrength);
+        failed += Run("Todo triage index signal-quality inference", TestTriageIndexAssessSignalQualityDistinguishesStrongAndWeakContext);
+        failed += Run("Todo triage index operational signals", TestTriageIndexAssessPullRequestOperationalSignalsClassifiesSizeRiskAndReadiness);
+        failed += Run("Todo triage index operational signal calibration boundaries", TestTriageIndexAssessPullRequestOperationalSignalsCalibrationBoundaries);
+        failed += Run("Todo PR signal backtest bucket stats", TestPullRequestSignalBacktestBuildBucketStatsCalculatesMergeRates);
+        failed += Run("Todo issue review pull-request reference parsing", TestIssueReviewExtractPullRequestReferencesParsesMultipleForms);
+        failed += Run("Todo issue review no-longer-applicable classification", TestIssueReviewAssessIssueForApplicabilityMarksResolvedInfraBlockerAsNoLongerApplicable);
+        failed += Run("Todo issue review consecutive candidate gate", TestIssueReviewAssessIssueForApplicabilityRequiresConsecutiveCandidatesForAutoClose);
+        failed += Run("Todo issue review allow/deny label policy", TestIssueReviewAssessIssueForApplicabilityRespectsAllowAndDenyLabelPolicy);
+        failed += Run("Todo issue review action signals downgrade close proposal", TestIssueReviewActionSignalsDowngradeCloseProposalWhenReopenedOrTooFresh);
+        failed += Run("Todo issue review action signals keep close proposal", TestIssueReviewActionSignalsKeepCloseProposalWhenSignalsStrong);
+        failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
+        failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
+        failed += Run("Todo vision check explicit reject policy precedence", TestVisionCheckExplicitRejectPolicyTakesPrecedence);
+        failed += Run("Todo vision check explicit policy prefix parsing", TestVisionCheckParseSignalsSupportsExplicitPolicyPrefixes);
+        failed += Run("Todo vision check strict contract parsing", TestVisionCheckParseDocumentSupportsStrictContract);
+        failed += Run("Todo vision check heading variants satisfy strict contract", TestVisionCheckParseDocumentSupportsHeadingVariants);
+        failed += Run("Todo vision check backticked policy prefixes satisfy strict contract", TestVisionCheckParseDocumentSupportsBacktickedPolicyPrefixes);
+        failed += Run("Todo vision check enforce contract accepts backticked policy prefixes", TestVisionCheckRunEnforceContractSupportsBacktickedPolicyPrefixes);
+        failed += Run("Todo vision check legacy decision heading satisfies strict contract", TestVisionCheckParseDocumentSupportsLegacyDecisionHeading);
+        failed += Run("Todo vision check missing required section", TestVisionCheckParseDocumentReportsMissingRequiredSection);
+        failed += Run("Todo vision check enforce contract exits non-zero", TestVisionCheckRunFailsOnContractWhenEnforced);
+        failed += Run("Todo vision check fail on drift exits non-zero", TestVisionCheckRunFailsOnHighConfidenceDrift);
+        failed += Run("Todo vision check rejects malformed drift thresholds", TestVisionCheckRejectsMalformedDriftThresholds);
+        failed += Run("Todo project fields defaults", TestProjectFieldCatalogDefaultsIncludeVisionAndDecisionFields);
+        failed += Run("Todo project labels include decision taxonomy", TestProjectLabelCatalogDefaultsIncludeDecisionLabels);
+        failed += Run("Todo project labels include dynamic category and tag taxonomy", TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags);
+        failed += Run("Todo project views include queue and merge views", TestProjectViewCatalogDefaultsIncludeQueueAndMergeViews);
+        failed += Run("Todo project views missing detection", TestProjectViewCatalogFindMissingDefaultViewsReturnsMissingOnly);
+        failed += Run("Todo project views full coverage has no missing", TestProjectViewCatalogFindMissingDefaultViewsReturnsEmptyWhenComplete);
+        failed += Run("Todo project view checklist markdown includes marker and coverage", TestProjectViewChecklistMarkdownIncludesMarkerAndCoverage);
+        failed += Run("Todo project view checklist markdown includes apply instructions", TestProjectViewChecklistMarkdownIncludesApplyInstructions);
+        failed += Run("Todo project view apply markdown includes missing views and platform note", TestProjectViewApplyMarkdownIncludesMissingViewsAndPlatformNote);
+        failed += Run("Todo project view apply markdown all views present shows completed checklist", TestProjectViewApplyMarkdownAllViewsPresentShowsCompletedChecklist);
+        failed += Run("Todo project sync merges vision and canonical", TestProjectSyncBuildEntriesMergesVisionAndCanonical);
+        failed += Run("Todo project sync parses category/tag confidence fields", TestProjectSyncBuildEntriesParsesCategoryAndTagConfidences);
+        failed += Run("Todo project sync merges issue review action signals", TestProjectSyncBuildEntriesMergesIssueReviewSignals);
+        failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
+        failed += Run("Todo project sync labels normalize dynamic category and tags", TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags);
+        failed += Run("Todo project sync labels skip low-confidence category/tags", TestProjectSyncBuildLabelsSkipsLowConfidenceCategoryAndTags);
+        failed += Run("Todo project sync labels mark low-confidence match for review", TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch);
+        failed += Run("Todo project sync labels use related-issue fallback", TestProjectSyncBuildLabelsUsesRelatedIssueFallbackWhenMatchedIssueMissing);
+        failed += Run("Todo project sync labels issue pull-request matches", TestProjectSyncBuildLabelsUsesIssuePullRequestMatchSignals);
+        failed += Run("Todo project sync labels use issue related pull-request fallback", TestProjectSyncBuildLabelsUsesIssueRelatedPullRequestFallbackWhenMatchedPullRequestMissing);
+        failed += Run("Todo project sync decision suggests merge-candidate", TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr);
+        failed += Run("Todo project sync decision suggests defer for blocked PR", TestProjectSyncBuildEntriesSuggestsDeferForBlockedPr);
+        failed += Run("Todo project sync decision suggests defer for low-signal PR", TestProjectSyncBuildEntriesSuggestsDeferForLowSignalPr);
+        failed += Run("Todo project sync derives issue pull-request matches", TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches);
+        failed += Run("Todo project sync preserves higher-confidence issue-side pull-request matches", TestProjectSyncBuildEntriesPreservesHigherConfidenceIssueSidePullRequestMatch);
+        failed += Run("Todo project sync uses issue related pull-request fallback", TestProjectSyncBuildEntriesUsesIssueRelatedPullRequestFallback);
+        failed += Run("Todo project sync uses pull-request related issue fallback", TestProjectSyncBuildEntriesUsesPullRequestRelatedIssueFallback);
+        failed += Run("Todo project sync derives missing matched issue confidence from related issues", TestProjectSyncBuildEntriesDerivesMissingMatchedIssueConfidenceFromRelatedIssues);
+        failed += Run("Todo project sync comment filters by confidence", TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence);
+        failed += Run("Todo project sync PR comments include issue-side candidates", TestProjectSyncBuildPullRequestIssueSuggestionCommentsIncludesIssueSideCandidates);
+        failed += Run("Todo project sync stale comment targets for pull requests", TestProjectSyncBuildStaleSuggestionCommentTargetsForPullRequests);
+        failed += Run("Todo project sync stale comment targets for issues", TestProjectSyncBuildStaleSuggestionCommentTargetsForIssuesDedupesAndSorts);
+        failed += Run("Todo project sync comment omitted for weak candidates", TestProjectSyncBuildIssueMatchSuggestionCommentReturnsNullWithoutQualifiedCandidates);
+        failed += Run("Todo project sync issue backlink comments aggregate PRs", TestProjectSyncBuildIssueBacklinkSuggestionCommentsAggregatesPullRequests);
+        failed += Run("Todo project sync issue backlink comments include issue-side candidates", TestProjectSyncBuildIssueBacklinkSuggestionCommentsIncludesIssueSideCandidates);
+        failed += Run("Todo project sync issue backlink comment threshold and limit", TestProjectSyncBuildIssueBacklinkSuggestionCommentRespectsThresholdAndLimit);
+        failed += Run("Todo project sync related issues field value", TestProjectSyncBuildRelatedIssuesFieldValueOrdersAndLimitsCandidates);
+        failed += Run("Todo project sync related pull requests field value", TestProjectSyncBuildRelatedPullRequestsFieldValueOrdersAndLimitsCandidates);
+        failed += Run("Todo project sync match reason field value", TestProjectSyncBuildMatchReasonFieldValueNormalizesReasonText);
+        failed += Run("Todo project sync tag confidence summary field value",
+            TestProjectSyncBuildTagConfidenceSummaryFieldValueOrdersAndLimitsCandidates);
+        failed += Run("Todo project sync tag confidence summary fallback",
+            TestProjectSyncBuildTagConfidenceSummaryFieldValueFallsBackToConfidenceMap);
+        failed += Run("Todo repository label sync plan add/remove managed labels", TestRepositoryLabelManagerBuildManagedLabelSyncPlanAddsAndRemovesManagedOnly);
+        failed += Run("Todo repository label sync plan no-op when aligned", TestRepositoryLabelManagerBuildManagedLabelSyncPlanNoChangesWhenAligned);
+        failed += Run("Todo project bootstrap renders project target", TestProjectBootstrapRenderWorkflowTemplateInjectsProjectTarget);
+        failed += Run("Todo project bootstrap clamps max items", TestProjectBootstrapRenderWorkflowTemplateClampsMaxItems);
+        failed += Run("Todo project bootstrap renders vision template", TestProjectBootstrapRenderVisionTemplateInjectsContext);
+        failed += Run("Todo project bootstrap vision template strict contract sections", TestProjectBootstrapVisionTemplateIncludesStrictContractSections);
+        failed += Run("Todo project bootstrap workflow enables label apply", TestProjectBootstrapWorkflowTemplateEnablesApplyLabels);
+        failed += Run("Todo project bootstrap workflow upserts control issue summary comment",
+            TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment);
+        failed += Run("Todo triage index workflow upserts control issue summary comment",
+            TestTriageIndexWorkflowTemplateUpsertsControlIssueSummaryComment);
+        failed += Run("Todo project bootstrap control issue body includes context", TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext);
+        failed += Run("Todo project bootstrap parses issue url output", TestProjectBootstrapParseIssueNumberFromGhOutputParsesIssueUrl);
+        failed += Run("Todo project bootstrap parses trailing issue number", TestProjectBootstrapParseIssueNumberFromGhOutputParsesTrailingInteger);
+        failed += Run("Todo project bootstrap rejects conflicting control issue options", TestProjectBootstrapRejectsConflictingControlIssueOptions);
+        failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
+        failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
+        failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
+        failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
+        failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);
+        failed += Run("Analyze run strict false flag overrides config strict true",
+            TestAnalyzeRunStrictFlagFalseOverridesConfigStrictTrue);
+        failed += Run("Analyze run strict equals false overrides config strict true",
+            TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue);
+        failed += Run("Analyze run strict equals true overrides config strict false",
+            TestAnalyzeRunStrictEqualsTrueOverridesConfigStrictFalse);
+        failed += Run("Analyze run strict flag does not consume following option",
+            TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption);
+        failed += Run("Analyze run strict invalid explicit value fails",
+            TestAnalyzeRunStrictFlagInvalidExplicitValueFails);
+        failed += Run("Analyze run strict unknown option fails as unknown argument",
+            TestAnalyzeRunStrictUnknownOptionFailsAsUnknownArgument);
+        failed += Run("Analyze run strict keeps known option lookahead with dash-prefixed value",
+            TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue);
+        failed += Run("Analyze run strict keeps known option lookahead with framework value",
+            TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue);
+        failed += Run("Analyze run pack override skips configured csharp runner failure",
+            TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
+        failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);
+        failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
+        failed += Run("Analyze run internal findings use catalog tool metadata",
+            TestAnalyzeRunInternalFindingsUseCatalogToolMetadata);
+        failed += Run("Analyze run internal file size severity none", TestAnalyzeRunInternalFileSizeRuleDisabledBySeverity);
+        failed += Run("Analyze run internal file size skips generated and excluded paths",
+            TestAnalyzeRunInternalFileSizeRuleSkipsGeneratedAndExcluded);
+        failed += Run("Analyze run internal custom generated suffix case-insensitive",
+            TestAnalyzeRunInternalFileSizeRuleCustomGeneratedSuffixCaseInsensitive);
+        failed += Run("Analyze run internal generated header scan override",
+            TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderLineOverride);
+        failed += Run("Analyze run internal custom excluded directory",
+            TestAnalyzeRunInternalFileSizeRuleCustomExcludedDirectory);
+        failed += Run("Analyze run internal file size newline variants",
+            TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings);
+        failed += Run("Analyze run internal malformed tags warn and fallback",
+            TestAnalyzeRunInternalFileSizeRuleWarnsOnMalformedTags);
+        failed += Run("Analyze run internal unknown tag prefixes warn",
+            TestAnalyzeRunInternalFileSizeRuleWarnsOnUnknownTagPrefixes);
+        failed += Run("Analyze run internal generated header scan can be disabled",
+            TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
+        failed += Run("Analyze run internal generated header marker supports hash comments",
+            TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderMarkerSupportsHashComments);
+        failed += Run("Analyze run internal maintainability supports multiple rules",
+            TestAnalyzeRunInternalMaintainabilitySupportsMultipleRules);
+        failed += Run("Analyze run internal maintainability helper positive paths",
+            TestAnalyzeRunInternalMaintainabilityHelpersPositivePaths);
+        failed += Run("Analyze run internal maintainability helper failure includes match count",
+            TestAnalyzeRunInternalMaintainabilityHelpersFailureIncludesMatchCount);
+        failed += Run("Analyze run internal maintainability helper path and suffix failure include match count",
+            TestAnalyzeRunInternalMaintainabilityHelpersFailureIncludesMatchCountForPathAndSuffix);
+        failed += Run("Analyze run internal maintainability helper rejects empty rule id",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyRuleId);
+        failed += Run("Analyze run internal maintainability helper rejects empty path suffix",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyPathSuffix);
+        failed += Run("Analyze run internal maintainability helper rejects empty assertion message",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectEmptyAssertionMessage);
+        failed += Run("Analyze run internal maintainability helper rejects null findings",
+            TestAnalyzeRunInternalMaintainabilityHelpersRejectNullFindings);
+        failed += Run("Analyze run internal write-tool schema rule flags missing helpers",
+            TestAnalyzeRunInternalWriteToolSchemaRuleFlagsMissingHelpers);
+        failed += Run("Analyze run internal write-tool schema rule accepts canonical helpers",
+            TestAnalyzeRunInternalWriteToolSchemaRuleAcceptsCanonicalHelpers);
+        failed += Run("Analyze run internal write-tool schema rule ignores read-only tools",
+            TestAnalyzeRunInternalWriteToolSchemaRuleIgnoresReadOnlyTools);
+        failed += Run("Analyze run internal write-tool schema rule ignores auth-only definitions",
+            TestAnalyzeRunInternalWriteToolSchemaRuleIgnoresAuthenticationOnlyToolDefinitions);
+        failed += Run("Analyze run internal AD required-domain helper rule flags missing canonical helpers",
+            TestAnalyzeRunInternalAdRequiredDomainHelperRuleFlagsMissingCanonicalHelpers);
+        failed += Run("Analyze run internal AD required-domain helper rule accepts canonical helpers",
+            TestAnalyzeRunInternalAdRequiredDomainHelperRuleAcceptsCanonicalHelpers);
+        failed += Run("Analyze run internal max-results metadata helper rule flags direct meta add",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsDirectMetaAdd);
+        failed += Run("Analyze run internal max-results metadata helper rule accepts canonical helper",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsCanonicalHelper);
+        failed += Run("Analyze run internal max-results metadata helper rule ignores non-tool files",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNonToolFiles);
+        failed += Run("Analyze run internal max-results metadata helper rule ignores near-miss keys",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleIgnoresNearMissMetadataKeys);
+        failed += Run("Analyze run internal max-results metadata helper rule accepts qualified canonical helper call",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleAcceptsQualifiedCanonicalHelperCall);
+        failed += Run("Analyze run internal max-results metadata helper rule flags indexer assignment",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsIndexerAssignment);
+        failed += Run("Analyze run internal max-results metadata helper rule flags case-variant metadata key",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsCaseVariantMetadataKey);
+        failed += Run("Analyze run internal max-results metadata helper rule flags only max_results in mixed adds",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleFlagsOnlyMaxResultsInMixedMetaAdds);
+        failed += Run("Analyze run internal max-results metadata helper rule deduplicates same-line matches",
+            TestAnalyzeRunInternalMaxResultsMetaHelperRuleDeduplicatesSameLineMatches);
+        failed += Run("Analyze run internal canonical bounded-int helper rule flags legacy helper usage",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleFlagsLegacyHelperUsage);
+        failed += Run("Analyze run internal canonical bounded-int helper rule accepts canonical helper usage",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleAcceptsCanonicalHelperUsage);
+        failed += Run("Analyze run internal canonical bounded-int helper rule ignores ToolArgs implementation file",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolArgsImplementationFile);
+        failed += Run("Analyze run internal canonical bounded-int helper rule ignores IntelligenceX.Tools.Tests project",
+            TestAnalyzeRunInternalCanonicalBoundedIntHelperRuleIgnoresToolsTestsProject);
+        failed += Run("Analyze run internal EventLog max-results helper rule flags bounded max_results path",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleFlagsBoundedMaxResultsPath);
+        failed += Run("Analyze run internal EventLog max-results helper rule flags legacy ResolveMaxResults path",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleFlagsLegacyResolveMaxResults);
+        failed += Run("Analyze run internal EventLog max-results helper rule accepts explicit EventLog helpers",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleAcceptsExplicitEventLogHelpers);
+        failed += Run("Analyze run internal EventLog max-results helper rule allows bounded helper for non-max_results args",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleAllowsBoundedOptionForNonMaxResultsArgs);
+        failed += Run("Analyze run internal EventLog max-results helper rule ignores non-EventLog tools",
+            TestAnalyzeRunInternalEventLogMaxResultsHelperRuleIgnoresNonEventLogTools);
+        failed += Run("Analyze run internal maintainability resolves canonical rule-id registration",
+            TestAnalyzeRunInternalMaintainabilityResolvesCanonicalRuleIdRegistration);
+        failed += Run("Analyze run internal maintainability warns on unmapped internal rule",
+            TestAnalyzeRunInternalMaintainabilityWarnsOnUnmappedInternalRule);
+        failed += Run("Analyze run internal maintainability warns on ambiguous internal rule match",
+            TestAnalyzeRunInternalMaintainabilityWarnsOnAmbiguousInternalRuleMatch);
+        failed += Run("Analyze run internal duplication threshold",
+            TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
+        failed += Run("Analyze run internal duplication malformed tags warn",
+            TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
+        failed += Run("Analyze run internal duplication tokenized javascript",
+            TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
+        failed += Run("Analyze run internal duplication ignores javascript imports",
+            TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports);
+        failed += Run("Analyze run internal duplication ignores PowerShell using statements",
+            TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements);
+        failed += Run("Analyze run internal duplication tokenized python",
+            TestAnalyzeRunInternalDuplicationTokenizesPython);
+        failed += Run("Analyze run internal duplication ignores python imports",
+            TestAnalyzeRunInternalDuplicationIgnoresPythonImports);
+        failed += Run("Analyze run internal duplication python triple-quote comment handling",
+            TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling);
+        failed += Run("Analyze run include-ext is per-rule",
+            TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
+        failed += Run("Analyze run duplication language threshold",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThreshold);
+        failed += Run("Analyze run duplication language-only tag activates rule",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
+        failed += RunAnalysisPolicyReportingTests();
+        failed += Run("Structured findings block", TestStructuredFindingsBlock);
+        failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
+        failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
+        failed += Run("Trim patch tail hunk (two hunks)", TestTrimPatchKeepsTailHunkTwoHunks);
+        failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
+        failed += Run("Trim patch keeps last hunk", TestTrimPatchKeepsLastHunk);
+        failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
+        failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
+        failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
+        failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
+        failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
+        failed += Run("Review provider invalid config throws", TestReviewProviderConfigInvalidThrows);
+        failed += Run("OpenAI-compatible rejects http non-loopback by default", TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault);
+        failed += Run("OpenAI-compatible preflight treats 405 as reachable", TestReviewOpenAiCompatiblePreflightTreats405AsReachable);
+        failed += Run("OpenAI-compatible follows redirects", TestReviewOpenAiCompatibleFollowsRedirects);
+        failed += Run("OpenAI-compatible preserves POST body across redirects", TestReviewOpenAiCompatiblePreservesPostBodyAcrossRedirects);
+        failed += Run("OpenAI-compatible 303 redirect switches POST to GET", TestReviewOpenAiCompatibleRedirect303SwitchesToGet);
+        failed += Run("OpenAI-compatible non-diagnostics omits remote error body",
+            TestReviewOpenAiCompatibleDoesNotLeakErrorBodyWhenDiagnosticsFalse);
+        failed += Run("OpenAI-compatible rejects cross-host redirects", TestReviewOpenAiCompatibleRejectsCrossHostRedirects);
+        failed += Run("Review config loader reads openaiAccountRotation camelCase",
+            TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
+        failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",
+            TestReviewConfigLoaderReadsLegacyIncludeRelatedPullRequestsAlias);
+        failed += Run("Review config loader prefers canonical includeRelatedPrs when both keys exist",
+            TestReviewConfigLoaderPrefersCanonicalIncludeRelatedPrsWhenBothKeysPresent);
+        failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
+        failed += Run("Review provider invalid env throws", TestReviewProviderEnvInvalidThrows);
+        failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
+        failed += Run("Review provider fallback invalid config throws", TestReviewProviderFallbackConfigInvalidThrows);
+        failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
+        failed += Run("Review provider health env", TestReviewProviderHealthEnv);
+        failed += Run("Review provider health config", TestReviewProviderHealthConfig);
+        failed += Run("Review provider circuit breaker", TestReviewProviderCircuitBreaker);
+        failed += Run("Review intent applies defaults", TestReviewIntentAppliesDefaults);
+        failed += Run("Review intent respects settings", TestReviewIntentRespectsSettings);
+        failed += Run("Review intent perf alias", TestReviewIntentPerfAlias);
+        failed += Run("Review intent null settings", TestReviewIntentNullSettings);
+        failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
+        failed += Run("Review code host env", TestReviewCodeHostEnv);
+        failed += Run("Reviewer untrusted PR skips auth store write from env", TestReviewerUntrustedPrSkipsAuthStoreWriteFromEnv);
+        failed += Run("GitHub context cache", TestGitHubContextCache);
+        failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
+        failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
+        failed += Run("GitHub code host reader smoke", TestGitHubCodeHostReaderSmoke);
+        failed += Run("GitHub compare truncation", TestGitHubCompareTruncation);
+        failed += Run("Diff range compare truncation", TestDiffRangeCompareTruncation);
+        failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
+        failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
+        failed += Run("Review settings defaults and env merge", TestReviewSettingsDefaultsAndEnvMerge);
+        failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
+        failed += Run("Review settings load config allows zero for non-negative limits",
+            TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
+        failed += Run("Review settings env allows zero for non-negative limits",
+            TestReviewSettingsFromEnvironmentAllowsZeroForNonNegativeLimits);
+        failed += Run("Setup-generated reviewer config validates and loads canonical related PRs",
+            TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs);
+        failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
+        failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
+        failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
+        failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
+        failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
+        failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
+        failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
+        failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
+        failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
+        failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
+        failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
+        failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
+        failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
+        failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
+        failed += Run("OpenAI account order sticky", TestOpenAiAccountOrderSticky);
+        failed += Run("Normalize account id list dedupes case-insensitive", TestNormalizeAccountIdListDedupesCaseInsensitive);
+        failed += Run("Try resolve OpenAI account stores rotated order", TestTryResolveOpenAiAccountStoresRotatedOrder);
+        failed += Run("Try resolve OpenAI account prefers explicit primary over ids list",
+            TestTryResolveOpenAiAccountPrefersExplicitPrimaryOverIdsList);
+        failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
+        failed += Run("Filter files exclude-only", TestFilterFilesExcludeOnly);
+        failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
+        failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
+        failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
+        failed += Run("Filter files skip binary", TestFilterFilesSkipBinary);
+        failed += Run("Filter files skip binary case-insensitive", TestFilterFilesSkipBinaryCaseInsensitive);
+        failed += Run("Filter files skip generated", TestFilterFilesSkipGenerated);
+        failed += Run("Filter files skip before include", TestFilterFilesSkipBeforeInclude);
+        failed += Run("Filter files generated globs extend", TestFilterFilesGeneratedGlobsExtend);
+        failed += Run("Workflow changes detection", TestWorkflowChangesDetection);
+        failed += Run("Workflow changes filtering", TestWorkflowChangesFiltering);
+        failed += Run("Workflow guard note skip", TestWorkflowGuardNoteSkip);
+        failed += Run("Workflow guard note filtered", TestWorkflowGuardNoteFiltered);
+        failed += Run("Secrets audit records", TestSecretsAuditRecords);
+        failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
+        failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
+        failed += Run("Redaction defaults", TestRedactionDefaults);
+        failed += Run("Review budget note", TestReviewBudgetNote);
+        failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
+        failed += Run("Review budget note comment", TestReviewBudgetNoteComment);
+        failed += Run("Combine notes", TestCombineNotes);
+        failed += Run("Review retry backoff multiplier config", TestReviewRetryBackoffMultiplierConfig);
+        failed += Run("Review retry backoff multiplier env", TestReviewRetryBackoffMultiplierEnv);
+        failed += Run("Prepare files max files zero", TestPrepareFilesMaxFilesZero);
+        failed += Run("Prepare files max files negative", TestPrepareFilesMaxFilesNegative);
+        failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
+        failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
+        failed += Run("Azure DevOps inline patch line map parses added lines", TestAzureDevOpsInlinePatchLineMapParsesAddedLines);
+        failed += Run("Azure DevOps inline patch line map handles CRLF and deletions", TestAzureDevOpsInlinePatchLineMapHandlesCrlfAndDeletions);
+        failed += Run("Azure DevOps inline patch line map handles ++/-- content", TestAzureDevOpsInlinePatchLineMapHandlesPlusPlusAndDashDashContent);
+        failed += Run("Azure DevOps inline threadContext positions", TestAzureDevOpsInlineThreadContextUsesOneBasedLineAndZeroBasedOffset);
+        failed += Run("Azure DevOps error sanitization", TestAzureDevOpsErrorSanitization);
+        failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
+        failed += Run("Context deny timeout", TestContextDenyTimeout);
+        failed += Run("Review summary parser", TestReviewSummaryParser);
+        failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
+        failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
+        failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);
+        failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
+        failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
+        failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
+        failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);
+        failed += Run("Review usage summary prefixes non-weekly code review", TestReviewUsageSummaryPrefixesNonWeeklyCodeReview);
+        failed += Run("Review usage budget guard blocks exhausted credits and weekly", TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted);
+        failed += Run("Review usage budget guard allows credits fallback", TestReviewUsageBudgetGuardAllowsCreditsFallback);
+        failed += Run("Review usage budget guard blocks when no budget sources are allowed",
+            TestReviewUsageBudgetGuardBlocksWhenNoBudgetSourcesAllowed);
+        return failed;
+#else
+        return 0;
+#endif
+    }
+}

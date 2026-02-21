@@ -35,6 +35,9 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<ToolDefinition>();
         }
 
+        IReadOnlyList<ToolDefinition> selected = Array.Empty<ToolDefinition>();
+        Exception? plannerFailure = null;
+        Exception? restoreFailure = null;
         try {
             var plannerPrompt = BuildModelPlannerPrompt(userRequest, definitions, limit);
             if (plannerPrompt.Length == 0) {
@@ -63,33 +66,114 @@ internal sealed partial class ChatServiceSession {
                     """
             };
 
-            var plannerThread = await client.StartNewThreadAsync(
-                    model: plannerOptions.Model,
-                    cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            // StartNewThreadAsync should set the current thread, but make the thread switch explicit to avoid
-            // accidental planner prompts polluting the active conversation thread if transport semantics change.
-            try {
-                await client.UseThreadAsync(plannerThread.Id, cancellationToken).ConfigureAwait(false);
-            } catch {
-                // Best effort; if we can't switch explicitly, rely on StartNewThreadAsync semantics.
-            }
+            _ = await EnsurePlannerThreadAsync(client, activeThreadId, plannerOptions.Model, cancellationToken).ConfigureAwait(false);
 
             var turn = await client.ChatAsync(ChatInput.FromText(plannerPrompt), plannerOptions, cancellationToken).ConfigureAwait(false);
             var plannerText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
-            return ParsePlannerSelectedDefinitions(plannerText, definitions, limit);
+            selected = ParsePlannerSelectedDefinitions(plannerText, definitions, limit);
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
-            Trace.TraceWarning($"Tool planner selection failed: {ex.GetType().Name}: {ex.Message}");
-            return Array.Empty<ToolDefinition>();
+            plannerFailure = ex;
         } finally {
             try {
                 await client.UseThreadAsync(activeThreadId, cancellationToken).ConfigureAwait(false);
-            } catch {
-                // Best-effort restore of active conversation thread.
+            } catch (Exception ex) {
+                restoreFailure = ex;
+                ForgetPlannerThreadContext(activeThreadId);
             }
+        }
+
+        if (restoreFailure is not null) {
+            Trace.TraceWarning(
+                $"Tool planner failed to restore active thread '{activeThreadId}': {restoreFailure.GetType().Name}: {restoreFailure.Message}");
+            return Array.Empty<ToolDefinition>();
+        }
+
+        if (plannerFailure is not null) {
+            Trace.TraceWarning($"Tool planner selection failed: {plannerFailure.GetType().Name}: {plannerFailure.Message}");
+            return Array.Empty<ToolDefinition>();
+        }
+
+        return selected;
+    }
+
+    private async Task<ThreadInfo> EnsurePlannerThreadAsync(IntelligenceXClient client, string activeThreadId, string? model,
+        CancellationToken cancellationToken) {
+        var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
+        if (normalizedActiveThreadId.Length == 0) {
+            throw new ArgumentException("activeThreadId is required.", nameof(activeThreadId));
+        }
+
+        var nowTicks = DateTime.UtcNow.Ticks;
+        string? plannerThreadId = null;
+        lock (_toolRoutingContextLock) {
+            if (_plannerThreadIdByActiveThreadId.TryGetValue(normalizedActiveThreadId, out var trackedPlannerThreadId)) {
+                plannerThreadId = trackedPlannerThreadId;
+                if (_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(normalizedActiveThreadId, out var trackedTicks)
+                    && trackedTicks > DateTime.MinValue.Ticks
+                    && trackedTicks <= DateTime.MaxValue.Ticks) {
+                    var age = DateTime.UtcNow - new DateTime(trackedTicks, DateTimeKind.Utc);
+                    if (age > PlannerThreadContextMaxAge) {
+                        plannerThreadId = null;
+                        _plannerThreadIdByActiveThreadId.Remove(normalizedActiveThreadId);
+                        _plannerThreadSeenUtcTicksByActiveThreadId.Remove(normalizedActiveThreadId);
+                    }
+                }
+            }
+
+            if (plannerThreadId is not null) {
+                _plannerThreadSeenUtcTicksByActiveThreadId[normalizedActiveThreadId] = nowTicks;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(plannerThreadId)) {
+            try {
+                return await client.UseThreadAsync(plannerThreadId, cancellationToken).ConfigureAwait(false);
+            } catch {
+                ForgetPlannerThreadContext(normalizedActiveThreadId);
+            }
+        }
+
+        var plannerThread = await client.StartNewThreadAsync(
+                model: model,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        RememberPlannerThreadContext(normalizedActiveThreadId, plannerThread.Id, nowTicks);
+
+        // StartNewThreadAsync should set the current thread, but make the thread switch explicit to avoid
+        // accidental planner prompts polluting the active conversation thread if transport semantics change.
+        try {
+            return await client.UseThreadAsync(plannerThread.Id, cancellationToken).ConfigureAwait(false);
+        } catch {
+            return plannerThread;
+        }
+    }
+
+    private void RememberPlannerThreadContext(string activeThreadId, string plannerThreadId, long seenUtcTicks) {
+        var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
+        var normalizedPlannerThreadId = (plannerThreadId ?? string.Empty).Trim();
+        if (normalizedActiveThreadId.Length == 0 || normalizedPlannerThreadId.Length == 0) {
+            return;
+        }
+
+        var ticks = seenUtcTicks > 0 ? seenUtcTicks : DateTime.UtcNow.Ticks;
+        lock (_toolRoutingContextLock) {
+            _plannerThreadIdByActiveThreadId[normalizedActiveThreadId] = normalizedPlannerThreadId;
+            _plannerThreadSeenUtcTicksByActiveThreadId[normalizedActiveThreadId] = ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    private void ForgetPlannerThreadContext(string activeThreadId) {
+        var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
+        if (normalizedActiveThreadId.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _plannerThreadIdByActiveThreadId.Remove(normalizedActiveThreadId);
+            _plannerThreadSeenUtcTicksByActiveThreadId.Remove(normalizedActiveThreadId);
         }
     }
 

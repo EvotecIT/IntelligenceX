@@ -93,13 +93,13 @@ public sealed partial class MainWindow : Window {
             assistantModelLabel);
     }
 
-    private async Task ExecuteChatTurnWithReconnectAsync(ChatTurnContext turn) {
+    private async Task ExecuteChatTurnWithReconnectAsync(ChatTurnContext turn, CancellationToken cancellationToken) {
         try {
             var initialClient = _client;
             if (initialClient is null) {
                 if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } reconnectClient) {
                     try {
-                        await ExecuteChatTurnWithThreadRecoveryAsync(reconnectClient, turn).ConfigureAwait(false);
+                        await ExecuteChatTurnWithThreadRecoveryAsync(reconnectClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception reconnectEx) {
                         await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, reconnectEx, disconnectedFallback: false)).ConfigureAwait(false);
@@ -112,19 +112,19 @@ public sealed partial class MainWindow : Window {
             }
 
             try {
-                await ExecuteChatTurnWithThreadRecoveryAsync(initialClient, turn).ConfigureAwait(false);
+                await ExecuteChatTurnWithThreadRecoveryAsync(initialClient, turn, cancellationToken).ConfigureAwait(false);
                 return;
             } catch (Exception ex) when (IsDisconnectedError(ex)) {
                 await DisposeClientAsync().ConfigureAwait(false);
                 if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } retryClient) {
                     try {
-                        await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn).ConfigureAwait(false);
+                        await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception retryEx) {
                         var resolvedRetryEx = retryEx;
                         if (await TryRecoverChatSlotByCancelingKickoffAsync(retryEx).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
                             try {
-                                await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn).ConfigureAwait(false);
+                                await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn, cancellationToken).ConfigureAwait(false);
                                 return;
                             } catch (Exception kickoffRetryEx) {
                                 resolvedRetryEx = kickoffRetryEx;
@@ -151,7 +151,7 @@ public sealed partial class MainWindow : Window {
                 var resolvedEx = ex;
                 if (await TryRecoverChatSlotByCancelingKickoffAsync(ex).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
                     try {
-                        await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn).ConfigureAwait(false);
+                        await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception kickoffRetryEx) {
                         resolvedEx = kickoffRetryEx;
@@ -175,9 +175,9 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task ExecuteChatTurnWithThreadRecoveryAsync(ChatServiceClient client, ChatTurnContext turn) {
+    private async Task ExecuteChatTurnWithThreadRecoveryAsync(ChatServiceClient client, ChatTurnContext turn, CancellationToken cancellationToken) {
         try {
-            await ExecuteChatTurnAsync(client, turn).ConfigureAwait(false);
+            await ExecuteChatTurnAsync(client, turn, cancellationToken).ConfigureAwait(false);
             return;
         } catch (Exception ex) {
             if (!await TryPrepareMissingThreadRecoveryAsync(turn, ex).ConfigureAwait(false)) {
@@ -185,7 +185,7 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        await ExecuteChatTurnAsync(client, turn).ConfigureAwait(false);
+        await ExecuteChatTurnAsync(client, turn, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<bool> TryPrepareMissingThreadRecoveryAsync(ChatTurnContext turn, Exception ex) {
@@ -217,7 +217,7 @@ public sealed partial class MainWindow : Window {
         return true;
     }
 
-    private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn) {
+    private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn, CancellationToken cancellationToken) {
         var req = new ChatRequest {
             RequestId = turn.RequestId,
             ThreadId = turn.Conversation.ThreadId,
@@ -225,7 +225,7 @@ public sealed partial class MainWindow : Window {
             Options = BuildChatRequestOptions(turn.Conversation)
         };
 
-        var result = await client.RequestAsync<ChatResultMessage>(req, CancellationToken.None).ConfigureAwait(false);
+        var result = await client.RequestAsync<ChatResultMessage>(req, cancellationToken).ConfigureAwait(false);
         await ApplyChatResultAsync(turn, result).ConfigureAwait(false);
     }
 

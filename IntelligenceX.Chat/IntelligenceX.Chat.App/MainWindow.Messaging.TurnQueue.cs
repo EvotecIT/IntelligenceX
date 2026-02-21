@@ -81,6 +81,8 @@ public sealed partial class MainWindow : Window {
         _activeTurnQueueWaitMs = queueWaitMs;
         ResetActivityTimeline();
         StartTurnWatchdog();
+        var turnRequestCts = new CancellationTokenSource();
+        _activeTurnRequestCts = turnRequestCts;
         _activeRequestConversationId = turn.ConversationId;
         ClearToolRoutingInsights();
         await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
@@ -92,12 +94,16 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
-            await ExecuteChatTurnWithReconnectAsync(turn).ConfigureAwait(false);
+            await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
         } finally {
             StopTurnWatchdog();
             _isSending = false;
             _activeTurnRequestId = null;
             _cancelRequestedTurnRequestId = null;
+            if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
+                _activeTurnRequestCts = null;
+            }
+            turnRequestCts.Dispose();
             _activeRequestConversationId = null;
             _activeTurnReceivedDelta = false;
             _activeTurnQueueWaitMs = null;
@@ -339,6 +345,7 @@ public sealed partial class MainWindow : Window {
 
         var chatRequestId = _activeTurnRequestId!;
         _cancelRequestedTurnRequestId = chatRequestId;
+        _activeTurnRequestCts?.Cancel();
         await SetStatusAsync(SessionStatus.Canceling()).ConfigureAwait(false);
         await PublishSessionStateAsync().ConfigureAwait(false);
 
