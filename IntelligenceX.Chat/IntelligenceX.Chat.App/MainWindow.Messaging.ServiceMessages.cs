@@ -135,7 +135,14 @@ public sealed partial class MainWindow : Window {
             await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Post-login verification failed: " + ex.Message);
+                try {
+                    await RunOnUiThreadAsync(() => {
+                        AppendSystem("Post-login verification failed: " + ex.Message);
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                } catch {
+                    // Best-effort diagnostic only.
+                }
             }
         }
 

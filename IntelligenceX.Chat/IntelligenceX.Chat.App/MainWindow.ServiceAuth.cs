@@ -316,7 +316,7 @@ public sealed partial class MainWindow : Window {
         SetNativeAccountSlotId(activeSlot, string.Empty);
         _localProviderOpenAIAccountId = string.Empty;
         SyncNativeAccountSlotsToAppState();
-        QueuePersistAppState();
+        await PersistAppStateAsync().ConfigureAwait(false);
 
         var client = _client;
         if (client is null) {
