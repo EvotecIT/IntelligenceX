@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using Xunit;
 
@@ -31,18 +32,33 @@ public sealed class HostOptionsProfileBootstrapTests {
 
     [Fact]
     public void Parse_MaxToolRoundsAcceptsUpperBoundary() {
-        var options = ParseHostOptions(new[] { "--max-tool-rounds", "256" }, out var error);
+        var options = ParseHostOptions(
+            new[] { "--max-tool-rounds", ChatRequestOptionLimits.MaxToolRounds.ToString() },
+            out var error);
 
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error));
-        Assert.Equal(256, ReadIntProperty(options!, "MaxToolRounds"));
+        Assert.Equal(ChatRequestOptionLimits.MaxToolRounds, ReadIntProperty(options!, "MaxToolRounds"));
     }
 
     [Fact]
     public void Parse_MaxToolRoundsRejectsOverSafetyLimit() {
-        _ = ParseHostOptions(new[] { "--max-tool-rounds", "257" }, out var error);
+        _ = ParseHostOptions(
+            new[] { "--max-tool-rounds", (ChatRequestOptionLimits.MaxToolRounds + 1).ToString() },
+            out var error);
 
-        Assert.Equal("--max-tool-rounds must be between 1 and 256.", error);
+        Assert.Equal(
+            $"--max-tool-rounds must be between {ChatRequestOptionLimits.MinToolRounds} and {ChatRequestOptionLimits.MaxToolRounds}.",
+            error);
+    }
+
+    [Fact]
+    public void WriteHelp_MaxToolRoundsLineUsesSharedBoundsAndDefault() {
+        var helpLine = InvokeHostBuildMaxToolRoundsHelpLine();
+
+        Assert.Equal(
+            $"--max-tool-rounds <N>   Max tool-call rounds per user message ({ChatRequestOptionLimits.MinToolRounds}..{ChatRequestOptionLimits.MaxToolRounds}; default: {ChatRequestOptionLimits.DefaultToolRounds}).",
+            helpLine.TrimStart());
     }
 
     [Fact]
@@ -170,6 +186,22 @@ public sealed class HostOptionsProfileBootstrapTests {
 
     private static string CreateTempProfileDbPath() {
         return Path.Combine(Path.GetTempPath(), "ix-chat-host-profile-tests-" + Guid.NewGuid().ToString("N") + ".db");
+    }
+
+    private static string InvokeHostBuildMaxToolRoundsHelpLine() {
+        var hostProgramType = ResolveHostProgramType();
+        var buildHelpLine = hostProgramType.GetMethod("BuildMaxToolRoundsHelpLine", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildHelpLine);
+        var value = buildHelpLine!.Invoke(null, null);
+        Assert.IsType<string>(value);
+        return (string)value!;
+    }
+
+    private static Type ResolveHostProgramType() {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var hostProgramType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program", throwOnError: true);
+        Assert.NotNull(hostProgramType);
+        return hostProgramType!;
     }
 
     private static void SeedProfile(string dbPath, string profileName, bool allowMutatingParallel) {
