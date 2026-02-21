@@ -15,11 +15,6 @@ public static class OfficeImoArtifactWriter {
     private static readonly string[] SignalFlowLabels = ["Why it matters", "Action", "Next action", "Fix action"];
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(250);
 
-    // Detect ordered-list starters so definition-list escaping can skip true list items.
-    private static readonly Regex OrderedListLineRegex = new(
-        @"^\s*\d+[.)]\s",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant,
-        RegexMatchTimeout);
     // Repair malformed strong spans like ****359**** into valid markdown emphasis.
     private static readonly Regex OverwrappedStrongSpanRegex = new(
         @"(?<!\*)\*{4}(?<inner>[^*\r\n]+)\*{4}(?!\*)",
@@ -113,19 +108,18 @@ public static class OfficeImoArtifactWriter {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var normalizedMarkdown = NormalizeTranscriptMarkdownForDocx(sourceMarkdown);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, normalizedMarkdown);
-        var wordSafeMarkdown = NeutralizeSingleLineDefinitionLists(transcriptMarkdown);
-        using var visualMaterialization = DocxVisualFenceMaterializer.Materialize(wordSafeMarkdown);
-        var allowedImageDirectories = BuildAllowedImageDirectories(
-            visualMaterialization.AllowedImageDirectories,
-            additionalAllowedImageDirectories);
-        WriteDocxFromMarkdown(visualMaterialization.Markdown, outputPath, allowedImageDirectories);
+        var allowedImageDirectories = BuildAllowedImageDirectories(additionalAllowedImageDirectories);
+        WriteDocxFromMarkdown(transcriptMarkdown, outputPath, allowedImageDirectories);
     }
 
     private static void WriteDocxFromMarkdown(string markdown, string outputPath, IReadOnlyList<string>? allowedImageDirectories = null) {
         var safeMarkdown = string.IsNullOrWhiteSpace(markdown) ? "# Transcript\n" : markdown;
         var options = new MarkdownToWordOptions {
             FontFamily = "Calibri",
-            AllowLocalImages = allowedImageDirectories is { Count: > 0 }
+            AllowLocalImages = allowedImageDirectories is { Count: > 0 },
+            PreferNarrativeSingleLineDefinitions = true,
+            FitImagesToContextWidth = true,
+            MaxImageWidthPercentOfContent = 100
         };
         if (allowedImageDirectories is { Count: > 0 }) {
             for (var i = 0; i < allowedImageDirectories.Count; i++) {
@@ -144,21 +138,8 @@ public static class OfficeImoArtifactWriter {
         document.Save(outputPath);
     }
 
-    private static IReadOnlyList<string> BuildAllowedImageDirectories(
-        IReadOnlyList<string>? materializedDirectories,
-        IReadOnlyList<string>? additionalDirectories) {
+    private static IReadOnlyList<string> BuildAllowedImageDirectories(IReadOnlyList<string>? additionalDirectories) {
         var list = new List<string>();
-
-        if (materializedDirectories is { Count: > 0 }) {
-            for (var i = 0; i < materializedDirectories.Count; i++) {
-                var directory = (materializedDirectories[i] ?? string.Empty).Trim();
-                if (directory.Length == 0 || ContainsDirectory(list, directory)) {
-                    continue;
-                }
-
-                list.Add(directory);
-            }
-        }
 
         if (additionalDirectories is { Count: > 0 }) {
             for (var i = 0; i < additionalDirectories.Count; i++) {
@@ -373,132 +354,6 @@ public static class OfficeImoArtifactWriter {
         return false;
     }
 
-    private static string NeutralizeSingleLineDefinitionLists(string markdown) {
-        if (string.IsNullOrEmpty(markdown)) {
-            return string.Empty;
-        }
-
-        var newline = DetectLineEnding(markdown);
-        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        var lines = normalized.Split('\n');
-        bool insideFence = false;
-        char fenceMarker = '\0';
-        int fenceLength = 0;
-
-        for (int i = 0; i < lines.Length; i++) {
-            var line = lines[i] ?? string.Empty;
-            var trimmed = line.TrimStart();
-
-            if (TryGetFenceToken(trimmed, out var marker, out var markerRunLength)) {
-                if (!insideFence) {
-                    insideFence = true;
-                    fenceMarker = marker;
-                    fenceLength = markerRunLength;
-                    continue;
-                }
-
-                if (marker == fenceMarker &&
-                    markerRunLength >= fenceLength &&
-                    IsClosingFenceLine(trimmed, markerRunLength)) {
-                    insideFence = false;
-                    fenceMarker = '\0';
-                    fenceLength = 0;
-                    continue;
-                }
-
-                // Fence-like content inside an active fence should never be rewritten.
-                if (insideFence) {
-                    continue;
-                }
-
-                continue;
-            }
-
-            if (insideFence || !LooksLikeSingleLineDefinition(trimmed)) {
-                continue;
-            }
-
-            if (!TryGetDefinitionSeparatorIndex(line, out var separatorIndex)) {
-                continue;
-            }
-
-            if (separatorIndex > 0 && line[separatorIndex - 1] == '\\') {
-                continue;
-            }
-
-            lines[i] = line.Insert(separatorIndex, "\\");
-        }
-
-        return string.Join(newline, lines);
-    }
-
-    private static bool LooksLikeSingleLineDefinition(string trimmedLine) {
-        if (string.IsNullOrWhiteSpace(trimmedLine)) {
-            return false;
-        }
-
-        if (trimmedLine.StartsWith("#", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith(">", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith("- ", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith("* ", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith("+ ", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith("|", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith("```", StringComparison.Ordinal) ||
-            trimmedLine.StartsWith("~~~", StringComparison.Ordinal) ||
-            OrderedListLineRegex.IsMatch(trimmedLine)) {
-            return false;
-        }
-
-        return TryGetDefinitionSeparatorIndex(trimmedLine, out _);
-    }
-
-    private static bool TryGetDefinitionSeparatorIndex(string line, out int index) {
-        index = -1;
-        if (string.IsNullOrWhiteSpace(line)) {
-            return false;
-        }
-
-        var inlineFenceLength = 0;
-        var i = 0;
-        while (i < line.Length) {
-            var ch = line[i];
-
-            // Respect escaped punctuation and escaped backticks.
-            if (ch == '\\' && i + 1 < line.Length) {
-                i += 2;
-                continue;
-            }
-
-            if (ch == '`') {
-                var runLength = CountRunLength(line, i, '`');
-                if (inlineFenceLength == 0) {
-                    inlineFenceLength = runLength;
-                    i += runLength;
-                    continue;
-                }
-
-                if (runLength >= inlineFenceLength) {
-                    inlineFenceLength = 0;
-                    i += runLength;
-                    continue;
-                }
-            }
-
-            if (inlineFenceLength == 0 &&
-                ch == ':' &&
-                i > 0 &&
-                i + 1 < line.Length &&
-                char.IsWhiteSpace(line[i + 1])) {
-                index = i;
-                return true;
-            }
-
-            i++;
-        }
-
-        return false;
-    }
-
     private static string DetectLineEnding(string text) {
         if (text.Contains("\r\n", StringComparison.Ordinal)) {
             return "\r\n";
@@ -549,15 +404,6 @@ public static class OfficeImoArtifactWriter {
         }
 
         return true;
-    }
-
-    private static int CountRunLength(string text, int startIndex, char marker) {
-        var length = 0;
-        while (startIndex + length < text.Length && text[startIndex + length] == marker) {
-            length++;
-        }
-
-        return length;
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
