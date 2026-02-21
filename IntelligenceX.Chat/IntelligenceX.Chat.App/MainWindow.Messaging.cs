@@ -37,7 +37,7 @@ public sealed partial class MainWindow : Window {
             var type = TryGetString(root, "type");
             switch (type) {
                 case "connect":
-                    await ConnectAsync(fromUserAction: true).ConfigureAwait(true);
+                    await ConnectAsync(fromUserAction: true, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(true);
                     break;
                 case "login":
                     await LoginAsync().ConfigureAwait(true);

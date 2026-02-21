@@ -284,7 +284,7 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
-            await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
+            await ConnectAsync(fromUserAction: false, connectBudgetOverride: AutoReconnectConnectBudget).ConfigureAwait(false);
 
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 return;

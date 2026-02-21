@@ -566,7 +566,7 @@ public sealed partial class MainWindow : Window {
         QueueServiceLaunchProfileSyncSnapshot();
         StopAutoReconnectLoop();
         await DisposeClientAsync().ConfigureAwait(false);
-        await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+        await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
     }
 
     private void QueueServiceLaunchProfileSyncSnapshot() {
