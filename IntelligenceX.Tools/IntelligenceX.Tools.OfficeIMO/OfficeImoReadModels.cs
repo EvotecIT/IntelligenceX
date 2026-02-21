@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.OfficeIMO;
@@ -8,6 +9,8 @@ namespace IntelligenceX.Tools.OfficeIMO;
 /// Result model for <c>officeimo_read</c>.
 /// </summary>
 public sealed class OfficeImoReadResult {
+    private IReadOnlyDictionary<string, string> _handoff = ToolChainingHints.EmptyMap;
+
     /// <summary>
     /// Files ingested (resolved full paths).
     /// </summary>
@@ -92,12 +95,32 @@ public sealed class OfficeImoReadResult {
     /// <summary>
     /// Structured handoff payload for downstream tools.
     /// </summary>
-    public IReadOnlyDictionary<string, string> Handoff { get; set; } = ToolChainingHints.EmptyMap;
+    public IReadOnlyDictionary<string, string> Handoff {
+        get => _handoff;
+        set => _handoff = NormalizeHandoff(value);
+    }
 
     /// <summary>
     /// Best-effort confidence score (0..1) for this extraction context.
     /// </summary>
     public double Confidence { get; set; } = 0.5d;
+
+    private static IReadOnlyDictionary<string, string> NormalizeHandoff(IReadOnlyDictionary<string, string>? value) {
+        if (value is null || value.Count == 0) {
+            return ToolChainingHints.EmptyMap;
+        }
+
+        var normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in value) {
+            if (!string.IsNullOrWhiteSpace(entry.Key)) {
+                normalized[entry.Key.Trim()] = entry.Value ?? string.Empty;
+            }
+        }
+
+        return normalized.Count == 0
+            ? ToolChainingHints.EmptyMap
+            : new ReadOnlyDictionary<string, string>(normalized);
+    }
 }
 
 /// <summary>

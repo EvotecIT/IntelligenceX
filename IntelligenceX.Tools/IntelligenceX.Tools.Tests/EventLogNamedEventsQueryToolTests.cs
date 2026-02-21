@@ -12,8 +12,15 @@ namespace IntelligenceX.Tools.Tests;
 public sealed class EventLogNamedEventsQueryToolTests {
     [Fact]
     public async Task InvokeAsync_WhenQuerySucceeds_EmitsChainingContractFields() {
+        if (!OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        if (!TrySelectNamedEventQueryName(out var namedEvent)) {
+            return;
+        }
+
         var tool = new EventLogNamedEventsQueryTool(new EventLogToolOptions());
-        var namedEvent = SelectNamedEventQueryName();
         var start = DateTime.UtcNow.AddDays(1);
         var end = start.AddHours(1);
 
@@ -46,7 +53,9 @@ public sealed class EventLogNamedEventsQueryToolTests {
         Assert.InRange(confidence.GetDouble(), 0d, 1d);
     }
 
-    private static string SelectNamedEventQueryName() {
+    private static bool TrySelectNamedEventQueryName(out string queryName) {
+        queryName = string.Empty;
+
         var preferred = EventLogNamedEventsHelper.GetCatalogRows()
             .Where(static row => row.Available)
             .FirstOrDefault(row =>
@@ -55,11 +64,19 @@ public sealed class EventLogNamedEventsQueryToolTests {
                     || string.Equals(logName, "System", StringComparison.OrdinalIgnoreCase)));
 
         if (preferred is not null) {
-            return preferred.QueryName;
+            queryName = preferred.QueryName;
+            return true;
         }
 
-        return EventLogNamedEventsHelper.GetCatalogRows()
-            .First(static row => row.Available)
-            .QueryName;
+        var fallback = EventLogNamedEventsHelper.GetCatalogRows()
+            .Where(static row => row.Available)
+            .Select(static row => row.QueryName)
+            .FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(fallback)) {
+            return false;
+        }
+
+        queryName = fallback;
+        return true;
     }
 }

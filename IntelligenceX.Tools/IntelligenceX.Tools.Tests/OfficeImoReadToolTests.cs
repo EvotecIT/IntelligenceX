@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -11,6 +12,26 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public class OfficeImoReadToolTests {
+    [Fact]
+    public void OfficeImoReadResult_WhenHandoffAssignedMutableMap_IsNormalizedAndReadOnly() {
+        var source = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            [" contract "] = "officeimo_read_handoff",
+            [" "] = "ignored"
+        };
+
+        var result = new OfficeImoReadResult {
+            Handoff = source
+        };
+        source["new_key"] = "new_value";
+
+        Assert.True(result.Handoff.TryGetValue("contract", out var contract));
+        Assert.Equal("officeimo_read_handoff", contract);
+        Assert.False(result.Handoff.ContainsKey("new_key"));
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(result.Handoff);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
     [Fact]
     public async Task OfficeImoRead_WhenExtensionsOmitted_DefaultsIncludePdf() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-officeimo-read-" + Guid.NewGuid().ToString("n"));
