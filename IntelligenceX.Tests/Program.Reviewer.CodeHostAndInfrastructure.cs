@@ -357,6 +357,35 @@ internal static partial class Program {
         AssertEqual("current", ReviewSettings.NormalizeDiffRange("unknown", "current"), "diff fallback");
     }
 
+    private static void TestReviewThreadsAutoResolveSweepNoBlockersConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"reviewThreadsAutoResolveSweepNoBlockers\": true } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.ReviewThreadsAutoResolveSweepNoBlockers, "sweep-no-blockers config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewThreadsAutoResolveSweepNoBlockersEnv() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_THREADS_AUTO_RESOLVE_SWEEP_NO_BLOCKERS");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_THREADS_AUTO_RESOLVE_SWEEP_NO_BLOCKERS", "true");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(true, settings.ReviewThreadsAutoResolveSweepNoBlockers, "sweep-no-blockers env");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_THREADS_AUTO_RESOLVE_SWEEP_NO_BLOCKERS", previous);
+        }
+    }
+
     private static void TestCopilotEnvAllowlistConfig() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");

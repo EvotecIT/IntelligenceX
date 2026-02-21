@@ -296,6 +296,8 @@ internal static class ReviewConfigLoader {
         settings.ReviewThreadsAutoResolveAI = ReadBool(obj, "reviewThreadsAutoResolveAI", settings.ReviewThreadsAutoResolveAI);
         settings.ReviewThreadsAutoResolveRequireEvidence = ReadBool(obj, "reviewThreadsAutoResolveRequireEvidence",
             settings.ReviewThreadsAutoResolveRequireEvidence);
+        settings.ReviewThreadsAutoResolveSweepNoBlockers = ReadBool(obj, "reviewThreadsAutoResolveSweepNoBlockers",
+            settings.ReviewThreadsAutoResolveSweepNoBlockers);
         settings.ReviewThreadsAutoResolveAIPostComment = ReadBool(obj, "reviewThreadsAutoResolveAIPostComment", settings.ReviewThreadsAutoResolveAIPostComment);
         settings.ReviewThreadsAutoResolveAIEmbed = ReadBool(obj, "reviewThreadsAutoResolveAIEmbed", settings.ReviewThreadsAutoResolveAIEmbed);
         var embedPlacement = obj.GetString("reviewThreadsAutoResolveAIEmbedPlacement");

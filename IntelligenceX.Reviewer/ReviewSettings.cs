@@ -283,6 +283,11 @@ internal sealed partial class ReviewSettings {
     /// Require explicit diff evidence to auto-resolve review threads.
     /// </summary>
     public bool ReviewThreadsAutoResolveRequireEvidence { get; set; } = true;
+    /// <summary>
+    /// When enabled, sweep and resolve remaining bot-only kept threads after a no-blockers review.
+    /// Useful for repositories that enforce resolved review conversations before merge.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveSweepNoBlockers { get; set; }
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     /// <summary>

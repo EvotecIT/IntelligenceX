@@ -44,6 +44,42 @@ internal static partial class Program {
         AssertEqual("deadbeef", commit, "malformed then valid commit");
     }
 
+    private static void TestReviewSummaryParserMergeBlockerDetection() {
+        var noBlockers = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️ (if any)",
+            "None."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(noBlockers), "merge blockers none");
+
+        var todoBlocker = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "- [ ] Fix cancellation race."
+        });
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(todoBlocker), "merge blockers todo");
+
+        var criticalBlocker = string.Join("\n", new[] {
+            "## Critical Issues ⚠️ (if any)",
+            "- Broken reconnect path."
+        });
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(criticalBlocker), "merge blockers critical");
+
+        var missingSections = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good."
+        });
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(missingSections), "merge blockers missing sections");
+
+        var onlyTodo = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "None."
+        });
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(onlyTodo), "merge blockers missing critical section");
+    }
+
     private static void TestReviewFormatterModelUsageSection() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
             "base", Array.Empty<string>(), "owner/repo", false, null);

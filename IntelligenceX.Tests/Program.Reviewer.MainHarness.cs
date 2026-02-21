@@ -494,6 +494,10 @@ internal static partial class Program {
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review settings defaults and env merge", TestReviewSettingsDefaultsAndEnvMerge);
+        failed += Run("Review threads auto-resolve sweep no-blockers config",
+            TestReviewThreadsAutoResolveSweepNoBlockersConfig);
+        failed += Run("Review threads auto-resolve sweep no-blockers env",
+            TestReviewThreadsAutoResolveSweepNoBlockersEnv);
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
@@ -556,6 +560,7 @@ internal static partial class Program {
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
+        failed += Run("Review summary parser merge blocker detection", TestReviewSummaryParserMergeBlockerDetection);
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
         failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
         failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);

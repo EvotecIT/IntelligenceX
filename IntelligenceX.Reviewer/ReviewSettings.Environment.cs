@@ -579,6 +579,12 @@ internal sealed partial class ReviewSettings {
         var reviewThreadsAutoResolveRequireEvidence = GetInput("review_threads_auto_resolve_require_evidence", "REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveRequireEvidence)) {
             settings.ReviewThreadsAutoResolveRequireEvidence = ParseBoolean(reviewThreadsAutoResolveRequireEvidence, settings.ReviewThreadsAutoResolveRequireEvidence);        }
+        var reviewThreadsAutoResolveSweepNoBlockers = GetInput("review_threads_auto_resolve_sweep_no_blockers",
+            "REVIEW_THREADS_AUTO_RESOLVE_SWEEP_NO_BLOCKERS", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_SWEEP_NO_BLOCKERS");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveSweepNoBlockers)) {
+            settings.ReviewThreadsAutoResolveSweepNoBlockers =
+                ParseBoolean(reviewThreadsAutoResolveSweepNoBlockers, settings.ReviewThreadsAutoResolveSweepNoBlockers);
+        }
         var reviewThreadsAutoResolveAiPost = GetInput("review_threads_auto_resolve_ai_post_comment", "REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiPost)) {
             settings.ReviewThreadsAutoResolveAIPostComment = ParseBoolean(reviewThreadsAutoResolveAiPost, settings.ReviewThreadsAutoResolveAIPostComment);

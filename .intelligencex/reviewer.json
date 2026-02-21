@@ -49,6 +49,7 @@
     "reviewThreadsMaxComments": 4,
     "reviewThreadsAutoResolveStale": true,
     "reviewThreadsAutoResolveDiffRange": "pr-base",
+    "reviewThreadsAutoResolveSweepNoBlockers": true,
     "reviewThreadsAutoResolveAIReply": true,
     "reviewUsageSummary": true,
     "reviewUsageSummaryCacheMinutes": 10,
