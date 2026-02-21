@@ -164,6 +164,12 @@ public sealed partial class MainWindow : Window {
                         await SetExportVisualThemeModeAsync(mode).ConfigureAwait(true);
                         break;
                     }
+                case "set_export_docx_visual_max_width":
+                    {
+                        var width = TryGetString(root, "value");
+                        await SetExportDocxVisualMaxWidthPxAsync(width).ConfigureAwait(true);
+                        break;
+                    }
                 case "clear_export_last_directory":
                     await ClearExportLastDirectoryAsync().ConfigureAwait(true);
                     break;

@@ -136,7 +136,7 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures export visual-theme controls and messaging hooks are present in shell assets.
+    /// Ensures export visual-theme and DOCX visual sizing controls/messaging hooks are present in shell assets.
     /// </summary>
     [Fact]
     public void Load_IncludesExportVisualThemeModeBindingsAndControl() {
@@ -145,11 +145,29 @@ public sealed class UiShellAssetsTests {
         AssertContainsAll(
             html,
             "id=\"optExportVisualThemeMode\"",
+            "id=\"optExportDocxVisualMaxWidthPx\"",
             "set_export_visual_theme_mode",
+            "set_export_docx_visual_max_width",
+            "docxVisualMaxWidthPx",
             "visualThemeMode",
             "print_friendly",
             "preserve_ui_theme",
-            "unexpected export visual theme mode");
+            "unexpected export visual theme mode",
+            "normalizeExportDocxVisualMaxWidthPx");
+    }
+
+    /// <summary>
+    /// Ensures DOCX visual width binding is null-guarded so options initialization cannot crash on partial asset drift.
+    /// </summary>
+    [Fact]
+    public void Load_GuardsDocxVisualWidthBinding_WhenControlMissing() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("var docxVisualMaxWidthInput = byId(\"optExportDocxVisualMaxWidthPx\");", script, StringComparison.Ordinal);
+        Assert.Contains("if (docxVisualMaxWidthInput) {", script, StringComparison.Ordinal);
+        Assert.Contains("docxVisualMaxWidthInput.addEventListener(\"change\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("byId(\"optExportDocxVisualMaxWidthPx\").addEventListener(\"change\"", script, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -304,6 +322,25 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures visual export and popout show actionable prep failures instead of generic pre-save errors.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesVisualExportPreparationDiagnosticsAndCanvasFallback() {
+        var html = UiShellAssets.Load();
+
+        AssertContainsAll(
+            html,
+            "function resolveVisualExportBuildFailureMessage(visualType, format)",
+            "function tryCaptureVisualViewCanvasPayload(visualType)",
+            "function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx)",
+            "var renderSize = resolveDocxRenderSize(fence.language, docxVisualMaxWidthPx);",
+            "convertSvgPayloadToPng(rendered, themeMode, renderSize)",
+            "SVG export is only available for Mermaid diagrams.",
+            "Visual export couldn't prepare the image payload before save.",
+            "Visual popout couldn't prepare the image payload.");
+    }
+
+    /// <summary>
     /// Ensures visual renderers use theme-aware defaults while preserving payload-level customization paths.
     /// </summary>
     [Fact]
@@ -318,7 +355,7 @@ public sealed class UiShellAssetsTests {
             "svg.replace(/<br\\s*\\/?\\s*>/gi, \"<br/>\")",
             "themeVariables",
             "applyChartThemeDefaults",
-            "host.style.width = String(ixVisualExportState.chartWidth) + \"px\"",
+            "host.style.width = String(exportWidth) + \"px\"",
             "(!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === \"function\"",
             "window.requestAnimationFrame(function()",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",

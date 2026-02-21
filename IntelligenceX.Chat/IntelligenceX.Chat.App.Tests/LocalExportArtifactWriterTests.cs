@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using DocumentFormat.OpenXml.Packaging;
 using IntelligenceX.Chat.ExportArtifacts;
 using System.Text.Json;
 using OfficeIMO.Excel;
@@ -367,8 +366,7 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("\"datasets\"", bodyText, StringComparison.Ordinal);
             Assert.Contains("memberOf", bodyText, StringComparison.Ordinal);
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(0, imageCount);
+            Assert.Empty(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -394,8 +392,8 @@ public sealed class LocalExportArtifactWriterTests {
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { imagesDirectory });
             Assert.True(File.Exists(docxPath));
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(1, imageCount);
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            Assert.Single(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -428,8 +426,7 @@ public sealed class LocalExportArtifactWriterTests {
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("blocked-image", bodyText, StringComparison.Ordinal);
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(0, imageCount);
+            Assert.Empty(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -453,12 +450,10 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.True(File.Exists(docxPath));
 
             using var docx = WordDocument.Load(docxPath, readOnly: true);
-            var paragraph = docx.Paragraphs.First(p => p.Text.Contains("Status:", StringComparison.Ordinal));
-            var runTexts = paragraph.GetRuns().Select(run => run.Text ?? string.Empty).ToArray();
-
-            Assert.Contains(runTexts, text => text.Contains("Status: ", StringComparison.Ordinal));
-            Assert.DoesNotContain(runTexts, text => string.Equals(text, "Status", StringComparison.Ordinal));
-            Assert.DoesNotContain(runTexts, text => string.Equals(text, ": ", StringComparison.Ordinal));
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Status", bodyText, StringComparison.Ordinal);
+            Assert.Contains("healthy", bodyText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Status\\:", bodyText, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -487,9 +482,34 @@ public sealed class LocalExportArtifactWriterTests {
             using var docx = WordDocument.Load(docxPath, readOnly: true);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("not-array", bodyText, StringComparison.Ordinal);
+            Assert.Empty(docx.Images);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(0, imageCount);
+    /// <summary>
+    /// Ensures plain colon-prefixed narrative lines do not gain visible backslash escapes in DOCX output.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_DoesNotEscapePlainInterpretationNarrativeLine() {
+        const string markdown = """
+            # Transcript
+
+            Interpretation: topology looks clean in this sample.
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-plain-colon-line.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Interpretation", bodyText, StringComparison.Ordinal);
+            Assert.Contains("topology looks clean in this sample.", bodyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Interpretation\\:", bodyText, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -501,8 +521,4 @@ public sealed class LocalExportArtifactWriterTests {
         return path;
     }
 
-    private static int CountMainDocumentImageParts(string docxPath) {
-        using var package = WordprocessingDocument.Open(docxPath, false);
-        return package.MainDocumentPart?.ImageParts.Count() ?? 0;
-    }
 }

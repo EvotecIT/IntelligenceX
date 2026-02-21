@@ -1853,8 +1853,89 @@
     return "png";
   }
 
+  function normalizeDocxVisualMaxWidthPx(value) {
+    return normalizeDocxVisualMaxWidthPxContract(value);
+  }
+
+  function normalizeVisualRenderDimension(value, fallback, minValue, maxValue) {
+    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    if (parsed < minValue) {
+      return minValue;
+    }
+    if (parsed > maxValue) {
+      return maxValue;
+    }
+
+    return Math.floor(parsed);
+  }
+
+  function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx) {
+    var normalizedType = normalizeVisualType(visualType);
+    var width = normalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
+    if (normalizedType === "ix-chart") {
+      return {
+        width: normalizeVisualRenderDimension(width, ixVisualExportState.chartWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
+        height: normalizeVisualRenderDimension(Math.round(width * 0.63), 480, 220, 1600)
+      };
+    }
+    if (normalizedType === "ix-network") {
+      return {
+        width: normalizeVisualRenderDimension(width, ixVisualExportState.networkWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
+        height: normalizeVisualRenderDimension(Math.round(width * 0.62), 500, 240, 1700)
+      };
+    }
+    return {
+      width: normalizeVisualRenderDimension(width, exportDocxVisualMaxWidthContract.defaultPx, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
+      height: null
+    };
+  }
+
   function getVisualExportExtension(format) {
     return String(format || "").toLowerCase() === "svg" ? ".svg" : ".png";
+  }
+
+  function resolveVisualExportBuildFailureMessage(visualType, format) {
+    var kindLabel = getVisualKindLabel(visualType);
+    var normalizedFormat = normalizeVisualExportFormat(format, visualType).toUpperCase();
+    return kindLabel + " export couldn't prepare a " + normalizedFormat + " image payload.";
+  }
+
+  function tryCaptureVisualViewCanvasPayload(visualType) {
+    if (!visualViewCanvasWrap || !document.body || !document.body.classList.contains("visual-view-open")) {
+      return null;
+    }
+
+    var activeType = normalizeVisualType(visualViewState.type);
+    var normalizedType = normalizeVisualType(visualType);
+    if (!normalizedType || normalizedType !== activeType) {
+      return null;
+    }
+
+    var canvas = visualViewCanvasWrap.querySelector("canvas");
+    if (!canvas || typeof canvas.toDataURL !== "function") {
+      return null;
+    }
+
+    try {
+      var dataUrl = canvas.toDataURL("image/png");
+      var parsedData = parseDataUrlPayload(dataUrl);
+      if (!parsedData || !parsedData.dataBase64) {
+        return null;
+      }
+
+      return {
+        id: "panel-canvas",
+        alt: getVisualKindLabel(normalizedType) + " preview",
+        mimeType: parsedData.mimeType || "image/png",
+        dataBase64: parsedData.dataBase64
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   function getVisualExportPreferences() {
@@ -1863,7 +1944,8 @@
     return {
       saveMode: String(exportPrefs.saveMode || "").toLowerCase() === "remember" ? "remember" : "ask",
       lastDirectory: String(exportPrefs.lastDirectory || "").trim(),
-      visualThemeMode: normalizeVisualExportThemeMode(exportPrefs.visualThemeMode)
+      visualThemeMode: normalizeVisualExportThemeMode(exportPrefs.visualThemeMode),
+      docxVisualMaxWidthPx: normalizeDocxVisualMaxWidthPx(exportPrefs.docxVisualMaxWidthPx)
     };
   }
 
@@ -2351,7 +2433,7 @@
     openVisualView(normalizedKind, source, inferVisualTitleFromBlock(pre, normalizedKind));
   }
 
-  async function convertSvgPayloadToPng(payload, themeMode) {
+  async function convertSvgPayloadToPng(payload, themeMode, targetSize) {
     if (!payload || payload.mimeType !== "image/svg+xml" || !payload.dataBase64) {
       return payload;
     }
@@ -2361,8 +2443,20 @@
       var image = new Image();
       image.onload = function() {
         try {
-          var width = Math.max(1, Math.round(image.naturalWidth || 1280));
-          var height = Math.max(1, Math.round(image.naturalHeight || 720));
+          var naturalWidth = Math.max(1, Math.round(image.naturalWidth || 1280));
+          var naturalHeight = Math.max(1, Math.round(image.naturalHeight || 720));
+          var requestedWidth = normalizeVisualRenderDimension(
+            targetSize && targetSize.width,
+            naturalWidth,
+            320,
+            2000);
+          var requestedHeight = normalizeVisualRenderDimension(
+            targetSize && targetSize.height,
+            Math.round((naturalHeight / naturalWidth) * requestedWidth),
+            180,
+            2000);
+          var width = Math.max(1, requestedWidth);
+          var height = Math.max(1, requestedHeight);
           var canvas = document.createElement("canvas");
           canvas.width = width;
           canvas.height = height;
@@ -2407,21 +2501,67 @@
 
     if (exportFormat === "svg") {
       if (visualType !== "mermaid") {
-        return null;
+        return {
+          payload: null,
+          error: "SVG export is only available for Mermaid diagrams."
+        };
       }
-      return renderMermaidForExport(source, "panel", themeMode);
+      var svgPayload = await renderMermaidForExport(source, "panel", themeMode);
+      if (!svgPayload || !svgPayload.dataBase64) {
+        return {
+          payload: null,
+          error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+        };
+      }
+
+      return {
+        payload: svgPayload,
+        error: ""
+      };
     }
 
     var rendered = await renderVisualFenceForExport(visualType, source, "panel", themeMode);
     if (!rendered) {
-      return null;
+      var panelFallback = tryCaptureVisualViewCanvasPayload(visualType);
+      if (panelFallback && panelFallback.dataBase64) {
+        return {
+          payload: panelFallback,
+          error: ""
+        };
+      }
+
+      return {
+        payload: null,
+        error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+      };
     }
 
     if (rendered.mimeType === "image/svg+xml") {
-      return convertSvgPayloadToPng(rendered, themeMode);
+      var pngPayload = await convertSvgPayloadToPng(rendered, themeMode);
+      if (!pngPayload || !pngPayload.dataBase64) {
+        return {
+          payload: null,
+          error: "Visual export couldn't convert SVG output to PNG."
+        };
+      }
+
+      return {
+        payload: pngPayload,
+        error: ""
+      };
     }
 
-    return rendered;
+    if (!rendered.dataBase64) {
+      return {
+        payload: null,
+        error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+      };
+    }
+
+    return {
+      payload: rendered,
+      error: ""
+    };
   }
 
   async function executeVisualExport(exportId, outputPath) {
@@ -2431,11 +2571,15 @@
     }
 
     try {
-      var payload = await buildVisualExportPayload(pending.type, pending.source, pending.format);
+      var exportBuild = await buildVisualExportPayload(pending.type, pending.source, pending.format);
+      var payload = exportBuild && exportBuild.payload ? exportBuild.payload : null;
       if (!payload || !payload.dataBase64) {
         delete pendingVisualExports[exportId];
         setVisualViewExportButtonsBusy();
-        setVisualViewFeedback("Visual export failed before save.", "bad", 0);
+        var errorMessage = exportBuild && exportBuild.error
+          ? exportBuild.error
+          : "Visual export couldn't prepare the image payload before save.";
+        setVisualViewFeedback(errorMessage, "bad", 0);
         return;
       }
 
@@ -2447,10 +2591,13 @@
         mimeType: payload.mimeType || "",
         dataBase64: payload.dataBase64
       });
-    } catch (_) {
+    } catch (err) {
       delete pendingVisualExports[exportId];
       setVisualViewExportButtonsBusy();
-      setVisualViewFeedback("Visual export failed before save.", "bad", 0);
+      var message = err && err.message
+        ? "Visual export preparation failed: " + err.message
+        : "Visual export couldn't prepare the image payload before save.";
+      setVisualViewFeedback(message, "bad", 0);
     }
   }
 
@@ -2505,9 +2652,13 @@
     setVisualViewPopoutBusy(true);
     setVisualViewFeedback("Opening visual in external viewer...", "info", 0);
     buildVisualExportPayload(type, source, preferredFormat)
-      .then(function(payload) {
+      .then(function(exportBuild) {
+        var payload = exportBuild && exportBuild.payload ? exportBuild.payload : null;
         if (!payload || !payload.dataBase64) {
-          throw new Error("render payload missing");
+          var detail = exportBuild && exportBuild.error
+            ? exportBuild.error
+            : "Visual popout couldn't prepare the image payload.";
+          throw new Error(detail);
         }
 
         post("open_visual_popout", {
@@ -2516,9 +2667,10 @@
           dataBase64: payload.dataBase64
         });
       })
-      .catch(function() {
+      .catch(function(err) {
+        var message = err && err.message ? err.message : "Visual popout couldn't prepare the image payload.";
         setVisualViewPopoutBusy(false);
-        setVisualViewFeedback("Failed to prepare visual popout.", "bad", 0);
+        setVisualViewFeedback(message, "bad", 0);
       });
   }
 
@@ -3269,7 +3421,7 @@
     }
   }
 
-  async function renderChartForExport(source, imageId, themeMode) {
+  async function renderChartForExport(source, imageId, themeMode, renderSize) {
     var ready = await ensureChartReady();
     if (!ready) {
       return null;
@@ -3300,22 +3452,32 @@
     });
 
     var palette = resolveVisualExportPalette(themeMode);
+    var exportWidth = normalizeVisualRenderDimension(
+      renderSize && renderSize.width,
+      ixVisualExportState.chartWidth,
+      320,
+      2000);
+    var exportHeight = normalizeVisualRenderDimension(
+      renderSize && renderSize.height,
+      ixVisualExportState.chartHeight,
+      220,
+      1800);
     var host = document.createElement("div");
     host.style.position = "fixed";
     host.style.left = "-10000px";
     host.style.top = "-10000px";
-    host.style.width = String(ixVisualExportState.chartWidth) + "px";
-    host.style.height = String(ixVisualExportState.chartHeight) + "px";
+    host.style.width = String(exportWidth) + "px";
+    host.style.height = String(exportHeight) + "px";
     host.style.background = palette.background;
     host.style.padding = "0";
     host.style.margin = "0";
     document.body.appendChild(host);
 
     var canvas = document.createElement("canvas");
-    canvas.width = ixVisualExportState.chartWidth;
-    canvas.height = ixVisualExportState.chartHeight;
-    canvas.style.width = String(ixVisualExportState.chartWidth) + "px";
-    canvas.style.height = String(ixVisualExportState.chartHeight) + "px";
+    canvas.width = exportWidth;
+    canvas.height = exportHeight;
+    canvas.style.width = String(exportWidth) + "px";
+    canvas.style.height = String(exportHeight) + "px";
     host.appendChild(canvas);
 
     var context = canvas.getContext("2d");
@@ -3372,7 +3534,7 @@
     }
   }
 
-  async function renderNetworkForExport(source, imageId, themeMode) {
+  async function renderNetworkForExport(source, imageId, themeMode, renderSize) {
     var ready = await ensureNetworkReady();
     if (!ready) {
       return null;
@@ -3391,12 +3553,22 @@
     }
 
     var palette = resolveVisualExportPalette(themeMode);
+    var exportWidth = normalizeVisualRenderDimension(
+      renderSize && renderSize.width,
+      ixVisualExportState.networkWidth,
+      320,
+      2200);
+    var exportHeight = normalizeVisualRenderDimension(
+      renderSize && renderSize.height,
+      ixVisualExportState.networkHeight,
+      240,
+      1800);
     var host = document.createElement("div");
     host.style.position = "fixed";
     host.style.left = "-10000px";
     host.style.top = "-10000px";
-    host.style.width = String(ixVisualExportState.networkWidth) + "px";
-    host.style.height = String(ixVisualExportState.networkHeight) + "px";
+    host.style.width = String(exportWidth) + "px";
+    host.style.height = String(exportHeight) + "px";
     host.style.background = palette.background;
     document.body.appendChild(host);
 
@@ -3404,8 +3576,8 @@
     var options = buildRuntimeNetworkOptions(themeMode, validation.config.options || {}, "export");
     options = deepMergeForExport(options, {
       autoResize: false,
-      width: String(ixVisualExportState.networkWidth) + "px",
-      height: String(ixVisualExportState.networkHeight) + "px",
+      width: String(exportWidth) + "px",
+      height: String(exportHeight) + "px",
       interaction: {
         dragNodes: false,
         dragView: false,
@@ -3525,7 +3697,7 @@
     }
   }
 
-  async function renderVisualFenceForExport(language, source, imageId, themeMode) {
+  async function renderVisualFenceForExport(language, source, imageId, themeMode, renderSize) {
     var normalized = String(language || "").trim().toLowerCase();
     var content = normalizeText(source || "");
     if (!content) {
@@ -3540,14 +3712,14 @@
       if (content.length > ixVisualChartState.maxSourceChars) {
         return null;
       }
-      return renderChartForExport(content, imageId, themeMode);
+      return renderChartForExport(content, imageId, themeMode, renderSize);
     }
 
     if (normalized === "ix-network") {
       if (content.length > ixVisualNetworkState.maxSourceChars) {
         return null;
       }
-      return renderNetworkForExport(content, imageId, themeMode);
+      return renderNetworkForExport(content, imageId, themeMode, renderSize);
     }
 
     return null;
@@ -3565,6 +3737,7 @@
     }
 
     var themeMode = normalizeVisualExportThemeMode(request && request.themeMode);
+    var docxVisualMaxWidthPx = normalizeDocxVisualMaxWidthPx(request && request.docxVisualMaxWidthPx);
     var newline = detectLineEnding(sourceMarkdown);
     var normalized = sourceMarkdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     var lines = normalized.split("\n");
@@ -3604,7 +3777,11 @@
       }
 
       var source = lines.slice(i + 1, closingIndex).join("\n");
-      var rendered = await renderVisualFenceForExport(fence.language, source, imageCounter + 1, themeMode);
+      var renderSize = resolveDocxRenderSize(fence.language, docxVisualMaxWidthPx);
+      var rendered = await renderVisualFenceForExport(fence.language, source, imageCounter + 1, themeMode, renderSize);
+      if (rendered && rendered.mimeType === "image/svg+xml") {
+        rendered = await convertSvgPayloadToPng(rendered, themeMode, renderSize);
+      }
       if (!rendered || !rendered.dataBase64 || !rendered.mimeType) {
         appendFenceLines(lines, output, i, closingIndex);
         i = closingIndex + 1;
@@ -3619,7 +3796,7 @@
         mimeType: rendered.mimeType,
         dataBase64: rendered.dataBase64
       });
-      output.push("![" + String(rendered.alt || "Visual preview") + "](ix-export-image://" + imageId + ")");
+      output.push("![" + String(rendered.alt || "Visual preview") + "](<ix-export-image://" + imageId + ">)" + "{width=" + String(docxVisualMaxWidthPx) + "}");
       i = closingIndex + 1;
     }
 

@@ -2475,6 +2475,10 @@
     }
   }
 
+  function normalizeExportDocxVisualMaxWidthPx(value) {
+    return normalizeDocxVisualMaxWidthPxContract(value);
+  }
+
   function exportFormatDisplayName(format) {
     var normalized = normalizeExportFormat(format);
     if (normalized === "docx") return "Word";
@@ -2487,6 +2491,7 @@
     var saveMode = normalizeExportSaveMode(exportPrefs.saveMode);
     var format = normalizeExportFormat(exportPrefs.defaultFormat);
     var visualThemeMode = normalizeExportVisualThemeMode(exportPrefs.visualThemeMode);
+    var docxVisualMaxWidthPx = normalizeExportDocxVisualMaxWidthPx(exportPrefs.docxVisualMaxWidthPx);
     var lastDirectory = String(exportPrefs.lastDirectory || "");
 
     var saveModeSelect = byId("optExportSaveMode");
@@ -2505,6 +2510,11 @@
     if (visualThemeModeSelect) {
       visualThemeModeSelect.value = visualThemeMode;
       syncCustomSelect(visualThemeModeSelect);
+    }
+
+    var docxVisualMaxWidthInput = byId("optExportDocxVisualMaxWidthPx");
+    if (docxVisualMaxWidthInput) {
+      docxVisualMaxWidthInput.value = String(docxVisualMaxWidthPx);
     }
 
     var lastDirectoryInput = byId("optExportLastDirectory");
