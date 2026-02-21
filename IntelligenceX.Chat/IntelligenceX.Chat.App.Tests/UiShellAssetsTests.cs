@@ -157,6 +157,20 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures DOCX visual width binding is null-guarded so options initialization cannot crash on partial asset drift.
+    /// </summary>
+    [Fact]
+    public void Load_GuardsDocxVisualWidthBinding_WhenControlMissing() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("var docxVisualMaxWidthInput = byId(\"optExportDocxVisualMaxWidthPx\");", script, StringComparison.Ordinal);
+        Assert.Contains("if (docxVisualMaxWidthInput) {", script, StringComparison.Ordinal);
+        Assert.Contains("docxVisualMaxWidthInput.addEventListener(\"change\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("byId(\"optExportDocxVisualMaxWidthPx\").addEventListener(\"change\"", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures transport switching keeps draft compatible-http credentials in the form,
     /// instead of clearing hidden values when changing to non-compatible transports.
     /// </summary>
