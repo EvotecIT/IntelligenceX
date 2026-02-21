@@ -88,6 +88,28 @@ public sealed class ToolPipelineReliabilityOptions {
     /// </summary>
     public Func<TimeSpan, CancellationToken, Task>? DelayAsync { get; init; }
 
+    /// <summary>
+    /// Creates a defensive copy of the reliability options.
+    /// </summary>
+    public ToolPipelineReliabilityOptions Clone() {
+        return new ToolPipelineReliabilityOptions {
+            MaxAttempts = MaxAttempts,
+            RetryTransientErrors = RetryTransientErrors,
+            RetryExceptions = RetryExceptions,
+            RetryNonTransientExceptions = RetryNonTransientExceptions,
+            AttemptTimeoutMs = AttemptTimeoutMs,
+            BaseDelayMs = BaseDelayMs,
+            MaxDelayMs = MaxDelayMs,
+            JitterRatio = JitterRatio,
+            EnableCircuitBreaker = EnableCircuitBreaker,
+            CircuitFailureThreshold = CircuitFailureThreshold,
+            CircuitOpenMs = CircuitOpenMs,
+            CircuitKey = CircuitKey,
+            UtcNowProvider = UtcNowProvider,
+            DelayAsync = DelayAsync
+        };
+    }
+
     internal ToolPipelineReliabilityOptions Normalize() {
         var maxAttempts = Math.Clamp(MaxAttempts, 1, 10);
         var attemptTimeoutMs = Math.Clamp(AttemptTimeoutMs, 0, 300_000);
@@ -120,10 +142,7 @@ public sealed class ToolPipelineReliabilityOptions {
 /// Shared reliability presets used by tools to avoid option drift.
 /// </summary>
 public static class ToolPipelineReliabilityProfiles {
-    /// <summary>
-    /// Balanced retries for read-only queries.
-    /// </summary>
-    public static ToolPipelineReliabilityOptions ReadOnlyQuery => new() {
+    private static readonly ToolPipelineReliabilityOptions ReadOnlyQueryTemplate = new() {
         MaxAttempts = 3,
         RetryTransientErrors = true,
         RetryExceptions = true,
@@ -137,10 +156,7 @@ public static class ToolPipelineReliabilityProfiles {
         CircuitOpenMs = 15_000
     };
 
-    /// <summary>
-    /// Aggressive but bounded retries for fast connectivity probes.
-    /// </summary>
-    public static ToolPipelineReliabilityOptions FastNetworkProbe => new() {
+    private static readonly ToolPipelineReliabilityOptions FastNetworkProbeTemplate = new() {
         MaxAttempts = 3,
         RetryTransientErrors = true,
         RetryExceptions = true,
@@ -153,6 +169,18 @@ public static class ToolPipelineReliabilityProfiles {
         CircuitFailureThreshold = 4,
         CircuitOpenMs = 10_000
     };
+
+    /// <summary>
+    /// Balanced retries for read-only queries.
+    /// Returns a defensive copy safe for per-tool customization.
+    /// </summary>
+    public static ToolPipelineReliabilityOptions ReadOnlyQuery => ReadOnlyQueryTemplate.Clone();
+
+    /// <summary>
+    /// Aggressive but bounded retries for fast connectivity probes.
+    /// Returns a defensive copy safe for per-tool customization.
+    /// </summary>
+    public static ToolPipelineReliabilityOptions FastNetworkProbe => FastNetworkProbeTemplate.Clone();
 }
 
 public static partial class ToolPipeline {
