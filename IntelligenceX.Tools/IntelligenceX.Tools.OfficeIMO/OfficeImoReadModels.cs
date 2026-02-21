@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.OfficeIMO;
@@ -9,6 +10,7 @@ namespace IntelligenceX.Tools.OfficeIMO;
 /// Result model for <c>officeimo_read</c>.
 /// </summary>
 public sealed class OfficeImoReadResult {
+    private IReadOnlyList<ToolNextActionModel> _nextActions = Array.Empty<ToolNextActionModel>();
     private IReadOnlyDictionary<string, string> _handoff = ToolChainingHints.EmptyMap;
 
     /// <summary>
@@ -80,7 +82,10 @@ public sealed class OfficeImoReadResult {
     /// <summary>
     /// Advisory next actions for model/tool chaining.
     /// </summary>
-    public IReadOnlyList<ToolNextActionModel> NextActions { get; set; } = Array.Empty<ToolNextActionModel>();
+    public IReadOnlyList<ToolNextActionModel> NextActions {
+        get => _nextActions;
+        set => _nextActions = NormalizeNextActions(value);
+    }
 
     /// <summary>
     /// Opaque continuation cursor.
@@ -105,6 +110,21 @@ public sealed class OfficeImoReadResult {
     /// Best-effort confidence score (0..1) for this extraction context.
     /// </summary>
     public double Confidence { get; set; } = 0.5d;
+
+    private static IReadOnlyList<ToolNextActionModel> NormalizeNextActions(IReadOnlyList<ToolNextActionModel>? value) {
+        if (value is null || value.Count == 0) {
+            return Array.Empty<ToolNextActionModel>();
+        }
+
+        var normalized = value
+            .Where(static action => action is not null)
+            .ToList();
+        if (normalized.Count == 0) {
+            return Array.Empty<ToolNextActionModel>();
+        }
+
+        return new ReadOnlyCollection<ToolNextActionModel>(normalized);
+    }
 
     // Keys are trimmed; collisions after normalization are resolved as last-write-wins.
     private static IReadOnlyDictionary<string, string> NormalizeHandoff(IReadOnlyDictionary<string, string>? value) {

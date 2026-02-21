@@ -14,6 +14,36 @@ namespace IntelligenceX.Tools.Tests;
 
 public class OfficeImoReadToolTests {
     [Fact]
+    public void OfficeImoReadResult_WhenNextActionsAssignedNullOrEmpty_UsesEmptyList() {
+        var result = new OfficeImoReadResult {
+            NextActions = null!
+        };
+
+        Assert.Empty(result.NextActions);
+
+        result.NextActions = Array.Empty<ToolNextActionModel>();
+        Assert.Empty(result.NextActions);
+    }
+
+    [Fact]
+    public void OfficeImoReadResult_WhenNextActionsAssignedMutableList_IsCopiedAndReadOnly() {
+        var source = new List<ToolNextActionModel> {
+            new() { Tool = "officeimo_read", Reason = "follow-up", Optional = true }
+        };
+
+        var result = new OfficeImoReadResult {
+            NextActions = source
+        };
+        source.Add(new ToolNextActionModel { Tool = "ad_scope_discovery", Reason = "extra", Optional = true });
+
+        Assert.Single(result.NextActions);
+        Assert.Equal("officeimo_read", result.NextActions[0].Tool);
+
+        var list = Assert.IsAssignableFrom<IList<ToolNextActionModel>>(result.NextActions);
+        Assert.Throws<NotSupportedException>(() => list.Add(new ToolNextActionModel { Tool = "x", Reason = "y" }));
+    }
+
+    [Fact]
     public void OfficeImoReadResult_WhenHandoffAssignedNullOrEmpty_UsesSharedEmptyMap() {
         var result = new OfficeImoReadResult {
             Handoff = null!

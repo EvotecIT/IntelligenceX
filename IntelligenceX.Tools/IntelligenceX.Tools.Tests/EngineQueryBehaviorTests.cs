@@ -152,9 +152,9 @@ public sealed class EngineQueryBehaviorTests {
 
     [Fact]
     public async Task PowerShellExecuteAsync_ReturnsWithoutBlockingCaller() {
-        if (PowerShellCommandQueryExecutor.GetAvailableHosts().Count == 0) {
-            return;
-        }
+        TestRuntimeGuards.Require(
+            condition: PowerShellCommandQueryExecutor.GetAvailableHosts().Count > 0,
+            reason: "PowerShell query host is unavailable on this environment.");
 
         var request = new PowerShellCommandQueryRequest {
             Script = "Start-Sleep -Milliseconds 1500; 'done'",
@@ -172,9 +172,9 @@ public sealed class EngineQueryBehaviorTests {
 
     [Fact]
     public async Task PowerShellTryExecuteAsync_CanceledTokenIsNotReportedAsTimeout() {
-        if (PowerShellCommandQueryExecutor.GetAvailableHosts().Count == 0) {
-            return;
-        }
+        TestRuntimeGuards.Require(
+            condition: PowerShellCommandQueryExecutor.GetAvailableHosts().Count > 0,
+            reason: "PowerShell query host is unavailable on this environment.");
 
         var request = new PowerShellCommandQueryRequest {
             Script = "Start-Sleep -Seconds 10; 'done'",
@@ -193,9 +193,9 @@ public sealed class EngineQueryBehaviorTests {
 
     [Fact]
     public async Task PowerShellTryExecuteAsync_TimeoutIsNotReportedAsCancelled() {
-        if (PowerShellCommandQueryExecutor.GetAvailableHosts().Count == 0) {
-            return;
-        }
+        TestRuntimeGuards.Require(
+            condition: PowerShellCommandQueryExecutor.GetAvailableHosts().Count > 0,
+            reason: "PowerShell query host is unavailable on this environment.");
 
         var request = new PowerShellCommandQueryRequest {
             Script = "Start-Sleep -Seconds 10; 'done'",
