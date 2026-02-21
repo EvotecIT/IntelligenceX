@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Markdown;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;

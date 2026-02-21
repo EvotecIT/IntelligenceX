@@ -8,6 +8,85 @@ using IntelligenceX.Tools;
 namespace IntelligenceX.Tools.Common;
 
 public static partial class ToolPackGuidance {
+
+    /// <summary>
+    /// Creates a standard pack guidance model used by <c>*_pack_info</c> tools.
+    /// </summary>
+    /// <param name="pack">Pack identifier.</param>
+    /// <param name="engine">Engine/library name.</param>
+    /// <param name="tools">Registered tool names.</param>
+    /// <param name="recommendedFlow">Optional flow guidance.</param>
+    /// <param name="flowSteps">Optional structured flow steps.</param>
+    /// <param name="capabilities">Optional structured capability descriptors.</param>
+    /// <param name="entityHandoffs">Optional structured entity handoff descriptors.</param>
+    /// <param name="toolCatalog">Optional tool catalog derived from runtime registrations and schemas.</param>
+    /// <param name="rawPayloadPolicy">Optional raw payload policy override.</param>
+    /// <param name="viewProjectionPolicy">Optional projection policy override.</param>
+    /// <param name="correlationGuidance">Optional correlation guidance.</param>
+    /// <param name="viewFieldSuffix">Optional projection field suffix.</param>
+    /// <param name="setupHints">Optional setup hints object.</param>
+    /// <param name="safety">Optional safety hints object.</param>
+    /// <param name="limits">Optional limits hints object.</param>
+    /// <param name="note">Optional additional note.</param>
+    /// <returns>Typed pack guidance model.</returns>
+    public static ToolPackInfoModel Create(
+        string pack,
+        string engine,
+        IReadOnlyList<string> tools,
+        IEnumerable<string>? recommendedFlow = null,
+        IEnumerable<ToolPackFlowStepModel>? flowSteps = null,
+        IEnumerable<ToolPackCapabilityModel>? capabilities = null,
+        IEnumerable<ToolPackEntityHandoffModel>? entityHandoffs = null,
+        IEnumerable<ToolPackToolCatalogEntryModel>? toolCatalog = null,
+        string? rawPayloadPolicy = null,
+        string? viewProjectionPolicy = null,
+        string? correlationGuidance = null,
+        string viewFieldSuffix = "_view",
+        object? setupHints = null,
+        object? safety = null,
+        object? limits = null,
+        string? note = null) {
+        if (string.IsNullOrWhiteSpace(pack)) {
+            throw new ArgumentException("Pack id is required.", nameof(pack));
+        }
+        if (string.IsNullOrWhiteSpace(engine)) {
+            throw new ArgumentException("Engine name is required.", nameof(engine));
+        }
+
+        var resolvedTools = NormalizeValues(tools);
+        var flow = NormalizeValues(recommendedFlow, distinct: false);
+        var resolvedFlowSteps = NormalizeFlowSteps(flowSteps);
+        var resolvedCapabilities = NormalizeCapabilities(capabilities);
+        var resolvedEntityHandoffs = NormalizeEntityHandoffs(entityHandoffs);
+        var resolvedToolCatalog = NormalizeToolCatalog(toolCatalog);
+
+        return new ToolPackInfoModel {
+            Pack = pack.Trim(),
+            Engine = engine.Trim(),
+            GuidanceVersion = 1,
+            OutputContract = new ToolPackOutputContractModel {
+                RawPayloadPolicy = string.IsNullOrWhiteSpace(rawPayloadPolicy)
+                    ? "Preserve raw payload fields for model reasoning and correlation."
+                    : rawPayloadPolicy.Trim(),
+                ViewProjectionPolicy = string.IsNullOrWhiteSpace(viewProjectionPolicy)
+                    ? "Projection arguments are optional and view-only."
+                    : viewProjectionPolicy.Trim(),
+                ViewFieldSuffix = string.IsNullOrWhiteSpace(viewFieldSuffix) ? "_view" : viewFieldSuffix.Trim(),
+                CorrelationGuidance = string.IsNullOrWhiteSpace(correlationGuidance) ? null : correlationGuidance.Trim()
+            },
+            SetupHints = setupHints,
+            Safety = safety,
+            Limits = limits,
+            RecommendedFlow = flow,
+            RecommendedFlowSteps = resolvedFlowSteps,
+            Capabilities = resolvedCapabilities,
+            EntityHandoffs = resolvedEntityHandoffs,
+            ToolCatalog = resolvedToolCatalog,
+            Tools = resolvedTools,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
+        };
+    }
+
     private static IReadOnlyList<string> NormalizeValues(IEnumerable<string>? values, bool distinct = true) {
         var query = (values ?? Array.Empty<string>())
             .Where(static x => !string.IsNullOrWhiteSpace(x))
@@ -127,6 +206,10 @@ public static partial class ToolPackGuidance {
 
             list.Add(new ToolPackToolCatalogEntryModel {
                 Name = name,
+                DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? null : entry.DisplayName.Trim(),
+                Category = NormalizeCategory(entry.Category),
+                Tags = NormalizeTags(entry.Tags),
+                Routing = NormalizeRouting(entry.Routing),
                 Description = entry.Description?.Trim() ?? string.Empty,
                 RequiredArguments = NormalizeValues(entry.RequiredArguments),
                 Arguments = NormalizeArguments(entry.Arguments),
@@ -189,6 +272,95 @@ public static partial class ToolPackGuidance {
             SupportsAuthentication = authenticationArguments.Count > 0,
             AuthenticationArguments = authenticationArguments
         };
+    }
+
+    private static ToolPackToolRoutingModel NormalizeRouting(ToolPackToolRoutingModel? routing) {
+        if (routing is null) {
+            return new ToolPackToolRoutingModel();
+        }
+
+        var scope = NormalizeRoutingToken(routing.Scope, ToolRoutingTaxonomy.ScopeGeneral);
+        var operation = NormalizeRoutingToken(routing.Operation, ToolRoutingTaxonomy.OperationRead);
+        var entity = NormalizeRoutingToken(routing.Entity, ToolRoutingTaxonomy.EntityResource);
+        var rawRisk = (routing.Risk ?? string.Empty).Trim();
+        var risk = NormalizeRoutingToken(routing.Risk, ToolRoutingTaxonomy.RiskLow);
+        var rawSource = (routing.Source ?? string.Empty).Trim();
+        var source = NormalizeRoutingToken(routing.Source, ToolRoutingTaxonomy.SourceInferred);
+        if (!ToolRoutingTaxonomy.IsAllowedSource(source)) {
+            if (rawSource.Length > 0) {
+                throw new InvalidOperationException(
+                    $"Routing source '{rawSource}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedSources)}.");
+            }
+
+            source = ToolRoutingTaxonomy.SourceInferred;
+        }
+
+        if (!ToolRoutingTaxonomy.IsAllowedRisk(risk)) {
+            if (string.Equals(source, ToolRoutingTaxonomy.SourceExplicit, StringComparison.Ordinal)) {
+                throw new InvalidOperationException(
+                    $"Explicit routing risk '{rawRisk}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
+            }
+
+            risk = ToolRoutingTaxonomy.RiskLow;
+        }
+
+        if (string.Equals(source, ToolRoutingTaxonomy.SourceExplicit, StringComparison.Ordinal) && rawRisk.Length == 0) {
+            throw new InvalidOperationException(
+                $"Explicit routing risk is required and must be one of: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
+        }
+
+        return new ToolPackToolRoutingModel {
+            Scope = scope,
+            Operation = operation,
+            Entity = entity,
+            Risk = risk,
+            Source = source
+        };
+    }
+
+    private static string NormalizeCategory(string? category) {
+        var normalized = (category ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "general";
+        }
+
+        return normalized.ToLowerInvariant();
+    }
+
+    private static IReadOnlyList<string> NormalizeTags(IEnumerable<string>? tags) {
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tag in tags ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(tag)) {
+                continue;
+            }
+
+            var normalized = tag.Trim().ToLowerInvariant();
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+
+        if (list.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list.ToArray();
+    }
+
+    private static string NormalizeRoutingToken(string? value, string fallback) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return fallback;
+        }
+
+        return normalized.ToLowerInvariant();
     }
 
     private static ToolPackToolTraitsModel NormalizeTraits(ToolPackToolTraitsModel? traits) {

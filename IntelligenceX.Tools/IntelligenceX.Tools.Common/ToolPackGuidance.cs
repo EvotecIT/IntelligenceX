@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.Common;
 /// Typed contract for pack-level guidance returned by <c>*_pack_info</c> tools.
 /// </summary>
 public sealed class ToolPackInfoModel {
+    private IReadOnlyList<ToolPackToolCatalogEntryModel> _toolCatalog = Array.Empty<ToolPackToolCatalogEntryModel>();
+
     /// <summary>
     /// Pack identifier (for example: <c>active_directory</c>, <c>system</c>).
     /// </summary>
@@ -69,7 +71,10 @@ public sealed class ToolPackInfoModel {
     /// <summary>
     /// Tool-level catalog derived from runtime registrations and schemas.
     /// </summary>
-    public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog { get; init; } = Array.Empty<ToolPackToolCatalogEntryModel>();
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog {
+        get => _toolCatalog;
+        init => _toolCatalog = ToolPackGuidance.NormalizeToolCatalogContract(value);
+    }
 
     /// <summary>
     /// Registered tool names for this pack.
@@ -213,13 +218,69 @@ public sealed class ToolPackEntityFieldMappingModel {
 }
 
 /// <summary>
+/// Structured routing taxonomy for model-side tool selection.
+/// </summary>
+public sealed class ToolPackToolRoutingModel {
+    /// <summary>
+    /// Primary scope where the tool operates (for example: host/domain/file/message/pack).
+    /// </summary>
+    public string Scope { get; init; } = ToolRoutingTaxonomy.ScopeGeneral;
+
+    /// <summary>
+    /// Primary operation kind (for example: query/search/list/read/write/execute/guide).
+    /// </summary>
+    public string Operation { get; init; } = ToolRoutingTaxonomy.OperationRead;
+
+    /// <summary>
+    /// Primary entity class handled by this tool.
+    /// </summary>
+    public string Entity { get; init; } = ToolRoutingTaxonomy.EntityResource;
+
+    /// <summary>
+    /// Relative execution risk profile (for example: low/medium/high).
+    /// </summary>
+    public string Risk { get; init; } = ToolRoutingTaxonomy.RiskLow;
+
+    /// <summary>
+    /// Routing source marker (<c>explicit</c> when overridden, otherwise <c>inferred</c>).
+    /// </summary>
+    public string Source { get; init; } = ToolRoutingTaxonomy.SourceInferred;
+}
+
+/// <summary>
 /// Tool-level catalog entry for pack guidance.
 /// </summary>
 public sealed class ToolPackToolCatalogEntryModel {
+    private ToolPackToolRoutingModel _routing = new();
+
     /// <summary>
     /// Tool name as registered in the runtime tool registry.
     /// </summary>
     public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional display name from tool definition metadata.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Category for routing/scoping.
+    /// </summary>
+    public string Category { get; init; } = "general";
+
+    /// <summary>
+    /// Selection tags exposed by tool definition metadata.
+    /// </summary>
+    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Structured routing taxonomy for model-side tool selection.
+    /// </summary>
+    public ToolPackToolRoutingModel Routing {
+        get => _routing;
+        init => _routing = ToolPackGuidance.NormalizeRoutingContract(value);
+    }
 
     /// <summary>
     /// Tool description from definition metadata.
@@ -436,6 +497,15 @@ public static partial class ToolPackGuidance {
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
         ToolAuthenticationArgumentNames.CanonicalArguments;
 
+    internal static ToolPackToolRoutingModel NormalizeRoutingContract(ToolPackToolRoutingModel? routing) {
+        return NormalizeRouting(routing);
+    }
+
+    internal static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalogContract(
+        IEnumerable<ToolPackToolCatalogEntryModel>? entries) {
+        return NormalizeToolCatalog(entries);
+    }
+
     /// <summary>
     /// Creates a structured flow step descriptor.
     /// </summary>
@@ -529,25 +599,41 @@ public static partial class ToolPackGuidance {
                 continue;
             }
 
-            var requiredArguments = ReadRequiredArguments(def.Parameters);
-            var argumentHints = ReadArgumentHints(def.Parameters, requiredArguments);
-            var supportsTableView = SupportsTableViewProjection(def.Parameters);
-            ToolAuthenticationContract? authentication = def.Authentication;
+            var enrichedDefinition = ToolSelectionMetadata.Enrich(def, tool.GetType());
+            var requiredArguments = ReadRequiredArguments(enrichedDefinition.Parameters);
+            var argumentHints = ReadArgumentHints(enrichedDefinition.Parameters, requiredArguments);
+            var supportsTableView = SupportsTableViewProjection(enrichedDefinition.Parameters);
+            var routing = ToolSelectionMetadata.ResolveRouting(enrichedDefinition, tool.GetType());
+            ToolAuthenticationContract? authentication = enrichedDefinition.Authentication;
             var authenticationArguments = NormalizeValues(authentication?.GetSchemaArgumentNames());
 
             list.Add(new ToolPackToolCatalogEntryModel {
-                Name = def.Name.Trim(),
-                Description = def.Description?.Trim() ?? string.Empty,
+                Name = enrichedDefinition.Name.Trim(),
+                DisplayName = string.IsNullOrWhiteSpace(enrichedDefinition.DisplayName)
+                    ? null
+                    : enrichedDefinition.DisplayName.Trim(),
+                Category = NormalizeCategory(enrichedDefinition.Category),
+                Tags = NormalizeTags(enrichedDefinition.Tags),
+                Routing = new ToolPackToolRoutingModel {
+                    Scope = routing.Scope,
+                    Operation = routing.Operation,
+                    Entity = routing.Entity,
+                    Risk = routing.Risk,
+                    Source = routing.IsExplicit
+                        ? ToolRoutingTaxonomy.SourceExplicit
+                        : ToolRoutingTaxonomy.SourceInferred
+                },
+                Description = enrichedDefinition.Description?.Trim() ?? string.Empty,
                 RequiredArguments = requiredArguments,
                 Arguments = argumentHints,
                 SupportsTableViewProjection = supportsTableView,
-                IsPackInfoTool = def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
+                IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
                 Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
-                IsWriteCapable = def.WriteGovernance?.IsWriteCapable ?? false,
-                RequiresWriteGovernance = def.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
-                WriteGovernanceContractId = string.IsNullOrWhiteSpace(def.WriteGovernance?.GovernanceContractId)
+                IsWriteCapable = enrichedDefinition.WriteGovernance?.IsWriteCapable ?? false,
+                RequiresWriteGovernance = enrichedDefinition.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
+                WriteGovernanceContractId = string.IsNullOrWhiteSpace(enrichedDefinition.WriteGovernance?.GovernanceContractId)
                     ? null
-                    : def.WriteGovernance!.GovernanceContractId,
+                    : enrichedDefinition.WriteGovernance!.GovernanceContractId,
                 IsAuthenticationAware = authentication?.IsAuthenticationAware ?? false,
                 RequiresAuthentication = authentication?.RequiresAuthentication ?? false,
                 AuthenticationContractId = string.IsNullOrWhiteSpace(authentication?.AuthenticationContractId)
@@ -564,83 +650,5 @@ public static partial class ToolPackGuidance {
 
         return NormalizeToolCatalog(list);
     }
-
-    /// <summary>
-    /// Creates a standard pack guidance model used by <c>*_pack_info</c> tools.
-    /// </summary>
-    /// <param name="pack">Pack identifier.</param>
-    /// <param name="engine">Engine/library name.</param>
-    /// <param name="tools">Registered tool names.</param>
-    /// <param name="recommendedFlow">Optional flow guidance.</param>
-    /// <param name="flowSteps">Optional structured flow steps.</param>
-    /// <param name="capabilities">Optional structured capability descriptors.</param>
-    /// <param name="entityHandoffs">Optional structured entity handoff descriptors.</param>
-    /// <param name="toolCatalog">Optional tool catalog derived from runtime registrations and schemas.</param>
-    /// <param name="rawPayloadPolicy">Optional raw payload policy override.</param>
-    /// <param name="viewProjectionPolicy">Optional projection policy override.</param>
-    /// <param name="correlationGuidance">Optional correlation guidance.</param>
-    /// <param name="viewFieldSuffix">Optional projection field suffix.</param>
-    /// <param name="setupHints">Optional setup hints object.</param>
-    /// <param name="safety">Optional safety hints object.</param>
-    /// <param name="limits">Optional limits hints object.</param>
-    /// <param name="note">Optional additional note.</param>
-    /// <returns>Typed pack guidance model.</returns>
-    public static ToolPackInfoModel Create(
-        string pack,
-        string engine,
-        IReadOnlyList<string> tools,
-        IEnumerable<string>? recommendedFlow = null,
-        IEnumerable<ToolPackFlowStepModel>? flowSteps = null,
-        IEnumerable<ToolPackCapabilityModel>? capabilities = null,
-        IEnumerable<ToolPackEntityHandoffModel>? entityHandoffs = null,
-        IEnumerable<ToolPackToolCatalogEntryModel>? toolCatalog = null,
-        string? rawPayloadPolicy = null,
-        string? viewProjectionPolicy = null,
-        string? correlationGuidance = null,
-        string viewFieldSuffix = "_view",
-        object? setupHints = null,
-        object? safety = null,
-        object? limits = null,
-        string? note = null) {
-        if (string.IsNullOrWhiteSpace(pack)) {
-            throw new ArgumentException("Pack id is required.", nameof(pack));
-        }
-        if (string.IsNullOrWhiteSpace(engine)) {
-            throw new ArgumentException("Engine name is required.", nameof(engine));
-        }
-
-        var resolvedTools = NormalizeValues(tools);
-        var flow = NormalizeValues(recommendedFlow, distinct: false);
-        var resolvedFlowSteps = NormalizeFlowSteps(flowSteps);
-        var resolvedCapabilities = NormalizeCapabilities(capabilities);
-        var resolvedEntityHandoffs = NormalizeEntityHandoffs(entityHandoffs);
-        var resolvedToolCatalog = NormalizeToolCatalog(toolCatalog);
-
-        return new ToolPackInfoModel {
-            Pack = pack.Trim(),
-            Engine = engine.Trim(),
-            GuidanceVersion = 1,
-            OutputContract = new ToolPackOutputContractModel {
-                RawPayloadPolicy = string.IsNullOrWhiteSpace(rawPayloadPolicy)
-                    ? "Preserve raw payload fields for model reasoning and correlation."
-                    : rawPayloadPolicy.Trim(),
-                ViewProjectionPolicy = string.IsNullOrWhiteSpace(viewProjectionPolicy)
-                    ? "Projection arguments are optional and view-only."
-                    : viewProjectionPolicy.Trim(),
-                ViewFieldSuffix = string.IsNullOrWhiteSpace(viewFieldSuffix) ? "_view" : viewFieldSuffix.Trim(),
-                CorrelationGuidance = string.IsNullOrWhiteSpace(correlationGuidance) ? null : correlationGuidance.Trim()
-            },
-            SetupHints = setupHints,
-            Safety = safety,
-            Limits = limits,
-            RecommendedFlow = flow,
-            RecommendedFlowSteps = resolvedFlowSteps,
-            Capabilities = resolvedCapabilities,
-            EntityHandoffs = resolvedEntityHandoffs,
-            ToolCatalog = resolvedToolCatalog,
-            Tools = resolvedTools,
-            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
-        };
-    }
-
 }
+
