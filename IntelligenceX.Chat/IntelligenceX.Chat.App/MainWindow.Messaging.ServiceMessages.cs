@@ -148,7 +148,7 @@ public sealed partial class MainWindow : Window {
 
         // If runtime still holds a stale account pin after successful OAuth callback,
         // clear it and probe again so we can bind to the account that just authenticated.
-        _ = await TryClearNativeRuntimeAccountPinNoThrowAsync("Post-login verification").ConfigureAwait(false);
+        _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
 
         if (await RefreshAuthenticationStateAsync(updateStatus: true, requireFreshProbe: true).ConfigureAwait(false)) {
             return true;
@@ -162,6 +162,8 @@ public sealed partial class MainWindow : Window {
         var refreshSucceeded = false;
         try {
             refreshSucceeded = await VerifyPostLoginAuthenticationAsync().ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            return;
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 try {

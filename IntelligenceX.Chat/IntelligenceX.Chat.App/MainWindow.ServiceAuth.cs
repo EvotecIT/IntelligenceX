@@ -343,20 +343,7 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        _ = await TryClearNativeRuntimeAccountPinNoThrowAsync("Account switch").ConfigureAwait(false);
-    }
-
-    private async Task<bool> TryClearNativeRuntimeAccountPinNoThrowAsync(string flowLabel) {
-        try {
-            return await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            if (VerboseServiceLogs || _debugMode) {
-                await AppendSystemBestEffortAsync($"{flowLabel} will continue, but runtime account pin reset timed out.")
-                    .ConfigureAwait(false);
-            }
-
-            return false;
-        }
+        _ = await TryClearNativeRuntimeAccountPinAsync().ConfigureAwait(false);
     }
 
     private async Task<bool> TryClearNativeRuntimeAccountPinAsync() {
@@ -365,15 +352,21 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             _ = await client.ApplyRuntimeSettingsAsync(
                     openAIAccountId: string.Empty,
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
             return true;
-        } catch (OperationCanceledException) {
-            throw;
+        } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+            // Timeout while applying runtime settings should be non-fatal for auth recovery.
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync("Runtime account pin reset timed out.")
+                    .ConfigureAwait(false);
+            }
+
+            return false;
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 await AppendSystemBestEffortAsync("Runtime account pin reset failed: " + ex.Message)
