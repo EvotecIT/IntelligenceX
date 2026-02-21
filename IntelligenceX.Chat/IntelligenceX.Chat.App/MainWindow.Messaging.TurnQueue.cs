@@ -81,7 +81,13 @@ public sealed partial class MainWindow : Window {
         CancellationTokenSource? turnRequestCts = null;
         try {
             turnRequestCts = new CancellationTokenSource();
-            RegisterActiveTurnLifecycle(requestId, turn.ConversationId, turnRequestCts);
+            lock (_activeTurnLifecycleSync) {
+                _activeTurnRequestId = requestId;
+                _latestTurnRequestId = requestId;
+                _cancelRequestedTurnRequestId = null;
+                _activeTurnRequestCts = turnRequestCts;
+                _activeRequestConversationId = turn.ConversationId;
+            }
             ClearToolRoutingInsights();
             await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
             try {
@@ -95,7 +101,30 @@ public sealed partial class MainWindow : Window {
         } finally {
             StopTurnWatchdog();
             _isSending = false;
-            CompleteActiveTurnLifecycle(requestId, turn.ConversationId, turnRequestCts);
+            lock (_activeTurnLifecycleSync) {
+                if (string.Equals(_activeTurnRequestId, requestId, StringComparison.Ordinal)) {
+                    _activeTurnRequestId = null;
+                    if (string.Equals(_activeRequestConversationId, turn.ConversationId, StringComparison.OrdinalIgnoreCase)) {
+                        _activeRequestConversationId = null;
+                    }
+                }
+
+                if (string.Equals(_cancelRequestedTurnRequestId, requestId, StringComparison.Ordinal)) {
+                    _cancelRequestedTurnRequestId = null;
+                }
+
+                if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
+                    _activeTurnRequestCts = null;
+                }
+
+                if (turnRequestCts is not null) {
+                    try {
+                        turnRequestCts.Dispose();
+                    } catch (ObjectDisposedException) {
+                        // Cancellation may race with completion; disposed CTS is safe to ignore.
+                    }
+                }
+            }
             _activeTurnReceivedDelta = false;
             _activeTurnQueueWaitMs = null;
             try {
@@ -323,7 +352,22 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task CancelActiveTurnAsync() {
-        if (!TryCaptureActiveTurnForCancellation(out var chatRequestId, out var turnRequestCts)) {
+        string chatRequestId;
+        lock (_activeTurnLifecycleSync) {
+            if (!_isSending || string.IsNullOrWhiteSpace(_activeTurnRequestId)) {
+                chatRequestId = string.Empty;
+            } else {
+                chatRequestId = _activeTurnRequestId!;
+                _cancelRequestedTurnRequestId = chatRequestId;
+                try {
+                    _activeTurnRequestCts?.Cancel();
+                } catch (ObjectDisposedException) {
+                    // Turn completion may dispose the CTS before cancellation request arrives.
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(chatRequestId)) {
             await SetStatusAsync(SessionStatus.NoActiveTurnToCancel()).ConfigureAwait(false);
             return;
         }
@@ -334,7 +378,6 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        CancelCapturedTurnRequest(turnRequestCts);
         await SetStatusAsync(SessionStatus.Canceling()).ConfigureAwait(false);
         await PublishSessionStateAsync().ConfigureAwait(false);
 
@@ -349,72 +392,6 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 AppendSystem(SystemNotice.CancelRequestFailed(ex.Message));
-            }
-        }
-    }
-
-    private void RegisterActiveTurnLifecycle(string requestId, string conversationId, CancellationTokenSource turnRequestCts) {
-        lock (_activeTurnLifecycleSync) {
-            _activeTurnRequestId = requestId;
-            _latestTurnRequestId = requestId;
-            _cancelRequestedTurnRequestId = null;
-            _activeTurnRequestCts = turnRequestCts;
-            _activeRequestConversationId = conversationId;
-        }
-    }
-
-    private void CompleteActiveTurnLifecycle(string requestId, string conversationId, CancellationTokenSource? turnRequestCts) {
-        lock (_activeTurnLifecycleSync) {
-            if (string.Equals(_activeTurnRequestId, requestId, StringComparison.Ordinal)) {
-                _activeTurnRequestId = null;
-                if (string.Equals(_activeRequestConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
-                    _activeRequestConversationId = null;
-                }
-            }
-
-            if (string.Equals(_cancelRequestedTurnRequestId, requestId, StringComparison.Ordinal)) {
-                _cancelRequestedTurnRequestId = null;
-            }
-
-            if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
-                _activeTurnRequestCts = null;
-            }
-
-            if (turnRequestCts is not null) {
-                try {
-                    turnRequestCts.Dispose();
-                } catch (ObjectDisposedException) {
-                    // Cancellation may race with completion; disposed CTS is safe to ignore.
-                }
-            }
-        }
-    }
-
-    private bool TryCaptureActiveTurnForCancellation(out string requestId, out CancellationTokenSource? turnRequestCts) {
-        lock (_activeTurnLifecycleSync) {
-            if (!_isSending || string.IsNullOrWhiteSpace(_activeTurnRequestId)) {
-                requestId = string.Empty;
-                turnRequestCts = null;
-                return false;
-            }
-
-            requestId = _activeTurnRequestId!;
-            turnRequestCts = _activeTurnRequestCts;
-            _cancelRequestedTurnRequestId = requestId;
-            return true;
-        }
-    }
-
-    private void CancelCapturedTurnRequest(CancellationTokenSource? turnRequestCts) {
-        if (turnRequestCts is null) {
-            return;
-        }
-
-        lock (_activeTurnLifecycleSync) {
-            try {
-                turnRequestCts.Cancel();
-            } catch (ObjectDisposedException) {
-                // Turn completion may dispose the CTS before cancellation request arrives.
             }
         }
     }
