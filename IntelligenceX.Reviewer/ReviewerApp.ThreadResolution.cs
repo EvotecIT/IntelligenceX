@@ -584,6 +584,67 @@ public static partial class ReviewerApp {
         return id?.Trim() ?? string.Empty;
     }
 
+    private static async Task<int> TryResolveKeptBotThreadsAfterNoBlockersAsync(
+        GitHubClient github,
+        GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> candidates,
+        List<ThreadAssessment> resolved,
+        List<ThreadAssessment> kept,
+        ReviewSettings settings,
+        CancellationToken cancellationToken) {
+        if (kept.Count == 0) {
+            return 0;
+        }
+
+        var candidateById = new Dictionary<string, PullRequestReviewThread>(StringComparer.OrdinalIgnoreCase);
+        foreach (var thread in candidates) {
+            var normalizedId = NormalizeThreadAssessmentId(thread.Id);
+            if (normalizedId.Length == 0 || candidateById.ContainsKey(normalizedId)) {
+                continue;
+            }
+            candidateById[normalizedId] = thread;
+        }
+
+        var resolvedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in resolved) {
+            var normalizedId = NormalizeThreadAssessmentId(item.Id);
+            if (normalizedId.Length > 0) {
+                resolvedIds.Add(normalizedId);
+            }
+        }
+
+        var sweepResolvedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sweepResolved = 0;
+        foreach (var item in kept) {
+            var normalizedId = NormalizeThreadAssessmentId(item.Id);
+            if (normalizedId.Length == 0 || resolvedIds.Contains(normalizedId) || sweepResolvedIds.Contains(normalizedId)) {
+                continue;
+            }
+            if (!candidateById.TryGetValue(normalizedId, out var thread)) {
+                continue;
+            }
+            if (thread.IsResolved || thread.TotalComments > thread.Comments.Count || !ThreadHasOnlyBotComments(thread, settings)) {
+                continue;
+            }
+
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (!result.Resolved) {
+                Console.Error.WriteLine($"Failed no-blockers sweep resolve for review thread {thread.Id}: {result.Error ?? "unknown error"}");
+                continue;
+            }
+
+            sweepResolved++;
+            sweepResolvedIds.Add(normalizedId);
+            resolved.Add(new ThreadAssessment(item.Id, "resolve", $"{item.Reason} (no-blockers sweep)", item.Evidence));
+        }
+
+        if (sweepResolvedIds.Count > 0) {
+            kept.RemoveAll(item => sweepResolvedIds.Contains(NormalizeThreadAssessmentId(item.Id)));
+        }
+
+        return sweepResolved;
+    }
+
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
         try {

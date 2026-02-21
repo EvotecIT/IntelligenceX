@@ -38,4 +38,108 @@ internal static class ReviewSummaryParser {
 
         return false;
     }
+
+    internal static bool HasMergeBlockers(string? body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return true;
+        }
+
+        var todo = string.Empty;
+        var critical = string.Empty;
+        var currentHeader = string.Empty;
+        var sawTodoSection = false;
+        var sawCriticalSection = false;
+        using var reader = new StringReader(body);
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+                currentHeader = NormalizeHeader(trimmed);
+                if (currentHeader.Contains("todo list", StringComparison.Ordinal)) {
+                    sawTodoSection = true;
+                }
+                if (currentHeader.Contains("critical issues", StringComparison.Ordinal)) {
+                    sawCriticalSection = true;
+                }
+                continue;
+            }
+
+            if (currentHeader.Contains("todo list", StringComparison.Ordinal)) {
+                todo += "\n" + trimmed;
+                continue;
+            }
+
+            if (currentHeader.Contains("critical issues", StringComparison.Ordinal)) {
+                critical += "\n" + trimmed;
+            }
+        }
+
+        if (!sawTodoSection || !sawCriticalSection) {
+            return true;
+        }
+
+        var hasTodo = SectionHasMergeBlockerItems(todo);
+        var hasCritical = SectionHasMergeBlockerItems(critical);
+        return hasTodo || hasCritical;
+    }
+
+    private static string NormalizeHeader(string header) {
+        return header.Trim().ToLowerInvariant();
+    }
+
+    private static bool SectionHasMergeBlockerItems(string section) {
+        if (string.IsNullOrWhiteSpace(section)) {
+            return false;
+        }
+
+        using var reader = new StringReader(section);
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+            if (trimmed.StartsWith("<!--", StringComparison.Ordinal)) {
+                continue;
+            }
+            if (IsNoneLine(trimmed)) {
+                continue;
+            }
+            if (IsPlaceholderLine(trimmed)) {
+                continue;
+            }
+            if (trimmed.StartsWith("*Rationale:", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("*Why", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (trimmed.StartsWith("- [ ]", StringComparison.Ordinal)
+                || trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("-", StringComparison.Ordinal)) {
+                return !IsNoneLine(trimmed) && !IsPlaceholderLine(trimmed);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsNoneLine(string line) {
+        var normalized = line.Trim().Trim('*').Trim();
+        if (normalized.StartsWith("- [ ]", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(5).Trim();
+        } else if (normalized.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)) {
+            normalized = normalized.Substring(5).Trim();
+        } else if (normalized.StartsWith("-", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(1).Trim();
+        }
+
+        return string.Equals(normalized, "none", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "none.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPlaceholderLine(string line) {
+        var normalized = line.Trim().Trim('*').Trim();
+        return string.Equals(normalized, "(if any)", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "if any", StringComparison.OrdinalIgnoreCase);
+    }
 }

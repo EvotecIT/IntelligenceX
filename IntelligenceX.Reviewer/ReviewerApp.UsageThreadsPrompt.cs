@@ -4,7 +4,7 @@ public static partial class ReviewerApp {
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken,
-        bool force, bool allowCommentPost) {
+        bool force, bool allowCommentPost, bool noMergeBlockers) {
         if ((!settings.ReviewThreadsAutoResolveAI && !force) || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
@@ -111,6 +111,13 @@ public static partial class ReviewerApp {
 
         if (failed.Count > 0) {
             kept.AddRange(failed);
+        }
+
+        if (noMergeBlockers && settings.ReviewThreadsAutoResolveSweepNoBlockers && kept.Count > 0) {
+            var extraResolved = await TryResolveKeptBotThreadsAfterNoBlockersAsync(github, fallbackGithub, candidates, resolved, kept,
+                    settings, cancellationToken)
+                .ConfigureAwait(false);
+            resolvedCount += extraResolved;
         }
 
         var commentPosted = false;

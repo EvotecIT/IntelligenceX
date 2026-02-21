@@ -111,6 +111,7 @@
         "reviewThreadsAutoResolveMax": { "type": "integer", "minimum": 0 },
         "reviewThreadsAutoResolveAI": { "type": "boolean" },
         "reviewThreadsAutoResolveRequireEvidence": { "type": "boolean" },
+        "reviewThreadsAutoResolveSweepNoBlockers": { "type": "boolean" },
         "reviewThreadsAutoResolveAIPostComment": { "type": "boolean" },
         "reviewThreadsAutoResolveAIEmbed": { "type": "boolean" },
         "reviewThreadsAutoResolveAIEmbedPlacement": { "type": "string", "enum": ["top", "bottom", "header", "footer", "above", "below"] },

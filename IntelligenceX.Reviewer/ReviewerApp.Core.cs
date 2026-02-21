@@ -330,7 +330,7 @@ public static partial class ReviewerApp {
                         cancellationToken)
                     .ConfigureAwait(false);
                 var triageOnlyResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, triageRunner, context, triageOnlyFiles,
-                        settings, extras, false, triageOnlyNote, cancellationToken, true, false)
+                        settings, extras, false, triageOnlyNote, cancellationToken, true, false, noMergeBlockers: false)
                     .ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(triageOnlyResult.EmbeddedBlock)) {
                     await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, triageOnlyResult.EmbeddedBlock, cancellationToken)
@@ -375,6 +375,7 @@ public static partial class ReviewerApp {
 
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 cancellationToken).ConfigureAwait(false);
+            var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(reviewBody);
             var effectiveProvider = runner.EffectiveProvider;
             if (runner.FallbackActivated && settings.Diagnostics) {
                 Console.Error.WriteLine(
@@ -452,7 +453,7 @@ public static partial class ReviewerApp {
                     .ConfigureAwait(false);
                 triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
                         settings, extras, reviewFailed, triageNote, cancellationToken, false,
-                        settings.ReviewThreadsAutoResolveAIPostComment)
+                        settings.ReviewThreadsAutoResolveAIPostComment, noMergeBlockers: !hasMergeBlockers)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
                     summaryBody = ApplyEmbedPlacement(summaryBody, triageResult.EmbeddedBlock,
