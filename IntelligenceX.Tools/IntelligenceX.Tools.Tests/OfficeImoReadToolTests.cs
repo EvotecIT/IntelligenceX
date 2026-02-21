@@ -49,6 +49,21 @@ public class OfficeImoReadToolTests {
     }
 
     [Fact]
+    public void OfficeImoReadResult_WhenTrimmedKeysCollide_LastWriteWins() {
+        var source = new Dictionary<string, string>(StringComparer.Ordinal) {
+            ["contract"] = "first",
+            [" contract "] = "second"
+        };
+
+        var result = new OfficeImoReadResult {
+            Handoff = source
+        };
+
+        Assert.Single(result.Handoff);
+        Assert.Equal("second", result.Handoff["contract"]);
+    }
+
+    [Fact]
     public async Task OfficeImoRead_WhenExtensionsOmitted_DefaultsIncludePdf() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-officeimo-read-" + Guid.NewGuid().ToString("n"));
         Directory.CreateDirectory(tempRoot);

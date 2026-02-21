@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.EventLog;
 using Xunit;
-using Xunit.Sdk;
 
 namespace IntelligenceX.Tools.Tests;
 
@@ -48,13 +47,10 @@ public sealed class EventLogNamedEventsQueryToolTests {
     }
 
     private static string ResolveNamedEventOrSkip() {
-        if (!OperatingSystem.IsWindows()) {
-            throw SkipException.ForSkip("EventLogNamedEventsQueryToolTests require Windows event log support.");
-        }
+        TestRuntimeGuards.RequireWindows("EventLogNamedEventsQueryToolTests require Windows event log support.");
 
-        if (!TrySelectNamedEventQueryName(out var queryName)) {
-            throw SkipException.ForSkip("No available named event catalog entries were found on this environment.");
-        }
+        var resolved = TrySelectNamedEventQueryName(out var queryName);
+        TestRuntimeGuards.Require(resolved, "No available named event catalog entries were found on this environment.");
 
         return queryName;
     }
