@@ -73,6 +73,9 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan ServiceStartupExitProbeDelay = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan StartupConnectAttemptHardTimeoutGrace = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan StartupConnectAttemptOutlierThreshold = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan AliveProbeCacheTtl = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan AliveProbeTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AliveProbeFastTimeout = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan StartupDeferredModelProfileSyncDelay = TimeSpan.FromMilliseconds(1250);

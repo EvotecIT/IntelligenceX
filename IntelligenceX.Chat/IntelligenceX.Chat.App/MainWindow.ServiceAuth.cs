@@ -184,19 +184,28 @@ public sealed partial class MainWindow : Window {
         _loginInProgress = false;
     }
 
-    private async Task<bool> IsClientAliveAsync(ChatServiceClient client) {
+    private async Task<bool> IsClientAliveAsync(
+        ChatServiceClient client,
+        TimeSpan? probeTimeout = null,
+        TimeSpan? cacheTtl = null) {
+        var effectiveCacheTtl = cacheTtl.GetValueOrDefault(AliveProbeCacheTtl);
         var nowTicks = DateTime.UtcNow.Ticks;
         lock (_aliveProbeSync) {
             if (ReferenceEquals(client, _aliveProbeClient)
                 && _aliveProbeTicksUtc > 0
-                && nowTicks - _aliveProbeTicksUtc <= TimeSpan.FromMilliseconds(1200).Ticks) {
+                && effectiveCacheTtl > TimeSpan.Zero
+                && nowTicks - _aliveProbeTicksUtc <= effectiveCacheTtl.Ticks) {
                 return true;
             }
         }
 
         try {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            _ = await client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, cts.Token).ConfigureAwait(false);
+            var effectiveProbeTimeout = probeTimeout.GetValueOrDefault(AliveProbeTimeout);
+            using var cts = effectiveProbeTimeout > TimeSpan.Zero ? new CancellationTokenSource(effectiveProbeTimeout) : null;
+            _ = await client.RequestAsync<HelloMessage>(
+                    new HelloRequest { RequestId = NextId() },
+                    cts?.Token ?? CancellationToken.None)
+                .ConfigureAwait(false);
             lock (_aliveProbeSync) {
                 _aliveProbeClient = client;
                 _aliveProbeTicksUtc = DateTime.UtcNow.Ticks;

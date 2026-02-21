@@ -415,13 +415,18 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> EnsureConnectedAsync() {
-        if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
+        if (_client is not null
+            && await IsClientAliveAsync(
+                    _client,
+                    probeTimeout: AliveProbeFastTimeout,
+                    cacheTtl: AliveProbeCacheTtl)
+                .ConfigureAwait(false)) {
             _isConnected = true;
             return true;
         }
 
         await ConnectAsync(fromUserAction: false, connectBudgetOverride: DispatchConnectBudget).ConfigureAwait(false);
-        var connected = _client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false);
+        var connected = _client is not null;
         _isConnected = connected;
         if (!connected) {
             await PublishSessionStateAsync().ConfigureAwait(false);
