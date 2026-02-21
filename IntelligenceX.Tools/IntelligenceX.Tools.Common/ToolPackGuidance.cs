@@ -246,6 +246,8 @@ public sealed class ToolPackToolRoutingModel {
 /// Tool-level catalog entry for pack guidance.
 /// </summary>
 public sealed class ToolPackToolCatalogEntryModel {
+    private ToolPackToolRoutingModel _routing = new();
+
     /// <summary>
     /// Tool name as registered in the runtime tool registry.
     /// </summary>
@@ -270,7 +272,10 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// <summary>
     /// Structured routing taxonomy for model-side tool selection.
     /// </summary>
-    public ToolPackToolRoutingModel Routing { get; init; } = new();
+    public ToolPackToolRoutingModel Routing {
+        get => _routing;
+        init => _routing = ToolPackGuidance.NormalizeRoutingContract(value);
+    }
 
     /// <summary>
     /// Tool description from definition metadata.
@@ -486,6 +491,10 @@ public static class ToolPackGuidance {
     private static readonly string[] MutatingActionArgumentNames = { "send", "dry_run", "confirm", "execute", "apply", "force", "enable", "disable", "allow_write" };
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
         ToolAuthenticationArgumentNames.CanonicalArguments;
+
+    internal static ToolPackToolRoutingModel NormalizeRoutingContract(ToolPackToolRoutingModel? routing) {
+        return NormalizeRouting(routing);
+    }
 
     /// <summary>
     /// Creates a structured flow step descriptor.

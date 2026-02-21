@@ -397,6 +397,42 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void ToolCatalogEntry_ShouldNormalizeRouting_OnAssignment() {
+        var entry = new ToolPackToolCatalogEntryModel {
+            Name = "system_info",
+            Description = "System info",
+            Routing = new ToolPackToolRoutingModel {
+                Scope = " Host ",
+                Operation = " Read ",
+                Entity = " Resource ",
+                Risk = " ",
+                Source = " "
+            }
+        };
+
+        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, entry.Routing.Scope);
+        Assert.Equal(ToolRoutingTaxonomy.OperationRead, entry.Routing.Operation);
+        Assert.Equal(ToolRoutingTaxonomy.EntityResource, entry.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+    }
+
+    [Fact]
+    public void ToolCatalogEntry_ShouldRejectInvalidRoutingSource_OnAssignment() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new ToolPackToolCatalogEntryModel {
+                Name = "system_info",
+                Description = "System info",
+                Routing = new ToolPackToolRoutingModel {
+                    Risk = ToolRoutingTaxonomy.RiskLow,
+                    Source = "manual"
+                }
+            });
+
+        Assert.Contains("Routing source", ex.Message);
+    }
+
+    [Fact]
     public void Create_ShouldNormalizeAndSerializeDefaultRoutingValues_WhenCatalogRoutingIsBlank() {
         var model = ToolPackGuidance.Create(
             pack: "system",
