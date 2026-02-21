@@ -32,6 +32,7 @@ public abstract class ToolBase : ITool {
         CancellationToken cancellationToken,
         Func<JsonObject?, ToolRequestBindingResult<TRequest>> binder,
         ToolPipelineNext<TRequest> execute,
+        ToolPipelineReliabilityOptions? reliability = null,
         IReadOnlyList<ToolPipelineMiddleware<TRequest>>? middleware = null)
         where TRequest : notnull {
         return ToolPipeline.RunAsync(
@@ -40,6 +41,7 @@ public abstract class ToolBase : ITool {
             cancellationToken: cancellationToken,
             binder: binder,
             terminal: execute,
+            reliability: reliability,
             middleware: middleware);
     }
 
