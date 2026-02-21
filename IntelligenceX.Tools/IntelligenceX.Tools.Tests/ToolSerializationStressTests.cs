@@ -151,6 +151,36 @@ public sealed class ToolSerializationStressTests {
         Assert.Equal("Sample", chunkArray[0].GetProperty("tables")[0].GetProperty("title").GetString());
     }
 
+    [Fact]
+    public void DictionaryPayload_WithCustomKeysAndNestedCycles_ShouldSerializeSafely() {
+        var cyclicBag = new Dictionary<string, object?>(StringComparer.Ordinal) {
+            ["status"] = "ok",
+            ["attempt"] = 1
+        };
+        cyclicBag["self"] = cyclicBag;
+
+        var payload = new Dictionary<object, object?> {
+            [new DictionaryKey("alpha", 1)] = cyclicBag,
+            [new DictionaryKey("beta", 2)] = new Dictionary<string, object?> {
+                ["count"] = 2,
+                ["values"] = new[] { "x", "y" }
+            }
+        };
+
+        var json = ToolResponse.OkModel(new {
+            dictionary_payload = payload
+        });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var dictionary = root.GetProperty("dictionary_payload");
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(JsonValueKind.Object, dictionary.ValueKind);
+        Assert.Equal("[cycle]", dictionary.GetProperty("alpha-1").GetProperty("self").GetString());
+        Assert.Equal(2, dictionary.GetProperty("beta-2").GetProperty("count").GetInt32());
+    }
+
     private static StressNode CreateDeepNode(int depth) {
         var root = new StressNode { Name = "root" };
         var current = root;
@@ -167,5 +197,19 @@ public sealed class ToolSerializationStressTests {
         public string Name { get; set; } = string.Empty;
 
         public StressNode? Child { get; set; }
+    }
+
+    private sealed class DictionaryKey {
+        private readonly string _name;
+        private readonly int _index;
+
+        public DictionaryKey(string name, int index) {
+            _name = name;
+            _index = index;
+        }
+
+        public override string ToString() {
+            return $"{_name}-{_index}";
+        }
     }
 }
