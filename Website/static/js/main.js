@@ -366,6 +366,25 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  function highlightCodeBlocks(scope) {
+    var prism = window.Prism;
+    if (!prism) return;
+    if (prism.plugins && prism.plugins.autoloader) {
+      prism.plugins.autoloader.languages_path = '/assets/prism/components/';
+    }
+    if (scope && typeof prism.highlightAllUnder === 'function') {
+      prism.highlightAllUnder(scope);
+      return;
+    }
+    if (typeof prism.highlightAll === 'function') {
+      prism.highlightAll();
+    }
+  }
+
+  window.addEventListener('load', function () {
+    highlightCodeBlocks(document);
+  });
+
   // Code tabs
   document.querySelectorAll('.code-tabs').forEach(function (tabBar) {
     var tabs = tabBar.querySelectorAll('.code-tab');
@@ -379,7 +398,10 @@ document.addEventListener('DOMContentLoaded', function () {
         panels.forEach(function (p) { p.classList.remove('active'); });
         tab.classList.add('active');
         var panel = container.querySelector('[data-panel="' + target + '"]');
-        if (panel) panel.classList.add('active');
+        if (panel) {
+          panel.classList.add('active');
+          highlightCodeBlocks(panel);
+        }
       });
     });
   });
