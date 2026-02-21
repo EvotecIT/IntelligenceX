@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.OfficeIMO;
 
@@ -72,6 +73,31 @@ public sealed class OfficeImoReadResult {
     /// Aggregated token estimate across returned chunk objects (best-effort).
     /// </summary>
     public int TokenEstimateReturned { get; set; }
+
+    /// <summary>
+    /// Advisory next actions for model/tool chaining.
+    /// </summary>
+    public IReadOnlyList<ToolNextActionModel> NextActions { get; set; } = Array.Empty<ToolNextActionModel>();
+
+    /// <summary>
+    /// Opaque continuation cursor.
+    /// </summary>
+    public string Cursor { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Opaque resume token for orchestration loops.
+    /// </summary>
+    public string ResumeToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Structured handoff payload for downstream tools.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Handoff { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Best-effort confidence score (0..1) for this extraction context.
+    /// </summary>
+    public double Confidence { get; set; } = 0.5d;
 }
 
 /// <summary>

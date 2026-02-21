@@ -59,7 +59,12 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
         int MaxEvents,
         int MaxThreads,
         bool Truncated,
-        IReadOnlyList<NamedEventsQueryRow> Events);
+        IReadOnlyList<NamedEventsQueryRow> Events,
+        IReadOnlyList<ToolNextActionModel> NextActions,
+        string Cursor,
+        string ResumeToken,
+        IReadOnlyDictionary<string, string> Handoff,
+        double Confidence);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EventLogNamedEventsQueryTool"/> class.
@@ -168,6 +173,21 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 invalidOperationErrorCode: "query_failed");
         }
 
+        var entityHandoff = EventLogEntityHandoff.BuildFromRows(
+            rows: rows,
+            whoSelector: static row => row.Who,
+            objectAffectedSelector: static row => row.ObjectAffected,
+            computerSelector: static row => row.Computer);
+        var chain = BuildChainContract(
+            namedEvents: namedEvents,
+            machines: machines,
+            startUtc: startUtc,
+            endUtc: endUtc,
+            maxEvents: maxEvents,
+            maxThreads: maxThreads,
+            truncated: truncated,
+            rows: rows,
+            entityHandoff: entityHandoff);
         var result = new NamedEventsQueryResult(
             RequestedNamedEvents: namedEvents
                 .Select(EventLogNamedEventsHelper.GetQueryName)
@@ -180,13 +200,12 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             MaxEvents: maxEvents,
             MaxThreads: maxThreads,
             Truncated: truncated,
-            Events: rows);
-
-        var entityHandoff = EventLogEntityHandoff.BuildFromRows(
-            rows: rows,
-            whoSelector: static row => row.Who,
-            objectAffectedSelector: static row => row.ObjectAffected,
-            computerSelector: static row => row.Computer);
+            Events: rows,
+            NextActions: chain.NextActions,
+            Cursor: chain.Cursor,
+            ResumeToken: chain.ResumeToken,
+            Handoff: chain.Handoff,
+            Confidence: chain.Confidence);
 
         return BuildAutoTableResponse(
             arguments: arguments,
@@ -232,6 +251,106 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 }
                 meta.Add("entity_handoff", entityHandoff);
             });
+    }
+
+    private static ToolChainContractModel BuildChainContract(
+        IReadOnlyList<NamedEvents> namedEvents,
+        IReadOnlyList<string> machines,
+        DateTime? startUtc,
+        DateTime? endUtc,
+        int maxEvents,
+        int maxThreads,
+        bool truncated,
+        IReadOnlyList<NamedEventsQueryRow> rows,
+        JsonObject entityHandoff) {
+        var nextActions = new List<ToolNextActionModel> {
+            ToolChainingHints.NextAction(
+                tool: "ad_handoff_prepare",
+                reason: "Normalize event identities into AD-ready lookup targets.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("entity_handoff_ref", "meta.entity_handoff"),
+                    ("entity_handoff_contract", entityHandoff.GetString("contract") ?? "eventlog_entity_handoff"))),
+            ToolChainingHints.NextAction(
+                tool: "ad_scope_discovery",
+                reason: "Resolve effective AD scope before identity/object follow-up queries.",
+                suggestedArguments: ToolChainingHints.Map(("discovery_fallback", "current_domain")))
+        };
+
+        if (truncated) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "eventlog_named_events_query",
+                reason: "This page is truncated; rerun with narrower time/filter constraints for complete coverage.",
+                suggestedArguments: BuildSelfQueryArguments(
+                    namedEvents: namedEvents,
+                    machines: machines,
+                    startUtc: startUtc,
+                    endUtc: endUtc,
+                    maxEvents: maxEvents,
+                    maxThreads: maxThreads)));
+        }
+
+        var lastRecordId = rows.LastOrDefault()?.RecordId?.ToString() ?? string.Empty;
+        var confidence = rows.Count == 0 ? 0.45d : 0.90d;
+        if (truncated) {
+            confidence -= 0.18d;
+        }
+
+        return ToolChainingHints.Create(
+            nextActions: nextActions,
+            cursor: ToolChainingHints.BuildToken(
+                "eventlog_named_events_query",
+                ("events", rows.Count.ToString()),
+                ("truncated", truncated ? "1" : "0"),
+                ("last_record_id", lastRecordId)),
+            resumeToken: ToolChainingHints.BuildToken(
+                "eventlog_named_events_query.resume",
+                ("named_events", namedEvents.Count.ToString()),
+                ("machines", machines.Count.ToString()),
+                ("start", ToolTime.FormatUtc(startUtc) ?? string.Empty),
+                ("end", ToolTime.FormatUtc(endUtc) ?? string.Empty)),
+            handoff: BuildHandoffMap(entityHandoff),
+            confidence: confidence);
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildSelfQueryArguments(
+        IReadOnlyList<NamedEvents> namedEvents,
+        IReadOnlyList<string> machines,
+        DateTime? startUtc,
+        DateTime? endUtc,
+        int maxEvents,
+        int maxThreads) {
+        return ToolChainingHints.Map(
+            ("named_events", string.Join(",", namedEvents.Select(EventLogNamedEventsHelper.GetQueryName))),
+            ("machine_names", string.Join(",", machines)),
+            ("start_time_utc", ToolTime.FormatUtc(startUtc)),
+            ("end_time_utc", ToolTime.FormatUtc(endUtc)),
+            ("max_events", maxEvents),
+            ("max_threads", maxThreads));
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildHandoffMap(JsonObject entityHandoff) {
+        var identityCandidates = entityHandoff.GetArray("identity_candidates");
+        var computerCandidates = entityHandoff.GetArray("computer_candidates");
+
+        var identityPreview = identityCandidates?
+            .Take(5)
+            .Select(static item => item.AsObject()?.GetString("value") ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray() ?? Array.Empty<string>();
+        var computerPreview = computerCandidates?
+            .Take(5)
+            .Select(static item => item.AsObject()?.GetString("value") ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray() ?? Array.Empty<string>();
+
+        return ToolChainingHints.Map(
+            ("contract", entityHandoff.GetString("contract") ?? "eventlog_entity_handoff"),
+            ("version", entityHandoff.GetInt64("version")?.ToString() ?? "1"),
+            ("scanned_rows", entityHandoff.GetInt64("scanned_rows")?.ToString() ?? string.Empty),
+            ("identity_candidates_total", entityHandoff.GetInt64("identity_candidates_total")?.ToString() ?? string.Empty),
+            ("computer_candidates_total", entityHandoff.GetInt64("computer_candidates_total")?.ToString() ?? string.Empty),
+            ("identity_candidates_preview", string.Join(";", identityPreview)),
+            ("computer_candidates_preview", string.Join(";", computerPreview)));
     }
 
     private static NamedEventsQueryRow ToRow(

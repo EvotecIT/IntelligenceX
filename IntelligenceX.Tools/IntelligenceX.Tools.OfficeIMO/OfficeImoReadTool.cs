@@ -138,6 +138,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         result.TokenEstimateReturned = 0;
         result.Chunks.Clear();
         result.Documents.Clear();
+        ApplyChainContract(result, fullPath, outputMode, includeDocumentChunks);
         var disabledSummary = ToolMarkdown.SummaryText(
             title: "OfficeIMO read",
             "Reader dependency is unavailable in this build.",
@@ -228,6 +229,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         }
 
         FinalizeResultCounters(result, includeFlatChunks, includeDocChunksInPayload);
+        ApplyChainContract(result, fullPath, outputMode, includeDocumentChunks);
         var preview = BuildPreviewMarkdown(
             chunks: result.Chunks,
             documents: result.Documents,
@@ -270,6 +272,89 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
 
         return Task.FromResult(ToolResponse.OkModel(model: result, meta: meta, summaryMarkdown: summary));
 #endif
+    }
+
+    private static void ApplyChainContract(
+        OfficeImoReadResult result,
+        string fullPath,
+        OfficeImoOutputMode outputMode,
+        bool includeDocumentChunks) {
+        if (result is null) {
+            throw new ArgumentNullException(nameof(result));
+        }
+
+        var handoff = ToolChainingHints.Map(
+            ("contract", "officeimo_read_handoff"),
+            ("version", 1),
+            ("path", fullPath ?? string.Empty),
+            ("output_mode", result.OutputMode),
+            ("files_preview", string.Join(";", result.Files.Take(10))),
+            ("documents_count", result.Documents.Count),
+            ("chunks_count", result.ChunksReturned),
+            ("warnings_count", result.Warnings.Count),
+            ("truncated", result.Truncated));
+
+        var nextActions = new List<ToolNextActionModel>();
+        if (outputMode is not OfficeImoOutputMode.Both) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "officeimo_read",
+                reason: "Switch output_mode='both' to keep flat chunks and source-level documents in one pass.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("path", fullPath ?? string.Empty),
+                    ("output_mode", "both"),
+                    ("include_document_chunks", includeDocumentChunks))));
+        }
+
+        if (result.Documents.Count > 0 && outputMode is not OfficeImoOutputMode.Documents) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "officeimo_read",
+                reason: "Use documents mode when you need source-level indexing payloads with minimal token load.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("path", fullPath ?? string.Empty),
+                    ("output_mode", "documents"),
+                    ("include_document_chunks", false))));
+        }
+
+        if (result.Truncated) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "officeimo_read",
+                reason: "Result was truncated; rerun with narrower scope (extensions/path) or higher max limits.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("path", fullPath ?? string.Empty),
+                    ("output_mode", result.OutputMode))));
+        }
+
+        var confidence = 0.9d;
+        if (result.Truncated) {
+            confidence -= 0.25d;
+        }
+        if (result.FilesParsed == 0 && result.FilesScanned > 0) {
+            confidence -= 0.30d;
+        }
+        if (result.Warnings.Count > 0) {
+            confidence -= Math.Min(0.20d, result.Warnings.Count * 0.03d);
+        }
+
+        var chain = ToolChainingHints.Create(
+            nextActions: nextActions,
+            cursor: ToolChainingHints.BuildToken(
+                "officeimo_read",
+                ("files", result.Files.Count.ToString()),
+                ("documents", result.Documents.Count.ToString()),
+                ("chunks", result.ChunksReturned.ToString())),
+            resumeToken: ToolChainingHints.BuildToken(
+                "officeimo_read.resume",
+                ("path", fullPath ?? string.Empty),
+                ("mode", result.OutputMode),
+                ("truncated", result.Truncated ? "1" : "0")),
+            handoff: handoff,
+            confidence: confidence);
+
+        result.NextActions = chain.NextActions;
+        result.Cursor = chain.Cursor;
+        result.ResumeToken = chain.ResumeToken;
+        result.Handoff = chain.Handoff;
+        result.Confidence = chain.Confidence;
     }
 
 }

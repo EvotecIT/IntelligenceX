@@ -410,6 +410,17 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
         } catch (Exception ex) {
             trustsStep.Fail(ex);
         }
+        var chain = BuildChainContract(
+            discoveryFallback: discoveryFallback,
+            effectiveForest: effectiveForest,
+            effectiveDomain: effectiveDomain,
+            domains: domains,
+            domainControllers: allDcs,
+            trusts: trusts,
+            rootDseOk: rootDseStep.Ok,
+            domainsOk: domainsStep.Ok,
+            domainControllersOk: dcStep.Ok,
+            trustsOk: trustsStep.Ok);
 
         var model = new {
             RequestedScope = new {
@@ -445,7 +456,12 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                     DomainControllers = allDcs.Count,
                     Trusts = trusts.Count
                 }
-            }
+            },
+            NextActions = chain.NextActions,
+            Cursor = chain.Cursor,
+            ResumeToken = chain.ResumeToken,
+            Handoff = chain.Handoff,
+            Confidence = chain.Confidence
         };
 
         var summary = ToolMarkdown.SummaryText(
@@ -454,6 +470,92 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
             "Receipt includes discovery steps and per-domain DC source attempts.");
 
         return ToolResponse.OkModel(model, summaryMarkdown: summary);
+    }
+
+    private static ToolChainContractModel BuildChainContract(
+        DirectoryDiscoveryFallback discoveryFallback,
+        string? effectiveForest,
+        string? effectiveDomain,
+        IReadOnlyList<string> domains,
+        IReadOnlyList<string> domainControllers,
+        IReadOnlyList<object> trusts,
+        bool rootDseOk,
+        bool domainsOk,
+        bool domainControllersOk,
+        bool trustsOk) {
+        var fallbackName = ToDiscoveryFallbackName(discoveryFallback);
+        var handoff = ToolChainingHints.Map(
+            ("contract", "ad_forest_discover_handoff"),
+            ("version", 1),
+            ("forest_name", effectiveForest ?? string.Empty),
+            ("domain_name", effectiveDomain ?? string.Empty),
+            ("discovery_fallback", fallbackName),
+            ("domains_preview", string.Join(";", domains.Take(10))),
+            ("domain_controllers_preview", string.Join(";", domainControllers.Take(15))),
+            ("trusts_count", trusts.Count));
+
+        var nextActions = new List<ToolNextActionModel> {
+            ToolChainingHints.NextAction(
+                tool: "ad_scope_discovery",
+                reason: "Capture normalized naming contexts and per-domain probe receipts before deep AD follow-ups.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("forest_name", effectiveForest ?? string.Empty),
+                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("discovery_fallback", fallbackName))),
+            ToolChainingHints.NextAction(
+                tool: "ad_monitoring_probe_run",
+                reason: "Run replication health probes across discovered scope.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("probe_kind", "replication"),
+                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("discovery_fallback", fallbackName)))
+        };
+
+        var firstDomain = domains.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(firstDomain)) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "ad_replication_connections",
+                reason: "Inspect replication-connection details for one discovered domain.",
+                suggestedArguments: ToolChainingHints.Map(("domain_name", firstDomain))));
+        }
+
+        var failedSteps = 0;
+        if (!rootDseOk) {
+            failedSteps++;
+        }
+        if (!domainsOk) {
+            failedSteps++;
+        }
+        if (!domainControllersOk) {
+            failedSteps++;
+        }
+        if (!trustsOk) {
+            failedSteps++;
+        }
+
+        var confidence = 0.95d - (failedSteps * 0.14d);
+        if (domains.Count == 0) {
+            confidence -= 0.18d;
+        }
+        if (domainControllers.Count == 0) {
+            confidence -= 0.22d;
+        }
+
+        return ToolChainingHints.Create(
+            nextActions: nextActions,
+            cursor: ToolChainingHints.BuildToken(
+                "ad_forest_discover",
+                ("forest", effectiveForest ?? string.Empty),
+                ("domain", effectiveDomain ?? string.Empty),
+                ("domains", domains.Count.ToString()),
+                ("dcs", domainControllers.Count.ToString()),
+                ("trusts", trusts.Count.ToString())),
+            resumeToken: ToolChainingHints.BuildToken(
+                "ad_forest_discover.resume",
+                ("fallback", fallbackName),
+                ("failed_steps", failedSteps.ToString())),
+            handoff: handoff,
+            confidence: confidence);
     }
 
     private static async Task CollectDcSourceAsync(
