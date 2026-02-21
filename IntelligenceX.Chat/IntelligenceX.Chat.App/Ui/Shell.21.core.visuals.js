@@ -1869,6 +1869,43 @@
     return Math.floor(parsed);
   }
 
+  function normalizeVisualRenderDimension(value, fallback, minValue, maxValue) {
+    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    if (parsed < minValue) {
+      return minValue;
+    }
+    if (parsed > maxValue) {
+      return maxValue;
+    }
+
+    return Math.floor(parsed);
+  }
+
+  function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx) {
+    var normalizedType = normalizeVisualType(visualType);
+    var width = normalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
+    if (normalizedType === "ix-chart") {
+      return {
+        width: normalizeVisualRenderDimension(width, ixVisualExportState.chartWidth, 320, 2000),
+        height: normalizeVisualRenderDimension(Math.round(width * 0.63), 480, 220, 1600)
+      };
+    }
+    if (normalizedType === "ix-network") {
+      return {
+        width: normalizeVisualRenderDimension(width, ixVisualExportState.networkWidth, 320, 2000),
+        height: normalizeVisualRenderDimension(Math.round(width * 0.62), 500, 240, 1700)
+      };
+    }
+    return {
+      width: normalizeVisualRenderDimension(width, 760, 320, 2000),
+      height: null
+    };
+  }
+
   function getVisualExportExtension(format) {
     return String(format || "").toLowerCase() === "svg" ? ".svg" : ".png";
   }
@@ -2408,7 +2445,7 @@
     openVisualView(normalizedKind, source, inferVisualTitleFromBlock(pre, normalizedKind));
   }
 
-  async function convertSvgPayloadToPng(payload, themeMode) {
+  async function convertSvgPayloadToPng(payload, themeMode, targetSize) {
     if (!payload || payload.mimeType !== "image/svg+xml" || !payload.dataBase64) {
       return payload;
     }
@@ -2418,8 +2455,20 @@
       var image = new Image();
       image.onload = function() {
         try {
-          var width = Math.max(1, Math.round(image.naturalWidth || 1280));
-          var height = Math.max(1, Math.round(image.naturalHeight || 720));
+          var naturalWidth = Math.max(1, Math.round(image.naturalWidth || 1280));
+          var naturalHeight = Math.max(1, Math.round(image.naturalHeight || 720));
+          var requestedWidth = normalizeVisualRenderDimension(
+            targetSize && targetSize.width,
+            naturalWidth,
+            320,
+            2000);
+          var requestedHeight = normalizeVisualRenderDimension(
+            targetSize && targetSize.height,
+            Math.round((naturalHeight / naturalWidth) * requestedWidth),
+            180,
+            2000);
+          var width = Math.max(1, requestedWidth);
+          var height = Math.max(1, requestedHeight);
           var canvas = document.createElement("canvas");
           canvas.width = width;
           canvas.height = height;
@@ -3384,7 +3433,7 @@
     }
   }
 
-  async function renderChartForExport(source, imageId, themeMode) {
+  async function renderChartForExport(source, imageId, themeMode, renderSize) {
     var ready = await ensureChartReady();
     if (!ready) {
       return null;
@@ -3415,22 +3464,32 @@
     });
 
     var palette = resolveVisualExportPalette(themeMode);
+    var exportWidth = normalizeVisualRenderDimension(
+      renderSize && renderSize.width,
+      ixVisualExportState.chartWidth,
+      320,
+      2000);
+    var exportHeight = normalizeVisualRenderDimension(
+      renderSize && renderSize.height,
+      ixVisualExportState.chartHeight,
+      220,
+      1800);
     var host = document.createElement("div");
     host.style.position = "fixed";
     host.style.left = "-10000px";
     host.style.top = "-10000px";
-    host.style.width = String(ixVisualExportState.chartWidth) + "px";
-    host.style.height = String(ixVisualExportState.chartHeight) + "px";
+    host.style.width = String(exportWidth) + "px";
+    host.style.height = String(exportHeight) + "px";
     host.style.background = palette.background;
     host.style.padding = "0";
     host.style.margin = "0";
     document.body.appendChild(host);
 
     var canvas = document.createElement("canvas");
-    canvas.width = ixVisualExportState.chartWidth;
-    canvas.height = ixVisualExportState.chartHeight;
-    canvas.style.width = String(ixVisualExportState.chartWidth) + "px";
-    canvas.style.height = String(ixVisualExportState.chartHeight) + "px";
+    canvas.width = exportWidth;
+    canvas.height = exportHeight;
+    canvas.style.width = String(exportWidth) + "px";
+    canvas.style.height = String(exportHeight) + "px";
     host.appendChild(canvas);
 
     var context = canvas.getContext("2d");
@@ -3487,7 +3546,7 @@
     }
   }
 
-  async function renderNetworkForExport(source, imageId, themeMode) {
+  async function renderNetworkForExport(source, imageId, themeMode, renderSize) {
     var ready = await ensureNetworkReady();
     if (!ready) {
       return null;
@@ -3506,12 +3565,22 @@
     }
 
     var palette = resolveVisualExportPalette(themeMode);
+    var exportWidth = normalizeVisualRenderDimension(
+      renderSize && renderSize.width,
+      ixVisualExportState.networkWidth,
+      320,
+      2200);
+    var exportHeight = normalizeVisualRenderDimension(
+      renderSize && renderSize.height,
+      ixVisualExportState.networkHeight,
+      240,
+      1800);
     var host = document.createElement("div");
     host.style.position = "fixed";
     host.style.left = "-10000px";
     host.style.top = "-10000px";
-    host.style.width = String(ixVisualExportState.networkWidth) + "px";
-    host.style.height = String(ixVisualExportState.networkHeight) + "px";
+    host.style.width = String(exportWidth) + "px";
+    host.style.height = String(exportHeight) + "px";
     host.style.background = palette.background;
     document.body.appendChild(host);
 
@@ -3519,8 +3588,8 @@
     var options = buildRuntimeNetworkOptions(themeMode, validation.config.options || {}, "export");
     options = deepMergeForExport(options, {
       autoResize: false,
-      width: String(ixVisualExportState.networkWidth) + "px",
-      height: String(ixVisualExportState.networkHeight) + "px",
+      width: String(exportWidth) + "px",
+      height: String(exportHeight) + "px",
       interaction: {
         dragNodes: false,
         dragView: false,
@@ -3640,7 +3709,7 @@
     }
   }
 
-  async function renderVisualFenceForExport(language, source, imageId, themeMode) {
+  async function renderVisualFenceForExport(language, source, imageId, themeMode, renderSize) {
     var normalized = String(language || "").trim().toLowerCase();
     var content = normalizeText(source || "");
     if (!content) {
@@ -3655,14 +3724,14 @@
       if (content.length > ixVisualChartState.maxSourceChars) {
         return null;
       }
-      return renderChartForExport(content, imageId, themeMode);
+      return renderChartForExport(content, imageId, themeMode, renderSize);
     }
 
     if (normalized === "ix-network") {
       if (content.length > ixVisualNetworkState.maxSourceChars) {
         return null;
       }
-      return renderNetworkForExport(content, imageId, themeMode);
+      return renderNetworkForExport(content, imageId, themeMode, renderSize);
     }
 
     return null;
@@ -3720,7 +3789,11 @@
       }
 
       var source = lines.slice(i + 1, closingIndex).join("\n");
-      var rendered = await renderVisualFenceForExport(fence.language, source, imageCounter + 1, themeMode);
+      var renderSize = resolveDocxRenderSize(fence.language, docxVisualMaxWidthPx);
+      var rendered = await renderVisualFenceForExport(fence.language, source, imageCounter + 1, themeMode, renderSize);
+      if (rendered && rendered.mimeType === "image/svg+xml") {
+        rendered = await convertSvgPayloadToPng(rendered, themeMode, renderSize);
+      }
       if (!rendered || !rendered.dataBase64 || !rendered.mimeType) {
         appendFenceLines(lines, output, i, closingIndex);
         i = closingIndex + 1;

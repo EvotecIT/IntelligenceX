@@ -318,6 +318,9 @@ public sealed class UiShellAssetsTests {
             html,
             "function resolveVisualExportBuildFailureMessage(visualType, format)",
             "function tryCaptureVisualViewCanvasPayload(visualType)",
+            "function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx)",
+            "var renderSize = resolveDocxRenderSize(fence.language, docxVisualMaxWidthPx);",
+            "convertSvgPayloadToPng(rendered, themeMode, renderSize)",
             "SVG export is only available for Mermaid diagrams.",
             "Visual export couldn't prepare the image payload before save.",
             "Visual popout couldn't prepare the image payload.");
@@ -338,7 +341,7 @@ public sealed class UiShellAssetsTests {
             "svg.replace(/<br\\s*\\/?\\s*>/gi, \"<br/>\")",
             "themeVariables",
             "applyChartThemeDefaults",
-            "host.style.width = String(ixVisualExportState.chartWidth) + \"px\"",
+            "host.style.width = String(exportWidth) + \"px\"",
             "(!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === \"function\"",
             "window.requestAnimationFrame(function()",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",

@@ -483,6 +483,28 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures fallback-rendered visual SVGs use the configured intrinsic width for better Word page fitting.
+    /// </summary>
+    [Fact]
+    public void DocxVisualFenceMaterializer_FallbackSvgUsesConfiguredIntrinsicWidth() {
+        const string markdown = """
+            ```mermaid
+            flowchart LR
+            A --> B
+            ```
+            """;
+
+        using var materialized = DocxVisualFenceMaterializer.Materialize(markdown, 640);
+        Assert.True(materialized.HasLocalImages);
+
+        var imageDirectory = materialized.AllowedImageDirectories[0];
+        var svgPath = Directory.EnumerateFiles(imageDirectory, "*.svg", SearchOption.TopDirectoryOnly).First();
+        var svg = File.ReadAllText(svgPath);
+
+        Assert.Contains("width='640'", svg, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures DOCX visual fence materialization clamps width hints to supported bounds.
     /// </summary>
     [Theory]
