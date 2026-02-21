@@ -232,8 +232,10 @@ public sealed class ChatServiceClient : IAsyncDisposable {
     /// </summary>
     public Task<ToolHealthMessage> CheckToolHealthAsync(int? toolTimeoutSeconds = null, IReadOnlyList<string>? packIds = null,
         IReadOnlyList<ToolPackSourceKind>? sourceKinds = null, CancellationToken cancellationToken = default) {
-        if (toolTimeoutSeconds is < 0 or > 3600) {
-            throw new ArgumentOutOfRangeException(nameof(toolTimeoutSeconds), "toolTimeoutSeconds must be between 0 and 3600.");
+        if (toolTimeoutSeconds is < ChatRequestOptionLimits.MinTimeoutSeconds or > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                nameof(toolTimeoutSeconds),
+                $"toolTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
         }
 
         return RequestAsync<ToolHealthMessage>(new CheckToolHealthRequest {

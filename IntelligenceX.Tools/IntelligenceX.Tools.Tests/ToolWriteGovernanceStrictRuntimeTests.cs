@@ -18,6 +18,7 @@ public sealed class ToolWriteGovernanceStrictRuntimeTests {
         Assert.Equal(ToolWriteGovernanceErrorCodes.WriteGovernanceRequirementsNotMet, result.ErrorCode);
         Assert.Contains("immutable_audit_provider_id", result.MissingRequirements);
         Assert.Contains("rollback_provider_id", result.MissingRequirements);
+        Assert.Contains(ToolWriteGovernanceArgumentNames.OperationId, result.MissingRequirements);
         Assert.Contains(ToolWriteGovernanceArgumentNames.ExecutionId, result.MissingRequirements);
         Assert.Contains(ToolWriteGovernanceArgumentNames.ActorId, result.MissingRequirements);
         Assert.Contains(ToolWriteGovernanceArgumentNames.ChangeReason, result.MissingRequirements);
@@ -31,6 +32,7 @@ public sealed class ToolWriteGovernanceStrictRuntimeTests {
             RollbackProviderId = "rollback"
         };
         var request = new ToolWriteGovernanceRequest {
+            OperationId = "request-operation",
             ExecutionId = "request-exec",
             ActorId = "request-actor",
             ChangeReason = "request-reason",
@@ -38,6 +40,7 @@ public sealed class ToolWriteGovernanceStrictRuntimeTests {
             RollbackProviderId = "request-rollback-provider",
             AuditCorrelationId = "request-audit",
             Arguments = new JsonObject()
+                .Add(ToolWriteGovernanceArgumentNames.OperationId, "arg-operation")
                 .Add(ToolWriteGovernanceArgumentNames.ExecutionId, "arg-exec")
                 .Add(ToolWriteGovernanceArgumentNames.ActorId, "arg-actor")
                 .Add(ToolWriteGovernanceArgumentNames.ChangeReason, "arg-reason")
@@ -49,6 +52,7 @@ public sealed class ToolWriteGovernanceStrictRuntimeTests {
         ToolWriteGovernanceResult result = runtime.Authorize(request);
 
         Assert.True(result.IsAuthorized);
+        Assert.Equal("request-operation", result.OperationId);
         Assert.Equal("request-exec", result.ExecutionId);
         Assert.Equal("request-audit", result.AuditCorrelationId);
         Assert.Equal("request-rollback-provider", result.RollbackProviderId);
@@ -62,6 +66,7 @@ public sealed class ToolWriteGovernanceStrictRuntimeTests {
         };
         var request = new ToolWriteGovernanceRequest {
             Arguments = new JsonObject()
+                .Add(ToolWriteGovernanceArgumentNames.OperationId, "arg-operation")
                 .Add(ToolWriteGovernanceArgumentNames.ExecutionId, "arg-exec")
                 .Add(ToolWriteGovernanceArgumentNames.ActorId, "arg-actor")
                 .Add(ToolWriteGovernanceArgumentNames.ChangeReason, "arg-reason")
@@ -73,6 +78,7 @@ public sealed class ToolWriteGovernanceStrictRuntimeTests {
         ToolWriteGovernanceResult result = runtime.Authorize(request);
 
         Assert.True(result.IsAuthorized);
+        Assert.Equal("arg-operation", result.OperationId);
         Assert.Equal("arg-exec", result.ExecutionId);
         Assert.Equal("arg-audit", result.AuditCorrelationId);
         Assert.Equal("arg-rollback-provider", result.RollbackProviderId);

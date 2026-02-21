@@ -19,12 +19,6 @@ internal sealed partial class ChatServiceSession {
     private const string ResponseReviewMarker = "ix:response-review:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
-    private const int DefaultMaxReviewPasses = 1;
-    private const int MaxReviewPassesLimit = 3;
-    private const int MaxToolRoundsLimit = 256;
-    private const int DefaultModelHeartbeatSeconds = 8;
-    private const int MaxModelHeartbeatSeconds = 60;
-
     private sealed record ChatTurnRunResult(
         ChatResultMessage Result,
         TurnUsage? Usage,
@@ -64,23 +58,23 @@ internal sealed partial class ChatServiceSession {
 
     // Internal seam for deterministic chat-loop tests and shared routing behavior.
     internal static int ResolveMaxToolRounds(ChatRequestOptions? options, int serviceDefaultMaxToolRounds) {
-        var serviceDefault = Math.Max(1, serviceDefaultMaxToolRounds);
+        var serviceDefault = Math.Max(ChatRequestOptionLimits.MinToolRounds, serviceDefaultMaxToolRounds);
         var requested = options?.MaxToolRounds ?? serviceDefault;
-        return Math.Clamp(requested, 1, MaxToolRoundsLimit);
+        return Math.Clamp(requested, ChatRequestOptionLimits.MinToolRounds, ChatRequestOptionLimits.MaxToolRounds);
     }
 
     // Internal seam for deterministic chat-loop tests and shared routing behavior.
     internal static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
         var configured = options?.MaxReviewPasses;
         if (!configured.HasValue) {
-            return DefaultMaxReviewPasses;
+            return ChatRequestOptionLimits.DefaultReviewPasses;
         }
 
         if (configured.Value <= 0) {
             return 0;
         }
 
-        return Math.Clamp(configured.Value, 0, MaxReviewPassesLimit);
+        return Math.Clamp(configured.Value, 0, ChatRequestOptionLimits.MaxReviewPasses);
     }
 
     internal static bool IsComplexReviewCandidateRequest(string userRequest) {
@@ -123,19 +117,20 @@ internal sealed partial class ChatServiceSession {
     internal static int ResolveModelHeartbeatSeconds(ChatRequestOptions? options) {
         var configured = options?.ModelHeartbeatSeconds;
         if (!configured.HasValue) {
-            return DefaultModelHeartbeatSeconds;
+            return ChatRequestOptionLimits.DefaultModelHeartbeatSeconds;
         }
 
-        return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
+        return Math.Clamp(configured.Value, 0, ChatRequestOptionLimits.MaxModelHeartbeatSeconds);
     }
 
     private static string BuildReviewPassClampMessage(int requestedReviewPasses, int effectiveReviewPasses) {
-        return $"Requested review passes ({requestedReviewPasses}) adjusted to {effectiveReviewPasses} (supported range: 0..{MaxReviewPassesLimit}).";
+        return
+            $"Requested review passes ({requestedReviewPasses}) adjusted to {effectiveReviewPasses} (supported range: 0..{ChatRequestOptionLimits.MaxReviewPasses}).";
     }
 
     private static string BuildModelHeartbeatClampMessage(int requestedHeartbeatSeconds, int effectiveHeartbeatSeconds) {
         return
-            $"Requested model heartbeat seconds ({requestedHeartbeatSeconds}) adjusted to {effectiveHeartbeatSeconds} (supported range: 0..{MaxModelHeartbeatSeconds}).";
+            $"Requested model heartbeat seconds ({requestedHeartbeatSeconds}) adjusted to {effectiveHeartbeatSeconds} (supported range: 0..{ChatRequestOptionLimits.MaxModelHeartbeatSeconds}).";
     }
 
     internal static bool TryReadProactiveModeFromRequestText(string? requestText, out bool enabled) {
@@ -345,7 +340,7 @@ internal sealed partial class ChatServiceSession {
                         writer,
                         requestId,
                         threadId,
-                        status: "phase_heartbeat",
+                        status: ChatStatusCodes.PhaseHeartbeat,
                         durationMs: sw.ElapsedMilliseconds,
                         message: $"{heartbeatLabel}... ({elapsedSeconds}s)")
                     .ConfigureAwait(false);

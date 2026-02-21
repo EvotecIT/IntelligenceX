@@ -15,7 +15,10 @@ public sealed class ToolWriteGovernanceRegistryTests {
 
         Assert.True(registry.TryGet("stub_write", out var registeredTool));
         string output = await registeredTool.InvokeAsync(
-            new JsonObject().Add("send", true).Add("allow_write", true),
+            new JsonObject()
+                .Add("send", true)
+                .Add("allow_write", true)
+                .Add("write_operation_id", "op-runtime-required"),
             CancellationToken.None);
 
         using JsonDocument doc = JsonDocument.Parse(output);
@@ -40,6 +43,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
             new JsonObject()
                 .Add("send", true)
                 .Add("allow_write", true)
+                .Add("write_operation_id", "op-audit-sink-required")
                 .Add("write_execution_id", "exec-1")
                 .Add("write_actor_id", "actor-1")
                 .Add("write_change_reason", "ticket-1")
@@ -69,6 +73,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
             new JsonObject()
                 .Add("send", true)
                 .Add("allow_write", true)
+                .Add("write_operation_id", "op-audit-append-failure")
                 .Add("write_execution_id", "exec-throw")
                 .Add("write_actor_id", "actor-throw")
                 .Add("write_change_reason", "ticket-throw")
@@ -93,7 +98,10 @@ public sealed class ToolWriteGovernanceRegistryTests {
 
         Assert.True(registry.TryGet("stub_write", out var registeredTool));
         string output = await registeredTool.InvokeAsync(
-            new JsonObject().Add("send", true).Add("allow_write", true),
+            new JsonObject()
+                .Add("send", true)
+                .Add("allow_write", true)
+                .Add("write_operation_id", "op-missing-metadata"),
             CancellationToken.None);
 
         using JsonDocument doc = JsonDocument.Parse(output);
@@ -119,6 +127,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
             new JsonObject()
                 .Add("send", true)
                 .Add("allow_write", true)
+                .Add("write_operation_id", "op-1")
                 .Add("write_execution_id", "exec-1")
                 .Add("write_actor_id", "actor-1")
                 .Add("write_change_reason", "ticket-1")
@@ -132,8 +141,9 @@ public sealed class ToolWriteGovernanceRegistryTests {
         ToolWriteAuditRecord record = Assert.Single(sink.Records);
         Assert.True(record.IsAuthorized);
         Assert.Equal("stub_write", record.ToolName);
+        Assert.Equal("op-1", record.OperationId);
         Assert.Equal("exec-1", record.ExecutionId);
-        Assert.Equal("exec-1", record.AuditCorrelationId);
+        Assert.Equal("op-1", record.AuditCorrelationId);
         Assert.Equal("actor-1", record.ActorId);
         Assert.Equal("ticket-1", record.ChangeReason);
         Assert.Equal("rollback-1", record.RollbackPlanId);
@@ -155,6 +165,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
                 ChangeReasonArgumentName = "custom_change_reason",
                 RollbackPlanIdArgumentName = "custom_rollback_plan_id",
                 RollbackProviderIdArgumentName = "custom_rollback_provider_id",
+                OperationIdArgumentName = "custom_operation_id",
                 AuditCorrelationIdArgumentName = "custom_audit_correlation_id"
             }
         };
@@ -165,6 +176,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
             new JsonObject()
                 .Add("send", true)
                 .Add("allow_write", true)
+                .Add("custom_operation_id", "op-custom")
                 .Add("custom_execution_id", "exec-custom")
                 .Add("custom_actor_id", "actor-custom")
                 .Add("custom_change_reason", "reason-custom")
@@ -177,6 +189,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
         Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
 
         ToolWriteAuditRecord record = Assert.Single(sink.Records);
+        Assert.Equal("op-custom", record.OperationId);
         Assert.Equal("exec-custom", record.ExecutionId);
         Assert.Equal("actor-custom", record.ActorId);
         Assert.Equal("reason-custom", record.ChangeReason);
@@ -212,7 +225,9 @@ public sealed class ToolWriteGovernanceRegistryTests {
 
         Assert.True(registry.TryGet("stub_write", out var registeredTool));
         string output = await registeredTool.InvokeAsync(
-            new JsonObject().Add("send", true),
+            new JsonObject()
+                .Add("send", true)
+                .Add("write_operation_id", "op-yolo"),
             CancellationToken.None);
 
         using JsonDocument doc = JsonDocument.Parse(output);
@@ -231,7 +246,10 @@ public sealed class ToolWriteGovernanceRegistryTests {
 
         Assert.True(registry.TryGet("stub_write", out var registeredTool));
         string output = await registeredTool.InvokeAsync(
-            new JsonObject().Add("send", true).Add("allow_write", true),
+            new JsonObject()
+                .Add("send", true)
+                .Add("allow_write", true)
+                .Add("write_operation_id", "op-yolo-runtime"),
             CancellationToken.None);
 
         using JsonDocument doc = JsonDocument.Parse(output);
@@ -257,6 +275,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
             new JsonObject()
                 .Add("send", true)
                 .Add("allow_write", true)
+                .Add("write_operation_id", "op-denied")
                 .Add("write_execution_id", "exec-2")
                 .Add("write_actor_id", "actor-2"),
             CancellationToken.None);
@@ -268,6 +287,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
         ToolWriteAuditRecord record = Assert.Single(sink.Records);
         Assert.False(record.IsAuthorized);
         Assert.Equal("write_governance_requirements_not_met", record.ErrorCode);
+        Assert.Equal("op-denied", record.OperationId);
         Assert.Equal("exec-2", record.ExecutionId);
         Assert.Equal("actor-2", record.ActorId);
     }
@@ -286,7 +306,8 @@ public sealed class ToolWriteGovernanceRegistryTests {
         string output = await registeredTool.InvokeAsync(
             new JsonObject()
                 .Add("send", true)
-                .Add("allow_write", true),
+                .Add("allow_write", true)
+                .Add("write_operation_id", "op-deny-without-code"),
             CancellationToken.None);
 
         using JsonDocument doc = JsonDocument.Parse(output);
@@ -296,6 +317,34 @@ public sealed class ToolWriteGovernanceRegistryTests {
         ToolWriteAuditRecord record = Assert.Single(sink.Records);
         Assert.Equal("write_governance_denied", record.ErrorCode);
         Assert.Equal("Write authorization denied for tool 'stub_write'.", record.Error);
+        Assert.Equal("op-deny-without-code", record.OperationId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WriteIntentWithoutOperationId_ReturnsOperationIdRequired() {
+        var tool = new StubTool(CreateWriteToolDefinition());
+        var registry = new ToolRegistry {
+            WriteGovernanceRuntime = new ToolWriteGovernanceStrictRuntime {
+                ImmutableAuditProviderId = "audit",
+                RollbackProviderId = "rollback"
+            }
+        };
+        registry.Register(tool);
+
+        Assert.True(registry.TryGet("stub_write", out var registeredTool));
+        string output = await registeredTool.InvokeAsync(
+            new JsonObject()
+                .Add("send", true)
+                .Add("allow_write", true)
+                .Add("write_execution_id", "exec-no-op-id")
+                .Add("write_actor_id", "actor-no-op-id")
+                .Add("write_change_reason", "ticket-no-op-id")
+                .Add("write_rollback_plan_id", "rollback-no-op-id"),
+            CancellationToken.None);
+
+        using JsonDocument doc = JsonDocument.Parse(output);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal(ToolWriteGovernanceErrorCodes.WriteOperationIdRequired, doc.RootElement.GetProperty("error_code").GetString());
     }
 
     [Fact]
@@ -359,6 +408,7 @@ public sealed class ToolWriteGovernanceRegistryTests {
             parameters: ToolSchema.Object(
                     ("send", ToolSchema.Boolean()),
                     ("allow_write", ToolSchema.Boolean()),
+                    ("custom_operation_id", ToolSchema.String()),
                     ("custom_execution_id", ToolSchema.String()),
                     ("custom_actor_id", ToolSchema.String()),
                     ("custom_change_reason", ToolSchema.String()),

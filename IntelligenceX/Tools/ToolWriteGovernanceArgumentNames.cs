@@ -7,6 +7,11 @@ namespace IntelligenceX.Tools;
 /// </summary>
 public static class ToolWriteGovernanceArgumentNames {
     /// <summary>
+    /// Idempotency key for write operation replay safety.
+    /// </summary>
+    public const string OperationId = "write_operation_id";
+
+    /// <summary>
     /// Write execution identifier argument.
     /// </summary>
     public const string ExecutionId = "write_execution_id";
@@ -40,6 +45,7 @@ public static class ToolWriteGovernanceArgumentNames {
     /// Canonical governance metadata argument names expected on write-capable tool schemas.
     /// </summary>
     public static IReadOnlyList<string> CanonicalSchemaMetadataArguments { get; } = new[] {
+        OperationId,
         ExecutionId,
         ActorId,
         ChangeReason,

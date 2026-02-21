@@ -27,9 +27,9 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private const int SafeDefaultMaxToolRounds = 24;
-    private const int AutonomyMaxToolRoundsLimit = 256;
-    private const int AutonomyMaxCandidateToolsLimit = 256;
+    private const int SafeDefaultMaxToolRounds = ChatRequestOptionLimits.DefaultToolRounds;
+    private const int AutonomyMaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
+    private const int AutonomyMaxCandidateToolsLimit = ChatRequestOptionLimits.MaxCandidateTools;
     private const bool SafeDefaultParallelTools = true;
     private const string ParallelToolModeAuto = "auto";
     private const string ParallelToolModeForceSerial = "force_serial";
@@ -345,10 +345,12 @@ Quick start prompts:
 
         // Local compatible runtimes (LM Studio/Ollama) are much more sensitive to long tool/review loops.
         // Keep defaults conservative unless the user explicitly overrides autonomy settings.
+        // Keep local-compatible runtime conservative (8 rounds) to avoid runaway loops on weaker local transports;
+        // full/default round budget applies to service/native paths.
         var defaultMaxToolRounds = isLocalCompatibleRuntime ? 8 : SafeDefaultMaxToolRounds;
 
         var effectiveMaxToolRounds = _autonomyMaxToolRounds
-            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: AutonomyMaxToolRoundsLimit)
+            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: ChatRequestOptionLimits.MinToolRounds, max: AutonomyMaxToolRoundsLimit)
             ?? defaultMaxToolRounds;
 
         var serviceDefaultParallelTools = _sessionPolicy?.ParallelTools ?? SafeDefaultParallelTools;
@@ -397,15 +399,29 @@ Quick start prompts:
 
     private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout,
         string? weightedRouting, string? maxCandidates, string? planExecuteReviewLoop, string? maxReviewPasses, string? modelHeartbeatSeconds) {
-        _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: AutonomyMaxToolRoundsLimit);
+        _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: ChatRequestOptionLimits.MinToolRounds, max: AutonomyMaxToolRoundsLimit);
         _autonomyParallelTools = ParseAutonomyParallelToolMode(parallelMode);
-        _autonomyTurnTimeoutSeconds = ParseAutonomyInt(turnTimeout, min: 0, max: 3600);
-        _autonomyToolTimeoutSeconds = ParseAutonomyInt(toolTimeout, min: 0, max: 3600);
+        _autonomyTurnTimeoutSeconds = ParseAutonomyInt(
+            turnTimeout,
+            min: ChatRequestOptionLimits.MinTimeoutSeconds,
+            max: ChatRequestOptionLimits.MaxTimeoutSeconds);
+        _autonomyToolTimeoutSeconds = ParseAutonomyInt(
+            toolTimeout,
+            min: ChatRequestOptionLimits.MinTimeoutSeconds,
+            max: ChatRequestOptionLimits.MaxTimeoutSeconds);
         _autonomyWeightedToolRouting = ParseAutonomyParallelMode(weightedRouting);
-        _autonomyMaxCandidateTools = ParseAutonomyInt(maxCandidates, min: 0, max: AutonomyMaxCandidateToolsLimit);
+        _autonomyMaxCandidateTools = ParseAutonomyInt(maxCandidates,
+            min: ChatRequestOptionLimits.MinCandidateTools,
+            max: AutonomyMaxCandidateToolsLimit);
         _autonomyPlanExecuteReviewLoop = ParseAutonomyParallelMode(planExecuteReviewLoop);
-        _autonomyMaxReviewPasses = ParseAutonomyInt(maxReviewPasses, min: 0, max: 3);
-        _autonomyModelHeartbeatSeconds = ParseAutonomyInt(modelHeartbeatSeconds, min: 0, max: 60);
+        _autonomyMaxReviewPasses = ParseAutonomyInt(
+            maxReviewPasses,
+            min: 0,
+            max: ChatRequestOptionLimits.MaxReviewPasses);
+        _autonomyModelHeartbeatSeconds = ParseAutonomyInt(
+            modelHeartbeatSeconds,
+            min: 0,
+            max: ChatRequestOptionLimits.MaxModelHeartbeatSeconds);
 
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;

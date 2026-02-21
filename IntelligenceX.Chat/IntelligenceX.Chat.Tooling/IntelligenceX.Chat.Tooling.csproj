@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Chat.Abstractions\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
   </ItemGroup>
 

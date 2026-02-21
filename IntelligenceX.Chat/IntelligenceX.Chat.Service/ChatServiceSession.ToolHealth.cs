@@ -23,11 +23,11 @@ internal sealed partial class ChatServiceSession {
 
     private async Task HandleToolHealthAsync(StreamWriter writer, CheckToolHealthRequest request, CancellationToken cancellationToken) {
         var timeoutSeconds = request.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
-        if (timeoutSeconds < 0 || timeoutSeconds > 3600) {
+        if (timeoutSeconds < ChatRequestOptionLimits.MinTimeoutSeconds || timeoutSeconds > ChatRequestOptionLimits.MaxTimeoutSeconds) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Error = "toolTimeoutSeconds must be between 0 and 3600.",
+                Error = $"toolTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.",
                 Code = "invalid_argument"
             }, cancellationToken).ConfigureAwait(false);
             return;

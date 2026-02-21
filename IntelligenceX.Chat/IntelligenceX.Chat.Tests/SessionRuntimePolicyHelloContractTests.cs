@@ -75,7 +75,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
     public void BuildSessionPolicy_NormalizesMaxToolRoundsToAtLeastOne() {
         var policy = ChatServiceSession.BuildSessionPolicy(
             new ServiceOptions {
-                MaxToolRounds = 0
+                MaxToolRounds = ChatRequestOptionLimits.MinToolRounds - 1
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
             Array.Empty<string>(),
@@ -94,7 +94,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 SmtpProbeMaxAgeSeconds = 0
             });
 
-        Assert.Equal(1, policy.MaxToolRounds);
+        Assert.Equal(ChatRequestOptionLimits.MinToolRounds, policy.MaxToolRounds);
     }
 
     [Fact]
@@ -120,6 +120,6 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 SmtpProbeMaxAgeSeconds = 0
             });
 
-        Assert.Equal(256, policy.MaxToolRounds);
+        Assert.Equal(ChatRequestOptionLimits.MaxToolRounds, policy.MaxToolRounds);
     }
 }

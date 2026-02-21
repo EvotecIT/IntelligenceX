@@ -37,6 +37,11 @@ public sealed class ToolWriteGovernanceResult {
     public bool IsTransient { get; set; }
 
     /// <summary>
+    /// Idempotency key for write operation replay safety.
+    /// </summary>
+    public string OperationId { get; set; } = string.Empty;
+
+    /// <summary>
     /// Write execution identifier.
     /// </summary>
     public string ExecutionId { get; set; } = string.Empty;

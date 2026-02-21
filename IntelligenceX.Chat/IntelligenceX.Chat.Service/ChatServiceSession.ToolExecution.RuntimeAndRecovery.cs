@@ -68,7 +68,7 @@ internal sealed partial class ChatServiceSession {
             writer,
             requestId,
             threadId,
-            status: "tool_round_started",
+            status: ChatStatusCodes.ToolRoundStarted,
             message: BuildToolRoundStartedMessage(roundNumber, maxRounds, callCount, parallelTools, allowMutatingParallel));
     }
 
@@ -78,7 +78,7 @@ internal sealed partial class ChatServiceSession {
             writer,
             requestId,
             threadId,
-            status: "tool_round_completed",
+            status: ChatStatusCodes.ToolRoundCompleted,
             message: BuildToolRoundCompletedMessage(roundNumber, maxRounds, callCount, failedCalls));
     }
 
@@ -88,7 +88,7 @@ internal sealed partial class ChatServiceSession {
             writer,
             requestId,
             threadId,
-            status: "tool_round_limit_reached",
+            status: ChatStatusCodes.ToolRoundLimitReached,
             message: BuildToolRoundLimitReachedMessage(maxRounds, totalToolCalls, totalToolOutputs));
     }
 
@@ -134,7 +134,13 @@ internal sealed partial class ChatServiceSession {
 
     private async Task<ToolOutputDto> ExecuteToolWithStatusAsync(StreamWriter writer, string requestId, string threadId, ToolCall call,
         int toolTimeoutSeconds, CancellationToken cancellationToken) {
-        await TryWriteStatusAsync(writer, requestId, threadId, status: "tool_running", toolName: call.Name, toolCallId: call.CallId)
+        await TryWriteStatusAsync(
+                writer,
+                requestId,
+                threadId,
+                status: ChatStatusCodes.ToolRunning,
+                toolName: call.Name,
+                toolCallId: call.CallId)
             .ConfigureAwait(false);
         var sw = Stopwatch.StartNew();
         var executeTask = ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken);
@@ -159,7 +165,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_heartbeat",
+                    status: ChatStatusCodes.ToolHeartbeat,
                     toolName: call.Name,
                     toolCallId: call.CallId,
                     durationMs: sw.ElapsedMilliseconds,
@@ -181,7 +187,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "tool_canceled",
+                    status: ChatStatusCodes.ToolCanceled,
                     toolName: call.Name,
                     toolCallId: call.CallId,
                     durationMs: sw.ElapsedMilliseconds,
@@ -193,7 +199,13 @@ internal sealed partial class ChatServiceSession {
         var output = await executeTask.ConfigureAwait(false);
         sw.Stop();
         await TryWriteToolRecoveredStatusAsync(writer, requestId, threadId, call, output).ConfigureAwait(false);
-        await TryWriteStatusAsync(writer, requestId, threadId, status: "tool_completed", toolName: call.Name, toolCallId: call.CallId,
+        await TryWriteStatusAsync(
+                writer,
+                requestId,
+                threadId,
+                status: ChatStatusCodes.ToolCompleted,
+                toolName: call.Name,
+                toolCallId: call.CallId,
                 durationMs: sw.ElapsedMilliseconds)
             .ConfigureAwait(false);
         return output;
@@ -208,7 +220,7 @@ internal sealed partial class ChatServiceSession {
                 writer,
                 requestId,
                 threadId,
-                status: "tool_recovered",
+                status: ChatStatusCodes.ToolRecovered,
                 toolName: call.Name,
                 toolCallId: call.CallId,
                 message: ProjectionFallbackRecoveredStatusMessage)

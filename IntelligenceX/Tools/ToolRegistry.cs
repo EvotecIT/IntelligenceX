@@ -13,6 +13,11 @@ namespace IntelligenceX.Tools;
 public sealed class ToolRegistry {
     private readonly Dictionary<string, ITool> _tools = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolDefinition> _definitions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _writeOperationReplaySync = new();
+    private readonly Dictionary<string, string> _writeOperationReplayOutputs = new(StringComparer.Ordinal);
+    private readonly Queue<string> _writeOperationReplayOrder = new();
+    private readonly Dictionary<string, Task<string>> _writeOperationReplayInFlight = new(StringComparer.Ordinal);
+    private const int MaxWriteOperationReplayEntries = 512;
 
     /// <summary>
     /// Runtime authorizer used for write-intent tool calls.
@@ -244,6 +249,51 @@ public sealed class ToolRegistry {
             $"Tool '{definition.Name}' is authentication-aware and must expose authentication argument(s) in schema properties: {string.Join(", ", missingArguments)}.");
     }
 
+    private Task<string> ExecuteWriteOperationWithReplayAsync(string operationReplayKey, Func<Task<string>> executeAsync) {
+        if (string.IsNullOrWhiteSpace(operationReplayKey)) {
+            throw new ArgumentException("Operation replay key cannot be empty.", nameof(operationReplayKey));
+        }
+        if (executeAsync is null) {
+            throw new ArgumentNullException(nameof(executeAsync));
+        }
+
+        Task<string> task;
+        lock (_writeOperationReplaySync) {
+            if (_writeOperationReplayOutputs.TryGetValue(operationReplayKey, out var replayedOutput)) {
+                return Task.FromResult(replayedOutput);
+            }
+
+            if (_writeOperationReplayInFlight.TryGetValue(operationReplayKey, out var existingInFlightTask)) {
+                return existingInFlightTask;
+            }
+
+            task = ExecuteWriteOperationCoreAsync(operationReplayKey, executeAsync);
+            _writeOperationReplayInFlight[operationReplayKey] = task;
+        }
+
+        return task;
+    }
+
+    private async Task<string> ExecuteWriteOperationCoreAsync(string operationReplayKey, Func<Task<string>> executeAsync) {
+        try {
+            var output = await executeAsync().ConfigureAwait(false);
+            lock (_writeOperationReplaySync) {
+                _writeOperationReplayOutputs[operationReplayKey] = output ?? string.Empty;
+                _writeOperationReplayOrder.Enqueue(operationReplayKey);
+                while (_writeOperationReplayOutputs.Count > MaxWriteOperationReplayEntries && _writeOperationReplayOrder.Count > 0) {
+                    var oldestKey = _writeOperationReplayOrder.Dequeue();
+                    _writeOperationReplayOutputs.Remove(oldestKey);
+                }
+            }
+
+            return output ?? string.Empty;
+        } finally {
+            lock (_writeOperationReplaySync) {
+                _writeOperationReplayInFlight.Remove(operationReplayKey);
+            }
+        }
+    }
+
     private sealed class RegistryToolWrapper : ITool {
         private readonly ITool _inner;
         private readonly ToolDefinition _definition;
@@ -262,15 +312,31 @@ public sealed class ToolRegistry {
             if (contract is not null &&
                 contract.IsWriteCapable &&
                 contract.IsWriteRequested(arguments)) {
+                ToolWriteGovernanceRequest request = CreateGovernanceRequest(arguments, contract);
+                if (string.IsNullOrWhiteSpace(request.OperationId)) {
+                    return CreateDeniedGovernanceOutput(
+                        request,
+                        errorCode: ToolWriteGovernanceErrorCodes.WriteOperationIdRequired,
+                        error: $"Tool '{_definition.Name}' requires idempotency metadata via '{ToolWriteGovernanceArgumentNames.OperationId}'.",
+                        defaultError: $"Tool '{_definition.Name}' requires idempotency metadata via '{ToolWriteGovernanceArgumentNames.OperationId}'.",
+                        hints: new[] {
+                            $"Provide {ToolWriteGovernanceArgumentNames.OperationId} with a stable per-operation value.",
+                            "Reuse the same operation id to safely retry without duplicating side effects."
+                        },
+                        missingRequirements: new[] { ToolWriteGovernanceArgumentNames.OperationId });
+                }
+
+                var operationReplayKey = BuildWriteOperationReplayKey(request.CanonicalToolName, request.OperationId);
                 var canBypassWriteGovernanceInYolo =
                     _owner.WriteGovernanceMode == ToolWriteGovernanceMode.Yolo
                     && !_owner.RequireWriteGovernanceRuntime
                     && !_owner.RequireWriteAuditSinkForWriteOperations;
                 if (canBypassWriteGovernanceInYolo) {
-                    return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+                    return await _owner.ExecuteWriteOperationWithReplayAsync(
+                            operationReplayKey,
+                            () => _inner.InvokeAsync(arguments, cancellationToken))
+                        .ConfigureAwait(false);
                 }
-
-                ToolWriteGovernanceRequest request = CreateGovernanceRequest(arguments, contract);
 
                 if (contract.RequireExplicitConfirmation && !contract.HasExplicitConfirmation(arguments)) {
                     return CreateDeniedGovernanceOutput(
@@ -329,6 +395,11 @@ public sealed class ToolRegistry {
                         }
                     }
                 }
+
+                return await _owner.ExecuteWriteOperationWithReplayAsync(
+                        operationReplayKey,
+                        () => _inner.InvokeAsync(arguments, cancellationToken))
+                    .ConfigureAwait(false);
             }
 
             return await _inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
@@ -375,6 +446,7 @@ public sealed class ToolRegistry {
                 Hints = hints ?? Array.Empty<string>(),
                 MissingRequirements = missingRequirements ?? Array.Empty<string>(),
                 IsTransient = isTransient,
+                OperationId = request.OperationId,
                 ExecutionId = request.ExecutionId,
                 AuditCorrelationId = request.AuditCorrelationId
             };
@@ -397,6 +469,7 @@ public sealed class ToolRegistry {
         private ToolWriteGovernanceRequest CreateGovernanceRequest(
             JsonObject? arguments,
             ToolWriteGovernanceContract contract) {
+            string operationIdArgumentName = ToolWriteGovernanceArgumentNames.OperationId;
             string executionIdArgumentName = ToolWriteGovernanceArgumentNames.ExecutionId;
             string actorIdArgumentName = ToolWriteGovernanceArgumentNames.ActorId;
             string changeReasonArgumentName = ToolWriteGovernanceArgumentNames.ChangeReason;
@@ -405,6 +478,9 @@ public sealed class ToolRegistry {
             string auditCorrelationIdArgumentName = ToolWriteGovernanceArgumentNames.AuditCorrelationId;
 
             if (_owner.WriteGovernanceRuntime is ToolWriteGovernanceStrictRuntime strictRuntime) {
+                operationIdArgumentName = NormalizeArgumentName(
+                    strictRuntime.OperationIdArgumentName,
+                    ToolWriteGovernanceArgumentNames.OperationId);
                 executionIdArgumentName = NormalizeArgumentName(
                     strictRuntime.ExecutionIdArgumentName,
                     ToolWriteGovernanceArgumentNames.ExecutionId);
@@ -425,6 +501,10 @@ public sealed class ToolRegistry {
                     ToolWriteGovernanceArgumentNames.AuditCorrelationId);
             }
 
+            string operationId = ReadArgumentWithFallback(
+                arguments,
+                ToolWriteGovernanceArgumentNames.OperationId,
+                operationIdArgumentName);
             string executionId = ReadArgumentWithFallback(
                 arguments,
                 ToolWriteGovernanceArgumentNames.ExecutionId,
@@ -434,7 +514,7 @@ public sealed class ToolRegistry {
                 ToolWriteGovernanceArgumentNames.AuditCorrelationId,
                 auditCorrelationIdArgumentName);
             if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
-                auditCorrelationId = executionId;
+                auditCorrelationId = string.IsNullOrWhiteSpace(operationId) ? executionId : operationId;
             }
 
             return new ToolWriteGovernanceRequest {
@@ -443,6 +523,7 @@ public sealed class ToolRegistry {
                 GovernanceContractId = contract.GovernanceContractId,
                 Arguments = arguments,
                 ConfirmationArgumentName = contract.ConfirmationArgumentName,
+                OperationId = operationId,
                 ExecutionId = executionId,
                 ActorId = ReadArgumentWithFallback(
                     arguments,
@@ -479,7 +560,9 @@ public sealed class ToolRegistry {
                 ? request.AuditCorrelationId
                 : authorization.AuditCorrelationId;
             if (string.IsNullOrWhiteSpace(auditCorrelationId)) {
-                auditCorrelationId = executionId;
+                auditCorrelationId = string.IsNullOrWhiteSpace(request.OperationId)
+                    ? executionId
+                    : request.OperationId;
             }
 
             ToolWriteAuditRecord record = new() {
@@ -490,6 +573,7 @@ public sealed class ToolRegistry {
                 IsAuthorized = authorization.IsAuthorized,
                 ErrorCode = authorization.ErrorCode,
                 Error = authorization.Error,
+                OperationId = request.OperationId,
                 ExecutionId = executionId,
                 AuditCorrelationId = auditCorrelationId,
                 ActorId = request.ActorId,
@@ -514,6 +598,7 @@ public sealed class ToolRegistry {
                         "Retry when audit sink health is restored."
                     },
                     IsTransient = true,
+                    OperationId = request.OperationId,
                     ExecutionId = executionId,
                     AuditCorrelationId = auditCorrelationId,
                     ImmutableAuditProviderId = authorization.ImmutableAuditProviderId,
@@ -557,6 +642,12 @@ public sealed class ToolRegistry {
             return candidate.Trim();
         }
 
+        private static string BuildWriteOperationReplayKey(string canonicalToolName, string operationId) {
+            var canonical = (canonicalToolName ?? string.Empty).Trim();
+            var opId = (operationId ?? string.Empty).Trim();
+            return canonical + "|" + opId;
+        }
+
         private ToolWriteGovernanceResult NormalizeDeniedAuthorizationResult(ToolWriteGovernanceResult authorization) {
             if (authorization.IsAuthorized) {
                 return authorization;
@@ -577,6 +668,7 @@ public sealed class ToolRegistry {
                 MissingRequirements = authorization.MissingRequirements,
                 Hints = authorization.Hints,
                 IsTransient = authorization.IsTransient,
+                OperationId = authorization.OperationId,
                 ExecutionId = authorization.ExecutionId,
                 AuditCorrelationId = authorization.AuditCorrelationId,
                 ImmutableAuditProviderId = authorization.ImmutableAuditProviderId,

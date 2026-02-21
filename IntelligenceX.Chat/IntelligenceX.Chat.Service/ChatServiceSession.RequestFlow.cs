@@ -26,9 +26,6 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private const int MaxRequestTimeoutSeconds = 3600;
-    private const int MaxCandidateToolsLimit = 256;
-
     private async Task TryWriteDeltaAsync(StreamWriter writer, string requestId, string threadId, string delta) {
         try {
             await WriteAsync(writer, new ChatDeltaMessage {
@@ -265,7 +262,7 @@ internal sealed partial class ChatServiceSession {
                             writer,
                             request.RequestId,
                             threadIdForDelta,
-                            status: "phase_review",
+                            status: ChatStatusCodes.PhaseReview,
                             message: "Drafting response and applying quality review before display...")
                         .ConfigureAwait(false);
                 }
@@ -382,8 +379,8 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        if (options.MaxToolRounds < 1 || options.MaxToolRounds > MaxToolRoundsLimit) {
-            error = $"maxToolRounds must be between 1 and {MaxToolRoundsLimit}.";
+        if (options.MaxToolRounds < ChatRequestOptionLimits.MinToolRounds || options.MaxToolRounds > ChatRequestOptionLimits.MaxToolRounds) {
+            error = $"maxToolRounds must be between {ChatRequestOptionLimits.MinToolRounds} and {ChatRequestOptionLimits.MaxToolRounds}.";
             return false;
         }
 
@@ -398,24 +395,24 @@ internal sealed partial class ChatServiceSession {
 
         if (options.MaxCandidateTools.HasValue) {
             var maxCandidateTools = options.MaxCandidateTools.Value;
-            if (maxCandidateTools < 0 || maxCandidateTools > MaxCandidateToolsLimit) {
-                error = $"maxCandidateTools must be between 0 and {MaxCandidateToolsLimit}.";
+            if (maxCandidateTools < ChatRequestOptionLimits.MinCandidateTools || maxCandidateTools > ChatRequestOptionLimits.MaxCandidateTools) {
+                error = $"maxCandidateTools must be between {ChatRequestOptionLimits.MinCandidateTools} and {ChatRequestOptionLimits.MaxCandidateTools}.";
                 return false;
             }
         }
 
         if (options.TurnTimeoutSeconds.HasValue) {
             var turnTimeout = options.TurnTimeoutSeconds.Value;
-            if (turnTimeout < 0 || turnTimeout > MaxRequestTimeoutSeconds) {
-                error = $"turnTimeoutSeconds must be between 0 and {MaxRequestTimeoutSeconds}.";
+            if (turnTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || turnTimeout > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+                error = $"turnTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
                 return false;
             }
         }
 
         if (options.ToolTimeoutSeconds.HasValue) {
             var toolTimeout = options.ToolTimeoutSeconds.Value;
-            if (toolTimeout < 0 || toolTimeout > MaxRequestTimeoutSeconds) {
-                error = $"toolTimeoutSeconds must be between 0 and {MaxRequestTimeoutSeconds}.";
+            if (toolTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || toolTimeout > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+                error = $"toolTimeoutSeconds must be between {ChatRequestOptionLimits.MinTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
                 return false;
             }
         }

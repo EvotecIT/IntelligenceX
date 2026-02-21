@@ -322,9 +322,10 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public double? Temperature { get; init; }
     /// <summary>
-    /// Max tool-call rounds per user message (1..256).
+    /// Max tool-call rounds per user message
+    /// (<see cref="ChatRequestOptionLimits.MinToolRounds"/>..<see cref="ChatRequestOptionLimits.MaxToolRounds"/>).
     /// </summary>
-    public int MaxToolRounds { get; init; } = 24;
+    public int MaxToolRounds { get; init; } = ChatRequestOptionLimits.DefaultToolRounds;
     /// <summary>
     /// Whether to execute tool calls in parallel when possible.
     /// This remains as a compatibility flag for older clients/servers.
@@ -336,11 +337,15 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public string? ParallelToolMode { get; init; }
     /// <summary>
-    /// Optional per-turn timeout in seconds (null means use service default; 0 means no explicit timeout; 0..3600 when provided).
+    /// Optional per-turn timeout in seconds (null means use service default;
+    /// <see cref="ChatRequestOptionLimits.MinTimeoutSeconds"/> means no explicit timeout;
+    /// <see cref="ChatRequestOptionLimits.MinTimeoutSeconds"/>..<see cref="ChatRequestOptionLimits.MaxTimeoutSeconds"/> when provided).
     /// </summary>
     public int? TurnTimeoutSeconds { get; init; }
     /// <summary>
-    /// Optional per-tool timeout in seconds (null means use service default; 0 means no explicit timeout; 0..3600 when provided).
+    /// Optional per-tool timeout in seconds (null means use service default;
+    /// <see cref="ChatRequestOptionLimits.MinTimeoutSeconds"/> means no explicit timeout;
+    /// <see cref="ChatRequestOptionLimits.MinTimeoutSeconds"/>..<see cref="ChatRequestOptionLimits.MaxTimeoutSeconds"/> when provided).
     /// </summary>
     public int? ToolTimeoutSeconds { get; init; }
     /// <summary>
@@ -353,7 +358,8 @@ public sealed record ChatRequestOptions {
     public bool? WeightedToolRouting { get; init; }
     /// <summary>
     /// Optional cap for how many candidate tools are exposed to the model per turn.
-    /// Null/0 means service-selected default; 0..256 when provided.
+    /// Null/<see cref="ChatRequestOptionLimits.MinCandidateTools"/> means service-selected default;
+    /// <see cref="ChatRequestOptionLimits.MinCandidateTools"/>..<see cref="ChatRequestOptionLimits.MaxCandidateTools"/> when provided.
     /// </summary>
     public int? MaxCandidateTools { get; init; }
     /// <summary>

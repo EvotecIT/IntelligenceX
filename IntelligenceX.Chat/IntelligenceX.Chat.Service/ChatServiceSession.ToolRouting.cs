@@ -67,7 +67,7 @@ internal sealed partial class ChatServiceSession {
                     writer,
                     requestId,
                     threadId,
-                    status: "routing_tool",
+                    status: ChatStatusCodes.RoutingTool,
                     toolName: insight.ToolName,
                     message: payload)
                 .ConfigureAwait(false);

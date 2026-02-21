@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -115,7 +116,7 @@ internal static partial class Program {
             }
             TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(input, chatOptions, turnToken).ConfigureAwait(false);
 
-            var maxRounds = Math.Clamp(_options.MaxToolRounds, 1, MaxToolRoundsLimit);
+            var maxRounds = Math.Clamp(_options.MaxToolRounds, ChatRequestOptionLimits.MinToolRounds, MaxToolRoundsLimit);
             for (var round = 0; round < maxRounds; round++) {
                 var extracted = ToolCallParser.Extract(turn);
                 if (extracted.Count == 0) {

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
@@ -21,7 +22,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
-    private const int MaxToolRoundsLimit = 256;
+    private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
 
     private sealed class ReplOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
         public string Model { get; set; } = "gpt-5.3-codex";
@@ -45,7 +46,7 @@ internal static partial class Program {
         public bool ForceLogin { get; set; }
         public bool ParallelToolCalls { get; set; } = true;
         public bool AllowMutatingParallelToolCalls { get; set; }
-        public int MaxToolRounds { get; set; } = 24;
+        public int MaxToolRounds { get; set; } = ChatRequestOptionLimits.DefaultToolRounds;
         public int TurnTimeoutSeconds { get; set; }
         public int ToolTimeoutSeconds { get; set; }
         public List<string> AllowedRoots { get; } = new();
@@ -323,8 +324,8 @@ internal static partial class Program {
                         if (!TryGetValue(args, ref i, out var rounds, out error)) {
                             return options;
                         }
-                        if (!int.TryParse(rounds, out var n) || n < 1 || n > MaxToolRoundsLimit) {
-                            error = $"--max-tool-rounds must be between 1 and {MaxToolRoundsLimit}.";
+                        if (!int.TryParse(rounds, out var n) || n < ChatRequestOptionLimits.MinToolRounds || n > MaxToolRoundsLimit) {
+                            error = $"--max-tool-rounds must be between {ChatRequestOptionLimits.MinToolRounds} and {MaxToolRoundsLimit}.";
                             return options;
                         }
                         options.MaxToolRounds = n;
@@ -478,7 +479,7 @@ internal static partial class Program {
             TextVerbosity = profile.TextVerbosity;
             Temperature = profile.Temperature;
 
-            MaxToolRounds = Math.Clamp(profile.MaxToolRounds, 1, MaxToolRoundsLimit);
+            MaxToolRounds = Math.Clamp(profile.MaxToolRounds, ChatRequestOptionLimits.MinToolRounds, MaxToolRoundsLimit);
             ParallelToolCalls = profile.ParallelTools;
             AllowMutatingParallelToolCalls = profile.AllowMutatingParallelToolCalls;
             TurnTimeoutSeconds = profile.TurnTimeoutSeconds;
