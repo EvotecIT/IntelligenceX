@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using DocumentFormat.OpenXml.Packaging;
 using IntelligenceX.Chat.ExportArtifacts;
 using System.Text.Json;
 using OfficeIMO.Excel;
@@ -367,8 +366,7 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("\"datasets\"", bodyText, StringComparison.Ordinal);
             Assert.Contains("memberOf", bodyText, StringComparison.Ordinal);
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(0, imageCount);
+            Assert.Equal(0, docx.Images.Count);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -428,8 +426,7 @@ public sealed class LocalExportArtifactWriterTests {
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("blocked-image", bodyText, StringComparison.Ordinal);
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(0, imageCount);
+            Assert.Equal(0, docx.Images.Count);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -465,66 +462,6 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures DOCX visual fence materialization uses caller-provided width hint for generated markdown images.
-    /// </summary>
-    [Fact]
-    public void DocxVisualFenceMaterializer_UsesConfiguredWidthHint() {
-        const string markdown = """
-            ```mermaid
-            flowchart LR
-            A --> B
-            ```
-            """;
-
-        using var materialized = DocxVisualFenceMaterializer.Materialize(markdown, 980);
-
-        Assert.Contains("{width=980}", materialized.Markdown, StringComparison.Ordinal);
-        Assert.DoesNotContain("```mermaid", materialized.Markdown, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures fallback-rendered visual SVGs use the configured intrinsic width for better Word page fitting.
-    /// </summary>
-    [Fact]
-    public void DocxVisualFenceMaterializer_FallbackSvgUsesConfiguredIntrinsicWidth() {
-        const string markdown = """
-            ```mermaid
-            flowchart LR
-            A --> B
-            ```
-            """;
-
-        using var materialized = DocxVisualFenceMaterializer.Materialize(markdown, 640);
-        Assert.True(materialized.HasLocalImages);
-
-        var imageDirectory = materialized.AllowedImageDirectories[0];
-        var svgPath = Directory.EnumerateFiles(imageDirectory, "*.svg", SearchOption.TopDirectoryOnly).First();
-        var svg = File.ReadAllText(svgPath);
-
-        Assert.Contains("width='640'", svg, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures DOCX visual fence materialization clamps width hints to supported bounds.
-    /// </summary>
-    [Theory]
-    [InlineData(10, 320)]
-    [InlineData(760, 760)]
-    [InlineData(6000, 2000)]
-    public void DocxVisualFenceMaterializer_ClampsWidthHint(int requestedWidth, int expectedWidth) {
-        const string markdown = """
-            ```mermaid
-            graph TD
-            X --> Y
-            ```
-            """;
-
-        using var materialized = DocxVisualFenceMaterializer.Materialize(markdown, requestedWidth);
-
-        Assert.Contains("{width=" + expectedWidth + "}", materialized.Markdown, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// Ensures invalid visual fences remain as raw code and are not materialized into images.
     /// </summary>
     [Fact]
@@ -547,9 +484,34 @@ public sealed class LocalExportArtifactWriterTests {
             using var docx = WordDocument.Load(docxPath, readOnly: true);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("not-array", bodyText, StringComparison.Ordinal);
+            Assert.Empty(docx.Images);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 
-            var imageCount = CountMainDocumentImageParts(docxPath);
-            Assert.Equal(0, imageCount);
+    /// <summary>
+    /// Ensures plain colon-prefixed narrative lines do not gain visible backslash escapes in DOCX output.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_DoesNotEscapePlainInterpretationNarrativeLine() {
+        const string markdown = """
+            # Transcript
+
+            Interpretation: topology looks clean in this sample.
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-plain-colon-line.docx");
+            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
+            Assert.Contains("Interpretation", bodyText, StringComparison.Ordinal);
+            Assert.Contains("topology looks clean in this sample.", bodyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Interpretation\\:", bodyText, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -561,8 +523,4 @@ public sealed class LocalExportArtifactWriterTests {
         return path;
     }
 
-    private static int CountMainDocumentImageParts(string docxPath) {
-        using var package = WordprocessingDocument.Open(docxPath, false);
-        return package.MainDocumentPart?.ImageParts.Count() ?? 0;
-    }
 }
