@@ -315,14 +315,17 @@
     };
   }
 
-  function ensureMermaidThemeInitialized(themeMode) {
+  function ensureMermaidThemeInitialized(themeMode, renderProfile) {
     if (!window.mermaid || typeof window.mermaid.initialize !== "function") {
       return;
     }
 
     var normalizedThemeMode = normalizeVisualExportThemeMode(themeMode);
+    var normalizedRenderProfile = String(renderProfile || "ui").trim().toLowerCase() === "export"
+      ? "export"
+      : "ui";
     var themeVariables = resolveMermaidThemeVariables(normalizedThemeMode);
-    var signature = normalizedThemeMode + "|" + JSON.stringify(themeVariables);
+    var signature = normalizedThemeMode + "|" + normalizedRenderProfile + "|" + JSON.stringify(themeVariables);
     if (ixVisualMermaidState.initialized && ixVisualMermaidState.lastThemeSignature === signature) {
       return;
     }
@@ -331,7 +334,10 @@
       startOnLoad: false,
       securityLevel: "strict",
       theme: "base",
-      themeVariables: themeVariables
+      themeVariables: themeVariables,
+      flowchart: {
+        htmlLabels: normalizedRenderProfile !== "export"
+      }
     });
     ixVisualMermaidState.initialized = true;
     ixVisualMermaidState.lastThemeSignature = signature;
@@ -339,7 +345,7 @@
 
   function ensureMermaidReady() {
     if (window.mermaid && typeof window.mermaid.render === "function") {
-      ensureMermaidThemeInitialized("preserve_ui_theme");
+      ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
       return Promise.resolve(true);
     }
 
@@ -363,7 +369,7 @@
           return false;
         }
 
-        ensureMermaidThemeInitialized("preserve_ui_theme");
+        ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
 
         return true;
       })
@@ -424,7 +430,7 @@
 
     pre.setAttribute("data-ix-mermaid-pending", "1");
     try {
-      ensureMermaidThemeInitialized("preserve_ui_theme");
+      ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
 
       if (typeof window.mermaid.parse === "function") {
         var parseResult = window.mermaid.parse(source);
@@ -2894,6 +2900,15 @@
     return "\n";
   }
 
+  function normalizeMermaidExportSvg(svg) {
+    if (typeof svg !== "string" || !svg) {
+      return "";
+    }
+
+    // Keep Mermaid SVG XML-compatible for strict parsers (Edge/file viewers, Office renderers).
+    return svg.replace(/<br\s*\/?\s*>/gi, "<br/>");
+  }
+
   function withVisualExportBackground(svg, palette) {
     if (typeof svg !== "string" || !svg) {
       return "";
@@ -3203,7 +3218,7 @@
     var normalizedThemeMode = normalizeVisualExportThemeMode(themeMode);
     var restoreUiTheme = normalizedThemeMode !== "preserve_ui_theme";
     try {
-      ensureMermaidThemeInitialized(normalizedThemeMode);
+      ensureMermaidThemeInitialized(normalizedThemeMode, "export");
 
       if (typeof window.mermaid.parse === "function") {
         var parseResult = window.mermaid.parse(source);
@@ -3227,6 +3242,11 @@
         return null;
       }
 
+      svg = normalizeMermaidExportSvg(svg);
+      if (!svg) {
+        return null;
+      }
+
       var palette = resolveVisualExportPalette(themeMode);
       var themed = withVisualExportBackground(svg, palette);
       var encoded = utf8ToBase64(themed);
@@ -3244,7 +3264,7 @@
       return null;
     } finally {
       if (restoreUiTheme) {
-        ensureMermaidThemeInitialized("preserve_ui_theme");
+        ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
       }
     }
   }
@@ -3279,32 +3299,59 @@
       animation: false
     });
 
+    var palette = resolveVisualExportPalette(themeMode);
+    var host = document.createElement("div");
+    host.style.position = "fixed";
+    host.style.left = "-10000px";
+    host.style.top = "-10000px";
+    host.style.width = String(ixVisualExportState.chartWidth) + "px";
+    host.style.height = String(ixVisualExportState.chartHeight) + "px";
+    host.style.background = palette.background;
+    host.style.padding = "0";
+    host.style.margin = "0";
+    document.body.appendChild(host);
+
     var canvas = document.createElement("canvas");
     canvas.width = ixVisualExportState.chartWidth;
     canvas.height = ixVisualExportState.chartHeight;
+    canvas.style.width = String(ixVisualExportState.chartWidth) + "px";
+    canvas.style.height = String(ixVisualExportState.chartHeight) + "px";
+    host.appendChild(canvas);
 
     var context = canvas.getContext("2d");
     if (!context) {
+      host.remove();
       return null;
     }
 
     var chart = null;
     try {
+      context.fillStyle = palette.background || "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
       chart = new window.Chart(context, chartConfig);
       if (chart && typeof chart.update === "function") {
         chart.update("none");
       }
       await new Promise(function(resolve) {
-        setTimeout(resolve, 40);
+        if (typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(function() {
+            window.requestAnimationFrame(resolve);
+          });
+          return;
+        }
+        setTimeout(resolve, 48);
       });
 
       var dataUrl = "";
       if (chart && typeof chart.toBase64Image === "function") {
         dataUrl = chart.toBase64Image("image/png", 1) || "";
-      } else if (canvas && typeof canvas.toDataURL === "function") {
-        dataUrl = canvas.toDataURL("image/png");
       }
       var parsedData = parseDataUrlPayload(dataUrl);
+      if ((!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === "function") {
+        dataUrl = canvas.toDataURL("image/png");
+        parsedData = parseDataUrlPayload(dataUrl);
+      }
       if (!parsedData || !parsedData.dataBase64) {
         return null;
       }
@@ -3321,6 +3368,7 @@
       if (chart && typeof chart.destroy === "function") {
         chart.destroy();
       }
+      host.remove();
     }
   }
 

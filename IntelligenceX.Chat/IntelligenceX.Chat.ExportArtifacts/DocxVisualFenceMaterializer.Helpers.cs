@@ -86,6 +86,17 @@ internal static partial class DocxVisualFenceMaterializer {
             .Trim();
     }
 
+    private static string NormalizeEscapedLineBreaks(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return string.Empty;
+        }
+
+        return value
+            .Replace("\\r\\n", "\n", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal)
+            .Replace("\\r", "\n", StringComparison.Ordinal);
+    }
+
     private static string ToMarkdownPath(string path) {
         return (path ?? string.Empty).Replace('\\', '/');
     }
