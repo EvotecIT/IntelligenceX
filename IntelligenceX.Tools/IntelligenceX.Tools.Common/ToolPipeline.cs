@@ -90,7 +90,7 @@ public sealed class ToolPipelineContext<TRequest> where TRequest : notnull {
 /// <summary>
 /// Shared typed pipeline runner for tool execution.
 /// </summary>
-public static class ToolPipeline {
+public static partial class ToolPipeline {
     /// <summary>
     /// Runs binder, middleware, and terminal execution for a tool call.
     /// </summary>
@@ -100,6 +100,7 @@ public static class ToolPipeline {
         CancellationToken cancellationToken,
         Func<JsonObject?, ToolRequestBindingResult<TRequest>> binder,
         ToolPipelineNext<TRequest> terminal,
+        ToolPipelineReliabilityOptions? reliability = null,
         IReadOnlyList<ToolPipelineMiddleware<TRequest>>? middleware = null)
         where TRequest : notnull {
         ArgumentNullException.ThrowIfNull(definition);
@@ -125,6 +126,12 @@ public static class ToolPipeline {
                 var next = chain;
                 chain = (ctx, token) => current(ctx, token, next);
             }
+        }
+
+        if (reliability is not null) {
+            var reliabilityMiddleware = Reliability<TRequest>(reliability);
+            var next = chain;
+            chain = (ctx, token) => reliabilityMiddleware(ctx, token, next);
         }
 
         return chain(context, cancellationToken);
