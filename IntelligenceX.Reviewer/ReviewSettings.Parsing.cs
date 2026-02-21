@@ -120,6 +120,18 @@ internal sealed partial class ReviewSettings {
         };
     }
 
+    internal static ReviewNarrativeMode NormalizeNarrativeMode(string? value, ReviewNarrativeMode fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "structured" or "strict" or "template" => ReviewNarrativeMode.Structured,
+            "freedom" or "free" or "flexible" or "natural" => ReviewNarrativeMode.Freedom,
+            _ => fallback
+        };
+    }
+
     internal static string NormalizeEmbedPlacement(string? value, string fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;

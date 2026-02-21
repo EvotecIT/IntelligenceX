@@ -41,6 +41,7 @@ Only use suggestions when you are confident the replacement is correct and limit
 In Code Quality Assessment, include a 1-5 star rating as the first bullet (e.g., ⭐⭐⭐⭐☆).
 In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
 If there are no inline comments, write "None." under Inline Comments.
+{{NarrativeContractBlock}}
 If no reviewer thread context is provided, omit the Other Reviews section.
 If reviewer thread context is provided, label each item as stale, resolved, actionable, or noise.
 Keep each section to a maximum of 8 bullet points.

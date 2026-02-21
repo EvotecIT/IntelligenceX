@@ -58,6 +58,11 @@ internal sealed partial class ReviewSettings {
             settings.Tone = tone;
         }
 
+        var narrativeMode = GetInput("narrative_mode", "REVIEW_NARRATIVE_MODE");
+        if (!string.IsNullOrWhiteSpace(narrativeMode)) {
+            settings.NarrativeMode = NormalizeNarrativeMode(narrativeMode, settings.NarrativeMode);
+        }
+
         var focus = GetInput("focus", "REVIEW_FOCUS");
         if (!string.IsNullOrWhiteSpace(focus)) {
             settings.Focus = ParseList(focus);

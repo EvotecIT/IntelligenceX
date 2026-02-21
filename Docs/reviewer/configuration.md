@@ -452,11 +452,19 @@ Env: `REVIEW_SECRETS_AUDIT`
 {
   "review": {
     "outputStyle": "claude",
+    "narrativeMode": "freedom",
     "style": "colorful",
     "tone": "friendly"
   }
 }
 ```
+
+`narrativeMode` controls writing style while preserving merge-blocking behavior:
+- `structured` (default): deterministic, concise rationale formatting
+- `freedom`: natural reviewer voice (bullets/paragraphs/tables) while keeping explicit unblock actions
+
+GitHub Actions input/env aliases:
+- `narrative_mode` / `REVIEW_NARRATIVE_MODE`
 
 ## Copilot CLI auth env pass-through
 
@@ -512,6 +520,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `codeHost`: `github` or `azure`
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
+- `narrativeMode`: `structured` (default) or `freedom`
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
 - `openaiAccountId`: pin a preferred ChatGPT account id
 - `openaiAccountIds`: ordered account ids used for rotation/failover

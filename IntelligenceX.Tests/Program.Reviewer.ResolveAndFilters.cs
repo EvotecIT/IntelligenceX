@@ -332,6 +332,31 @@ internal static partial class Program {
         }
     }
 
+    private static void TestPromptBuilderNarrativeModeStructuredDefault() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings();
+        var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+        AssertContainsText(prompt, "one-sentence rationale (why it matters)", "narrative mode structured rationale");
+        if (prompt.Contains("Use a natural reviewer voice.", StringComparison.Ordinal)) {
+            throw new InvalidOperationException("Expected structured narrative mode prompt contract by default.");
+        }
+    }
+
+    private static void TestPromptBuilderNarrativeModeFreedom() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings {
+            NarrativeMode = ReviewNarrativeMode.Freedom,
+            OutputStyle = "claude"
+        };
+        var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+        AssertContainsText(prompt, "Use a natural reviewer voice.", "narrative mode freedom contract");
+        if (prompt.Contains("one-sentence rationale (why it matters)", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected freedom narrative mode to remove structured rationale contract.");
+        }
+    }
+
     private static void TestRedactionDefaults() {
         var settings = new ReviewSettings { RedactPii = true };
         var input = "Authorization: Bearer abc123";

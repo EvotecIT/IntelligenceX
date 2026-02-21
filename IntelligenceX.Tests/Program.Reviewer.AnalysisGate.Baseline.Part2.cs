@@ -196,7 +196,25 @@ internal static partial class Program {
         var reviewProps = review!.GetObject("properties");
         AssertNotNull(reviewProps, "reviewer schema review.properties");
 
-        var provider = reviewProps!.GetObject("provider");
+        var narrativeMode = reviewProps!.GetObject("narrativeMode");
+        AssertNotNull(narrativeMode, "reviewer schema review.narrativeMode property");
+        var narrativeModeEnum = narrativeMode!.GetArray("enum");
+        AssertNotNull(narrativeModeEnum, "reviewer schema review.narrativeMode enum");
+        var hasStructured = false;
+        var hasFreedom = false;
+        foreach (var item in narrativeModeEnum!) {
+            var text = item?.AsString();
+            if (string.Equals(text, "structured", StringComparison.OrdinalIgnoreCase)) {
+                hasStructured = true;
+            }
+            if (string.Equals(text, "freedom", StringComparison.OrdinalIgnoreCase)) {
+                hasFreedom = true;
+            }
+        }
+        AssertEqual(true, hasStructured, "reviewer schema narrativeMode includes structured");
+        AssertEqual(true, hasFreedom, "reviewer schema narrativeMode includes freedom");
+
+        var provider = reviewProps.GetObject("provider");
         AssertNotNull(provider, "reviewer schema review.provider property");
         var providerEnum = provider!.GetArray("enum");
         AssertNotNull(providerEnum, "reviewer schema review.provider enum");

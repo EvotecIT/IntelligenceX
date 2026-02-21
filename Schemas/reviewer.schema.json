@@ -46,6 +46,7 @@
         "tone": { "type": "string" },
         "style": { "type": "string", "enum": ["direct", "friendly", "funny", "colorful", "formal"] },
         "outputStyle": { "type": "string" },
+        "narrativeMode": { "type": "string", "enum": ["structured", "freedom"] },
         "focus": { "type": "array", "items": { "type": "string" } },
         "persona": { "type": "string" },
         "notes": { "type": "string" },

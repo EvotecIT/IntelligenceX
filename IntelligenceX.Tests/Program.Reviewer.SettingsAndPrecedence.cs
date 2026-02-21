@@ -9,6 +9,7 @@ internal static partial class Program {
         var previousMaxFiles = Environment.GetEnvironmentVariable("OPENAI_MAX_FILES");
         var previousSkipGenerated = Environment.GetEnvironmentVariable("SKIP_GENERATED_FILES");
         var previousDiffRange = Environment.GetEnvironmentVariable("REVIEW_DIFF_RANGE");
+        var previousNarrativeMode = Environment.GetEnvironmentVariable("REVIEW_NARRATIVE_MODE");
         var previousPolicyRulePreviewItems = Environment.GetEnvironmentVariable("REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS");
         var previousUsageBudgetGuard = Environment.GetEnvironmentVariable("REVIEW_USAGE_BUDGET_GUARD");
         var previousUsageBudgetAllowCredits = Environment.GetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_CREDITS");
@@ -23,6 +24,7 @@ internal static partial class Program {
     "maxFiles": 7,
     "skipGeneratedFiles": true,
     "reviewDiffRange": "pr-base",
+    "narrativeMode": "structured",
     "reviewUsageBudgetGuard": false,
     "reviewUsageBudgetAllowCredits": false,
     "reviewUsageBudgetAllowWeeklyLimit": false
@@ -42,6 +44,7 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("OPENAI_MAX_FILES", "42");
             Environment.SetEnvironmentVariable("SKIP_GENERATED_FILES", "false");
             Environment.SetEnvironmentVariable("REVIEW_DIFF_RANGE", "current");
+            Environment.SetEnvironmentVariable("REVIEW_NARRATIVE_MODE", "flexible");
             Environment.SetEnvironmentVariable("REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS", "100");
             Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_GUARD", "true");
             Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_CREDITS", "true");
@@ -53,6 +56,7 @@ internal static partial class Program {
             AssertEqual(42, settings.MaxFiles, "review settings load env max files precedence");
             AssertEqual(false, settings.SkipGeneratedFiles, "review settings load env skip generated precedence");
             AssertEqual("current", settings.ReviewDiffRange, "review settings load env diff range precedence");
+            AssertEqual(ReviewNarrativeMode.Freedom, settings.NarrativeMode, "review settings load env narrative mode precedence");
             AssertEqual(true, settings.ReviewUsageBudgetGuard, "review settings usage budget guard precedence");
             AssertEqual(true, settings.ReviewUsageBudgetAllowCredits, "review settings usage budget credits precedence");
             AssertEqual(true, settings.ReviewUsageBudgetAllowWeeklyLimit, "review settings usage budget weekly precedence");
@@ -66,6 +70,7 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("OPENAI_MAX_FILES", previousMaxFiles);
             Environment.SetEnvironmentVariable("SKIP_GENERATED_FILES", previousSkipGenerated);
             Environment.SetEnvironmentVariable("REVIEW_DIFF_RANGE", previousDiffRange);
+            Environment.SetEnvironmentVariable("REVIEW_NARRATIVE_MODE", previousNarrativeMode);
             Environment.SetEnvironmentVariable("REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS", previousPolicyRulePreviewItems);
             Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_GUARD", previousUsageBudgetGuard);
             Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_CREDITS", previousUsageBudgetAllowCredits);
