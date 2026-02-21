@@ -102,8 +102,7 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
-                        _ = RefreshAuthenticationStateAsync(updateStatus: false);
-                        _ = HandlePostLoginCompletionAsync();
+                        _ = CompleteLoginAndDispatchQueuedTurnAsync();
                     }
                     break;
                 case ErrorMessage err:
@@ -129,6 +128,25 @@ public sealed partial class MainWindow : Window {
                     break;
             }
         });
+    }
+
+    private async Task CompleteLoginAndDispatchQueuedTurnAsync() {
+        try {
+            await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                try {
+                    await RunOnUiThreadAsync(() => {
+                        AppendSystem("Post-login verification failed: " + ex.Message);
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                } catch {
+                    // Best-effort diagnostic only.
+                }
+            }
+        }
+
+        await HandlePostLoginCompletionAsync().ConfigureAwait(false);
     }
 
     private static string SummarizeErrorForStatus(string? message) {
