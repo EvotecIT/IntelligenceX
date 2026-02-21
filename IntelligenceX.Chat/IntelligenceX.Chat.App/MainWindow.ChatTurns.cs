@@ -102,7 +102,7 @@ public sealed partial class MainWindow : Window {
                         await ExecuteChatTurnWithThreadRecoveryAsync(reconnectClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception reconnectEx) {
-                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, reconnectEx, disconnectedFallback: false)).ConfigureAwait(false);
+                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, reconnectEx, disconnectedFallback: false, cancellationToken)).ConfigureAwait(false);
                         return;
                     }
                 }
@@ -140,12 +140,12 @@ public sealed partial class MainWindow : Window {
                                 AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
                             }
                         }
-                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedRetryEx, disconnectedFallback: false)).ConfigureAwait(false);
+                        await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedRetryEx, disconnectedFallback: false, cancellationToken)).ConfigureAwait(false);
                         return;
                     }
                 }
 
-                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: true)).ConfigureAwait(false);
+                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: true, cancellationToken)).ConfigureAwait(false);
                 return;
             } catch (Exception ex) {
                 var resolvedEx = ex;
@@ -167,7 +167,7 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
                     }
                 }
-                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedEx, disconnectedFallback: false)).ConfigureAwait(false);
+                await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedEx, disconnectedFallback: false, cancellationToken)).ConfigureAwait(false);
                 return;
             }
         } finally {
@@ -497,8 +497,16 @@ public sealed partial class MainWindow : Window {
         return TryEnqueuePromptAfterLogin(text, (conversationId ?? string.Empty).Trim(), out _);
     }
 
-    private AssistantTurnOutcome ResolveTurnOutcome(string requestId, Exception ex, bool disconnectedFallback) {
-        if (IsCanceledTurn(requestId, ex)) {
+    internal static bool IsActiveTurnCancellation(Exception ex, CancellationToken cancellationToken) {
+        return ex is OperationCanceledException && cancellationToken.IsCancellationRequested;
+    }
+
+    private AssistantTurnOutcome ResolveTurnOutcome(
+        string requestId,
+        Exception ex,
+        bool disconnectedFallback,
+        CancellationToken cancellationToken) {
+        if (IsCanceledTurn(requestId, ex) || IsActiveTurnCancellation(ex, cancellationToken)) {
             return AssistantTurnOutcome.Canceled();
         }
 
