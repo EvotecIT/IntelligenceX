@@ -224,7 +224,7 @@ public class ToolTableViewTests {
 
     [Fact]
     public void ToolTableViewRequest_ObjectInitializer_ShouldNormalizeAndDefensivelyCopyColumns() {
-        var columns = new List<string> { "  name ", "id", "name", " " };
+        var columns = new List<string> { "  name ", null!, "id", "NAME", " " };
 
         var request = new ToolTableViewRequest {
             Columns = columns
@@ -233,6 +233,17 @@ public class ToolTableViewTests {
         columns.Add("memory_usage");
 
         Assert.Equal(new[] { "name", "id" }, request.Columns);
+        var requestColumns = Assert.IsAssignableFrom<IList<string>>(request.Columns);
+        Assert.Throws<NotSupportedException>(() => requestColumns.Add("x"));
+    }
+
+    [Fact]
+    public void ToolTableViewRequest_ObjectInitializer_WhenAssignedNullColumns_ShouldUseSafeDefaults() {
+        var request = new ToolTableViewRequest {
+            Columns = null!
+        };
+
+        Assert.Empty(request.Columns);
         var requestColumns = Assert.IsAssignableFrom<IList<string>>(request.Columns);
         Assert.Throws<NotSupportedException>(() => requestColumns.Add("x"));
     }
@@ -264,6 +275,41 @@ public class ToolTableViewTests {
         Assert.Throws<NotSupportedException>(() => resultRows.Add(Array.Empty<string>()));
         var firstResultRow = Assert.IsAssignableFrom<IList<string>>(result.PreviewRows[0]);
         Assert.Throws<NotSupportedException>(() => firstResultRow.Add("x"));
+    }
+
+    [Fact]
+    public void ToolTableViewResult_ObjectInitializer_WhenAssignedNullCollections_ShouldUseSafeDefaults() {
+        var result = new ToolTableViewResult {
+            Columns = null!,
+            PreviewRows = null!
+        };
+
+        Assert.Empty(result.Columns);
+        Assert.Empty(result.PreviewRows);
+
+        var resultColumns = Assert.IsAssignableFrom<IList<ToolColumn>>(result.Columns);
+        Assert.Throws<NotSupportedException>(() => resultColumns.Add(new ToolColumn("x", "X", "string")));
+        var resultRows = Assert.IsAssignableFrom<IList<IReadOnlyList<string>>>(result.PreviewRows);
+        Assert.Throws<NotSupportedException>(() => resultRows.Add(Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void ToolTableViewResult_ObjectInitializer_ShouldNormalizeNullRowsAndCells() {
+        var previewRows = new List<IReadOnlyList<string>> {
+            null!,
+            new string?[] { "alpha", null }!
+        };
+
+        var result = new ToolTableViewResult {
+            PreviewRows = previewRows
+        };
+
+        Assert.Equal(2, result.PreviewRows.Count);
+        Assert.Empty(result.PreviewRows[0]);
+        Assert.Equal(new[] { "alpha", string.Empty }, result.PreviewRows[1]);
+
+        var firstResultRow = Assert.IsAssignableFrom<IList<string>>(result.PreviewRows[1]);
+        Assert.Throws<NotSupportedException>(() => firstResultRow[0] = "mutated");
     }
 
     private sealed record Row(int Id, string Name, long MemoryUsage);

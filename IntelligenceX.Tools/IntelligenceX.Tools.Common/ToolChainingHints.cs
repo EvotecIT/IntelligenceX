@@ -127,9 +127,14 @@ public static class ToolChainingHints {
             });
         }
 
-        return normalized
+        var deduplicated = normalized
             .DistinctBy(static action => $"{action.Tool}|{action.Reason}")
-            .ToArray();
+            .ToList();
+        if (deduplicated.Count == 0) {
+            return Array.Empty<ToolNextActionModel>();
+        }
+
+        return new ReadOnlyCollection<ToolNextActionModel>(deduplicated);
     }
 
     private static string NormalizeToken(string? token) {
