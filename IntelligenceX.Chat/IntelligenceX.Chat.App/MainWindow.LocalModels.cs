@@ -315,14 +315,10 @@ public sealed partial class MainWindow : Window {
         var previousAuthenticatedAccountId = _authenticatedAccountId;
         var previousLoginInProgress = _loginInProgress;
         var previousActiveNativeSlot = _activeNativeAccountSlot;
-        var previousNativeSlot1 = _nativeAccountSlots[0];
-        var previousNativeSlot2 = _nativeAccountSlots[1];
-        var previousNativeSlot3 = _nativeAccountSlots[2];
+        var previousNativeSlots = SnapshotNativeAccountSlots();
         ApplyNativeAccountSlotSettings(request.ActiveNativeAccountSlot, request.ActiveSlotAccountId, request.OpenAIAccountId);
         var nativeAccountSlotsChanged = previousActiveNativeSlot != _activeNativeAccountSlot
-                                        || !string.Equals(previousNativeSlot1, _nativeAccountSlots[0], StringComparison.Ordinal)
-                                        || !string.Equals(previousNativeSlot2, _nativeAccountSlots[1], StringComparison.Ordinal)
-                                        || !string.Equals(previousNativeSlot3, _nativeAccountSlots[2], StringComparison.Ordinal);
+                                        || HaveNativeAccountSlotsChanged(previousNativeSlots);
         if (clearBasicAuthRequested) {
             _localProviderOpenAIBasicUsername = string.Empty;
         } else if (request.OpenAIBasicUsername is not null) {
@@ -383,9 +379,7 @@ public sealed partial class MainWindow : Window {
             _localProviderTextVerbosity = previousTextVerbosity;
             _localProviderTemperature = previousTemperature;
             _activeNativeAccountSlot = previousActiveNativeSlot;
-            _nativeAccountSlots[0] = previousNativeSlot1;
-            _nativeAccountSlots[1] = previousNativeSlot2;
-            _nativeAccountSlots[2] = previousNativeSlot3;
+            RestoreNativeAccountSlotsFromSnapshot(previousNativeSlots);
             _isAuthenticated = previousIsAuthenticated;
             _authenticatedAccountId = previousAuthenticatedAccountId;
             _loginInProgress = previousLoginInProgress;

@@ -283,7 +283,7 @@ public sealed partial class MainWindow : Window {
             supportsReasoningControls,
             reasoningSupport,
             supportsNativeAccountSlots = isNative,
-            nativeAccountSlots = isNative ? 3 : 0,
+            nativeAccountSlots = isNative ? GetNativeAccountSlotCount() : 0,
             supportsLiveApply = true,
             requiresProcessRestart = false,
             trackedAccounts,

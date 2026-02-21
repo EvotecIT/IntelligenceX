@@ -1107,6 +1107,7 @@
     if (!Number.isFinite(nativeAccountSlots) || nativeAccountSlots <= 0) {
       nativeAccountSlots = 3;
     }
+    nativeAccountSlots = Math.max(1, Math.min(64, Math.floor(nativeAccountSlots)));
 
     appendRuntimeCapabilityRow(
       listEl,
@@ -1304,14 +1305,27 @@
     var runtimeProviderLabel = normalizeModelText(runtimeCapabilities.providerLabel || "");
     var modelsEndpoint = normalizeModelText(local.modelsEndpoint || "");
     var model = normalizeModelText(local.model || "");
+    var nativeAccountSlots = Array.isArray(local.nativeAccountSlots) ? local.nativeAccountSlots : [];
+    var maxNativeAccountSlots = Number(runtimeCapabilities.nativeAccountSlots);
+    if (!Number.isFinite(maxNativeAccountSlots) || maxNativeAccountSlots <= 0) {
+      maxNativeAccountSlots = nativeAccountSlots.length;
+    }
+    if (!Number.isFinite(maxNativeAccountSlots) || maxNativeAccountSlots <= 0) {
+      maxNativeAccountSlots = 3;
+    }
+    maxNativeAccountSlots = Math.max(1, Math.min(64, Math.floor(maxNativeAccountSlots)));
     var openAIAccountId = normalizeModelText(local.openAIAccountId || "");
     var activeNativeAccountSlot = Number(local.activeNativeAccountSlot);
-    if (!Number.isFinite(activeNativeAccountSlot) || activeNativeAccountSlot < 1 || activeNativeAccountSlot > 3) {
+    if (!Number.isFinite(activeNativeAccountSlot)) {
       activeNativeAccountSlot = 1;
     } else {
       activeNativeAccountSlot = Math.floor(activeNativeAccountSlot);
     }
-    var nativeAccountSlots = Array.isArray(local.nativeAccountSlots) ? local.nativeAccountSlots : [];
+    if (activeNativeAccountSlot < 1) {
+      activeNativeAccountSlot = 1;
+    } else if (activeNativeAccountSlot > maxNativeAccountSlots) {
+      activeNativeAccountSlot = maxNativeAccountSlots;
+    }
     var reasoningEffort = normalizeReasoningEffortValue(local.reasoningEffort || "");
     var reasoningSummary = normalizeReasoningSummaryValue(local.reasoningSummary || "");
     var textVerbosity = normalizeTextVerbosityValue(local.textVerbosity || "");
@@ -1404,7 +1418,7 @@
         runtimeText += " | Account: " + authenticatedAccountId;
       }
       if (transport === "native") {
-        runtimeText += " | Slot " + String(activeNativeAccountSlot);
+        runtimeText += " | Slot " + String(activeNativeAccountSlot) + "/" + String(maxNativeAccountSlots);
       } else if (isBridgePreset) {
         var bridgeText = resolveBridgeSessionValue(bridgeSessionState);
         if (bridgeAccountIdentity) {
@@ -1527,7 +1541,7 @@
     }
     if (nativeSlotSelect) {
       nativeSlotSelect.innerHTML = "";
-      for (var slotIndex = 1; slotIndex <= 3; slotIndex++) {
+      for (var slotIndex = 1; slotIndex <= maxNativeAccountSlots; slotIndex++) {
         var slotState = resolveNativeSlotState(slotIndex) || {};
         var slotAccountId = normalizeModelText(slotState.accountId || "");
         var slotLabel = "Slot " + String(slotIndex);
@@ -1561,7 +1575,8 @@
       nativeAccountIdInput.disabled = !isNativeTransport || isApplying;
     }
     if (nativeAccountHint) {
-      var hintParts = ["Select slot 1/2/3 to switch accounts quickly."];
+      var hintParts = ["Select a slot to switch accounts quickly."];
+      hintParts.push("Available slots: " + String(maxNativeAccountSlots) + ".");
       if (selectedSlotAccountId) {
         hintParts.push("Selected slot account: " + selectedSlotAccountId + ".");
       }
@@ -2054,6 +2069,7 @@
       supportsLiveApply: runtimeCapabilities.supportsLiveApply,
       requiresProcessRestart: runtimeCapabilities.requiresProcessRestart,
       nativeAccountSlots: runtimeCapabilities.nativeAccountSlots,
+      activeNativeAccountSlot: activeNativeAccountSlot,
       trackedAccounts: runtimeCapabilities.trackedAccounts,
       accountsWithRetrySignals: runtimeCapabilities.accountsWithRetrySignals,
       isBridgePreset: isBridgePreset,

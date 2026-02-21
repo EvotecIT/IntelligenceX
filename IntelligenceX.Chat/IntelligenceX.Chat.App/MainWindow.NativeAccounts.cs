@@ -1,24 +1,46 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private const int NativeAccountSlotCount = 3;
+    private const int DefaultNativeAccountSlotCount = 3;
+    private const int MaxNativeAccountSlotCount = 32;
+    private const string NativeAccountSlotCountEnvVar = "IXCHAT_NATIVE_ACCOUNT_SLOTS";
 
-    private static int NormalizeNativeAccountSlot(int value) {
+    private static int ResolveNativeAccountSlotCount() {
+        var raw = Environment.GetEnvironmentVariable(NativeAccountSlotCountEnvVar);
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)) {
+            return DefaultNativeAccountSlotCount;
+        }
+
+        if (parsed < 1) {
+            return 1;
+        }
+
+        return Math.Min(parsed, MaxNativeAccountSlotCount);
+    }
+
+    private int GetNativeAccountSlotCount() {
+        return _nativeAccountSlots.Length > 0 ? _nativeAccountSlots.Length : 1;
+    }
+
+    private int NormalizeNativeAccountSlot(int value) {
+        var slotCount = GetNativeAccountSlotCount();
         if (value < 1) {
             return 1;
         }
 
-        if (value > NativeAccountSlotCount) {
-            return NativeAccountSlotCount;
+        if (value > slotCount) {
+            return slotCount;
         }
 
         return value;
     }
 
-    private static int NormalizeNativeAccountSlot(int? value) {
+    private int NormalizeNativeAccountSlot(int? value) {
         return NormalizeNativeAccountSlot(value.GetValueOrDefault(1));
     }
 
@@ -31,19 +53,74 @@ public sealed partial class MainWindow : Window {
         return "native:" + accountId.Trim().ToLowerInvariant();
     }
 
+    private string GetNativeAccountSlotIdOrEmpty(int slot) {
+        if (slot < 1 || slot > _nativeAccountSlots.Length) {
+            return string.Empty;
+        }
+
+        return _nativeAccountSlots[slot - 1];
+    }
+
     private string GetNativeAccountSlotId(int slot) {
-        return _nativeAccountSlots[NormalizeNativeAccountSlot(slot) - 1];
+        return GetNativeAccountSlotIdOrEmpty(NormalizeNativeAccountSlot(slot));
     }
 
     private void SetNativeAccountSlotId(int slot, string? accountId) {
         _nativeAccountSlots[NormalizeNativeAccountSlot(slot) - 1] = NormalizeLocalProviderOpenAIAccountId(accountId);
     }
 
+    private static IReadOnlyList<string> ResolveLegacyNativeAccountSlotState(ChatAppState state) {
+        return new[] { state.NativeAccountSlot1, state.NativeAccountSlot2, state.NativeAccountSlot3 };
+    }
+
+    private static IReadOnlyList<string> ResolvePersistedNativeAccountSlotState(ChatAppState state) {
+        if (state.NativeAccountSlots is { Count: > 0 }) {
+            return state.NativeAccountSlots;
+        }
+
+        return ResolveLegacyNativeAccountSlotState(state);
+    }
+
+    private string[] SnapshotNativeAccountSlots() {
+        var snapshot = new string[_nativeAccountSlots.Length];
+        Array.Copy(_nativeAccountSlots, snapshot, _nativeAccountSlots.Length);
+        return snapshot;
+    }
+
+    private bool HaveNativeAccountSlotsChanged(IReadOnlyList<string> previous) {
+        if (previous is null || previous.Count != _nativeAccountSlots.Length) {
+            return true;
+        }
+
+        for (var i = 0; i < _nativeAccountSlots.Length; i++) {
+            if (!string.Equals(previous[i], _nativeAccountSlots[i], StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void RestoreNativeAccountSlotsFromSnapshot(IReadOnlyList<string> snapshot) {
+        Array.Fill(_nativeAccountSlots, string.Empty);
+        if (snapshot is null) {
+            return;
+        }
+
+        var copyLength = Math.Min(_nativeAccountSlots.Length, snapshot.Count);
+        for (var i = 0; i < copyLength; i++) {
+            _nativeAccountSlots[i] = NormalizeLocalProviderOpenAIAccountId(snapshot[i]);
+        }
+    }
+
     private void RestoreNativeAccountSlotsFromAppState() {
         _activeNativeAccountSlot = NormalizeNativeAccountSlot(_appState.ActiveNativeAccountSlot);
-        _nativeAccountSlots[0] = NormalizeLocalProviderOpenAIAccountId(_appState.NativeAccountSlot1);
-        _nativeAccountSlots[1] = NormalizeLocalProviderOpenAIAccountId(_appState.NativeAccountSlot2);
-        _nativeAccountSlots[2] = NormalizeLocalProviderOpenAIAccountId(_appState.NativeAccountSlot3);
+        Array.Fill(_nativeAccountSlots, string.Empty);
+        var persistedSlots = ResolvePersistedNativeAccountSlotState(_appState);
+        var copyLength = Math.Min(_nativeAccountSlots.Length, persistedSlots.Count);
+        for (var i = 0; i < copyLength; i++) {
+            _nativeAccountSlots[i] = NormalizeLocalProviderOpenAIAccountId(persistedSlots[i]);
+        }
 
         _localProviderOpenAIAccountId = NormalizeLocalProviderOpenAIAccountId(_appState.LocalProviderOpenAIAccountId);
         if (_localProviderOpenAIAccountId.Length == 0) {
@@ -59,9 +136,10 @@ public sealed partial class MainWindow : Window {
 
     private void SyncNativeAccountSlotsToAppState() {
         _appState.ActiveNativeAccountSlot = NormalizeNativeAccountSlot(_activeNativeAccountSlot);
-        _appState.NativeAccountSlot1 = GetNativeAccountSlotId(1);
-        _appState.NativeAccountSlot2 = GetNativeAccountSlotId(2);
-        _appState.NativeAccountSlot3 = GetNativeAccountSlotId(3);
+        _appState.NativeAccountSlot1 = GetNativeAccountSlotIdOrEmpty(1);
+        _appState.NativeAccountSlot2 = GetNativeAccountSlotIdOrEmpty(2);
+        _appState.NativeAccountSlot3 = GetNativeAccountSlotIdOrEmpty(3);
+        _appState.NativeAccountSlots = new List<string>(_nativeAccountSlots);
         _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
     }
 
@@ -97,8 +175,9 @@ public sealed partial class MainWindow : Window {
 
     private object[] BuildNativeAccountSlotState() {
         lock (_turnDiagnosticsSync) {
-            var result = new object[NativeAccountSlotCount];
-            for (var slot = 1; slot <= NativeAccountSlotCount; slot++) {
+            var slotCount = GetNativeAccountSlotCount();
+            var result = new object[slotCount];
+            for (var slot = 1; slot <= slotCount; slot++) {
                 var accountId = GetNativeAccountSlotId(slot);
                 var usageTotalTokens = 0L;
                 var usageTurns = 0;

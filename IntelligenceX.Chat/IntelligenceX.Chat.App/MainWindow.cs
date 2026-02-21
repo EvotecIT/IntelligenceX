@@ -263,7 +263,7 @@ public sealed partial class MainWindow : Window {
     private string _localProviderOpenAIBasicUsername = string.Empty;
     private string _localProviderOpenAIAccountId = string.Empty;
     private int _activeNativeAccountSlot = 1;
-    private readonly string[] _nativeAccountSlots = new string[3];
+    private readonly string[] _nativeAccountSlots;
     private string _localProviderReasoningEffort = string.Empty;
     private string _localProviderReasoningSummary = string.Empty;
     private string _localProviderTextVerbosity = string.Empty;
@@ -557,6 +557,7 @@ public sealed partial class MainWindow : Window {
         _markdownOptions = ChatMarkdownOptions.Create();
         Title = "IntelligenceX Chat";
         _debugMode = VerboseServiceLogs;
+        _nativeAccountSlots = new string[ResolveNativeAccountSlotCount()];
 
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 

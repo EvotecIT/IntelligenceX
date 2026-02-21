@@ -304,40 +304,26 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        var authPath = ResolveAuthPath();
-        if (!TryDeleteAuthStore(authPath, out var existed, out var error)) {
-            AppendSystem("Couldn't clear the local sign-in cache. We'll still try to sign in again.");
-            if (VerboseServiceLogs || _debugMode) {
-                AppendSystem($"Auth cache path: {authPath}");
-                AppendSystem("Cache clear detail: " + error);
-            }
-        } else if (existed) {
-            AppendSystem("Sign-in cache cleared. You can now choose another account.");
-        }
-
         await ClearNativeAccountPinForSwitchAsync().ConfigureAwait(false);
         _isAuthenticated = false;
         _authenticatedAccountId = null;
         _loginInProgress = false;
-        await SetStatusAsync("Starting sign-in for another account...").ConfigureAwait(false);
+        await SetStatusAsync("Opening account chooser...").ConfigureAwait(false);
         return await StartLoginFlowIfNeededAsync(forceInteractive: true).ConfigureAwait(false);
     }
 
     private async Task ClearNativeAccountPinForSwitchAsync() {
-        var activeSlot = NormalizeNativeAccountSlot(_activeNativeAccountSlot);
-        var slotAccountId = GetNativeAccountSlotId(activeSlot);
         var runtimeAccountId = NormalizeLocalProviderOpenAIAccountId(_localProviderOpenAIAccountId);
-        var hadPinnedAccount = slotAccountId.Length > 0 || runtimeAccountId.Length > 0;
+        var hadPinnedAccount = runtimeAccountId.Length > 0;
 
         if (hadPinnedAccount) {
-            SetNativeAccountSlotId(activeSlot, string.Empty);
             _localProviderOpenAIAccountId = string.Empty;
             SyncNativeAccountSlotsToAppState();
             try {
                 await PersistAppStateAsync().ConfigureAwait(false);
             } catch (Exception ex) {
                 if (VerboseServiceLogs || _debugMode) {
-                    await AppendSystemBestEffortAsync("Account switch will continue, but clearing saved account pin failed: " + ex.Message)
+                    await AppendSystemBestEffortAsync("Account switch will continue, but resetting runtime account selection failed: " + ex.Message)
                         .ConfigureAwait(false);
                 }
             }
@@ -373,36 +359,6 @@ public sealed partial class MainWindow : Window {
                     .ConfigureAwait(false);
             }
 
-            return false;
-        }
-    }
-
-    private static string ResolveAuthPath() {
-        var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
-        if (!string.IsNullOrWhiteSpace(overridePath)) {
-            return overridePath;
-        }
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrWhiteSpace(home)) {
-            home = ".";
-        }
-
-        return Path.Combine(home, ".intelligencex", "auth.json");
-    }
-
-    private static bool TryDeleteAuthStore(string authPath, out bool existed, out string? error) {
-        existed = false;
-        error = null;
-
-        try {
-            existed = File.Exists(authPath);
-            if (existed) {
-                File.Delete(authPath);
-            }
-            return true;
-        } catch (Exception ex) {
-            error = ex.Message;
             return false;
         }
     }

@@ -203,6 +203,7 @@ internal sealed class ChatAppState {
     public string NativeAccountSlot1 { get; set; } = string.Empty;
     public string NativeAccountSlot2 { get; set; } = string.Empty;
     public string NativeAccountSlot3 { get; set; } = string.Empty;
+    public List<string> NativeAccountSlots { get; set; } = new();
     public string LocalProviderReasoningEffort { get; set; } = string.Empty;
     public string LocalProviderReasoningSummary { get; set; } = string.Empty;
     public string LocalProviderTextVerbosity { get; set; } = string.Empty;
