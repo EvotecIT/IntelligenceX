@@ -78,6 +78,16 @@ public class OfficeImoReadToolTests {
 
             Assert.True(root.GetProperty("ok").GetBoolean());
             Assert.Equal("documents", root.GetProperty("output_mode").GetString());
+            Assert.True(root.TryGetProperty("next_actions", out var nextActions));
+            Assert.True(root.TryGetProperty("cursor", out var cursor));
+            Assert.True(root.TryGetProperty("resume_token", out var resumeToken));
+            Assert.True(root.TryGetProperty("handoff", out var handoff));
+            Assert.True(root.TryGetProperty("confidence", out var confidence));
+            Assert.True(nextActions.ValueKind == global::System.Text.Json.JsonValueKind.Array);
+            Assert.Equal("officeimo_read_handoff", handoff.GetProperty("contract").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));
+            Assert.InRange(confidence.GetDouble(), 0d, 1d);
             Assert.True(root.TryGetProperty("documents", out var documents));
             Assert.True(root.TryGetProperty("chunks", out var chunks));
             Assert.Equal(0, chunks.GetArrayLength());

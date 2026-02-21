@@ -429,6 +429,14 @@ public sealed class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
                 dc_source = request.DcSourceTimeoutMs
             }
         };
+        var chain = BuildChainContract(
+            request: request,
+            effectiveForest: effectiveForest,
+            effectiveDomain: effectiveDomain,
+            domains: domains,
+            domainControllers: allDcs,
+            gaps: gaps,
+            steps: steps);
 
         var model = new {
             requested_scope = requestedScope,
@@ -449,7 +457,12 @@ public sealed class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
                     failed_steps = steps.Count(static step => !step.Ok),
                     total_steps = steps.Count
                 }
-            }
+            },
+            next_actions = chain.NextActions,
+            cursor = chain.Cursor,
+            resume_token = chain.ResumeToken,
+            handoff = chain.Handoff,
+            confidence = chain.Confidence
         };
 
         var summary = ToolMarkdown.SummaryText(
@@ -458,6 +471,70 @@ public sealed class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
             "Use `receipt.steps` to review endpoints checked, timeouts, and failed probes.");
 
         return ToolResponse.OkModel(model, summaryMarkdown: summary);
+    }
+
+    private static ToolChainContractModel BuildChainContract(
+        ScopeDiscoveryRequest request,
+        string? effectiveForest,
+        string? effectiveDomain,
+        IReadOnlyList<string> domains,
+        IReadOnlyList<string> domainControllers,
+        IReadOnlyList<ScopeDiscoveryGap> gaps,
+        IReadOnlyList<ScopeDiscoveryStep> steps) {
+        var fallbackName = ToDiscoveryFallbackName(request.DiscoveryFallback);
+        var handoff = ToolChainingHints.Map(
+            ("contract", "ad_scope_discovery_handoff"),
+            ("version", 1),
+            ("forest_name", effectiveForest ?? string.Empty),
+            ("domain_name", effectiveDomain ?? string.Empty),
+            ("discovery_fallback", fallbackName),
+            ("domains_preview", string.Join(";", domains.Take(10))),
+            ("domain_controllers_preview", string.Join(";", domainControllers.Take(15))),
+            ("missing_areas", string.Join(";", gaps.Select(static gap => gap.Area).Take(10))));
+
+        var nextActions = new List<ToolNextActionModel> {
+            ToolChainingHints.NextAction(
+                tool: "ad_forest_discover",
+                reason: "Expand trust/domain-controller context and capture per-source discovery receipts for deeper diagnostics.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("forest_name", effectiveForest ?? string.Empty),
+                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("discovery_fallback", fallbackName))),
+            ToolChainingHints.NextAction(
+                tool: "ad_monitoring_probe_catalog",
+                reason: "Pick the best probe_kind before running deeper health checks.")
+        };
+
+        if (!string.IsNullOrWhiteSpace(effectiveDomain) || domainControllers.Count > 0) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "ad_monitoring_probe_run",
+                reason: "Run a replication probe against discovered scope to validate operational health.",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("probe_kind", "replication"),
+                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("discovery_fallback", fallbackName))));
+        }
+
+        var failedSteps = steps.Count(static step => !step.Ok);
+        var failureRatio = steps.Count == 0 ? 1d : (double)failedSteps / steps.Count;
+        var gapPenalty = Math.Min(0.35d, gaps.Count * 0.06d);
+        var confidence = 0.95d - (failureRatio * 0.45d) - gapPenalty;
+
+        return ToolChainingHints.Create(
+            nextActions: nextActions,
+            cursor: ToolChainingHints.BuildToken(
+                "ad_scope_discovery",
+                ("forest", effectiveForest ?? string.Empty),
+                ("domain", effectiveDomain ?? string.Empty),
+                ("domains", domains.Count.ToString()),
+                ("dcs", domainControllers.Count.ToString())),
+            resumeToken: ToolChainingHints.BuildToken(
+                "ad_scope_discovery.resume",
+                ("fallback", fallbackName),
+                ("failed_steps", failedSteps.ToString()),
+                ("gaps", gaps.Count.ToString())),
+            handoff: handoff,
+            confidence: confidence);
     }
 
     private static async Task<StepExecutionResult<T>> ExecuteStepAsync<T>(
