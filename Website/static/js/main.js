@@ -5,6 +5,13 @@
   document.documentElement.setAttribute('data-theme', preferred);
 })();
 
+// Prevent Prism from auto-highlighting before autoloader path is configured.
+// Hashed Prism filenames can break its default path inference and cache failures.
+(function () {
+  window.Prism = window.Prism || {};
+  window.Prism.manual = true;
+})();
+
 // Mobile nav toggle
 document.addEventListener('DOMContentLoaded', function () {
   var mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
@@ -381,8 +388,23 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  function highlightCodeBlocksWhenReady(scope, attemptsLeft) {
+    if (window.Prism) {
+      highlightCodeBlocks(scope);
+      return;
+    }
+
+    if ((attemptsLeft || 0) <= 0) {
+      return;
+    }
+
+    window.setTimeout(function () {
+      highlightCodeBlocksWhenReady(scope, attemptsLeft - 1);
+    }, 60);
+  }
+
   window.addEventListener('load', function () {
-    highlightCodeBlocks(document);
+    highlightCodeBlocksWhenReady(document, 20);
   });
 
   // Code tabs
@@ -400,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var panel = container.querySelector('[data-panel="' + target + '"]');
         if (panel) {
           panel.classList.add('active');
-          highlightCodeBlocks(panel);
+          highlightCodeBlocksWhenReady(panel, 20);
         }
       });
     });
