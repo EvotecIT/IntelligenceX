@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan EnsureLoginUnknownProbeRetryDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan RuntimeAccountPinResetTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan RuntimeAccountPinResetFastTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RuntimeAccountPinResetSwitchPreflightTimeout = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan RuntimeAccountPinResetRecoveryTimeout = TimeSpan.FromSeconds(4);
     private enum EnsureLoginProbeState {
         Unknown = 0,
@@ -531,17 +532,10 @@ public sealed partial class MainWindow : Window {
             // runtime account pin so the next login can bind to whichever account authenticates.
             _localProviderOpenAIAccountId = string.Empty;
             SyncNativeAccountSlotsToAppState();
-            try {
-                await PersistAppStateAsync().ConfigureAwait(false);
-            } catch (Exception ex) {
-                if (VerboseServiceLogs || _debugMode) {
-                    await AppendSystemBestEffortAsync("Account switch will continue, but resetting runtime account selection failed: " + ex.Message)
-                        .ConfigureAwait(false);
-                }
-            }
+            QueuePersistAppState();
         }
 
-        _ = await TryClearNativeRuntimeAccountPinAsync(RuntimeAccountPinResetFastTimeout).ConfigureAwait(false);
+        _ = await TryClearNativeRuntimeAccountPinAsync(RuntimeAccountPinResetSwitchPreflightTimeout).ConfigureAwait(false);
     }
 
     private async Task<bool> TryClearNativeRuntimeAccountPinAsync(TimeSpan? timeout = null) {
