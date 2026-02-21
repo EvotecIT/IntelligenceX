@@ -361,6 +361,9 @@ public sealed partial class MainWindow : Window {
                             }
 
                             var requestedRetryTimeout = StartupConnectRetryTimeouts[attempt];
+                            if (!fromUserAction && requestedRetryTimeout > StartupConnectRetryAttemptCapNonInteractive) {
+                                requestedRetryTimeout = StartupConnectRetryAttemptCapNonInteractive;
+                            }
                             if (!TryResolveConnectTimeout(requestedRetryTimeout, out var retryTimeout)) {
                                 sidecarConnectException = CreateBudgetExceededException();
                                 break;
