@@ -110,7 +110,7 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
-                        _ = CompleteLoginAndDispatchQueuedTurnAsync();
+                        QueuePostLoginCompletion();
                     }
                     break;
                 case ErrorMessage err:
@@ -136,6 +136,42 @@ public sealed partial class MainWindow : Window {
                     break;
             }
         });
+    }
+
+    private void QueuePostLoginCompletion() {
+        Task completionTask;
+        lock (_postLoginCompletionSync) {
+            if (_postLoginCompletionInFlightTask is { IsCompleted: false }) {
+                return;
+            }
+
+            completionTask = RunPostLoginCompletionAsync();
+            _postLoginCompletionInFlightTask = completionTask;
+        }
+
+        _ = completionTask.ContinueWith(
+            completedTask => {
+                lock (_postLoginCompletionSync) {
+                    if (ReferenceEquals(_postLoginCompletionInFlightTask, completedTask)) {
+                        _postLoginCompletionInFlightTask = null;
+                    }
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task RunPostLoginCompletionAsync() {
+        try {
+            await CompleteLoginAndDispatchQueuedTurnAsync().ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Ignore cancellation while app/session is transitioning.
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync("Post-login completion failed: " + ex.Message).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task<bool> VerifyPostLoginAuthenticationAsync(bool prioritizeDispatchLatency) {

@@ -393,6 +393,8 @@ public sealed partial class MainWindow : Window {
     private bool _serviceSessionPublishScheduled;
     private bool _serviceSessionPublishPending;
     private long _serviceSessionPublishLastUtcTicks;
+    private readonly object _postLoginCompletionSync = new();
+    private Task? _postLoginCompletionInFlightTask;
     private long _serviceSessionPublishRequestedCount;
     private long _serviceSessionPublishCoalescedCount;
     private long _serviceSessionPublishExecutedCount;
