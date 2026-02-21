@@ -105,6 +105,9 @@ internal static class ReviewSummaryParser {
             if (IsNoneLine(trimmed)) {
                 continue;
             }
+            if (IsPlaceholderLine(trimmed)) {
+                continue;
+            }
             if (trimmed.StartsWith("*Rationale:", StringComparison.OrdinalIgnoreCase)
                 || trimmed.StartsWith("*Why", StringComparison.OrdinalIgnoreCase)) {
                 continue;
@@ -128,5 +131,11 @@ internal static class ReviewSummaryParser {
 
         return string.Equals(normalized, "none", StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalized, "none.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPlaceholderLine(string line) {
+        var normalized = line.Trim().Trim('*').Trim();
+        return string.Equals(normalized, "(if any)", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "if any", StringComparison.OrdinalIgnoreCase);
     }
 }

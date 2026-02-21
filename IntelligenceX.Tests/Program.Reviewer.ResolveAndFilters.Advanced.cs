@@ -78,6 +78,14 @@ internal static partial class Program {
             "None."
         });
         AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(onlyTodo), "merge blockers missing critical section");
+
+        var placeholderOnly = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️ (if any)",
+            "(if any)"
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(placeholderOnly), "merge blockers placeholder line");
     }
 
     private static void TestReviewFormatterModelUsageSection() {
