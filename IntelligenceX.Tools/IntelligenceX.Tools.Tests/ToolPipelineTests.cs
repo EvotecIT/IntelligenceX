@@ -231,6 +231,90 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public async Task Reliability_ShouldWrapMiddlewareChainAndRetryTransientMiddlewareFailures() {
+        var definition = new ToolDefinition(
+            "pipeline_stub",
+            "Pipeline stub",
+            ToolSchema.Object().NoAdditionalProperties());
+
+        var middlewareCalls = 0;
+        var terminalCalls = 0;
+
+        var json = await ToolPipeline.RunAsync(
+            definition: definition,
+            arguments: null,
+            cancellationToken: CancellationToken.None,
+            binder: _ => ToolRequestBindingResult<StubRequest>.Success(new StubRequest(7)),
+            terminal: (_, _) => {
+                terminalCalls++;
+                return Task.FromResult(ToolResultV2.OkModel(new {
+                    MiddlewareCalls = middlewareCalls,
+                    TerminalCalls = terminalCalls
+                }));
+            },
+            reliability: new ToolPipelineReliabilityOptions {
+                MaxAttempts = 3,
+                RetryTransientErrors = true,
+                BaseDelayMs = 0,
+                MaxDelayMs = 0,
+                DelayAsync = static (_, _) => Task.CompletedTask
+            },
+            middleware: new ToolPipelineMiddleware<StubRequest>[] {
+                (context, token, next) => {
+                    middlewareCalls++;
+                    if (middlewareCalls == 1) {
+                        return Task.FromResult(ToolResponse.Error("timeout", "Transient middleware failure.", isTransient: true));
+                    }
+
+                    return next(context, token);
+                }
+            });
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(2, root.GetProperty("middleware_calls").GetInt32());
+        Assert.Equal(1, root.GetProperty("terminal_calls").GetInt32());
+        Assert.Equal(2, middlewareCalls);
+        Assert.Equal(1, terminalCalls);
+    }
+
+    [Fact]
+    public async Task Reliability_WhenCallerCancellationOccurs_ShouldPropagateWithoutRetry() {
+        var definition = new ToolDefinition(
+            "pipeline_stub",
+            "Pipeline stub",
+            ToolSchema.Object().NoAdditionalProperties());
+        using var cancellationSource = new CancellationTokenSource();
+        var attempts = 0;
+
+        var cancellation = await Assert.ThrowsAsync<OperationCanceledException>(async () => {
+            await ToolPipeline.RunAsync(
+                definition: definition,
+                arguments: null,
+                cancellationToken: cancellationSource.Token,
+                binder: _ => ToolRequestBindingResult<StubRequest>.Success(new StubRequest(7)),
+                terminal: (_, cancellationToken) => {
+                    attempts++;
+                    cancellationSource.Cancel();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return Task.FromResult(ToolResultV2.OkModel(new { Attempt = attempts }));
+                },
+                reliability: new ToolPipelineReliabilityOptions {
+                    MaxAttempts = 3,
+                    RetryTransientErrors = true,
+                    RetryExceptions = true,
+                    BaseDelayMs = 0,
+                    MaxDelayMs = 0,
+                    DelayAsync = static (_, _) => Task.CompletedTask
+                });
+        });
+
+        Assert.Equal(cancellationSource.Token, cancellation.CancellationToken);
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
     public async Task Reliability_WhenCircuitOpens_ShouldShortCircuitUntilCooldownExpires() {
         var definition = new ToolDefinition(
             "pipeline_stub",

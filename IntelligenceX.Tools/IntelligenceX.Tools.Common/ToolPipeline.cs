@@ -94,6 +94,11 @@ public static partial class ToolPipeline {
     /// <summary>
     /// Runs binder, middleware, and terminal execution for a tool call.
     /// </summary>
+    /// <remarks>
+    /// Execution order is binder -> reliability (optional) -> middleware chain (optional) -> terminal.
+    /// When reliability is enabled, retries wrap the full middleware+terminal chain and re-run it per attempt.
+    /// Caller-triggered cancellation is propagated and not retried.
+    /// </remarks>
     public static Task<string> RunAsync<TRequest>(
         ToolDefinition definition,
         JsonObject? arguments,

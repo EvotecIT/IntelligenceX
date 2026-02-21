@@ -16,19 +16,7 @@ public sealed class ToolPipelineReliabilityOptions {
     /// <summary>
     /// Recommended defaults for read-only tools where retries are safe.
     /// </summary>
-    public static ToolPipelineReliabilityOptions ReadOnlyDefaults => new() {
-        MaxAttempts = 3,
-        RetryTransientErrors = true,
-        RetryExceptions = true,
-        RetryNonTransientExceptions = false,
-        AttemptTimeoutMs = 0,
-        BaseDelayMs = 120,
-        MaxDelayMs = 1200,
-        JitterRatio = 0.10d,
-        EnableCircuitBreaker = true,
-        CircuitFailureThreshold = 4,
-        CircuitOpenMs = 15_000
-    };
+    public static ToolPipelineReliabilityOptions ReadOnlyDefaults => ToolPipelineReliabilityProfiles.ReadOnlyQuery;
 
     /// <summary>
     /// Total attempts including the first execution.
@@ -126,6 +114,45 @@ public sealed class ToolPipelineReliabilityOptions {
             DelayAsync = DelayAsync
         };
     }
+}
+
+/// <summary>
+/// Shared reliability presets used by tools to avoid option drift.
+/// </summary>
+public static class ToolPipelineReliabilityProfiles {
+    /// <summary>
+    /// Balanced retries for read-only queries.
+    /// </summary>
+    public static ToolPipelineReliabilityOptions ReadOnlyQuery => new() {
+        MaxAttempts = 3,
+        RetryTransientErrors = true,
+        RetryExceptions = true,
+        RetryNonTransientExceptions = false,
+        AttemptTimeoutMs = 0,
+        BaseDelayMs = 120,
+        MaxDelayMs = 1200,
+        JitterRatio = 0.10d,
+        EnableCircuitBreaker = true,
+        CircuitFailureThreshold = 4,
+        CircuitOpenMs = 15_000
+    };
+
+    /// <summary>
+    /// Aggressive but bounded retries for fast connectivity probes.
+    /// </summary>
+    public static ToolPipelineReliabilityOptions FastNetworkProbe => new() {
+        MaxAttempts = 3,
+        RetryTransientErrors = true,
+        RetryExceptions = true,
+        RetryNonTransientExceptions = false,
+        AttemptTimeoutMs = 12_000,
+        BaseDelayMs = 150,
+        MaxDelayMs = 1_000,
+        JitterRatio = 0.10d,
+        EnableCircuitBreaker = true,
+        CircuitFailureThreshold = 4,
+        CircuitOpenMs = 10_000
+    };
 }
 
 public static partial class ToolPipeline {

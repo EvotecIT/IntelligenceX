@@ -14,18 +14,8 @@ namespace IntelligenceX.Tools.Email;
 /// </summary>
 public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
     private sealed record ProbeRequest;
-    private static readonly ToolPipelineReliabilityOptions ReliabilityOptions = new() {
-        MaxAttempts = 3,
-        RetryTransientErrors = true,
-        RetryExceptions = true,
-        AttemptTimeoutMs = 12_000,
-        BaseDelayMs = 150,
-        MaxDelayMs = 1_000,
-        JitterRatio = 0.10d,
-        EnableCircuitBreaker = true,
-        CircuitFailureThreshold = 4,
-        CircuitOpenMs = 10_000
-    };
+    private static readonly ToolPipelineReliabilityOptions ReliabilityOptions =
+        ToolPipelineReliabilityProfiles.FastNetworkProbe;
 
     private static readonly ToolDefinition DefinitionValue = new(
         SmtpProbePolicy.ProbeToolName,
