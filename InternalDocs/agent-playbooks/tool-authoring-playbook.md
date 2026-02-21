@@ -70,6 +70,13 @@ Internal guidance for adding or refactoring tools with minimal duplication and s
 - Use `ToolResultV2.Error(...)` for failure envelopes.
 - Keep error codes stable and machine-readable.
 
+## Routing Metadata Contract
+- Tool-selection tags are normalized and sorted using ordinal-ignore-case ordering.
+- Taxonomy keys are singleton per definition (`scope:`, `operation:`, `entity:`, `risk:`, `routing:`).
+- Alias tag merge precedence is explicit: canonical/base tags are applied first, alias override tags are applied second.
+- Alias overrides can replace canonical taxonomy values only for keys explicitly provided by alias tags.
+- When alias tags do not provide a taxonomy key, the canonical taxonomy value is retained.
+
 ## Required Tests
 - Registration/contract tests for schema + auth/governance metadata.
 - Focused runtime tests for strict gating logic.

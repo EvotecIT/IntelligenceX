@@ -57,7 +57,7 @@ public sealed class ToolRegistry {
             throw new ArgumentNullException(nameof(tool));
         }
 
-        var definition = tool.Definition;
+        var definition = ToolSelectionMetadata.Enrich(tool.Definition, tool.GetType());
         if (replaceExisting) {
             RemoveCanonicalEntries(definition.CanonicalName);
         }

@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.Common;
 /// Typed contract for pack-level guidance returned by <c>*_pack_info</c> tools.
 /// </summary>
 public sealed class ToolPackInfoModel {
+    private IReadOnlyList<ToolPackToolCatalogEntryModel> _toolCatalog = Array.Empty<ToolPackToolCatalogEntryModel>();
+
     /// <summary>
     /// Pack identifier (for example: <c>active_directory</c>, <c>system</c>).
     /// </summary>
@@ -69,7 +71,10 @@ public sealed class ToolPackInfoModel {
     /// <summary>
     /// Tool-level catalog derived from runtime registrations and schemas.
     /// </summary>
-    public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog { get; init; } = Array.Empty<ToolPackToolCatalogEntryModel>();
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog {
+        get => _toolCatalog;
+        init => _toolCatalog = ToolPackGuidance.NormalizeToolCatalogContract(value);
+    }
 
     /// <summary>
     /// Registered tool names for this pack.
@@ -213,13 +218,69 @@ public sealed class ToolPackEntityFieldMappingModel {
 }
 
 /// <summary>
+/// Structured routing taxonomy for model-side tool selection.
+/// </summary>
+public sealed class ToolPackToolRoutingModel {
+    /// <summary>
+    /// Primary scope where the tool operates (for example: host/domain/file/message/pack).
+    /// </summary>
+    public string Scope { get; init; } = ToolRoutingTaxonomy.ScopeGeneral;
+
+    /// <summary>
+    /// Primary operation kind (for example: query/search/list/read/write/execute/guide).
+    /// </summary>
+    public string Operation { get; init; } = ToolRoutingTaxonomy.OperationRead;
+
+    /// <summary>
+    /// Primary entity class handled by this tool.
+    /// </summary>
+    public string Entity { get; init; } = ToolRoutingTaxonomy.EntityResource;
+
+    /// <summary>
+    /// Relative execution risk profile (for example: low/medium/high).
+    /// </summary>
+    public string Risk { get; init; } = ToolRoutingTaxonomy.RiskLow;
+
+    /// <summary>
+    /// Routing source marker (<c>explicit</c> when overridden, otherwise <c>inferred</c>).
+    /// </summary>
+    public string Source { get; init; } = ToolRoutingTaxonomy.SourceInferred;
+}
+
+/// <summary>
 /// Tool-level catalog entry for pack guidance.
 /// </summary>
 public sealed class ToolPackToolCatalogEntryModel {
+    private ToolPackToolRoutingModel _routing = new();
+
     /// <summary>
     /// Tool name as registered in the runtime tool registry.
     /// </summary>
     public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional display name from tool definition metadata.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Category for routing/scoping.
+    /// </summary>
+    public string Category { get; init; } = "general";
+
+    /// <summary>
+    /// Selection tags exposed by tool definition metadata.
+    /// </summary>
+    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Structured routing taxonomy for model-side tool selection.
+    /// </summary>
+    public ToolPackToolRoutingModel Routing {
+        get => _routing;
+        init => _routing = ToolPackGuidance.NormalizeRoutingContract(value);
+    }
 
     /// <summary>
     /// Tool description from definition metadata.
@@ -436,6 +497,15 @@ public static class ToolPackGuidance {
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
         ToolAuthenticationArgumentNames.CanonicalArguments;
 
+    internal static ToolPackToolRoutingModel NormalizeRoutingContract(ToolPackToolRoutingModel? routing) {
+        return NormalizeRouting(routing);
+    }
+
+    internal static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalogContract(
+        IEnumerable<ToolPackToolCatalogEntryModel>? entries) {
+        return NormalizeToolCatalog(entries);
+    }
+
     /// <summary>
     /// Creates a structured flow step descriptor.
     /// </summary>
@@ -529,25 +599,41 @@ public static class ToolPackGuidance {
                 continue;
             }
 
-            var requiredArguments = ReadRequiredArguments(def.Parameters);
-            var argumentHints = ReadArgumentHints(def.Parameters, requiredArguments);
-            var supportsTableView = SupportsTableViewProjection(def.Parameters);
-            ToolAuthenticationContract? authentication = def.Authentication;
+            var enrichedDefinition = ToolSelectionMetadata.Enrich(def, tool.GetType());
+            var requiredArguments = ReadRequiredArguments(enrichedDefinition.Parameters);
+            var argumentHints = ReadArgumentHints(enrichedDefinition.Parameters, requiredArguments);
+            var supportsTableView = SupportsTableViewProjection(enrichedDefinition.Parameters);
+            var routing = ToolSelectionMetadata.ResolveRouting(enrichedDefinition, tool.GetType());
+            ToolAuthenticationContract? authentication = enrichedDefinition.Authentication;
             var authenticationArguments = NormalizeValues(authentication?.GetSchemaArgumentNames());
 
             list.Add(new ToolPackToolCatalogEntryModel {
-                Name = def.Name.Trim(),
-                Description = def.Description?.Trim() ?? string.Empty,
+                Name = enrichedDefinition.Name.Trim(),
+                DisplayName = string.IsNullOrWhiteSpace(enrichedDefinition.DisplayName)
+                    ? null
+                    : enrichedDefinition.DisplayName.Trim(),
+                Category = NormalizeCategory(enrichedDefinition.Category),
+                Tags = NormalizeTags(enrichedDefinition.Tags),
+                Routing = new ToolPackToolRoutingModel {
+                    Scope = routing.Scope,
+                    Operation = routing.Operation,
+                    Entity = routing.Entity,
+                    Risk = routing.Risk,
+                    Source = routing.IsExplicit
+                        ? ToolRoutingTaxonomy.SourceExplicit
+                        : ToolRoutingTaxonomy.SourceInferred
+                },
+                Description = enrichedDefinition.Description?.Trim() ?? string.Empty,
                 RequiredArguments = requiredArguments,
                 Arguments = argumentHints,
                 SupportsTableViewProjection = supportsTableView,
-                IsPackInfoTool = def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
+                IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
                 Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
-                IsWriteCapable = def.WriteGovernance?.IsWriteCapable ?? false,
-                RequiresWriteGovernance = def.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
-                WriteGovernanceContractId = string.IsNullOrWhiteSpace(def.WriteGovernance?.GovernanceContractId)
+                IsWriteCapable = enrichedDefinition.WriteGovernance?.IsWriteCapable ?? false,
+                RequiresWriteGovernance = enrichedDefinition.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
+                WriteGovernanceContractId = string.IsNullOrWhiteSpace(enrichedDefinition.WriteGovernance?.GovernanceContractId)
                     ? null
-                    : def.WriteGovernance!.GovernanceContractId,
+                    : enrichedDefinition.WriteGovernance!.GovernanceContractId,
                 IsAuthenticationAware = authentication?.IsAuthenticationAware ?? false,
                 RequiresAuthentication = authentication?.RequiresAuthentication ?? false,
                 AuthenticationContractId = string.IsNullOrWhiteSpace(authentication?.AuthenticationContractId)
@@ -762,6 +848,10 @@ public static class ToolPackGuidance {
 
             list.Add(new ToolPackToolCatalogEntryModel {
                 Name = name,
+                DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? null : entry.DisplayName.Trim(),
+                Category = NormalizeCategory(entry.Category),
+                Tags = NormalizeTags(entry.Tags),
+                Routing = NormalizeRouting(entry.Routing),
                 Description = entry.Description?.Trim() ?? string.Empty,
                 RequiredArguments = NormalizeValues(entry.RequiredArguments),
                 Arguments = NormalizeArguments(entry.Arguments),
@@ -824,6 +914,95 @@ public static class ToolPackGuidance {
             SupportsAuthentication = authenticationArguments.Count > 0,
             AuthenticationArguments = authenticationArguments
         };
+    }
+
+    private static ToolPackToolRoutingModel NormalizeRouting(ToolPackToolRoutingModel? routing) {
+        if (routing is null) {
+            return new ToolPackToolRoutingModel();
+        }
+
+        var scope = NormalizeRoutingToken(routing.Scope, ToolRoutingTaxonomy.ScopeGeneral);
+        var operation = NormalizeRoutingToken(routing.Operation, ToolRoutingTaxonomy.OperationRead);
+        var entity = NormalizeRoutingToken(routing.Entity, ToolRoutingTaxonomy.EntityResource);
+        var rawRisk = (routing.Risk ?? string.Empty).Trim();
+        var risk = NormalizeRoutingToken(routing.Risk, ToolRoutingTaxonomy.RiskLow);
+        var rawSource = (routing.Source ?? string.Empty).Trim();
+        var source = NormalizeRoutingToken(routing.Source, ToolRoutingTaxonomy.SourceInferred);
+        if (!ToolRoutingTaxonomy.IsAllowedSource(source)) {
+            if (rawSource.Length > 0) {
+                throw new InvalidOperationException(
+                    $"Routing source '{rawSource}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedSources)}.");
+            }
+
+            source = ToolRoutingTaxonomy.SourceInferred;
+        }
+
+        if (!ToolRoutingTaxonomy.IsAllowedRisk(risk)) {
+            if (string.Equals(source, ToolRoutingTaxonomy.SourceExplicit, StringComparison.Ordinal)) {
+                throw new InvalidOperationException(
+                    $"Explicit routing risk '{rawRisk}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
+            }
+
+            risk = ToolRoutingTaxonomy.RiskLow;
+        }
+
+        if (string.Equals(source, ToolRoutingTaxonomy.SourceExplicit, StringComparison.Ordinal) && rawRisk.Length == 0) {
+            throw new InvalidOperationException(
+                $"Explicit routing risk is required and must be one of: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
+        }
+
+        return new ToolPackToolRoutingModel {
+            Scope = scope,
+            Operation = operation,
+            Entity = entity,
+            Risk = risk,
+            Source = source
+        };
+    }
+
+    private static string NormalizeCategory(string? category) {
+        var normalized = (category ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "general";
+        }
+
+        return normalized.ToLowerInvariant();
+    }
+
+    private static IReadOnlyList<string> NormalizeTags(IEnumerable<string>? tags) {
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tag in tags ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(tag)) {
+                continue;
+            }
+
+            var normalized = tag.Trim().ToLowerInvariant();
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+
+        if (list.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list.ToArray();
+    }
+
+    private static string NormalizeRoutingToken(string? value, string fallback) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return fallback;
+        }
+
+        return normalized.ToLowerInvariant();
     }
 
     private static ToolPackToolTraitsModel NormalizeTraits(ToolPackToolTraitsModel? traits) {

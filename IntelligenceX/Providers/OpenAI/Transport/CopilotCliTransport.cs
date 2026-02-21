@@ -60,6 +60,16 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
     public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
 
+    internal static class Diagnostics {
+        internal static bool IsDisposed(CopilotCliTransport transport) {
+            if (transport is null) {
+                throw new ArgumentNullException(nameof(transport));
+            }
+
+            return Volatile.Read(ref transport._disposeState) != 0;
+        }
+    }
+
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken) {
         ThrowIfDisposed();
         _ = clientInfo; // Copilot CLI transport does not consume ClientInfo metadata.

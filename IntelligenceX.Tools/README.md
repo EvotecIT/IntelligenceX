@@ -72,7 +72,9 @@ and can resolve engine sources from configured local roots when needed.
 - Render-oriented projected rows are emitted in `*_view` fields.
 - For pack-level planning, call the corresponding `*_pack_info` tool first.
 - Use `capabilities` + `recommended_flow_steps` for planning strategy.
-- Use `tool_catalog` for runtime-accurate tool descriptions, argument hints, required-argument hints, and structured usage traits.
+- Use `tool_catalog` for runtime-accurate tool descriptions, categories/tags, routing taxonomy (`scope`/`operation`/`entity`/`risk`), argument hints, required-argument hints, and structured usage traits.
+- Tag ordering is deterministic (`OrdinalIgnoreCase` sort), and taxonomy keys (`scope`, `operation`, `entity`, `risk`, `routing`) are single-valued after merge/override resolution.
+- Runtime registrations normalize tool metadata through `ToolSelectionMetadata` (category inference + tag/routing taxonomy normalization), so downstream consumers should treat category/tags/routing as normalized contract values rather than raw declaration order.
 
 ## Adding a new pack
 

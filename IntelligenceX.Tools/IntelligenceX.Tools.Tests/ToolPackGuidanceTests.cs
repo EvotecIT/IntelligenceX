@@ -177,6 +177,12 @@ public class ToolPackGuidanceTests {
         var a = catalog[0];
         Assert.Equal("stub_a", a.Name);
         Assert.Equal("Tool A", a.Description);
+        Assert.NotNull(a.Routing);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, a.Routing.Source);
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Scope));
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Operation));
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Entity));
+        Assert.False(string.IsNullOrWhiteSpace(a.Routing.Risk));
         Assert.Single(a.RequiredArguments);
         Assert.Contains("query", a.RequiredArguments);
         Assert.False(a.SupportsTableViewProjection);
@@ -260,6 +266,253 @@ public class ToolPackGuidanceTests {
         Assert.True(item.RequiresAuthentication);
         Assert.True(item.SupportsConnectivityProbe);
         Assert.Equal("email_smtp_probe", item.ProbeToolName);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldInferCategoryAndSelectionTags() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "eventlog_timeline_query",
+                "Timeline query",
+                ToolSchema.Object(
+                        ("start_time_utc", ToolSchema.String()),
+                        ("end_time_utc", ToolSchema.String()),
+                        ("columns", ToolSchema.Array(ToolSchema.String())),
+                        ("max_results", ToolSchema.Integer()),
+                        ("machine_name", ToolSchema.String()))
+                    .NoAdditionalProperties()))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.Equal("eventlog", item.Category);
+        Assert.Contains("eventlog", item.Tags);
+        Assert.Contains("time_range", item.Tags);
+        Assert.Contains("table_view", item.Tags);
+        Assert.Contains("paging", item.Tags);
+        Assert.Contains("target_scope", item.Tags);
+        Assert.Equal("host", item.Routing.Scope);
+        Assert.Equal("query", item.Routing.Operation);
+        Assert.Equal("event", item.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldDefaultCategoryAndNormalizeTagsAndRoutingCase() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "custom_probe",
+                "Custom probe",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String()),
+                        ("max_results", ToolSchema.Integer()))
+                    .NoAdditionalProperties(),
+                category: "  ",
+                tags: new[] { "Tag", "tag", "TAG", "MixedCase" }))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.Equal("general", item.Category);
+        Assert.Contains("tag", item.Tags);
+        Assert.Contains("mixedcase", item.Tags);
+        Assert.Equal(1, item.Tags.Count(static x => string.Equals(x, "tag", StringComparison.Ordinal)));
+        Assert.All(item.Tags, static x => Assert.Equal(x.ToLowerInvariant(), x));
+        Assert.Equal(item.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), item.Tags);
+
+        Assert.Equal("host", item.Routing.Scope);
+        Assert.Equal("probe", item.Routing.Operation);
+        Assert.Equal("resource", item.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
+    }
+
+    [Fact]
+    public void Create_ShouldFallbackInvalidInferredRoutingRiskToLow() {
+        var model = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: new[] { "system_info" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "system_info",
+                    Description = "System info",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "Host",
+                        Operation = "Read",
+                        Entity = "Host",
+                        Risk = "critical",
+                        Source = ToolRoutingTaxonomy.SourceInferred
+                    }
+                }
+            });
+
+        var item = Assert.Single(model.ToolCatalog);
+        Assert.Equal("host", item.Routing.Scope);
+        Assert.Equal("read", item.Routing.Operation);
+        Assert.Equal("host", item.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
+    }
+
+    [Fact]
+    public void Create_ShouldRejectInvalidRoutingSourceValue() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ToolPackGuidance.Create(
+                pack: "system",
+                engine: "ComputerX",
+                tools: new[] { "system_info" },
+                toolCatalog: new[] {
+                    new ToolPackToolCatalogEntryModel {
+                        Name = "system_info",
+                        Description = "System info",
+                        Routing = new ToolPackToolRoutingModel {
+                            Risk = ToolRoutingTaxonomy.RiskLow,
+                            Source = "manual"
+                        }
+                    }
+                }));
+
+        Assert.Contains("Routing source", ex.Message);
+    }
+
+    [Fact]
+    public void Create_ShouldRejectInvalidExplicitRoutingRiskValue() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ToolPackGuidance.Create(
+                pack: "system",
+                engine: "ComputerX",
+                tools: new[] { "system_info" },
+                toolCatalog: new[] {
+                    new ToolPackToolCatalogEntryModel {
+                        Name = "system_info",
+                        Description = "System info",
+                        Routing = new ToolPackToolRoutingModel {
+                            Risk = "critical",
+                            Source = ToolRoutingTaxonomy.SourceExplicit
+                        }
+                    }
+                }));
+
+        Assert.Contains("Explicit routing risk", ex.Message);
+    }
+
+    [Fact]
+    public void ToolCatalogEntry_ShouldNormalizeRouting_OnAssignment() {
+        var entry = new ToolPackToolCatalogEntryModel {
+            Name = "system_info",
+            Description = "System info",
+            Routing = new ToolPackToolRoutingModel {
+                Scope = " Host ",
+                Operation = " Read ",
+                Entity = " Resource ",
+                Risk = " ",
+                Source = " "
+            }
+        };
+
+        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, entry.Routing.Scope);
+        Assert.Equal(ToolRoutingTaxonomy.OperationRead, entry.Routing.Operation);
+        Assert.Equal(ToolRoutingTaxonomy.EntityResource, entry.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+    }
+
+    [Fact]
+    public void ToolCatalogEntry_ShouldRejectInvalidRoutingSource_OnAssignment() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new ToolPackToolCatalogEntryModel {
+                Name = "system_info",
+                Description = "System info",
+                Routing = new ToolPackToolRoutingModel {
+                    Risk = ToolRoutingTaxonomy.RiskLow,
+                    Source = "manual"
+                }
+            });
+
+        Assert.Contains("Routing source", ex.Message);
+    }
+
+    [Fact]
+    public void ToolPackInfoModel_ShouldNormalizeToolCatalog_OnAssignment() {
+        var model = new ToolPackInfoModel {
+            Pack = "system",
+            Engine = "ComputerX",
+            Tools = new[] { "system_info" },
+            ToolCatalog = new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = " system_info ",
+                    Description = "System info",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "host",
+                        Operation = "read",
+                        Entity = "resource",
+                        Risk = "low",
+                        Source = ToolRoutingTaxonomy.SourceInferred
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "SYSTEM_INFO",
+                    Description = "Duplicate",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "domain",
+                        Operation = "search",
+                        Entity = "directory_object",
+                        Risk = "high",
+                        Source = ToolRoutingTaxonomy.SourceExplicit
+                    }
+                }
+            }
+        };
+
+        var entry = Assert.Single(model.ToolCatalog);
+        Assert.Equal("system_info", entry.Name);
+        Assert.Equal("System info", entry.Description);
+        Assert.Equal("host", entry.Routing.Scope);
+        Assert.Equal("read", entry.Routing.Operation);
+        Assert.Equal("resource", entry.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+    }
+
+    [Fact]
+    public void Create_ShouldNormalizeAndSerializeDefaultRoutingValues_WhenCatalogRoutingIsBlank() {
+        var model = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: new[] { "system_info" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "system_info",
+                    Description = "System info",
+                    Routing = new ToolPackToolRoutingModel {
+                        Scope = "   ",
+                        Operation = " ",
+                        Entity = "\t",
+                        Risk = string.Empty,
+                        Source = " "
+                    }
+                }
+            });
+
+        var entry = Assert.Single(model.ToolCatalog);
+        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, entry.Routing.Scope);
+        Assert.Equal(ToolRoutingTaxonomy.OperationRead, entry.Routing.Operation);
+        Assert.Equal(ToolRoutingTaxonomy.EntityResource, entry.Routing.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+
+        var root = ToolJson.ToJsonObjectSnakeCase(model);
+        var toolCatalog = root.GetArray("tool_catalog");
+        Assert.NotNull(toolCatalog);
+
+        var serializedEntry = Assert.Single(toolCatalog!);
+        var routing = serializedEntry.AsObject()?.GetObject("routing");
+        Assert.NotNull(routing);
+        Assert.Equal(ToolRoutingTaxonomy.ScopeGeneral, routing!.GetString("scope"));
+        Assert.Equal(ToolRoutingTaxonomy.OperationRead, routing.GetString("operation"));
+        Assert.Equal(ToolRoutingTaxonomy.EntityResource, routing.GetString("entity"));
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, routing.GetString("risk"));
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, routing.GetString("source"));
     }
 
     private sealed class StubTool : ITool {

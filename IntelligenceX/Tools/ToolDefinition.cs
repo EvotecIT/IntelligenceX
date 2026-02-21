@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Tools;
@@ -9,6 +9,9 @@ namespace IntelligenceX.Tools;
 /// Defines a tool that can be invoked by the model.
 /// </summary>
 public sealed class ToolDefinition {
+    private static readonly StringComparer TagComparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly AsyncLocal<Action<string>?> MalformedTaxonomyTagDroppedObserver = new();
+
     /// <summary>
     /// Initializes a new tool definition.
     /// </summary>
@@ -78,6 +81,7 @@ public sealed class ToolDefinition {
 
     /// <summary>
     /// Gets optional tags associated with this tool definition.
+    /// Tags are normalized to distinct deterministic ordering (ordinal-ignore-case).
     /// </summary>
     public IReadOnlyList<string> Tags { get; }
 
@@ -106,6 +110,16 @@ public sealed class ToolDefinition {
     /// </summary>
     public string CanonicalName => AliasOf ?? Name;
 
+    internal static IDisposable RegisterMalformedTaxonomyTagDroppedObserver(Action<string> observer) {
+        if (observer is null) {
+            throw new ArgumentNullException(nameof(observer));
+        }
+
+        var previous = MalformedTaxonomyTagDroppedObserver.Value;
+        MalformedTaxonomyTagDroppedObserver.Value = observer;
+        return new MalformedTaxonomyTagDroppedObserverScope(previous);
+    }
+
     /// <summary>
     /// Creates an alias definition derived from the current canonical definition.
     /// </summary>
@@ -122,7 +136,7 @@ public sealed class ToolDefinition {
             throw new ArgumentException("Alias name cannot match canonical tool name.", nameof(aliasName));
         }
 
-        var mergedTags = MergeTags(Tags, tags);
+        var mergedTags = MergeTags(baseTags: Tags, overrideTags: tags);
         return new ToolDefinition(
             name: normalizedAliasName,
             description: string.IsNullOrWhiteSpace(description) ? Description : description,
@@ -152,24 +166,7 @@ public sealed class ToolDefinition {
     }
 
     private static IReadOnlyList<string> NormalizeTags(IReadOnlyList<string>? tags) {
-        if (tags is null || tags.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        var list = new List<string>(tags.Count);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var tag in tags) {
-            if (string.IsNullOrWhiteSpace(tag)) {
-                continue;
-            }
-
-            var normalized = tag.Trim();
-            if (seen.Add(normalized)) {
-                list.Add(normalized);
-            }
-        }
-
-        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+        return MergeTags(baseTags: Array.Empty<string>(), overrideTags: tags);
     }
 
     private static IReadOnlyList<ToolAliasDefinition> NormalizeAliases(
@@ -202,37 +199,110 @@ public sealed class ToolDefinition {
         return normalized.Length == 0 ? null : normalized;
     }
 
-    private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> first, IReadOnlyList<string>? second) {
-        if ((first is null || first.Count == 0) && (second is null || second.Count == 0)) {
+    private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> baseTags, IReadOnlyList<string>? overrideTags) {
+        if ((baseTags is null || baseTags.Count == 0) && (overrideTags is null || overrideTags.Count == 0)) {
             return Array.Empty<string>();
         }
 
-        var merged = new List<string>((first?.Count ?? 0) + (second?.Count ?? 0));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (first is not null) {
-            foreach (var tag in first) {
-                if (string.IsNullOrWhiteSpace(tag)) {
-                    continue;
-                }
-                var normalized = tag.Trim();
-                if (seen.Add(normalized)) {
-                    merged.Add(normalized);
-                }
+        var merged = new List<string>((baseTags?.Count ?? 0) + (overrideTags?.Count ?? 0));
+        var seen = new HashSet<string>(TagComparer);
+        var taxonomyByKey = new Dictionary<string, string>(TagComparer);
+
+        AddTags(baseTags, allowTaxonomyOverride: false, merged, seen, taxonomyByKey);
+        AddTags(overrideTags, allowTaxonomyOverride: true, merged, seen, taxonomyByKey);
+
+        return FinalizeMergedTags(merged, taxonomyByKey);
+    }
+
+    private static void AddTags(
+        IReadOnlyList<string>? tags,
+        bool allowTaxonomyOverride,
+        List<string> merged,
+        HashSet<string> seen,
+        Dictionary<string, string> taxonomyByKey) {
+        if (tags is null || tags.Count == 0) {
+            return;
+        }
+
+        foreach (var tag in tags) {
+            AddTag(tag, allowTaxonomyOverride, merged, seen, taxonomyByKey);
+        }
+    }
+
+    private static void AddTag(
+        string? tag,
+        bool allowTaxonomyOverride,
+        List<string> merged,
+        HashSet<string> seen,
+        Dictionary<string, string> taxonomyByKey) {
+        if (tag is null) {
+            return;
+        }
+
+        var normalized = tag.Trim();
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        if (ToolRoutingTaxonomy.TryGetTagKeyValue(normalized, out var taxonomyKey, out _)) {
+            if (allowTaxonomyOverride || !taxonomyByKey.ContainsKey(taxonomyKey)) {
+                taxonomyByKey[taxonomyKey] = normalized;
+            }
+            return;
+        }
+        if (ToolRoutingTaxonomy.IsTaxonomyTag(normalized)) {
+            OnMalformedTaxonomyTagDropped(normalized);
+            return;
+        }
+
+        if (seen.Add(normalized)) {
+            merged.Add(normalized);
+        }
+    }
+
+    private static IReadOnlyList<string> FinalizeMergedTags(List<string> merged, Dictionary<string, string> taxonomyByKey) {
+        if (taxonomyByKey.Count > 0) {
+            foreach (var taxonomyTag in taxonomyByKey.Values) {
+                merged.Add(taxonomyTag);
             }
         }
 
-        if (second is not null) {
-            foreach (var tag in second) {
-                if (string.IsNullOrWhiteSpace(tag)) {
-                    continue;
-                }
-                var normalized = tag.Trim();
-                if (seen.Add(normalized)) {
-                    merged.Add(normalized);
-                }
-            }
+        if (merged.Count == 0) {
+            return Array.Empty<string>();
         }
 
-        return merged.Count == 0 ? Array.Empty<string>() : merged.ToArray();
+        merged.Sort(TagComparer);
+        return merged.ToArray();
+    }
+
+    private static void OnMalformedTaxonomyTagDropped(string tag) {
+        var observer = MalformedTaxonomyTagDroppedObserver.Value;
+        if (observer is null) {
+            return;
+        }
+
+        try {
+            observer(tag);
+        } catch {
+            // Diagnostics observers must never influence normalization behavior.
+        }
+    }
+
+    private sealed class MalformedTaxonomyTagDroppedObserverScope : IDisposable {
+        private readonly Action<string>? _previous;
+        private bool _disposed;
+
+        public MalformedTaxonomyTagDroppedObserverScope(Action<string>? previous) {
+            _previous = previous;
+        }
+
+        public void Dispose() {
+            if (_disposed) {
+                return;
+            }
+
+            MalformedTaxonomyTagDroppedObserver.Value = _previous;
+            _disposed = true;
+        }
     }
 }

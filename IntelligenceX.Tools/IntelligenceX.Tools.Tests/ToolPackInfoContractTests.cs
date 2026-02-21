@@ -21,65 +21,7 @@ namespace IntelligenceX.Tools.Tests;
 public class ToolPackInfoContractTests {
     [Fact]
     public async Task PackInfoTools_ShouldExposeRegisteredToolCatalogs() {
-        var adOptions = new ActiveDirectoryToolOptions();
-        var eventLogOptions = new EventLogToolOptions();
-        var fileSystemOptions = new FileSystemToolOptions();
-        var systemOptions = new SystemToolOptions();
-        var emailOptions = new EmailToolOptions();
-        var powerShellOptions = new PowerShellToolOptions { Enabled = true };
-        var testimoXOptions = new TestimoXToolOptions { Enabled = true };
-        var officeImoOptions = new OfficeImoToolOptions();
-
-        var cases = new[] {
-            new PackCase(
-                Pack: "active_directory",
-                Engine: "ADPlayground",
-                Tool: new AdPackInfoTool(adOptions),
-                ExpectedTools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(adOptions),
-                ExpectedCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(adOptions)),
-            new PackCase(
-                Pack: "eventlog",
-                Engine: "EventViewerX",
-                Tool: new EventLogPackInfoTool(eventLogOptions),
-                ExpectedTools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(eventLogOptions),
-                ExpectedCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(eventLogOptions)),
-            new PackCase(
-                Pack: "filesystem",
-                Engine: "IntelligenceX.Engines.FileSystem",
-                Tool: new FileSystemPackInfoTool(fileSystemOptions),
-                ExpectedTools: ToolRegistryFileSystemExtensions.GetRegisteredToolNames(fileSystemOptions),
-                ExpectedCatalog: ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(fileSystemOptions)),
-            new PackCase(
-                Pack: "system",
-                Engine: "ComputerX",
-                Tool: new SystemPackInfoTool(systemOptions),
-                ExpectedTools: ToolRegistrySystemExtensions.GetRegisteredToolNames(systemOptions),
-                ExpectedCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(systemOptions)),
-            new PackCase(
-                Pack: "email",
-                Engine: "Mailozaurr",
-                Tool: new EmailPackInfoTool(emailOptions),
-                ExpectedTools: ToolRegistryEmailExtensions.GetRegisteredToolNames(emailOptions),
-                ExpectedCatalog: ToolRegistryEmailExtensions.GetRegisteredToolCatalog(emailOptions)),
-            new PackCase(
-                Pack: "powershell",
-                Engine: "IntelligenceX.Engines.PowerShell",
-                Tool: new PowerShellPackInfoTool(powerShellOptions),
-                ExpectedTools: ToolRegistryPowerShellExtensions.GetRegisteredToolNames(powerShellOptions),
-                ExpectedCatalog: ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(powerShellOptions)),
-            new PackCase(
-                Pack: "testimox",
-                Engine: "TestimoX",
-                Tool: new TestimoXPackInfoTool(testimoXOptions),
-                ExpectedTools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(testimoXOptions),
-                ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions)),
-            new PackCase(
-                Pack: "officeimo",
-                Engine: "OfficeIMO.Reader",
-                Tool: new OfficeImoPackInfoTool(officeImoOptions),
-                ExpectedTools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(officeImoOptions),
-                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions))
-        };
+        var cases = BuildPackCases();
 
         foreach (var @case in cases) {
             var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
@@ -119,6 +61,35 @@ public class ToolPackInfoContractTests {
                 var description = entry.GetProperty("description").GetString() ?? string.Empty;
                 Assert.False(string.IsNullOrWhiteSpace(name));
                 Assert.False(string.IsNullOrWhiteSpace(description));
+                Assert.True(entry.TryGetProperty("display_name", out var displayName));
+                Assert.True(displayName.ValueKind == JsonValueKind.String || displayName.ValueKind == JsonValueKind.Null);
+                Assert.True(entry.TryGetProperty("category", out var category));
+                Assert.Equal(JsonValueKind.String, category.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(category.GetString()));
+                Assert.True(entry.TryGetProperty("tags", out var tags));
+                Assert.Equal(JsonValueKind.Array, tags.ValueKind);
+                var serializedTags = ReadStringArrayPreserveOrder(tags);
+                var sortedTags = serializedTags
+                    .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                Assert.True(
+                    sortedTags.SequenceEqual(serializedTags, StringComparer.OrdinalIgnoreCase),
+                    "Serialized tags should be emitted in deterministic ordinal-ignore-case order.");
+                Assert.True(entry.TryGetProperty("routing", out var routing));
+                Assert.Equal(JsonValueKind.Object, routing.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("scope").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("operation").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("entity").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("risk").GetString()));
+                Assert.False(string.IsNullOrWhiteSpace(routing.GetProperty("source").GetString()));
+                Assert.Contains(
+                    routing.GetProperty("risk").GetString() ?? string.Empty,
+                    ToolRoutingTaxonomy.AllowedRisks,
+                    StringComparer.Ordinal);
+                Assert.Contains(
+                    routing.GetProperty("source").GetString() ?? string.Empty,
+                    ToolRoutingTaxonomy.AllowedSources,
+                    StringComparer.Ordinal);
                 Assert.True(entry.TryGetProperty("required_arguments", out var requiredArguments));
                 Assert.Equal(JsonValueKind.Array, requiredArguments.ValueKind);
                 Assert.True(entry.TryGetProperty("arguments", out var arguments));
@@ -152,6 +123,20 @@ public class ToolPackInfoContractTests {
 
                 Assert.True(expectedCatalogByName.TryGetValue(name, out var expectedCatalogEntry), $"Unexpected catalog entry: {name}");
                 Assert.Equal(expectedCatalogEntry.Description, description);
+                Assert.Equal(expectedCatalogEntry.DisplayName, displayName.GetString());
+                Assert.Equal(expectedCatalogEntry.Category, category.GetString());
+                Assert.Equal(
+                    expectedCatalogEntry.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+                    ReadStringArray(tags));
+                Assert.Contains(
+                    category.GetString() ?? string.Empty,
+                    ReadStringArray(tags),
+                    StringComparer.OrdinalIgnoreCase);
+                Assert.Equal(expectedCatalogEntry.Routing.Scope, routing.GetProperty("scope").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Operation, routing.GetProperty("operation").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Entity, routing.GetProperty("entity").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Risk, routing.GetProperty("risk").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Source, routing.GetProperty("source").GetString());
                 Assert.Equal(
                     expectedCatalogEntry.RequiredArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
                     ReadStringArray(requiredArguments));
@@ -235,6 +220,137 @@ public class ToolPackInfoContractTests {
         }
     }
 
+    [Fact]
+    public async Task PackInfoTools_ShouldExposeDeterministicCatalogTaxonomyAcrossPacks() {
+        var cases = BuildPackCases();
+
+        foreach (var @case in cases) {
+            var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+            using var document = JsonDocument.Parse(json);
+            var toolCatalog = document.RootElement.GetProperty("tool_catalog");
+            Assert.Equal(JsonValueKind.Array, toolCatalog.ValueKind);
+
+            foreach (var entry in toolCatalog.EnumerateArray()) {
+                var tags = ReadStringArrayPreserveOrder(entry.GetProperty("tags"));
+                var sortedTags = tags
+                    .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                Assert.True(
+                    sortedTags.SequenceEqual(tags, StringComparer.OrdinalIgnoreCase),
+                    $"{@case.Pack}:{entry.GetProperty("name").GetString()} tags should be deterministic.");
+
+                var routing = entry.GetProperty("routing");
+                Assert.Contains(
+                    routing.GetProperty("risk").GetString() ?? string.Empty,
+                    ToolRoutingTaxonomy.AllowedRisks,
+                    StringComparer.Ordinal);
+                Assert.Contains(
+                    routing.GetProperty("source").GetString() ?? string.Empty,
+                    ToolRoutingTaxonomy.AllowedSources,
+                    StringComparer.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PackInfoTools_ShouldExposeRoutingContractFieldsAcrossCatalogEntries() {
+        var cases = BuildPackCases();
+
+        foreach (var @case in cases) {
+            var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+            using var document = JsonDocument.Parse(json);
+            var toolCatalog = document.RootElement.GetProperty("tool_catalog");
+            Assert.Equal(JsonValueKind.Array, toolCatalog.ValueKind);
+
+            foreach (var entry in toolCatalog.EnumerateArray()) {
+                Assert.True(entry.TryGetProperty("routing", out var routing));
+                Assert.Equal(JsonValueKind.Object, routing.ValueKind);
+
+                Assert.True(routing.TryGetProperty("scope", out var scope));
+                Assert.Equal(JsonValueKind.String, scope.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(scope.GetString()));
+
+                Assert.True(routing.TryGetProperty("operation", out var operation));
+                Assert.Equal(JsonValueKind.String, operation.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(operation.GetString()));
+
+                Assert.True(routing.TryGetProperty("entity", out var entity));
+                Assert.Equal(JsonValueKind.String, entity.ValueKind);
+                Assert.False(string.IsNullOrWhiteSpace(entity.GetString()));
+
+                Assert.True(routing.TryGetProperty("risk", out var risk));
+                Assert.Equal(JsonValueKind.String, risk.ValueKind);
+                Assert.Contains(risk.GetString() ?? string.Empty, ToolRoutingTaxonomy.AllowedRisks, StringComparer.Ordinal);
+
+                Assert.True(routing.TryGetProperty("source", out var source));
+                Assert.Equal(JsonValueKind.String, source.ValueKind);
+                Assert.Contains(source.GetString() ?? string.Empty, ToolRoutingTaxonomy.AllowedSources, StringComparer.Ordinal);
+            }
+        }
+    }
+
+    private static PackCase[] BuildPackCases() {
+        var adOptions = new ActiveDirectoryToolOptions();
+        var eventLogOptions = new EventLogToolOptions();
+        var fileSystemOptions = new FileSystemToolOptions();
+        var systemOptions = new SystemToolOptions();
+        var emailOptions = new EmailToolOptions();
+        var powerShellOptions = new PowerShellToolOptions { Enabled = true };
+        var testimoXOptions = new TestimoXToolOptions { Enabled = true };
+        var officeImoOptions = new OfficeImoToolOptions();
+
+        return new[] {
+            new PackCase(
+                Pack: "active_directory",
+                Engine: "ADPlayground",
+                Tool: new AdPackInfoTool(adOptions),
+                ExpectedTools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(adOptions),
+                ExpectedCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(adOptions)),
+            new PackCase(
+                Pack: "eventlog",
+                Engine: "EventViewerX",
+                Tool: new EventLogPackInfoTool(eventLogOptions),
+                ExpectedTools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(eventLogOptions),
+                ExpectedCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(eventLogOptions)),
+            new PackCase(
+                Pack: "filesystem",
+                Engine: "IntelligenceX.Engines.FileSystem",
+                Tool: new FileSystemPackInfoTool(fileSystemOptions),
+                ExpectedTools: ToolRegistryFileSystemExtensions.GetRegisteredToolNames(fileSystemOptions),
+                ExpectedCatalog: ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(fileSystemOptions)),
+            new PackCase(
+                Pack: "system",
+                Engine: "ComputerX",
+                Tool: new SystemPackInfoTool(systemOptions),
+                ExpectedTools: ToolRegistrySystemExtensions.GetRegisteredToolNames(systemOptions),
+                ExpectedCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(systemOptions)),
+            new PackCase(
+                Pack: "email",
+                Engine: "Mailozaurr",
+                Tool: new EmailPackInfoTool(emailOptions),
+                ExpectedTools: ToolRegistryEmailExtensions.GetRegisteredToolNames(emailOptions),
+                ExpectedCatalog: ToolRegistryEmailExtensions.GetRegisteredToolCatalog(emailOptions)),
+            new PackCase(
+                Pack: "powershell",
+                Engine: "IntelligenceX.Engines.PowerShell",
+                Tool: new PowerShellPackInfoTool(powerShellOptions),
+                ExpectedTools: ToolRegistryPowerShellExtensions.GetRegisteredToolNames(powerShellOptions),
+                ExpectedCatalog: ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(powerShellOptions)),
+            new PackCase(
+                Pack: "testimox",
+                Engine: "TestimoX",
+                Tool: new TestimoXPackInfoTool(testimoXOptions),
+                ExpectedTools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(testimoXOptions),
+                ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions)),
+            new PackCase(
+                Pack: "officeimo",
+                Engine: "OfficeIMO.Reader",
+                Tool: new OfficeImoPackInfoTool(officeImoOptions),
+                ExpectedTools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(officeImoOptions),
+                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions))
+        };
+    }
+
     private static string[] ReadStringArray(JsonElement element) {
         return element
             .EnumerateArray()
@@ -242,6 +358,15 @@ public class ToolPackInfoContractTests {
             .Where(static x => !string.IsNullOrWhiteSpace(x))
             .Select(static x => x!.Trim())
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadStringArrayPreserveOrder(JsonElement element) {
+        return element
+            .EnumerateArray()
+            .Select(static x => x.GetString())
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x!.Trim())
             .ToArray();
     }
 
