@@ -81,19 +81,20 @@ public sealed partial class MainWindow : Window {
         _activeTurnQueueWaitMs = queueWaitMs;
         ResetActivityTimeline();
         StartTurnWatchdog();
-        var turnRequestCts = new CancellationTokenSource();
-        _activeTurnRequestCts = turnRequestCts;
-        _activeRequestConversationId = turn.ConversationId;
-        ClearToolRoutingInsights();
-        await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
+        CancellationTokenSource? turnRequestCts = null;
         try {
-            await PublishSessionStateAsync().ConfigureAwait(false);
-        } finally {
-            // Ensure tools state is refreshed after routing reset even if session publish faults.
-            await PublishOptionsStateSafeAsync().ConfigureAwait(false);
-        }
+            turnRequestCts = new CancellationTokenSource();
+            _activeTurnRequestCts = turnRequestCts;
+            _activeRequestConversationId = turn.ConversationId;
+            ClearToolRoutingInsights();
+            await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
+            try {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            } finally {
+                // Ensure tools state is refreshed after routing reset even if session publish faults.
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+            }
 
-        try {
             await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
         } finally {
             StopTurnWatchdog();
@@ -103,7 +104,7 @@ public sealed partial class MainWindow : Window {
             if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
                 _activeTurnRequestCts = null;
             }
-            turnRequestCts.Dispose();
+            turnRequestCts?.Dispose();
             _activeRequestConversationId = null;
             _activeTurnReceivedDelta = false;
             _activeTurnQueueWaitMs = null;
