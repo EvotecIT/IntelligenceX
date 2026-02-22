@@ -121,6 +121,7 @@ public sealed class ToolPipelineReliabilityOptions {
     /// Builder mutation callback. The builder starts from the current option values
     /// and is normalized when the customized options are built.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="configure"/> is <see langword="null"/>.</exception>
     public ToolPipelineReliabilityOptions With(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
         return ToolPipelineReliabilityOptionsBuilder.Customize(this, configure);
     }
@@ -325,6 +326,7 @@ public static class ToolPipelineReliabilityProfiles {
     /// Builder mutation callback. The builder starts from the profile template values
     /// and is normalized when the customized options are built.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="configure"/> is <see langword="null"/>.</exception>
     public static ToolPipelineReliabilityOptions ReadOnlyQueryWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
         return ToolPipelineReliabilityOptionsBuilder.Customize(ReadOnlyQueryTemplate, configure);
     }
@@ -342,6 +344,7 @@ public static class ToolPipelineReliabilityProfiles {
     /// Builder mutation callback. The builder starts from the profile template values
     /// and is normalized when the customized options are built.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="configure"/> is <see langword="null"/>.</exception>
     public static ToolPipelineReliabilityOptions FastNetworkProbeWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
         return ToolPipelineReliabilityOptionsBuilder.Customize(FastNetworkProbeTemplate, configure);
     }
