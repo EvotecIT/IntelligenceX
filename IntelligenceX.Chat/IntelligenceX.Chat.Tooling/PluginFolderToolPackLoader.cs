@@ -13,6 +13,8 @@ internal static class PluginFolderToolPackLoader {
     private const string ManifestFileName = "ix-plugin.json";
     private const string PluginArchiveSuffix = ".ix-plugin.zip";
     private const int SupportedSchemaVersion = 1;
+    private const int PluginArchiveCacheMaxEntries = 128;
+    private static readonly TimeSpan PluginArchiveCacheMaxAge = TimeSpan.FromDays(30);
 
     internal static IReadOnlyList<PluginSearchRoot> ResolvePluginSearchRoots(ToolPackBootstrapOptions options) {
         if (options is null) {
@@ -86,7 +88,7 @@ internal static class PluginFolderToolPackLoader {
                 continue;
             }
 
-            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path)) {
+            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, onWarning)) {
                 TryLoadPluginDirectory(
                     pluginDirectory: pluginDirectory,
                     isExplicitRoot: root.IsExplicit,
@@ -98,12 +100,12 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static IEnumerable<string> EnumeratePluginDirectories(string rootPath) {
+    private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, Action<string>? onWarning) {
         if (IsPluginFolder(rootPath)) {
             yield return rootPath;
         }
 
-        foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath)) {
+        foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath, onWarning)) {
             yield return archiveDirectory;
         }
 
@@ -121,7 +123,7 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static IEnumerable<string> EnumeratePluginArchiveDirectories(string rootPath) {
+    private static IEnumerable<string> EnumeratePluginArchiveDirectories(string rootPath, Action<string>? onWarning) {
         string[] archives;
         try {
             archives = Directory
@@ -133,7 +135,7 @@ internal static class PluginFolderToolPackLoader {
         }
 
         foreach (var archive in archives) {
-            var extracted = TryMaterializePluginArchive(archive);
+            var extracted = TryMaterializePluginArchive(archive, onWarning);
             if (!string.IsNullOrWhiteSpace(extracted)) {
                 yield return extracted!;
             }
@@ -157,7 +159,7 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static string? TryMaterializePluginArchive(string archivePath) {
+    private static string? TryMaterializePluginArchive(string archivePath, Action<string>? onWarning) {
         var normalizedArchive = NormalizePath(archivePath);
         if (string.IsNullOrWhiteSpace(normalizedArchive) || !File.Exists(normalizedArchive)) {
             return null;
@@ -169,6 +171,7 @@ internal static class PluginFolderToolPackLoader {
                 "IntelligenceX.Chat",
                 "plugin-cache");
             Directory.CreateDirectory(cacheRoot);
+            TryTrimPluginArchiveCache(cacheRoot, onWarning);
 
             var cacheKey = BuildPluginArchiveCacheKey(normalizedArchive);
             if (string.IsNullOrWhiteSpace(cacheKey)) {
@@ -197,8 +200,55 @@ internal static class PluginFolderToolPackLoader {
 
             Directory.Move(tempDir, extractDir);
             return extractDir;
-        } catch {
+        } catch (Exception ex) {
+            onWarning?.Invoke(
+                $"[plugin] archive_extract_failed archive='{normalizedArchive}' error='{ex.GetType().Name}: {ex.Message}'");
             return null;
+        }
+    }
+
+    private static void TryTrimPluginArchiveCache(string cacheRoot, Action<string>? onWarning) {
+        try {
+            if (!Directory.Exists(cacheRoot)) {
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            var entries = Directory
+                .EnumerateDirectories(cacheRoot, "zip-v1-*", SearchOption.TopDirectoryOnly)
+                .Select(static path => new DirectoryInfo(path))
+                .OrderByDescending(static entry => entry.LastWriteTimeUtc)
+                .ToList();
+
+            foreach (var entry in entries.ToArray()) {
+                if (now - entry.LastWriteTimeUtc <= PluginArchiveCacheMaxAge) {
+                    continue;
+                }
+
+                try {
+                    Directory.Delete(entry.FullName, recursive: true);
+                    entries.Remove(entry);
+                } catch {
+                    // Best effort cache trim: ignore individual delete failures.
+                }
+            }
+
+            if (entries.Count <= PluginArchiveCacheMaxEntries) {
+                return;
+            }
+
+            foreach (var entry in entries
+                         .OrderBy(static candidate => candidate.LastWriteTimeUtc)
+                         .Take(entries.Count - PluginArchiveCacheMaxEntries)) {
+                try {
+                    Directory.Delete(entry.FullName, recursive: true);
+                } catch {
+                    // Best effort cache trim: ignore individual delete failures.
+                }
+            }
+        } catch (Exception ex) {
+            onWarning?.Invoke(
+                $"[plugin] cache_trim_failed cache='{cacheRoot}' error='{ex.GetType().Name}: {ex.Message}'");
         }
     }
 
