@@ -114,6 +114,17 @@ public sealed class ToolPipelineReliabilityOptions {
         };
     }
 
+    /// <summary>
+    /// Returns a customized copy of the current options using a mutable builder.
+    /// </summary>
+    /// <param name="configure">Builder mutation callback.</param>
+    public ToolPipelineReliabilityOptions With(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
+        ArgumentNullException.ThrowIfNull(configure);
+        var builder = ToolPipelineReliabilityOptionsBuilder.From(this);
+        configure(builder);
+        return builder.Build();
+    }
+
     internal ToolPipelineReliabilityOptions Normalize() {
         var maxAttempts = Math.Clamp(MaxAttempts, 1, 10);
         var attemptTimeoutMs = Math.Clamp(AttemptTimeoutMs, 0, 300_000);
@@ -138,6 +149,123 @@ public sealed class ToolPipelineReliabilityOptions {
             CircuitKey = string.IsNullOrWhiteSpace(CircuitKey) ? null : CircuitKey.Trim(),
             UtcNowProvider = UtcNowProvider,
             DelayAsync = DelayAsync
+        };
+    }
+}
+
+/// <summary>
+/// Mutable builder used for safe reliability-option customization.
+/// </summary>
+public sealed class ToolPipelineReliabilityOptionsBuilder {
+    /// <summary>
+    /// Total attempts including the first execution.
+    /// </summary>
+    public int MaxAttempts { get; set; } = 1;
+
+    /// <summary>
+    /// Retries envelope responses marked transient (<c>is_transient=true</c>).
+    /// </summary>
+    public bool RetryTransientErrors { get; set; } = true;
+
+    /// <summary>
+    /// Retries exceptions classified as transient.
+    /// </summary>
+    public bool RetryExceptions { get; set; } = true;
+
+    /// <summary>
+    /// Retries exceptions not classified as transient.
+    /// </summary>
+    public bool RetryNonTransientExceptions { get; set; }
+
+    /// <summary>
+    /// Per-attempt timeout in milliseconds. Set to 0 to disable.
+    /// </summary>
+    public int AttemptTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Base retry delay in milliseconds.
+    /// </summary>
+    public int BaseDelayMs { get; set; } = 100;
+
+    /// <summary>
+    /// Maximum retry delay in milliseconds.
+    /// </summary>
+    public int MaxDelayMs { get; set; } = 1000;
+
+    /// <summary>
+    /// Jitter applied to retry delay (0..0.5).
+    /// </summary>
+    public double JitterRatio { get; set; } = 0.10d;
+
+    /// <summary>
+    /// Enables a best-effort transient-failure circuit breaker.
+    /// </summary>
+    public bool EnableCircuitBreaker { get; set; }
+
+    /// <summary>
+    /// Transient-failure threshold that opens the circuit.
+    /// </summary>
+    public int CircuitFailureThreshold { get; set; } = 4;
+
+    /// <summary>
+    /// Circuit-open duration in milliseconds.
+    /// </summary>
+    public int CircuitOpenMs { get; set; } = 15_000;
+
+    /// <summary>
+    /// Optional circuit-key override. Defaults to tool definition name.
+    /// </summary>
+    public string? CircuitKey { get; set; }
+
+    /// <summary>
+    /// Optional clock provider used by reliability middleware.
+    /// </summary>
+    public Func<DateTimeOffset>? UtcNowProvider { get; set; }
+
+    /// <summary>
+    /// Optional delay provider used by retry backoff logic.
+    /// </summary>
+    public Func<TimeSpan, CancellationToken, Task>? DelayAsync { get; set; }
+
+    /// <summary>
+    /// Builds immutable reliability options from the current builder state.
+    /// </summary>
+    public ToolPipelineReliabilityOptions Build() {
+        return new ToolPipelineReliabilityOptions {
+            MaxAttempts = MaxAttempts,
+            RetryTransientErrors = RetryTransientErrors,
+            RetryExceptions = RetryExceptions,
+            RetryNonTransientExceptions = RetryNonTransientExceptions,
+            AttemptTimeoutMs = AttemptTimeoutMs,
+            BaseDelayMs = BaseDelayMs,
+            MaxDelayMs = MaxDelayMs,
+            JitterRatio = JitterRatio,
+            EnableCircuitBreaker = EnableCircuitBreaker,
+            CircuitFailureThreshold = CircuitFailureThreshold,
+            CircuitOpenMs = CircuitOpenMs,
+            CircuitKey = CircuitKey,
+            UtcNowProvider = UtcNowProvider,
+            DelayAsync = DelayAsync
+        };
+    }
+
+    internal static ToolPipelineReliabilityOptionsBuilder From(ToolPipelineReliabilityOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+        return new ToolPipelineReliabilityOptionsBuilder {
+            MaxAttempts = options.MaxAttempts,
+            RetryTransientErrors = options.RetryTransientErrors,
+            RetryExceptions = options.RetryExceptions,
+            RetryNonTransientExceptions = options.RetryNonTransientExceptions,
+            AttemptTimeoutMs = options.AttemptTimeoutMs,
+            BaseDelayMs = options.BaseDelayMs,
+            MaxDelayMs = options.MaxDelayMs,
+            JitterRatio = options.JitterRatio,
+            EnableCircuitBreaker = options.EnableCircuitBreaker,
+            CircuitFailureThreshold = options.CircuitFailureThreshold,
+            CircuitOpenMs = options.CircuitOpenMs,
+            CircuitKey = options.CircuitKey,
+            UtcNowProvider = options.UtcNowProvider,
+            DelayAsync = options.DelayAsync
         };
     }
 }
@@ -181,10 +309,32 @@ public static class ToolPipelineReliabilityProfiles {
     public static ToolPipelineReliabilityOptions ReadOnlyQuery => ReadOnlyQueryTemplate.Clone();
 
     /// <summary>
+    /// Balanced retries for read-only queries with explicit overrides.
+    /// </summary>
+    /// <param name="configure">Builder mutation callback.</param>
+    public static ToolPipelineReliabilityOptions ReadOnlyQueryWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
+        ArgumentNullException.ThrowIfNull(configure);
+        var builder = ToolPipelineReliabilityOptionsBuilder.From(ReadOnlyQueryTemplate);
+        configure(builder);
+        return builder.Build();
+    }
+
+    /// <summary>
     /// Aggressive but bounded retries for fast connectivity probes.
     /// Returns a defensive copy safe for per-tool customization.
     /// </summary>
     public static ToolPipelineReliabilityOptions FastNetworkProbe => FastNetworkProbeTemplate.Clone();
+
+    /// <summary>
+    /// Aggressive but bounded retries for fast connectivity probes with explicit overrides.
+    /// </summary>
+    /// <param name="configure">Builder mutation callback.</param>
+    public static ToolPipelineReliabilityOptions FastNetworkProbeWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
+        ArgumentNullException.ThrowIfNull(configure);
+        var builder = ToolPipelineReliabilityOptionsBuilder.From(FastNetworkProbeTemplate);
+        configure(builder);
+        return builder.Build();
+    }
 }
 
 public static partial class ToolPipeline {
