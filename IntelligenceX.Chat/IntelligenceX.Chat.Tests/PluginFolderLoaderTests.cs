@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -278,6 +281,68 @@ public sealed class PluginFolderLoaderTests {
             Assert.DoesNotContain(packs,
                 static pack => string.Equals(pack.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(warnings,
+                static warning => warning.Contains("archive_extract_failed", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task CreateDefaultReadOnlyPacks_ConcurrentArchiveLoadsRemainStable() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(tempRoot, "plugin-loader-archive-source");
+        Directory.CreateDirectory(pluginFolder);
+        Directory.CreateDirectory(pluginRoot);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            var copiedAssemblyPath = Path.Combine(pluginFolder, entryAssemblyName);
+            File.Copy(sourceAssemblyPath, copiedAssemblyPath, overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderTestPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-test",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var archivePath = Path.Combine(pluginRoot, "plugin-loader-test.ix-plugin.zip");
+            ZipFile.CreateFromDirectory(pluginFolder, archivePath);
+            Directory.Delete(pluginFolder, recursive: true);
+
+            var warnings = new ConcurrentBag<string>();
+            var tasks = Enumerable.Range(0, 4).Select(_ => Task.Run(() => {
+                var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                    EnableDefaultPluginPaths = false,
+                    PluginPaths = new[] { pluginRoot },
+                    EnableFileSystemPack = false,
+                    EnableSystemPack = false,
+                    EnableActiveDirectoryPack = false,
+                    EnablePowerShellPack = false,
+                    EnableTestimoXPack = false,
+                    EnableEmailPack = false,
+                    EnableReviewerSetupPack = false,
+                    OnBootstrapWarning = warning => warnings.Add(warning)
+                });
+
+                return packs.Any(pack =>
+                    string.Equals(pack.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
+            })).ToArray();
+
+            var results = await Task.WhenAll(tasks);
+            Assert.All(results, Assert.True);
+            Assert.DoesNotContain(warnings,
                 static warning => warning.Contains("archive_extract_failed", StringComparison.OrdinalIgnoreCase));
         } finally {
             if (Directory.Exists(tempRoot)) {

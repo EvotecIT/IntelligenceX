@@ -168,6 +168,8 @@ internal static class PluginFolderToolPackLoader {
             return null;
         }
 
+        FileStream? extractLock = null;
+        string? tempDir = null;
         try {
             var cacheRoot = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -183,7 +185,7 @@ internal static class PluginFolderToolPackLoader {
 
             var extractDir = Path.Combine(cacheRoot, cacheKey);
             var extractLockPath = extractDir + ".lock";
-            using var extractLock = TryAcquireFileLock(extractLockPath, PluginArchiveLockTimeout);
+            extractLock = TryAcquireFileLock(extractLockPath, PluginArchiveLockTimeout);
             if (extractLock is null) {
                 onWarning?.Invoke(
                     $"[plugin] archive_extract_failed archive='{normalizedArchive}' error='lock timeout ({PluginArchiveLockTimeout.TotalSeconds:0}s)'");
@@ -195,7 +197,7 @@ internal static class PluginFolderToolPackLoader {
                 return extractDir;
             }
 
-            var tempDir = extractDir + ".tmp-" + Guid.NewGuid().ToString("N");
+            tempDir = extractDir + ".tmp-" + Guid.NewGuid().ToString("N");
             if (Directory.Exists(tempDir)) {
                 Directory.Delete(tempDir, recursive: true);
             }
@@ -203,6 +205,7 @@ internal static class PluginFolderToolPackLoader {
             TryExtractArchiveSafely(normalizedArchive, tempDir);
             if (!IsPluginFolder(tempDir)) {
                 Directory.Delete(tempDir, recursive: true);
+                tempDir = null;
                 return null;
             }
 
@@ -211,12 +214,22 @@ internal static class PluginFolderToolPackLoader {
             }
 
             Directory.Move(tempDir, extractDir);
+            tempDir = null;
             TouchCacheEntry(extractDir);
             return extractDir;
         } catch (Exception ex) {
             onWarning?.Invoke(
                 $"[plugin] archive_extract_failed archive='{normalizedArchive}' error='{ex.GetType().Name}: {ex.Message}'");
             return null;
+        } finally {
+            extractLock?.Dispose();
+            if (!string.IsNullOrWhiteSpace(tempDir) && Directory.Exists(tempDir)) {
+                try {
+                    Directory.Delete(tempDir, recursive: true);
+                } catch {
+                    // Best effort cleanup for partially materialized temporary archives.
+                }
+            }
         }
     }
 
