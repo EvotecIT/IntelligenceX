@@ -482,14 +482,9 @@ public sealed partial class MainWindow : Window {
                 loginInProgress: _loginInProgress);
             if (deferStartupMetadataSync) {
                 _sessionPolicy = null;
-                if (skipDeferredMetadataUntilAuthenticated) {
-                    LogStartupConnectPhase("hello", "skipped_unauthenticated");
-                    LogStartupConnectPhase("list_tools", "skipped_unauthenticated");
-                } else {
-                    LogStartupConnectPhase("hello", "deferred");
-                    LogStartupConnectPhase("list_tools", "deferred");
-                    QueueDeferredStartupConnectMetadataSync();
-                }
+                LogStartupConnectPhase("hello", skipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
+                LogStartupConnectPhase("list_tools", skipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
+                QueueDeferredStartupConnectMetadataSync();
             } else {
                 try {
                     LogStartupConnectPhase("hello", "begin");

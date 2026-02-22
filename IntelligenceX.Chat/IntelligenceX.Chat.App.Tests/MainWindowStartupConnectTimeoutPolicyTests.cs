@@ -446,6 +446,29 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures tools-loading indicator is shown only while startup metadata is actively pending.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, 1, true, false)]
+    [InlineData(true, true, 1, true, false)]
+    [InlineData(true, false, 1, false, true)]
+    [InlineData(true, false, 2, true, true)]
+    [InlineData(true, false, 2, false, false)]
+    public void ShouldShowToolsLoading_ReturnsExpectedValue(
+        bool isConnected,
+        bool hasSessionPolicy,
+        int startupFlowState,
+        bool startupMetadataSyncQueued,
+        bool expected) {
+        var shouldShow = MainWindow.ShouldShowToolsLoading(
+            isConnected,
+            hasSessionPolicy,
+            startupFlowState,
+            startupMetadataSyncQueued);
+        Assert.Equal(expected, shouldShow);
+    }
+
+    /// <summary>
     /// Ensures startup dispatch prewarm system summary includes stable timing details.
     /// </summary>
     [Theory]

@@ -560,6 +560,18 @@ public sealed partial class MainWindow : Window {
             : "Compatible HTTP runtime (" + DescribeRuntimeFromBaseUrl(baseUrl) + ")";
     }
 
+    internal static bool ShouldShowToolsLoading(
+        bool isConnected,
+        bool hasSessionPolicy,
+        int startupFlowState,
+        bool startupMetadataSyncQueued) {
+        if (!isConnected || hasSessionPolicy) {
+            return false;
+        }
+
+        return startupMetadataSyncQueued || startupFlowState == 1;
+    }
+
     private async Task PublishOptionsStateAsync() {
         await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
     }
@@ -575,7 +587,11 @@ public sealed partial class MainWindow : Window {
             : Array.Empty<object>();
 
         var tools = BuildToolState();
-        var toolsLoading = _isConnected && _sessionPolicy is null;
+        var toolsLoading = ShouldShowToolsLoading(
+            isConnected: _isConnected,
+            hasSessionPolicy: _sessionPolicy is not null,
+            startupFlowState: Volatile.Read(ref _startupFlowState),
+            startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0);
         var conversations = BuildConversationState();
         var accountUsageState = BuildAccountUsageState();
         var activeAccountUsageState = BuildActiveAccountUsageState();
