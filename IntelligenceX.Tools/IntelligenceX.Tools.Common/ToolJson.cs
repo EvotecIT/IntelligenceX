@@ -200,6 +200,10 @@ public static class ToolJson {
         }
 
         try {
+            if (value is Array array && array.Rank > 1) {
+                return SanitizeMultidimensionalArrayFallback(array, seen, depth + 1);
+            }
+
             if (value is IDictionary dictionary) {
                 var normalized = new Dictionary<string, object?>(StringComparer.Ordinal);
                 foreach (DictionaryEntry entry in dictionary) {
@@ -253,6 +257,57 @@ public static class ToolJson {
                 seen.Remove(value);
             }
         }
+    }
+
+    private static Dictionary<string, object?> SanitizeMultidimensionalArrayFallback(
+        Array array,
+        HashSet<object> seen,
+        int depth) {
+        var rank = array.Rank;
+        var lengths = new int[rank];
+        for (var dimension = 0; dimension < rank; dimension++) {
+            lengths[dimension] = array.GetLength(dimension);
+        }
+
+        var indexes = new int[rank];
+        var values = SanitizeMultidimensionalArrayLevel(
+            array: array,
+            dimension: 0,
+            indexes: indexes,
+            seen: seen,
+            depth: depth);
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal) {
+            ["rank"] = rank,
+            ["lengths"] = lengths,
+            ["values"] = values
+        };
+    }
+
+    private static List<object?> SanitizeMultidimensionalArrayLevel(
+        Array array,
+        int dimension,
+        int[] indexes,
+        HashSet<object> seen,
+        int depth) {
+        var length = array.GetLength(dimension);
+        var values = new List<object?>(length);
+
+        if (dimension == array.Rank - 1) {
+            for (var index = 0; index < length; index++) {
+                indexes[dimension] = index;
+                values.Add(SanitizeForJsonFallback(array.GetValue(indexes), seen, depth + 1));
+            }
+
+            return values;
+        }
+
+        for (var index = 0; index < length; index++) {
+            indexes[dimension] = index;
+            values.Add(SanitizeMultidimensionalArrayLevel(array, dimension + 1, indexes, seen, depth + 1));
+        }
+
+        return values;
     }
 
     private static string ConvertToInvariantString(object? value) {
