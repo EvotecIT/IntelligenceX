@@ -247,6 +247,46 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacks_PathTraversalArchiveReportsWarningAndSkipsPack() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        Directory.CreateDirectory(pluginRoot);
+
+        try {
+            var archivePath = Path.Combine(pluginRoot, "plugin-loader-test.ix-plugin.zip");
+            using (var fs = File.Create(archivePath))
+            using (var archive = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: false)) {
+                var traversal = archive.CreateEntry("../outside.txt");
+                using var writer = new StreamWriter(traversal.Open());
+                writer.Write("escape");
+            }
+
+            var warnings = new List<string>();
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                EnableFileSystemPack = false,
+                EnableSystemPack = false,
+                EnableActiveDirectoryPack = false,
+                EnablePowerShellPack = false,
+                EnableTestimoXPack = false,
+                EnableEmailPack = false,
+                EnableReviewerSetupPack = false,
+                OnBootstrapWarning = warning => warnings.Add(warning)
+            });
+
+            Assert.DoesNotContain(packs,
+                static pack => string.Equals(pack.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(warnings,
+                static warning => warning.Contains("archive_extract_failed", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_PassesDistinctRunAsAndAuthProfilePathsToPluginOptions() {
         PluginFolderLoaderOptionsPack.ResetCapturedOptions();
 
