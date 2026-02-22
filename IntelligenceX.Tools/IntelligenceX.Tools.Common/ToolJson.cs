@@ -168,9 +168,9 @@ public static class ToolJson {
             case ulong n:
                 return n;
             case float n:
-                return n;
+                return float.IsNaN(n) || float.IsInfinity(n) ? null : n;
             case double n:
-                return n;
+                return double.IsNaN(n) || double.IsInfinity(n) ? null : n;
             case decimal n:
                 return n;
             case DateTime dt:

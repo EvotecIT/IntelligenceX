@@ -101,6 +101,35 @@ public class ToolTableViewTests {
     }
 
     [Fact]
+    public void Apply_WhenSortingWithNonFiniteNumbers_ShouldNotThrow() {
+        var rows = new[] {
+            new SortRow(3, double.NaN),
+            new SortRow(1, 1d),
+            new SortRow(2, 2d)
+        };
+
+        var specs = new[] {
+            new ToolTableColumnSpec<SortRow>(new ToolColumn("id", "ID", "int"), static x => x.Id),
+            new ToolTableColumnSpec<SortRow>(new ToolColumn("score", "Score", "number"), static x => x.Score)
+        };
+
+        var request = new ToolTableViewRequest {
+            SortBy = "score",
+            SortDirection = ToolTableSortDirection.Asc
+        };
+
+        var result = ToolTableView.Apply(rows, request, specs, previewMaxRows: 20);
+
+        Assert.Equal(3, result.Count);
+        var first = result.Rows[0].AsObject();
+        Assert.NotNull(first);
+        Assert.Equal(3, first!.GetInt64("id"));
+        Assert.True(first.TryGetValue("score", out var score));
+        Assert.NotNull(score);
+        Assert.Equal(JsonValueKind.Null, score!.Kind);
+    }
+
+    [Fact]
     public void AutoColumns_ShouldInferSnakeCaseAndPrimitiveTypes() {
         var specs = ToolAutoTableColumns.GetColumnSpecs<AutoRow>();
         var keys = ToolAutoTableColumns.GetColumnKeys<AutoRow>();
@@ -313,6 +342,7 @@ public class ToolTableViewTests {
     }
 
     private sealed record Row(int Id, string Name, long MemoryUsage);
+    private sealed record SortRow(int Id, double Score);
     private sealed record AutoRow(int Id, string DisplayName, DateTime StartTimeUtc, IReadOnlyList<string> Tags);
 
     private sealed class AutoModel {

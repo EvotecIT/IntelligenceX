@@ -37,8 +37,16 @@ public static class JsonMapper {
                 return unsignedLong <= long.MaxValue
                     ? JsonValue.From((long)unsignedLong)
                     : JsonValue.From((double)unsignedLong);
-            case float or double or decimal:
-                return JsonValue.From(Convert.ToDouble(value));
+            case float floatValue:
+                return float.IsNaN(floatValue) || float.IsInfinity(floatValue)
+                    ? JsonValue.Null
+                    : JsonValue.From((double)floatValue);
+            case double doubleValue:
+                return double.IsNaN(doubleValue) || double.IsInfinity(doubleValue)
+                    ? JsonValue.Null
+                    : JsonValue.From(doubleValue);
+            case decimal decimalValue:
+                return JsonValue.From(Convert.ToDouble(decimalValue));
             case IDictionary dictionary:
                 return JsonValue.From(FromDictionary(dictionary));
             case IEnumerable enumerable:
