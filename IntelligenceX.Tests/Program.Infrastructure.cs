@@ -196,7 +196,7 @@ internal static partial class Program {
         if (Path.IsPathRooted(filename)) {
             throw new ArgumentException("Fixture filename must be a relative path.", nameof(filename));
         }
-        return Path.Combine("Tests", "Fixtures", "Reviewer", filename);
+        return Path.Combine("InternalDocs", "ReviewerFixtures", filename);
     }
 
     private static void AssertEqual<T>(T expected, T? actual, string name) {
