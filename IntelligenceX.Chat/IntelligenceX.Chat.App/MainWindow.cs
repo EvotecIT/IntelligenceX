@@ -67,8 +67,9 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan DragMoveWatchdogInterval = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan StartupInitialPipeConnectTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan StartupInitialPipeConnectColdStartTimeout = TimeSpan.FromMilliseconds(100);
-    private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan StartupConnectBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan DispatchConnectBudget = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan StartupDispatchPrewarmConnectBudget = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan DispatchConnectFailureCooldown = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan AutoReconnectConnectBudget = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan AutoReconnectBusyTurnDelay = TimeSpan.FromMilliseconds(400);
@@ -88,10 +89,13 @@ public sealed partial class MainWindow : Window {
         TimeSpan.FromSeconds(12),
         TimeSpan.FromSeconds(20)
     };
+    private static readonly TimeSpan KickoffCancelAckTimeout = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan KickoffRecoverySettleDelay = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan StartupDeferredModelProfileSyncDelay = TimeSpan.FromMilliseconds(1250);
+    private static readonly TimeSpan StartupDeferredDispatchPrewarmDelay = TimeSpan.FromMilliseconds(60);
+    private static readonly TimeSpan StartupDeferredInteractiveBackgroundPollInterval = TimeSpan.FromMilliseconds(200);
     private const int StartupWebViewBudgetFastEnsureThresholdMs = 1200;
     private const int StartupWebViewBudgetMediumEnsureThresholdMs = 2000;
     private const int StartupWebViewBudgetSlowEnsureThresholdMs = 3000;
@@ -105,6 +109,8 @@ public sealed partial class MainWindow : Window {
     private const int StartupWebViewBudgetAdaptiveCooldownRunsAfterExhaustion = 2;
     private const int StartupWebViewBudgetAdaptiveMaxStableCompletions = 8;
     private const int StartupWebViewBudgetMaxConsecutiveExhaustions = 8;
+    private const long FirstTurnLatencySystemNoticeThresholdMs = 1200;
+    private const long SlowTurnSystemNoticeThresholdMs = 4500;
     private const string StartupWebViewBudgetCacheFileName = "startup-webview-budget-cache-v1.json";
     private const string StartupWebViewBudgetReasonCooldownConservative = "cooldown_conservative";
     private const string StartupWebViewBudgetReasonExhaustionConservative = "exhaustion_conservative";
@@ -246,6 +252,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _startupWebViewBudgetCacheSync = new();
     private StartupWebViewBudgetCacheEntry _startupWebViewBudgetCache = StartupWebViewBudgetCacheEntry.Default;
     private int _startupWebViewBudgetExceededThisRun;
+    private int _startupBenchAutoSendQueued;
     private int _serviceStagingCleanupInFlight;
 
     private ChatServiceClient? _client;
@@ -361,6 +368,8 @@ public sealed partial class MainWindow : Window {
     private int _startupConnectMetadataDeferredQueued;
     private int _startupModelProfileSyncDeferredQueued;
     private int _startupWebViewPostInitDeferredQueued;
+    private int _startupDispatchPrewarmDeferredQueued;
+    private int _startupFirstTurnLatencyNoticePending = 1;
     private int _startupInteractivePriorityRequested;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;

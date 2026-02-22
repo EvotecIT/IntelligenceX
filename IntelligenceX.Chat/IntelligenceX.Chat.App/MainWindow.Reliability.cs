@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using Microsoft.UI.Xaml;
@@ -563,6 +564,83 @@ public sealed partial class MainWindow : Window {
         return Math.Max(0L, (long)Math.Round(elapsed.TotalMilliseconds));
     }
 
+    internal static bool ShouldEmitTurnLatencySystemNotice(long durationMs) {
+        return ShouldEmitTurnLatencySystemNotice(durationMs, emitForFirstTurn: false);
+    }
+
+    internal static bool ShouldEmitTurnLatencySystemNotice(long durationMs, bool emitForFirstTurn) {
+        if (durationMs >= SlowTurnSystemNoticeThresholdMs) {
+            return true;
+        }
+
+        return emitForFirstTurn && durationMs >= FirstTurnLatencySystemNoticeThresholdMs;
+    }
+
+    internal static string BuildTurnLatencySystemNotice(
+        long durationMs,
+        long? queueWaitMs,
+        long? authProbeMs,
+        long? connectMs,
+        long? dispatchToFirstDeltaMs,
+        long? streamDurationMs,
+        bool firstTurnNotice = false) {
+        static long Normalize(long? value) {
+            return Math.Max(0L, value.GetValueOrDefault(0L));
+        }
+
+        var totalMs = Math.Max(0L, durationMs);
+        var queueMs = Normalize(queueWaitMs);
+        var authMs = Normalize(authProbeMs);
+        var connectStageMs = Normalize(connectMs);
+        var ttftMs = Normalize(dispatchToFirstDeltaMs);
+        var streamMs = Normalize(streamDurationMs);
+        var preflightMs = queueMs + authMs + connectStageMs;
+        var modelUntilFirstDeltaMs = ttftMs > preflightMs ? ttftMs - preflightMs : 0L;
+        var postFirstDeltaMs = totalMs > ttftMs ? totalMs - ttftMs : streamMs;
+        var dominantPhase = modelUntilFirstDeltaMs > preflightMs + 300
+            ? "model/runtime"
+            : preflightMs > modelUntilFirstDeltaMs + 300
+                ? "preflight"
+                : "mixed";
+
+        var noticePrefix = firstTurnNotice ? "First turn latency" : "Slow turn";
+        return noticePrefix + ": total "
+               + totalMs.ToString(CultureInfo.InvariantCulture)
+               + "ms | preflight "
+               + preflightMs.ToString(CultureInfo.InvariantCulture)
+               + "ms (queue "
+               + queueMs.ToString(CultureInfo.InvariantCulture)
+               + ", auth "
+               + authMs.ToString(CultureInfo.InvariantCulture)
+               + ", connect "
+               + connectStageMs.ToString(CultureInfo.InvariantCulture)
+               + ") | first-token "
+               + ttftMs.ToString(CultureInfo.InvariantCulture)
+               + "ms | model-pre-token ~"
+               + modelUntilFirstDeltaMs.ToString(CultureInfo.InvariantCulture)
+               + "ms | post-first-token ~"
+               + postFirstDeltaMs.ToString(CultureInfo.InvariantCulture)
+               + "ms | dominant: "
+               + dominantPhase
+               + ".";
+    }
+
+    private void AppendTurnLatencySystemNoticeIfNeeded(TurnLatencyCompletion completion) {
+        var emitForFirstTurn = Interlocked.CompareExchange(ref _startupFirstTurnLatencyNoticePending, 0, 1) == 1;
+        if (!ShouldEmitTurnLatencySystemNotice(completion.DurationMs, emitForFirstTurn)) {
+            return;
+        }
+
+        AppendSystem(BuildTurnLatencySystemNotice(
+            completion.DurationMs,
+            completion.QueueWaitMs,
+            completion.AuthProbeMs,
+            completion.ConnectMs,
+            completion.DispatchToFirstDeltaMs,
+            completion.StreamDurationMs,
+            firstTurnNotice: emitForFirstTurn));
+    }
+
     private static string MapOutcomeToMetricsToken(AssistantTurnOutcome outcome) {
         return outcome.Kind switch {
             AssistantTurnOutcomeKind.Canceled => "canceled",
@@ -631,4 +709,3 @@ public sealed partial class MainWindow : Window {
             EndpointHost: string.IsNullOrWhiteSpace(endpointHost) ? null : endpointHost.Trim());
     }
 }
-

@@ -87,13 +87,6 @@ public sealed partial class MainWindow : Window {
             _availableModels);
         var assistantModelLabel = string.IsNullOrWhiteSpace(resolvedModel) ? "(auto)" : resolvedModel.Trim();
         conversation.ModelLabel = assistantModelLabel;
-        var now = DateTime.Now;
-        conversation.Messages.Add(("Assistant", string.Empty, now, assistantModelLabel));
-        conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
-        conversation.UpdatedUtc = now.ToUniversalTime();
-        if (string.Equals(conversationId, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            await RenderTranscriptAsync().ConfigureAwait(false);
-        }
 
         // Keep the turn startup path responsive; state durability is still preserved via debounced persistence.
         QueuePersistAppState();
@@ -121,7 +114,8 @@ public sealed partial class MainWindow : Window {
         conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
         conversation.UpdatedUtc = now.ToUniversalTime();
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            await RenderTranscriptAsync().ConfigureAwait(false);
+            // Avoid waiting on WebView render before request dispatch.
+            _ = RenderTranscriptAsync();
         }
 
         // Avoid blocking request dispatch on storage I/O; debounce persistence instead.
@@ -132,7 +126,7 @@ public sealed partial class MainWindow : Window {
         try {
             var initialClient = _client;
             if (initialClient is null) {
-                if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } reconnectClient) {
+                if (await EnsureConnectedAsync(deferPostConnectMetadataSync: true).ConfigureAwait(false) && _client is { } reconnectClient) {
                     try {
                         await ExecuteChatTurnWithThreadRecoveryAsync(reconnectClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
@@ -151,7 +145,7 @@ public sealed partial class MainWindow : Window {
                 return;
             } catch (Exception ex) when (IsDisconnectedError(ex)) {
                 await DisposeClientAsync().ConfigureAwait(false);
-                if (await EnsureConnectedAsync().ConfigureAwait(false) && _client is { } retryClient) {
+                if (await EnsureConnectedAsync(deferPostConnectMetadataSync: true).ConfigureAwait(false) && _client is { } retryClient) {
                     try {
                         await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
@@ -279,6 +273,7 @@ public sealed partial class MainWindow : Window {
         var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
         if (completion is not null) {
             RegisterTurnSuccessReliability(completion);
+            AppendTurnLatencySystemNoticeIfNeeded(completion);
             lock (_turnDiagnosticsSync) {
                 if (_lastTurnMetrics is null
                     || !string.Equals(_lastTurnMetrics.RequestId, completion.RequestId, StringComparison.OrdinalIgnoreCase)) {
@@ -335,6 +330,7 @@ public sealed partial class MainWindow : Window {
         var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
         if (completion is not null) {
             RegisterTurnFailureReliability(completion, outcome);
+            AppendTurnLatencySystemNoticeIfNeeded(completion);
             lock (_turnDiagnosticsSync) {
                 _lastTurnMetrics = BuildTurnMetricsSnapshotFromCompletion(
                     completion,

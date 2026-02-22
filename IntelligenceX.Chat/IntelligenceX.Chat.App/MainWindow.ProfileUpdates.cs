@@ -44,12 +44,38 @@ public sealed partial class MainWindow : Window {
     }
 
     private static void ReplaceLastAssistantText(ConversationRuntime conversation, string text) {
-        for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
-            if (string.Equals(conversation.Messages[i].Role, "Assistant", StringComparison.Ordinal)) {
-                conversation.Messages[i] = ("Assistant", text, conversation.Messages[i].Time, conversation.Messages[i].Model);
-                return;
-            }
+        var nowLocal = DateTime.Now;
+        if (conversation.Messages.Count > 0
+            && string.Equals(conversation.Messages[^1].Role, "Assistant", StringComparison.Ordinal)) {
+            var existing = conversation.Messages[^1];
+            var updatedTimestamp = ResolveAssistantTimestampForUpdate(
+                existing.Time,
+                existing.Text,
+                text,
+                nowLocal);
+            var updatedModel = string.IsNullOrWhiteSpace(existing.Model)
+                ? string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim()
+                : existing.Model;
+            conversation.Messages[^1] = ("Assistant", text, updatedTimestamp, updatedModel);
+            return;
         }
+
+        var modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim();
+        conversation.Messages.Add(("Assistant", text, nowLocal, modelLabel));
+    }
+
+    internal static DateTime ResolveAssistantTimestampForUpdate(
+        DateTime currentTimestamp,
+        string? existingText,
+        string? nextText,
+        DateTime nowLocal) {
+        var hadVisibleContent = !string.IsNullOrWhiteSpace(existingText);
+        var hasVisibleContent = !string.IsNullOrWhiteSpace(nextText);
+        if (!hadVisibleContent && hasVisibleContent) {
+            return nowLocal;
+        }
+
+        return currentTimestamp;
     }
 
     private void UpdateToolCatalog(ToolDefinitionDto[] tools) {

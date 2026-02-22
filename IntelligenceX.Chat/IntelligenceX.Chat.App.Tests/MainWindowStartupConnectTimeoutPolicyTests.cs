@@ -50,7 +50,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(true, true, null)]
     [InlineData(true, false, null)]
     [InlineData(false, false, null)]
-    [InlineData(false, true, 4000)]
+    [InlineData(false, true, 6000)]
     public void ResolveStartupConnectBudget_ReturnsExpectedBudget(
         bool fromUserAction,
         bool captureStartupPhaseTelemetry,
@@ -338,5 +338,96 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         bool expected) {
         var shouldDefer = MainWindow.ShouldDeferStartupWebViewPostInitialization(captureStartupPhaseTelemetry);
         Assert.Equal(expected, shouldDefer);
+    }
+
+    /// <summary>
+    /// Ensures startup dispatch prewarm auth probe only runs for native transport
+    /// when no authentication state is known and interactive login is not in progress.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, false, false, true)]
+    public void ShouldRunStartupDispatchAuthPrewarm_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool expected) {
+        var shouldRun = MainWindow.ShouldRunStartupDispatchAuthPrewarm(
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            loginInProgress);
+        Assert.Equal(expected, shouldRun);
+    }
+
+    /// <summary>
+    /// Ensures dispatch auth probe can bypass network round-trips when an explicit
+    /// unauthenticated snapshot is already cached and current state is unauthenticated.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, false, true, false)]
+    public void ShouldBypassDispatchAuthProbeForKnownUnauthenticatedState_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool hasExplicitUnauthenticatedProbeSnapshot,
+        bool expected) {
+        var shouldBypass = MainWindow.ShouldBypassDispatchAuthProbeForKnownUnauthenticatedState(
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            hasExplicitUnauthenticatedProbeSnapshot);
+        Assert.Equal(expected, shouldBypass);
+    }
+
+    /// <summary>
+    /// Ensures deferred startup metadata sync is skipped only for unauthenticated
+    /// native sessions where deferred mode is enabled and interactive login is idle.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(true, true, true, false, false)]
+    [InlineData(true, true, false, true, false)]
+    [InlineData(true, true, false, false, true)]
+    public void ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative_ReturnsExpectedValue(
+        bool deferStartupMetadataSync,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool expected) {
+        var shouldSkip = MainWindow.ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+            deferStartupMetadataSync,
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            loginInProgress);
+        Assert.Equal(expected, shouldSkip);
+    }
+
+    /// <summary>
+    /// Ensures startup dispatch prewarm system summary includes stable timing details.
+    /// </summary>
+    [Theory]
+    [InlineData(420, false, null, false, null, "Startup prewarm ready: runtime connected in 420ms (auth check deferred).")]
+    [InlineData(380, true, true, false, 95, "Startup prewarm ready: runtime connected in 380ms; account verified in 95ms.")]
+    [InlineData(510, true, false, false, 1200, "Startup prewarm ready: runtime connected in 510ms; sign-in still required (checked in 1200ms).")]
+    [InlineData(0, true, false, false, 1207, "Startup prewarm ready: runtime already connected; sign-in still required (checked in 1207ms).")]
+    [InlineData(0, true, null, true, 700, "Startup prewarm ready: runtime already connected; auth check inconclusive after 700ms (will verify on first message).")]
+    public void BuildStartupDispatchPrewarmSummary_ReturnsExpectedText(
+        long connectMs,
+        bool authProbeAttempted,
+        bool? authProbeAuthenticated,
+        bool authProbeInconclusive,
+        int? authProbeMs,
+        string expected) {
+        var summary = MainWindow.BuildStartupDispatchPrewarmSummary(
+            connectMs,
+            authProbeAttempted,
+            authProbeAuthenticated,
+            authProbeInconclusive,
+            authProbeMs.HasValue ? (long?)authProbeMs.Value : null);
+        Assert.Equal(expected, summary);
     }
 }
