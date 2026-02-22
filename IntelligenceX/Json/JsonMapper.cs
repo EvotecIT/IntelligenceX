@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace IntelligenceX.Json;
 
@@ -29,6 +30,14 @@ public static class JsonMapper {
                 return JsonValue.From(str);
             case bool b:
                 return JsonValue.From(b);
+            case DateTime dt:
+                return JsonValue.From(dt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            case DateTimeOffset dto:
+                return JsonValue.From(dto.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            case TimeSpan ts:
+                return JsonValue.From(ts.ToString("c", CultureInfo.InvariantCulture));
+            case Enum e:
+                return JsonValue.From(NormalizeEnum(e));
             case byte or sbyte or short or ushort or int or uint or long:
                 return JsonValue.From(Convert.ToInt64(value));
             case ulong unsignedLong:
@@ -54,6 +63,13 @@ public static class JsonMapper {
             default:
                 return JsonValue.From(value.ToString());
         }
+    }
+
+    private static string NormalizeEnum(Enum value) {
+        var enumType = value.GetType();
+        return Enum.IsDefined(enumType, value)
+            ? value.ToString()
+            : Enum.Format(enumType, value, "D");
     }
 
     /// <summary>

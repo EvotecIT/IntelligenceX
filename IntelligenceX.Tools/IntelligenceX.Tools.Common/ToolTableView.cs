@@ -523,6 +523,9 @@ public static class ToolTableView {
             }
 
             if (x is IComparable xComp && y.GetType() == x.GetType()) {
+                // Non-finite floating-point values are intentionally excluded from numeric normalization
+                // and compared via native type semantics to avoid conversion exceptions while keeping
+                // deterministic ordering for repeated view requests.
                 return xComp.CompareTo(y);
             }
 

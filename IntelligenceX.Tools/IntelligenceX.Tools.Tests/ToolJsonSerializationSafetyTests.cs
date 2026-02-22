@@ -133,6 +133,72 @@ public sealed class ToolJsonSerializationSafetyTests {
     }
 
     [Fact]
+    public void JsonMapper_ShouldNormalizeDateTimeOffsetAndEnumConsistentlyWithToolJson() {
+        var model = new ContractModel {
+            StartedAt = new DateTimeOffset(2026, 2, 22, 12, 34, 56, TimeSpan.FromHours(2)),
+            Stage = ContractStage.Ready
+        };
+
+        var mappedDate = global::IntelligenceX.Json.JsonMapper.FromObject(model.StartedAt);
+        var mappedStage = global::IntelligenceX.Json.JsonMapper.FromObject(model.Stage);
+        var root = ToolJson.ToJsonObjectSnakeCase(model);
+
+        Assert.Equal("2026-02-22T10:34:56.0000000+00:00", mappedDate.AsString());
+        Assert.Equal("Ready", mappedStage.AsString());
+        Assert.Equal(mappedDate.AsString(), root.GetString("started_at"));
+        Assert.Equal(mappedStage.AsString(), root.GetString("stage"));
+    }
+
+    [Fact]
+    public void JsonMapper_ShouldNormalizeUtcDateTimeToRoundTripFriendlyIsoString() {
+        var utc = new DateTime(2026, 2, 22, 1, 2, 3, DateTimeKind.Utc);
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(utc);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            CreatedAt = utc
+        });
+
+        Assert.Equal(global::IntelligenceX.Json.JsonValueKind.String, mapped.Kind);
+        Assert.Equal("2026-02-22T01:02:03.0000000Z", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("created_at"));
+    }
+
+    [Fact]
+    public void JsonMapper_ShouldNormalizeTimeSpanUsingInvariantConstantFormat() {
+        var span = new TimeSpan(days: 1, hours: 2, minutes: 3, seconds: 4, milliseconds: 5);
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(span);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            Elapsed = span
+        });
+
+        Assert.Equal("1.02:03:04.0050000", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("elapsed"));
+    }
+
+    [Fact]
+    public void JsonMapper_ShouldNormalizeUndefinedEnumToStableNumericString() {
+        var value = (ContractStatus)42;
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(value);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            Status = value
+        });
+
+        Assert.Equal("42", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("status"));
+    }
+
+    [Fact]
+    public void JsonMapper_ShouldNormalizeFlagsCompositeWithoutNamedConstantToStableNumericString() {
+        var value = ContractFlags.Read | ContractFlags.Write;
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(value);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            Flags = value
+        });
+
+        Assert.Equal("3", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("flags"));
+    }
+
+    [Fact]
     public void OkModel_WhenFallbackHandlesCycle_ShouldPreserveDeepChildContext() {
         var rootNode = new CycleNode { Name = "root" };
         var current = rootNode;
@@ -173,5 +239,28 @@ public sealed class ToolJsonSerializationSafetyTests {
         public CycleNode? Child { get; set; }
 
         public CycleNode? Next { get; set; }
+    }
+
+    private enum ContractStage {
+        Ready,
+        Running
+    }
+
+    private enum ContractStatus {
+        Unknown = 0,
+        Healthy = 1
+    }
+
+    [Flags]
+    private enum ContractFlags {
+        None = 0,
+        Read = 1,
+        Write = 2
+    }
+
+    private sealed class ContractModel {
+        public DateTimeOffset StartedAt { get; set; }
+
+        public ContractStage Stage { get; set; }
     }
 }

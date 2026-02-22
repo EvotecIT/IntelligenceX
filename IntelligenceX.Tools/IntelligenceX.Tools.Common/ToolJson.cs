@@ -19,7 +19,12 @@ public static class ToolJson {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         // Keep dictionary keys as-is. Many tool payloads carry provider-defined keys (event data names, LDAP attribute names, headers)
         // and callers expect exact casing/spelling. Prefer modeling standardized outputs as lists/records instead of dictionaries.
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = {
+            new StableEnumJsonConverterFactory(),
+            new UtcDateTimeJsonConverter(),
+            new UtcDateTimeOffsetJsonConverter()
+        }
     };
 
     /// <summary>
@@ -323,6 +328,90 @@ public static class ToolJson {
         }
 
         return values;
+    }
+
+    private sealed class UtcDateTimeJsonConverter : JsonConverter<DateTime> {
+        public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+            return reader.GetDateTime();
+        }
+
+        public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options) {
+            var normalized = JsonMapper.FromObject(value).AsString();
+            if (normalized is null) {
+                throw new InvalidOperationException("DateTime normalization expected string output.");
+            }
+
+            writer.WriteStringValue(normalized);
+        }
+    }
+
+    private sealed class UtcDateTimeOffsetJsonConverter : JsonConverter<DateTimeOffset> {
+        public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+            return reader.GetDateTimeOffset();
+        }
+
+        public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) {
+            var normalized = JsonMapper.FromObject(value).AsString();
+            if (normalized is null) {
+                throw new InvalidOperationException("DateTimeOffset normalization expected string output.");
+            }
+
+            writer.WriteStringValue(normalized);
+        }
+    }
+
+    private sealed class StableEnumJsonConverterFactory : JsonConverterFactory {
+        public override bool CanConvert(Type typeToConvert) {
+            return typeToConvert.IsEnum;
+        }
+
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) {
+            var converterType = typeof(StableEnumJsonConverter<>).MakeGenericType(typeToConvert);
+            return (JsonConverter)(Activator.CreateInstance(converterType)
+                ?? throw new InvalidOperationException($"Unable to create enum converter for {typeToConvert.FullName}."));
+        }
+
+        private sealed class StableEnumJsonConverter<TEnum> : JsonConverter<TEnum> where TEnum : struct, Enum {
+            public override TEnum Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+                if (reader.TokenType == JsonTokenType.String) {
+                    var text = reader.GetString();
+                    if (string.IsNullOrWhiteSpace(text)) {
+                        throw new JsonException($"Cannot parse empty enum value for {typeToConvert.FullName}.");
+                    }
+
+                    if (Enum.TryParse<TEnum>(text, ignoreCase: false, out var parsed)) {
+                        return parsed;
+                    }
+
+                    if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var signedNumber)) {
+                        return (TEnum)Enum.ToObject(typeToConvert, signedNumber);
+                    }
+                    if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unsignedNumber)) {
+                        return (TEnum)Enum.ToObject(typeToConvert, unsignedNumber);
+                    }
+                }
+
+                if (reader.TokenType == JsonTokenType.Number) {
+                    if (reader.TryGetInt64(out var signedNumber)) {
+                        return (TEnum)Enum.ToObject(typeToConvert, signedNumber);
+                    }
+                    if (reader.TryGetUInt64(out var unsignedNumber)) {
+                        return (TEnum)Enum.ToObject(typeToConvert, unsignedNumber);
+                    }
+                }
+
+                throw new JsonException($"Unable to parse enum value for {typeToConvert.FullName}.");
+            }
+
+            public override void Write(Utf8JsonWriter writer, TEnum value, JsonSerializerOptions options) {
+                var normalized = JsonMapper.FromObject((Enum)(object)value).AsString();
+                if (normalized is null) {
+                    throw new InvalidOperationException($"Enum normalization expected string output for {typeof(TEnum).FullName}.");
+                }
+
+                writer.WriteStringValue(normalized);
+            }
+        }
     }
 
     private static string ConvertToInvariantString(object? value) {
