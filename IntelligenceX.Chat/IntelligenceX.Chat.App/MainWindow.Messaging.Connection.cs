@@ -137,6 +137,10 @@ public sealed partial class MainWindow : Window {
         return !hasTrackedRunningServiceProcess && !prioritizeLatency;
     }
 
+    internal static bool ShouldProbeExistingClientAfterJoinedConnectTimeout(bool joinedExistingInFlight, TimeSpan connectBudget) {
+        return joinedExistingInFlight && connectBudget > TimeSpan.Zero;
+    }
+
     internal static bool ShouldDeferStartupModelProfileSync(bool captureStartupPhaseTelemetry) {
         return captureStartupPhaseTelemetry;
     }

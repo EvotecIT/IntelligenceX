@@ -522,6 +522,19 @@ public sealed partial class MainWindow : Window {
                 try {
                     return await connectAttemptTask.WaitAsync(connectBudget).ConfigureAwait(false);
                 } catch (TimeoutException) {
+                    if (ShouldProbeExistingClientAfterJoinedConnectTimeout(joinedExistingInFlight, connectBudget)) {
+                        var timedOutClient = _client;
+                        if (timedOutClient is not null
+                            && await IsClientAliveAsync(
+                                    timedOutClient,
+                                    probeTimeout: AliveProbeFastTimeout,
+                                    cacheTtl: AliveProbeCacheTtl)
+                                .ConfigureAwait(false)) {
+                            _isConnected = true;
+                            return true;
+                        }
+                    }
+
                     _isConnected = false;
                     if (VerboseServiceLogs || _debugMode) {
                         await AppendSystemBestEffortAsync(

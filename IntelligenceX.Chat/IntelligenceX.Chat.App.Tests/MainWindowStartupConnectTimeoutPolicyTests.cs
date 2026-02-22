@@ -230,6 +230,26 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures joined in-flight connect timeout probes are only attempted when
+    /// callers actually joined an in-flight task and supplied a positive connect budget.
+    /// </summary>
+    [Theory]
+    [InlineData(true, 8000, true)]
+    [InlineData(true, 1, true)]
+    [InlineData(true, 0, false)]
+    [InlineData(true, -1, false)]
+    [InlineData(false, 8000, false)]
+    public void ShouldProbeExistingClientAfterJoinedConnectTimeout_ReturnsExpectedValue(
+        bool joinedExistingInFlight,
+        int connectBudgetMs,
+        bool expected) {
+        var shouldProbe = MainWindow.ShouldProbeExistingClientAfterJoinedConnectTimeout(
+            joinedExistingInFlight,
+            TimeSpan.FromMilliseconds(connectBudgetMs));
+        Assert.Equal(expected, shouldProbe);
+    }
+
+    /// <summary>
     /// Ensures post-cancel connect settlement treats near-boundary successful completion as success.
     /// </summary>
     [Fact]
