@@ -1,6 +1,9 @@
 using System.Collections;
+using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using IntelligenceX.Tools.Common;
 
@@ -8,6 +11,7 @@ namespace IntelligenceX.Chat.Tooling;
 
 internal static class PluginFolderToolPackLoader {
     private const string ManifestFileName = "ix-plugin.json";
+    private const string PluginArchiveSuffix = ".ix-plugin.zip";
     private const int SupportedSchemaVersion = 1;
 
     internal static IReadOnlyList<PluginSearchRoot> ResolvePluginSearchRoots(ToolPackBootstrapOptions options) {
@@ -99,6 +103,10 @@ internal static class PluginFolderToolPackLoader {
             yield return rootPath;
         }
 
+        foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath)) {
+            yield return archiveDirectory;
+        }
+
         IEnumerable<string> subDirectories;
         try {
             subDirectories = Directory.EnumerateDirectories(rootPath);
@@ -109,6 +117,25 @@ internal static class PluginFolderToolPackLoader {
         foreach (var directory in subDirectories.OrderBy(static d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)) {
             if (IsPluginFolder(directory)) {
                 yield return directory;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumeratePluginArchiveDirectories(string rootPath) {
+        string[] archives;
+        try {
+            archives = Directory
+                .EnumerateFiles(rootPath, "*" + PluginArchiveSuffix, SearchOption.TopDirectoryOnly)
+                .OrderBy(static file => Path.GetFileName(file), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch {
+            yield break;
+        }
+
+        foreach (var archive in archives) {
+            var extracted = TryMaterializePluginArchive(archive);
+            if (!string.IsNullOrWhiteSpace(extracted)) {
+                yield return extracted!;
             }
         }
     }
@@ -127,6 +154,67 @@ internal static class PluginFolderToolPackLoader {
             return Directory.EnumerateFiles(path, "*.dll", SearchOption.TopDirectoryOnly).Any();
         } catch {
             return false;
+        }
+    }
+
+    private static string? TryMaterializePluginArchive(string archivePath) {
+        var normalizedArchive = NormalizePath(archivePath);
+        if (string.IsNullOrWhiteSpace(normalizedArchive) || !File.Exists(normalizedArchive)) {
+            return null;
+        }
+
+        try {
+            var cacheRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "IntelligenceX.Chat",
+                "plugin-cache");
+            Directory.CreateDirectory(cacheRoot);
+
+            var cacheKey = BuildPluginArchiveCacheKey(normalizedArchive);
+            if (string.IsNullOrWhiteSpace(cacheKey)) {
+                return null;
+            }
+
+            var extractDir = Path.Combine(cacheRoot, cacheKey);
+            if (IsPluginFolder(extractDir)) {
+                return extractDir;
+            }
+
+            var tempDir = extractDir + ".tmp-" + Guid.NewGuid().ToString("N");
+            if (Directory.Exists(tempDir)) {
+                Directory.Delete(tempDir, recursive: true);
+            }
+
+            ZipFile.ExtractToDirectory(normalizedArchive, tempDir);
+            if (!IsPluginFolder(tempDir)) {
+                Directory.Delete(tempDir, recursive: true);
+                return null;
+            }
+
+            if (Directory.Exists(extractDir)) {
+                Directory.Delete(extractDir, recursive: true);
+            }
+
+            Directory.Move(tempDir, extractDir);
+            return extractDir;
+        } catch {
+            return null;
+        }
+    }
+
+    private static string BuildPluginArchiveCacheKey(string archivePath) {
+        try {
+            var info = new FileInfo(archivePath);
+            var stamp = archivePath.ToUpperInvariant()
+                        + "|"
+                        + info.Length.ToString()
+                        + "|"
+                        + info.LastWriteTimeUtc.Ticks.ToString();
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(stamp));
+            return "zip-v1-" + Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant();
+        } catch {
+            return string.Empty;
         }
     }
 

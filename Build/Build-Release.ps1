@@ -7,7 +7,11 @@
     [ValidateSet('Debug','Release')]
     [string] $Configuration = 'Release',
 
+    [ValidateSet('host','app')]
+    [string] $Frontend = 'app',
+
     [string] $Framework = 'net10.0-windows',
+    [string] $AppFramework = 'net8.0-windows10.0.26100.0',
     [string] $ReleaseId,
     [string] $OutDir,
     [switch] $ClearOut,
@@ -31,7 +35,8 @@
     [string] $SignDescription = 'IntelligenceX Chat',
     [string] $SignUrl,
     [string] $SignCsp,
-    [string] $SignKeyContainer
+    [string] $SignKeyContainer,
+    [bool] $UseTestimoXSignThumbprintFallback = $true
 )
 
 Set-StrictMode -Version Latest
@@ -40,6 +45,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Step($text) { Write-Host "[+] $text" -ForegroundColor Yellow }
 function Write-Ok($text) { Write-Host "[OK] $text" -ForegroundColor Green }
+function Write-Warn($text) { Write-Host "[!] $text" -ForegroundColor DarkYellow }
 
 function Invoke-ScriptFile {
     param(
@@ -91,6 +97,38 @@ function Write-Sha256Manifest {
     Set-Content -Path $OutputPath -Value $lines -Encoding UTF8
 }
 
+function Resolve-TestimoXDefaultSignThumbprint {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot
+    )
+
+    $candidates = @(
+        (Join-Path $RepoRoot '..\TestimoX\Build\Build-TestimoX.Agent-MSI.ps1'),
+        (Join-Path $RepoRoot '..\TestimoX\Build\Prepare-TestimoX.Agent-MSI.ps1'),
+        (Join-Path $RepoRoot '..\TestimoX\Build\Deploy-TestimoX.Agent.ps1')
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path $candidate)) {
+            continue
+        }
+
+        try {
+            $raw = Get-Content -Path $candidate -Raw -ErrorAction Stop
+            $match = [System.Text.RegularExpressions.Regex]::Match(
+                $raw,
+                '(?im)^\s*\[string\]\s*\$SignThumbprint\s*=\s*''(?<thumb>[0-9a-f]{40})''')
+            if ($match.Success) {
+                return $match.Groups['thumb'].Value.ToLowerInvariant()
+            }
+        } catch {
+        }
+    }
+
+    return $null
+}
+
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 
 if ([string]::IsNullOrWhiteSpace($ReleaseId)) {
@@ -114,11 +152,14 @@ $portableOut = Join-Path $OutDir 'portable'
 $installerOut = Join-Path $OutDir 'installer'
 $bundleName = "IntelligenceX.Chat-$ReleaseId-$Runtime"
 $payloadPath = Join-Path $portableOut $bundleName
+$serviceIncluded = [bool]$IncludeService
 
 Write-Header 'Build Release'
+Write-Step "Frontend: $Frontend"
 Write-Step "Release ID: $ReleaseId"
 Write-Step "Runtime: $Runtime"
 Write-Step "Framework: $Framework"
+Write-Step "App framework: $AppFramework"
 Write-Step "Output root: $OutDir"
 Write-Step "Include symbols: $([bool]$IncludeSymbols)"
 
@@ -158,9 +199,11 @@ if (-not $SkipPluginPackages) {
 if (-not $SkipPortable) {
     Write-Header 'Package Portable Bundle'
     $portableArgs = @{
+        Frontend = $Frontend
         Runtime = $Runtime
         Configuration = $Configuration
         Framework = $Framework
+        AppFramework = $AppFramework
         PluginMode = 'all'
         IncludePrivateToolPacks = $true
         OutDir = $portableOut
@@ -178,14 +221,19 @@ if (-not $SkipPortable) {
         $portableArgs['TestimoXRoot'] = $TestimoXRoot
     }
     Invoke-ScriptFile -ScriptPath $portableScript -Parameters $portableArgs
+    if ($Frontend -eq 'app' -or $IncludeService) {
+        $serviceIncluded = $true
+    }
 }
 
 if (-not $SkipInstaller) {
     Write-Header 'Build MSI Installer'
     $installerArgs = @{
+        Frontend = $Frontend
         Runtime = $Runtime
         Configuration = $Configuration
         Framework = $Framework
+        AppFramework = $AppFramework
         OutDir = $installerOut
     }
     if (Test-Path $payloadPath) {
@@ -204,6 +252,15 @@ if (-not $SkipInstaller) {
         $installerArgs['TestimoXRoot'] = $TestimoXRoot
     }
     if ($SignInstaller) {
+        if (-not $SignThumbprint -and $UseTestimoXSignThumbprintFallback) {
+            $resolvedThumbprint = Resolve-TestimoXDefaultSignThumbprint -RepoRoot $script:RepoRoot
+            if ($resolvedThumbprint) {
+                $SignThumbprint = $resolvedThumbprint
+                Write-Warn "Using default TestimoX signing thumbprint fallback from sibling repo."
+            } else {
+                Write-Warn 'No TestimoX signing thumbprint fallback found; MSI signing will rely on subject name or local cert auto-selection.'
+            }
+        }
         $installerArgs['Sign'] = $true
         $installerArgs['SignToolPath'] = $SignToolPath
         if ($SignThumbprint) { $installerArgs['SignThumbprint'] = $SignThumbprint }
@@ -215,6 +272,9 @@ if (-not $SkipInstaller) {
         if ($SignKeyContainer) { $installerArgs['SignKeyContainer'] = $SignKeyContainer }
     }
     Invoke-ScriptFile -ScriptPath $installerScript -Parameters $installerArgs
+    if ($Frontend -eq 'app' -or $IncludeService) {
+        $serviceIncluded = $true
+    }
 }
 
 Remove-ReleaseSymbols -RootPath $OutDir
@@ -224,9 +284,11 @@ $manifest = [ordered]@{
     releaseId = $ReleaseId
     createdUtc = (Get-Date).ToUniversalTime().ToString('o')
     runtime = $Runtime
+    frontend = $Frontend
     framework = $Framework
+    appFramework = $AppFramework
     configuration = $Configuration
-    includeService = [bool] $IncludeService
+    includeService = $serviceIncluded
     includeSymbols = [bool] $IncludeSymbols
     outputRoot = $OutDir
     artifacts = [ordered]@{

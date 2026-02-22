@@ -7,7 +7,11 @@
     [ValidateSet('Debug','Release')]
     [string] $Configuration = 'Release',
 
+    [ValidateSet('host','app')]
+    [string] $Frontend = 'app',
+
     [string] $Framework = 'net10.0-windows',
+    [string] $AppFramework = 'net8.0-windows10.0.26100.0',
     [string] $PayloadDir,
     [string] $PortableOutDir,
     [string] $BundleName,
@@ -29,7 +33,8 @@
     [string] $SignDescription = 'IntelligenceX Chat',
     [string] $SignUrl,
     [string] $SignCsp,
-    [string] $SignKeyContainer
+    [string] $SignKeyContainer,
+    [bool] $UseTestimoXSignThumbprintFallback = $true
 )
 
 Set-StrictMode -Version Latest
@@ -38,6 +43,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Step($text) { Write-Host "[+] $text" -ForegroundColor Yellow }
 function Write-Ok($text) { Write-Host "[OK] $text" -ForegroundColor Green }
+function Write-Warn($text) { Write-Host "[!] $text" -ForegroundColor DarkYellow }
 
 function Invoke-DotNet {
     param(
@@ -99,13 +105,23 @@ function Write-HarvestWxs {
         [string] $PayloadRoot,
         [Parameter(Mandatory)]
         [string] $OutputPath,
-        [Parameter(Mandatory)]
-        [string] $ExcludeFile
+        [string[]] $ExcludeFiles
     )
 
-    $excludeResolved = [System.IO.Path]::GetFullPath($ExcludeFile)
+    $excludeResolved = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($ExcludeFiles -and $ExcludeFiles.Count -gt 0) {
+        foreach ($excludeFile in $ExcludeFiles) {
+            if ([string]::IsNullOrWhiteSpace($excludeFile)) {
+                continue
+            }
+
+            $resolved = [System.IO.Path]::GetFullPath($excludeFile)
+            [void] $excludeResolved.Add($resolved)
+        }
+    }
+
     $files = Get-ChildItem -Path $PayloadRoot -File -Recurse -ErrorAction Stop |
-        Where-Object { [System.IO.Path]::GetFullPath($_.FullName) -ne $excludeResolved }
+        Where-Object { -not $excludeResolved.Contains([System.IO.Path]::GetFullPath($_.FullName)) }
 
     $root = [ordered]@{
         Id = 'INSTALLFOLDER'
@@ -248,9 +264,53 @@ function New-ShortPayloadJunction {
     New-Item -ItemType Junction -Path $junctionPath -Target $TargetPath | Out-Null
     return $junctionPath
 }
+
+function Resolve-TestimoXDefaultSignThumbprint {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot
+    )
+
+    $candidates = @(
+        (Join-Path $RepoRoot '..\TestimoX\Build\Build-TestimoX.Agent-MSI.ps1'),
+        (Join-Path $RepoRoot '..\TestimoX\Build\Prepare-TestimoX.Agent-MSI.ps1'),
+        (Join-Path $RepoRoot '..\TestimoX\Build\Deploy-TestimoX.Agent.ps1')
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path $candidate)) {
+            continue
+        }
+
+        try {
+            $raw = Get-Content -Path $candidate -Raw -ErrorAction Stop
+            $match = [System.Text.RegularExpressions.Regex]::Match(
+                $raw,
+                '(?im)^\s*\[string\]\s*\$SignThumbprint\s*=\s*''(?<thumb>[0-9a-f]{40})''')
+            if ($match.Success) {
+                return $match.Groups['thumb'].Value.ToLowerInvariant()
+            }
+        } catch {
+        }
+    }
+
+    return $null
+}
+
+function Resolve-PrimaryExecutableName {
+    param([Parameter(Mandatory)][string] $FrontendName)
+
+    if ($FrontendName -eq 'app') {
+        return 'IntelligenceX.Chat.App.exe'
+    }
+
+    return 'IntelligenceX.Chat.Host.exe'
+}
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 $packagePortableScript = Join-Path $script:RepoRoot 'Build\Package-Portable.ps1'
 $installerProject = Join-Path $script:RepoRoot 'Installer\IntelligenceX.Chat\IntelligenceX.Chat.Installer.wixproj'
+$frontendNormalized = $Frontend.ToLowerInvariant()
+$primaryExecutable = Resolve-PrimaryExecutableName -FrontendName $frontendNormalized
 
 if ([string]::IsNullOrWhiteSpace($PortableOutDir)) {
     $PortableOutDir = Join-Path $script:RepoRoot ("Artifacts\Portable\{0}" -f $Runtime)
@@ -262,9 +322,11 @@ if ([string]::IsNullOrWhiteSpace($BundleName)) {
 if ([string]::IsNullOrWhiteSpace($PayloadDir)) {
     Write-Header 'Prepare Installer Payload'
     $packageArgs = @{
+        Frontend = $frontendNormalized
         Runtime = $Runtime
         Configuration = $Configuration
         Framework = $Framework
+        AppFramework = $AppFramework
         PluginMode = 'all'
         IncludePrivateToolPacks = $true
         OutDir = $PortableOutDir
@@ -296,13 +358,13 @@ if (-not (Test-Path $installerProject)) {
 }
 
 $payloadRoot = [System.IO.Path]::GetFullPath($PayloadDir)
-$hostExe = Join-Path $payloadRoot 'IntelligenceX.Chat.Host.exe'
-if (-not (Test-Path $hostExe)) {
-    throw "Host executable missing from payload: $hostExe"
+$primaryExePath = Join-Path $payloadRoot $primaryExecutable
+if (-not (Test-Path $primaryExePath)) {
+    throw "Primary executable missing from payload: $primaryExePath"
 }
 
 if ([string]::IsNullOrWhiteSpace($ProductVersion)) {
-    $info = (Get-Item $hostExe).VersionInfo
+    $info = (Get-Item $primaryExePath).VersionInfo
     $candidate = if ($info.ProductVersion) { $info.ProductVersion } else { $info.FileVersion }
     $ProductVersion = Convert-ToMsiVersion -RawVersion $candidate
 } else {
@@ -326,24 +388,35 @@ $junctionPath = $null
 try {
     $junctionPath = New-ShortPayloadJunction -TargetPath $payloadRoot
     $payloadForBuild = [System.IO.Path]::GetFullPath($junctionPath)
-    $hostExeForBuild = Join-Path $payloadForBuild 'IntelligenceX.Chat.Host.exe'
+    $primaryExeForBuild = Join-Path $payloadForBuild $primaryExecutable
 
     $harvestPath = Join-Path $msiRoot 'Harvest.wxs'
     Write-Header 'Harvest Payload'
     Write-Step "Payload: $payloadRoot"
     Write-Step "Build payload alias: $payloadForBuild"
     Write-Step "Harvest file: $harvestPath"
-    Write-HarvestWxs -PayloadRoot $payloadForBuild -OutputPath $harvestPath -ExcludeFile $hostExeForBuild
+    $harvestExcludes = @(
+        $primaryExeForBuild,
+        (Join-Path $payloadForBuild 'run-chat.ps1'),
+        (Join-Path $payloadForBuild 'run-chat.cmd'),
+        (Join-Path $payloadForBuild 'README.md'),
+        (Join-Path $payloadForBuild 'portable-bundle.json'),
+        (Join-Path $payloadForBuild 'createdump.exe')
+    )
+    Write-HarvestWxs -PayloadRoot $payloadForBuild -OutputPath $harvestPath -ExcludeFiles $harvestExcludes
     Test-HarvestPayloadManifest -HarvestPath $harvestPath
 
     $manifest = [ordered]@{
         schemaVersion = 1
+        frontend = $frontendNormalized
         runtime = $Runtime
         configuration = $Configuration
         framework = $Framework
+        appFramework = $AppFramework
+        primaryExecutable = $primaryExecutable
         payloadDir = $payloadRoot
         payloadAliasDir = $payloadForBuild
-        hostExe = $hostExe
+        primaryExePath = $primaryExePath
         productName = $ProductName
         manufacturer = $Manufacturer
         productVersion = $ProductVersion
@@ -370,6 +443,7 @@ try {
         "-p:Manufacturer=$Manufacturer",
         "-p:ProductVersion=$ProductVersion",
         "-p:UpgradeCode=$UpgradeCode",
+        "-p:PrimaryExe=$primaryExecutable",
         "-p:HarvestFile=$harvestPath",
         "-p:OutputPath=$outDirWithSlash"
     )
@@ -384,6 +458,16 @@ try {
     }
 
     if ($Sign) {
+        if (-not $SignThumbprint -and $UseTestimoXSignThumbprintFallback) {
+            $resolvedThumbprint = Resolve-TestimoXDefaultSignThumbprint -RepoRoot $script:RepoRoot
+            if ($resolvedThumbprint) {
+                $SignThumbprint = $resolvedThumbprint
+                Write-Warn 'Using default TestimoX signing thumbprint fallback from sibling repo.'
+            } else {
+                Write-Warn 'No TestimoX signing thumbprint fallback found; MSI signing will rely on subject name or local cert auto-selection.'
+            }
+        }
+
         $resolvedSignTool = Resolve-SignToolPath -Path $SignToolPath
         if (-not $resolvedSignTool) {
             throw "SignTool not found. Install Windows SDK or pass -SignToolPath."

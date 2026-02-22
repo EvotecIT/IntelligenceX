@@ -7,7 +7,11 @@
     [ValidateSet('Debug','Release')]
     [string] $Configuration = 'Release',
 
+    [ValidateSet('host','app')]
+    [string] $Frontend = 'app',
+
     [string] $Framework = 'net10.0-windows',
+    [string] $AppFramework = 'net8.0-windows10.0.26100.0',
     [switch] $SelfContained = $true,
     [switch] $SingleFile = $true,
     [switch] $Trim,
@@ -20,6 +24,9 @@
     [switch] $IncludePrivateToolPacks,
     [string] $TestimoXRoot,
     [switch] $IncludeSymbols,
+    [bool] $LeanBundle = $true,
+    [switch] $IncludePortableHelpers,
+    [switch] $IncludeBundleMetadata,
 
     [string] $OutDir,
     [string] $BundleName,
@@ -33,6 +40,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Step($text)   { Write-Host "[+] $text" -ForegroundColor Yellow }
 function Write-Ok($text)     { Write-Host "[OK] $text" -ForegroundColor Green }
+function Write-Warn($text)   { Write-Host "[!] $text" -ForegroundColor DarkYellow }
 
 function Invoke-DotNet {
     param(
@@ -61,17 +69,21 @@ function Publish-Project {
         [Parameter(Mandatory)]
         [string] $ProjectPath,
         [Parameter(Mandatory)]
-        [string] $OutputPath
+        [string] $OutputPath,
+        [string] $FrameworkOverride,
+        [switch] $DisableSingleFile,
+        [string[]] $AdditionalArgs
     )
 
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+    $effectiveFramework = if ([string]::IsNullOrWhiteSpace($FrameworkOverride)) { $Framework } else { $FrameworkOverride }
     $args = @(
         'publish',
         $ProjectPath,
         '-c',
         $Configuration,
         '-f',
-        $Framework,
+        $effectiveFramework,
         '-r',
         $Runtime,
         '-o',
@@ -82,8 +94,10 @@ function Publish-Project {
     } else {
         $args += '--no-self-contained'
     }
-    if ($SingleFile) {
+    if ($SingleFile -and -not $DisableSingleFile) {
         $args += '/p:PublishSingleFile=true'
+    } elseif ($SingleFile -and $DisableSingleFile) {
+        Write-Warn "PublishSingleFile was requested but disabled for project: $ProjectPath"
     }
     if ($Trim) {
         $args += '/p:PublishTrimmed=true'
@@ -102,6 +116,9 @@ function Publish-Project {
             }
             $args += "/p:TestimoXRoot=$resolved"
         }
+    }
+    if ($AdditionalArgs -and $AdditionalArgs.Count -gt 0) {
+        $args += $AdditionalArgs
     }
 
     Invoke-DotNet -Args $args -WorkingDirectory $script:RepoRoot
@@ -122,6 +139,29 @@ function New-ZipFromFolder {
     [System.IO.Compression.ZipFile]::CreateFromDirectory($FolderPath, $ZipPath)
 }
 
+function Convert-PluginFoldersToArchives {
+    param(
+        [Parameter(Mandatory)]
+        [string] $PluginsRoot
+    )
+
+    if (-not (Test-Path $PluginsRoot)) {
+        return
+    }
+
+    $pluginDirs = Get-ChildItem -Path $PluginsRoot -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name
+    foreach ($pluginDir in $pluginDirs) {
+        $archivePath = Join-Path $PluginsRoot ($pluginDir.Name + '.ix-plugin.zip')
+        if (Test-Path $archivePath) {
+            Remove-Item -Force $archivePath
+        }
+
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($pluginDir.FullName, $archivePath)
+        Remove-Item -Recurse -Force $pluginDir.FullName
+    }
+}
+
 function Remove-BundleSymbols {
     param(
         [Parameter(Mandatory)]
@@ -136,10 +176,26 @@ function Remove-BundleSymbols {
         Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
-function New-PortableLauncherScripts {
+function Remove-BundleDiagnostics {
     param(
         [Parameter(Mandatory)]
         [string] $BundleRoot
+    )
+
+    if (-not $LeanBundle) {
+        return
+    }
+
+    Get-ChildItem -Path $BundleRoot -Recurse -File -Filter 'createdump.exe' -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+function New-PortableLauncherScripts {
+    param(
+        [Parameter(Mandatory)]
+        [string] $BundleRoot,
+        [Parameter(Mandatory)]
+        [string] $PrimaryExecutable
     )
 
         $launcherPs1 = @'
@@ -151,9 +207,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$hostExe = Join-Path $PSScriptRoot 'IntelligenceX.Chat.Host.exe'
-if (-not (Test-Path $hostExe)) {
-    throw "Host executable not found: $hostExe"
+$primaryExe = Join-Path $PSScriptRoot '__PRIMARY_EXE__'
+if (-not (Test-Path $primaryExe)) {
+    throw "Primary executable not found: $primaryExe"
 }
 
 if (-not $AllowRoot -or $AllowRoot.Count -eq 0) {
@@ -170,7 +226,7 @@ if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
     $args += $ExtraArgs
 }
 
-& $hostExe @args
+& $primaryExe @args
 exit $LASTEXITCODE
 '@
 
@@ -178,13 +234,16 @@ exit $LASTEXITCODE
 @echo off
 setlocal
 set "SCRIPT_DIR=%~dp0"
-set "HOST_EXE=%SCRIPT_DIR%IntelligenceX.Chat.Host.exe"
-if not exist "%HOST_EXE%" (
-  echo Host executable not found: %HOST_EXE%
+set "PRIMARY_EXE=%SCRIPT_DIR%__PRIMARY_EXE__"
+if not exist "%PRIMARY_EXE%" (
+  echo Primary executable not found: %PRIMARY_EXE%
   exit /b 1
 )
-"%HOST_EXE%" --allow-root "%SCRIPT_DIR%" %*
+"%PRIMARY_EXE%" --allow-root "%SCRIPT_DIR%" %*
 '@
+
+    $launcherPs1 = $launcherPs1.Replace('__PRIMARY_EXE__', $PrimaryExecutable)
+    $launcherCmd = $launcherCmd.Replace('__PRIMARY_EXE__', $PrimaryExecutable)
 
     Set-Content -Path (Join-Path $BundleRoot 'run-chat.ps1') -Value $launcherPs1 -Encoding UTF8
     Set-Content -Path (Join-Path $BundleRoot 'run-chat.cmd') -Value $launcherCmd -Encoding ASCII
@@ -195,12 +254,24 @@ function New-PortableReadme {
         [Parameter(Mandatory)]
         [string] $BundleRoot,
         [Parameter(Mandatory)]
+        [string] $FrontendValue,
+        [Parameter(Mandatory)]
+        [string] $PrimaryExecutable,
+        [Parameter(Mandatory)]
         [string] $RuntimeValue,
         [Parameter(Mandatory)]
         [string] $FrameworkValue,
         [Parameter(Mandatory)]
-        [string] $PluginModeValue
+        [string] $PluginModeValue,
+        [Parameter(Mandatory)]
+        [bool] $ServiceIncluded
     )
+
+    $serviceLine = if ($ServiceIncluded) {
+        '- `service\` (required runtime sidecar payload)'
+    } else {
+        '- `service\` (optional advanced service payload, only when packaged with `-IncludeService`)'
+    }
 
     $lines = @(
         '# IntelligenceX Chat Portable Bundle',
@@ -221,23 +292,34 @@ function New-PortableReadme {
         '',
         'Direct executable:',
         '```powershell',
-        '.\IntelligenceX.Chat.Host.exe --allow-root .',
+        ".\$PrimaryExecutable --allow-root .",
         '```',
         '',
         '## Bundle layout',
         '',
-        '- `IntelligenceX.Chat.Host.exe` (primary app)',
+        "- `$PrimaryExecutable` (primary app)",
         '- `plugins\` (folder-based plugin packs)',
-        '- `service\` (optional advanced service payload, only when packaged with `-IncludeService`)',
+        $serviceLine,
         '',
         '## Build metadata',
         '',
+        "- Frontend: $FrontendValue",
         "- Runtime: $RuntimeValue",
         "- Framework: $FrameworkValue",
         "- Plugin mode: $PluginModeValue"
     )
 
     Set-Content -Path (Join-Path $BundleRoot 'README.md') -Value ($lines -join "`r`n") -Encoding UTF8
+}
+
+function Resolve-PrimaryExecutableName {
+    param([Parameter(Mandatory)][string] $FrontendName)
+
+    if ($FrontendName -eq 'app') {
+        return 'IntelligenceX.Chat.App.exe'
+    }
+
+    return 'IntelligenceX.Chat.Host.exe'
 }
 
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
@@ -252,6 +334,9 @@ if ([string]::IsNullOrWhiteSpace($BundleName)) {
 $bundleRoot = Join-Path $OutDir $BundleName
 $serviceOut = Join-Path $bundleRoot 'service'
 $pluginsOut = Join-Path $bundleRoot 'plugins'
+$frontendNormalized = $Frontend.ToLowerInvariant()
+$primaryExecutable = Resolve-PrimaryExecutableName -FrontendName $frontendNormalized
+$serviceIncluded = [bool]$IncludeService
 
 if ($ClearOut -and (Test-Path $bundleRoot)) {
     Write-Step "Clearing bundle directory: $bundleRoot"
@@ -262,22 +347,44 @@ New-Item -ItemType Directory -Path $bundleRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $pluginsOut -Force | Out-Null
 
 $hostProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Host\IntelligenceX.Chat.Host.csproj'
+$appProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
 $serviceProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Service\IntelligenceX.Chat.Service.csproj'
 $exportScript = Join-Path $script:RepoRoot 'Build\Export-PluginFolders.ps1'
 
 Write-Header 'Package Portable Chat Bundle'
+Write-Step "Frontend: $frontendNormalized"
 Write-Step "Runtime: $Runtime"
 Write-Step "Framework: $Framework"
+Write-Step "App framework: $AppFramework"
 Write-Step "Plugin mode: $PluginMode"
 Write-Step "Bundle root: $bundleRoot"
 Write-Step "Include symbols: $([bool]$IncludeSymbols)"
+Write-Step "Lean bundle: $LeanBundle"
+Write-Step "Include portable helpers: $([bool]$IncludePortableHelpers)"
+Write-Step "Include bundle metadata: $([bool]$IncludeBundleMetadata)"
 
-Write-Header 'Publish Host (primary app)'
-Publish-Project -ProjectPath $hostProject -OutputPath $bundleRoot
+if ($frontendNormalized -eq 'app') {
+    Write-Header 'Publish WinUI App (primary app)'
+    Publish-Project -ProjectPath $appProject -OutputPath $bundleRoot -FrameworkOverride $AppFramework -DisableSingleFile -AdditionalArgs @('/p:SkipChatServiceSidecarBuild=true', '/p:WarningsNotAsErrors=NU1510')
+    if (-not $IncludeService) {
+        Write-Warn 'IncludeService was not specified. Publishing service payload anyway because WinUI app requires local sidecar for default runtime mode.'
+    }
+    $serviceIncluded = $true
+    Write-Header 'Publish Service (required for WinUI app runtime)'
+    Publish-Project -ProjectPath $serviceProject -OutputPath $serviceOut -FrameworkOverride $Framework -DisableSingleFile -AdditionalArgs @('/p:WarningsNotAsErrors=NU1510')
+} else {
+    Write-Header 'Publish Host (primary app)'
+    Publish-Project -ProjectPath $hostProject -OutputPath $bundleRoot
 
-if ($IncludeService) {
-    Write-Header 'Publish Service (optional advanced mode)'
-    Publish-Project -ProjectPath $serviceProject -OutputPath $serviceOut
+    if ($IncludeService) {
+        Write-Header 'Publish Service (optional advanced mode)'
+        Publish-Project -ProjectPath $serviceProject -OutputPath $serviceOut
+        $serviceIncluded = $true
+    }
+}
+
+if (-not (Test-Path (Join-Path $bundleRoot $primaryExecutable))) {
+    throw "Primary executable missing from portable bundle: $(Join-Path $bundleRoot $primaryExecutable)"
 }
 
 Write-Header 'Export Plugin Folders'
@@ -306,24 +413,42 @@ if ($LASTEXITCODE -ne 0) {
     throw "Plugin export failed with exit code $LASTEXITCODE."
 }
 
-Write-Header 'Generate Portable Launchers'
-New-PortableLauncherScripts -BundleRoot $bundleRoot
-New-PortableReadme -BundleRoot $bundleRoot -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode
-Remove-BundleSymbols -BundleRoot $bundleRoot
-
-$bundleMetadata = [ordered]@{
-    schemaVersion = 1
-    bundleName = $BundleName
-    runtime = $Runtime
-    framework = $Framework
-    configuration = $Configuration
-    pluginMode = $PluginMode
-    includeService = [bool]$IncludeService
-    includePrivateToolPacks = [bool]$IncludePrivateToolPacks
-    includeSymbols = [bool]$IncludeSymbols
-    createdUtc = (Get-Date).ToUniversalTime().ToString('o')
+if ($LeanBundle) {
+    Write-Header 'Compress Plugin Folders'
+    Convert-PluginFoldersToArchives -PluginsRoot $pluginsOut
 }
-$bundleMetadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $bundleRoot 'portable-bundle.json') -Encoding UTF8
+
+Write-Header 'Generate Portable Launchers'
+if ($IncludePortableHelpers) {
+    New-PortableLauncherScripts -BundleRoot $bundleRoot -PrimaryExecutable $primaryExecutable
+    New-PortableReadme -BundleRoot $bundleRoot -FrontendValue $frontendNormalized -PrimaryExecutable $primaryExecutable -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode -ServiceIncluded $serviceIncluded
+} else {
+    Write-Step 'Skipping helper scripts/docs for one-click portable UX (launch IntelligenceX.Chat.App.exe directly).'
+}
+
+Remove-BundleSymbols -BundleRoot $bundleRoot
+Remove-BundleDiagnostics -BundleRoot $bundleRoot
+
+if ($IncludeBundleMetadata) {
+    $bundleMetadata = [ordered]@{
+        schemaVersion = 1
+        bundleName = $BundleName
+        frontend = $frontendNormalized
+        primaryExecutable = $primaryExecutable
+        runtime = $Runtime
+        framework = $Framework
+        appFramework = $AppFramework
+        configuration = $Configuration
+        pluginMode = $PluginMode
+        includeService = $serviceIncluded
+        includePrivateToolPacks = [bool]$IncludePrivateToolPacks
+        includeSymbols = [bool]$IncludeSymbols
+        leanBundle = $LeanBundle
+        includePortableHelpers = [bool]$IncludePortableHelpers
+        createdUtc = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    $bundleMetadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $bundleRoot 'portable-bundle.json') -Encoding UTF8
+}
 
 if ($Zip) {
     Write-Header 'Create Portable Zip'

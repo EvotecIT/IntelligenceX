@@ -5,6 +5,7 @@
     <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>app.ico</ApplicationIcon>
 
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
@@ -77,6 +78,7 @@
 
   <ItemGroup>
     <Content Include="Ui\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="app.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -94,7 +96,7 @@
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false;TargetFramework=$(ChatServiceTfm)" />
   </Target>
 
   <Target Name="CopyChatServiceSidecar" AfterTargets="Build"
