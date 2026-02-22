@@ -352,30 +352,86 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public async Task Reliability_WhenTokenIsPreCanceled_ShouldNotInvokeBinderOrRetryDelay() {
+        var definition = new ToolDefinition(
+            "pipeline_stub",
+            "Pipeline stub",
+            ToolSchema.Object().NoAdditionalProperties());
+        using var cancellationSource = new CancellationTokenSource();
+        cancellationSource.Cancel();
+
+        var binderCalls = 0;
+        var delayCalls = 0;
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => {
+            await ToolPipeline.RunAsync(
+                definition: definition,
+                arguments: null,
+                cancellationToken: cancellationSource.Token,
+                binder: _ => {
+                    binderCalls++;
+                    return ToolRequestBindingResult<StubRequest>.Success(new StubRequest(7));
+                },
+                terminal: (_, _) => Task.FromResult(ToolResultV2.OkModel(new { Attempt = 1 })),
+                reliability: new ToolPipelineReliabilityOptions {
+                    MaxAttempts = 3,
+                    RetryTransientErrors = true,
+                    RetryExceptions = true,
+                    BaseDelayMs = 1,
+                    MaxDelayMs = 1,
+                    DelayAsync = (_, _) => {
+                        Interlocked.Increment(ref delayCalls);
+                        return Task.CompletedTask;
+                    }
+                });
+        });
+
+        Assert.Equal(0, binderCalls);
+        Assert.Equal(0, delayCalls);
+    }
+
+    [Fact]
     public void ReliabilityProfiles_ShouldReturnEquivalentButDistinctInstances() {
         var firstReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
         var secondReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
         Assert.NotSame(firstReadOnly, secondReadOnly);
-        Assert.Equal(firstReadOnly.MaxAttempts, secondReadOnly.MaxAttempts);
-        Assert.Equal(firstReadOnly.AttemptTimeoutMs, secondReadOnly.AttemptTimeoutMs);
-        Assert.Equal(firstReadOnly.BaseDelayMs, secondReadOnly.BaseDelayMs);
-        Assert.Equal(firstReadOnly.MaxDelayMs, secondReadOnly.MaxDelayMs);
+        AssertOptionsEquivalent(firstReadOnly, secondReadOnly);
 
         var firstProbe = ToolPipelineReliabilityProfiles.FastNetworkProbe;
         var secondProbe = ToolPipelineReliabilityProfiles.FastNetworkProbe;
         Assert.NotSame(firstProbe, secondProbe);
-        Assert.Equal(firstProbe.MaxAttempts, secondProbe.MaxAttempts);
-        Assert.Equal(firstProbe.AttemptTimeoutMs, secondProbe.AttemptTimeoutMs);
-        Assert.Equal(firstProbe.BaseDelayMs, secondProbe.BaseDelayMs);
-        Assert.Equal(firstProbe.MaxDelayMs, secondProbe.MaxDelayMs);
+        AssertOptionsEquivalent(firstProbe, secondProbe);
 
         var clone = firstProbe.Clone();
         Assert.NotSame(firstProbe, clone);
-        Assert.Equal(firstProbe.MaxAttempts, clone.MaxAttempts);
-        Assert.Equal(firstProbe.RetryTransientErrors, clone.RetryTransientErrors);
-        Assert.Equal(firstProbe.RetryExceptions, clone.RetryExceptions);
-        Assert.Equal(firstProbe.CircuitFailureThreshold, clone.CircuitFailureThreshold);
-        Assert.Equal(firstProbe.CircuitOpenMs, clone.CircuitOpenMs);
+        AssertOptionsEquivalent(firstProbe, clone);
+    }
+
+    [Fact]
+    public void ReliabilityOptionsClone_ShouldKeepDelegateReferences() {
+        Func<DateTimeOffset> nowProvider = () => DateTimeOffset.UtcNow;
+        Func<TimeSpan, CancellationToken, Task> delayAsync = (_, _) => Task.CompletedTask;
+        var options = new ToolPipelineReliabilityOptions {
+            MaxAttempts = 2,
+            RetryTransientErrors = true,
+            RetryExceptions = true,
+            RetryNonTransientExceptions = false,
+            AttemptTimeoutMs = 1_000,
+            BaseDelayMs = 50,
+            MaxDelayMs = 250,
+            JitterRatio = 0.15d,
+            EnableCircuitBreaker = true,
+            CircuitFailureThreshold = 3,
+            CircuitOpenMs = 7_500,
+            CircuitKey = "probe",
+            UtcNowProvider = nowProvider,
+            DelayAsync = delayAsync
+        };
+
+        var clone = options.Clone();
+        AssertOptionsEquivalent(options, clone);
+        Assert.Same(nowProvider, clone.UtcNowProvider);
+        Assert.Same(delayAsync, clone.DelayAsync);
     }
 
     [Fact]
@@ -437,5 +493,24 @@ public sealed class ToolPipelineTests {
         using var fourthDoc = JsonDocument.Parse(fourth);
         Assert.True(fourthDoc.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal(3, terminalCalls);
+    }
+
+    private static void AssertOptionsEquivalent(
+        ToolPipelineReliabilityOptions expected,
+        ToolPipelineReliabilityOptions actual) {
+        Assert.Equal(expected.MaxAttempts, actual.MaxAttempts);
+        Assert.Equal(expected.RetryTransientErrors, actual.RetryTransientErrors);
+        Assert.Equal(expected.RetryExceptions, actual.RetryExceptions);
+        Assert.Equal(expected.RetryNonTransientExceptions, actual.RetryNonTransientExceptions);
+        Assert.Equal(expected.AttemptTimeoutMs, actual.AttemptTimeoutMs);
+        Assert.Equal(expected.BaseDelayMs, actual.BaseDelayMs);
+        Assert.Equal(expected.MaxDelayMs, actual.MaxDelayMs);
+        Assert.Equal(expected.JitterRatio, actual.JitterRatio);
+        Assert.Equal(expected.EnableCircuitBreaker, actual.EnableCircuitBreaker);
+        Assert.Equal(expected.CircuitFailureThreshold, actual.CircuitFailureThreshold);
+        Assert.Equal(expected.CircuitOpenMs, actual.CircuitOpenMs);
+        Assert.Equal(expected.CircuitKey, actual.CircuitKey);
+        Assert.Equal(expected.UtcNowProvider, actual.UtcNowProvider);
+        Assert.Equal(expected.DelayAsync, actual.DelayAsync);
     }
 }
