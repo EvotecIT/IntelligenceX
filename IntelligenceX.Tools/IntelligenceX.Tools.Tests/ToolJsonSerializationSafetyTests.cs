@@ -175,6 +175,30 @@ public sealed class ToolJsonSerializationSafetyTests {
     }
 
     [Fact]
+    public void JsonMapper_ShouldNormalizeUndefinedEnumToStableNumericString() {
+        var value = (ContractStatus)42;
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(value);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            Status = value
+        });
+
+        Assert.Equal("42", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("status"));
+    }
+
+    [Fact]
+    public void JsonMapper_ShouldNormalizeFlagsCompositeWithoutNamedConstantToStableNumericString() {
+        var value = ContractFlags.Read | ContractFlags.Write;
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(value);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            Flags = value
+        });
+
+        Assert.Equal("3", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("flags"));
+    }
+
+    [Fact]
     public void OkModel_WhenFallbackHandlesCycle_ShouldPreserveDeepChildContext() {
         var rootNode = new CycleNode { Name = "root" };
         var current = rootNode;
@@ -220,6 +244,18 @@ public sealed class ToolJsonSerializationSafetyTests {
     private enum ContractStage {
         Ready,
         Running
+    }
+
+    private enum ContractStatus {
+        Unknown = 0,
+        Healthy = 1
+    }
+
+    [Flags]
+    private enum ContractFlags {
+        None = 0,
+        Read = 1,
+        Write = 2
     }
 
     private sealed class ContractModel {
