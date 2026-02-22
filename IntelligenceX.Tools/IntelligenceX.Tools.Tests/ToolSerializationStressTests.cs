@@ -120,6 +120,12 @@ public sealed class ToolSerializationStressTests {
         var firstMatrix = root.GetProperty("receipt").GetProperty("steps")[0].GetProperty("schedule_matrix");
         Assert.Equal(JsonValueKind.Object, firstMatrix.ValueKind);
         Assert.Equal(2, firstMatrix.GetProperty("rank").GetInt32());
+
+        var lengths = firstMatrix.GetProperty("lengths");
+        Assert.Equal(2, lengths.GetArrayLength());
+        Assert.Equal(2, lengths[0].GetInt32());
+        Assert.Equal(2, lengths[1].GetInt32());
+
         Assert.Equal(1, firstMatrix.GetProperty("lower_bounds")[0].GetInt32());
         Assert.Equal(-1, firstMatrix.GetProperty("lower_bounds")[1].GetInt32());
 
@@ -128,7 +134,13 @@ public sealed class ToolSerializationStressTests {
         Assert.Equal("root", deepNode.GetProperty("name").GetString());
         Assert.Equal("level-00", deepNode.GetProperty("child").GetProperty("name").GetString());
 
+        var collectNode = firstMatrix.GetProperty("values")[0][1];
+        Assert.Equal(JsonValueKind.Object, collectNode.ValueKind);
+        Assert.Equal("collect", collectNode.GetProperty("phase").GetString());
+        Assert.Equal(0, collectNode.GetProperty("step").GetInt32());
+
         Assert.Equal("[cycle]", firstMatrix.GetProperty("values")[1][0].GetProperty("self").GetString());
+        Assert.True(firstMatrix.GetProperty("values")[1][1].GetBoolean());
     }
 
     [Fact]
