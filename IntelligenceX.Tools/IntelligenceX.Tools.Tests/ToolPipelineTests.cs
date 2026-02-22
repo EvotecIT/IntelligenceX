@@ -505,6 +505,36 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public async Task ReliabilityProfilesWithOverrides_ShouldKeepTemplatesUnchangedAcrossConcurrentCalls() {
+        var tasks = new List<Task<ToolPipelineReliabilityOptions>>();
+        for (var i = 0; i < 20; i++) {
+            var local = i;
+            tasks.Add(Task.Run(() => ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(options => {
+                options.MaxAttempts = (local % 10) + 1;
+                options.CircuitKey = $"concurrent_{local}";
+            })));
+        }
+
+        var results = await Task.WhenAll(tasks);
+
+        for (var i = 0; i < results.Length; i++) {
+            var result = results[i];
+            Assert.Equal((i % 10) + 1, result.MaxAttempts);
+            Assert.Equal($"concurrent_{i}", result.CircuitKey);
+            Assert.Equal(120, result.BaseDelayMs);
+            Assert.Equal(1200, result.MaxDelayMs);
+            Assert.True(result.EnableCircuitBreaker);
+        }
+
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        Assert.Equal(3, baseline.MaxAttempts);
+        Assert.Null(baseline.CircuitKey);
+        Assert.Equal(120, baseline.BaseDelayMs);
+        Assert.Equal(1200, baseline.MaxDelayMs);
+        Assert.True(baseline.EnableCircuitBreaker);
+    }
+
+    [Fact]
     public void ReliabilityOptionsBuilderBuild_ShouldNormalizeOutOfRangeValues() {
         var options = new ToolPipelineReliabilityOptionsBuilder {
             MaxAttempts = 99,

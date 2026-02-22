@@ -118,9 +118,9 @@ public sealed class ToolPipelineReliabilityOptions {
     /// Returns a customized copy of the current options using a mutable builder.
     /// </summary>
     /// <param name="configure">
-    /// Builder mutation callback. The builder starts from the current option values
-    /// and is normalized when the customized options are built (including clamping
-    /// out-of-range values to supported bounds).
+    /// Builder mutation callback. The callback runs before normalization. The builder
+    /// starts from the current option values and is normalized when the customized
+    /// options are built (including clamping out-of-range values to supported bounds).
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="configure"/> is <see langword="null"/>.</exception>
     public ToolPipelineReliabilityOptions With(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
@@ -324,9 +324,9 @@ public static class ToolPipelineReliabilityProfiles {
     /// Balanced retries for read-only queries with explicit overrides.
     /// </summary>
     /// <param name="configure">
-    /// Builder mutation callback. The builder starts from the profile template values
-    /// and is normalized when the customized options are built (including clamping
-    /// out-of-range values to supported bounds).
+    /// Builder mutation callback. The callback runs before normalization. The builder
+    /// starts from the profile template values and is normalized when the customized
+    /// options are built (including clamping out-of-range values to supported bounds).
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="configure"/> is <see langword="null"/>.</exception>
     public static ToolPipelineReliabilityOptions ReadOnlyQueryWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
@@ -343,9 +343,9 @@ public static class ToolPipelineReliabilityProfiles {
     /// Aggressive but bounded retries for fast connectivity probes with explicit overrides.
     /// </summary>
     /// <param name="configure">
-    /// Builder mutation callback. The builder starts from the profile template values
-    /// and is normalized when the customized options are built (including clamping
-    /// out-of-range values to supported bounds).
+    /// Builder mutation callback. The callback runs before normalization. The builder
+    /// starts from the profile template values and is normalized when the customized
+    /// options are built (including clamping out-of-range values to supported bounds).
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="configure"/> is <see langword="null"/>.</exception>
     public static ToolPipelineReliabilityOptions FastNetworkProbeWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
