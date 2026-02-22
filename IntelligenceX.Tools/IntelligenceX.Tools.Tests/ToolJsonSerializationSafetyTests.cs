@@ -153,9 +153,13 @@ public sealed class ToolJsonSerializationSafetyTests {
     public void JsonMapper_ShouldNormalizeUtcDateTimeToRoundTripFriendlyIsoString() {
         var utc = new DateTime(2026, 2, 22, 1, 2, 3, DateTimeKind.Utc);
         var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(utc);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            CreatedAt = utc
+        });
 
         Assert.Equal(global::IntelligenceX.Json.JsonValueKind.String, mapped.Kind);
         Assert.Equal("2026-02-22T01:02:03.0000000Z", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("created_at"));
     }
 
     [Fact]

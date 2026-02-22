@@ -336,7 +336,7 @@ public static class ToolJson {
         }
 
         public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options) {
-            writer.WriteStringValue(value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            writer.WriteStringValue(JsonMapper.FromObject(value).AsString() ?? string.Empty);
         }
     }
 
@@ -346,7 +346,7 @@ public static class ToolJson {
         }
 
         public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) {
-            writer.WriteStringValue(value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            writer.WriteStringValue(JsonMapper.FromObject(value).AsString() ?? string.Empty);
         }
     }
 

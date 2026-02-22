@@ -31,9 +31,9 @@ public static class JsonMapper {
             case bool b:
                 return JsonValue.From(b);
             case DateTime dt:
-                return JsonValue.From(dt.ToUniversalTime().ToString("O"));
+                return JsonValue.From(dt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
             case DateTimeOffset dto:
-                return JsonValue.From(dto.ToUniversalTime().ToString("O"));
+                return JsonValue.From(dto.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
             case TimeSpan ts:
                 return JsonValue.From(ts.ToString("c", CultureInfo.InvariantCulture));
             case Enum e:
