@@ -280,6 +280,7 @@ public sealed partial class MainWindow : Window {
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
     private string _exportVisualThemeMode = ExportPreferencesContract.DefaultVisualThemeMode;
+    private int _exportDocxVisualMaxWidthPx = ExportPreferencesContract.DefaultDocxVisualMaxWidthPx;
     private string? _lastExportDirectory;
     private bool _persistentMemoryEnabled = true;
     private string _localProviderTransport = TransportNative;

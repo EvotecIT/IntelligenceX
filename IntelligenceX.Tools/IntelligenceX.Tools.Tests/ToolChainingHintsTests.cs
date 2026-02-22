@@ -18,7 +18,10 @@ public sealed class ToolChainingHintsTests {
             cursor: "  c1  ",
             resumeToken: "  r1  ",
             handoff: ToolChainingHints.Map(("contract", "test")),
-            confidence: 2.2d);
+            confidence: 2.2d,
+            flowId: "  flow-1  ",
+            stepId: "  step-1  ",
+            checkpoint: ToolChainingHints.Map(("phase", "collect")));
 
         Assert.Single(chain.NextActions);
         Assert.Equal("officeimo_read", chain.NextActions[0].Tool);
@@ -27,6 +30,9 @@ public sealed class ToolChainingHintsTests {
         Assert.Equal("r1", chain.ResumeToken);
         Assert.True(chain.Handoff.TryGetValue("contract", out var contract));
         Assert.Equal("test", contract?.ToString());
+        Assert.Equal("flow-1", chain.FlowId);
+        Assert.Equal("step-1", chain.StepId);
+        Assert.Equal("collect", chain.Checkpoint["phase"]);
         Assert.Equal(1d, chain.Confidence);
     }
 
@@ -57,6 +63,9 @@ public sealed class ToolChainingHintsTests {
         Assert.Empty(chain.NextActions);
         Assert.Equal(string.Empty, chain.Cursor);
         Assert.Equal(string.Empty, chain.ResumeToken);
+        Assert.Equal(string.Empty, chain.FlowId);
+        Assert.Equal(string.Empty, chain.StepId);
+        Assert.Same(ToolChainingHints.EmptyMap, chain.Checkpoint);
 
         var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
         Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
@@ -81,6 +90,11 @@ public sealed class ToolChainingHintsTests {
             NextActions = actions,
             Cursor = " c1 ",
             ResumeToken = " r1 ",
+            FlowId = " flow-1 ",
+            StepId = " step-1 ",
+            Checkpoint = new Dictionary<string, string>(StringComparer.Ordinal) {
+                [" phase "] = "collect"
+            },
             Handoff = handoff,
             Confidence = 2.0d
         };
@@ -93,6 +107,9 @@ public sealed class ToolChainingHintsTests {
         Assert.Equal("follow up", chain.NextActions[0].Reason);
         Assert.Equal("c1", chain.Cursor);
         Assert.Equal("r1", chain.ResumeToken);
+        Assert.Equal("flow-1", chain.FlowId);
+        Assert.Equal("step-1", chain.StepId);
+        Assert.Equal("collect", chain.Checkpoint["phase"]);
         Assert.Equal(1d, chain.Confidence);
         Assert.True(chain.Handoff.ContainsKey("contract"));
         Assert.False(chain.Handoff.ContainsKey("new"));
@@ -100,6 +117,8 @@ public sealed class ToolChainingHintsTests {
         var actionsList = Assert.IsAssignableFrom<IList<ToolNextActionModel>>(chain.NextActions);
         Assert.Throws<NotSupportedException>(() => actionsList.Add(new ToolNextActionModel { Tool = "z", Reason = "r" }));
         Assert.Throws<NotSupportedException>(() => actionsList[0] = new ToolNextActionModel { Tool = "z", Reason = "r" });
+        var checkpointMap = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Checkpoint);
+        Assert.Throws<NotSupportedException>(() => checkpointMap.Add("x", "1"));
         var handoffMap = Assert.IsAssignableFrom<IDictionary<string, string>>(chain.Handoff);
         Assert.Throws<NotSupportedException>(() => handoffMap.Add("x", "1"));
     }
@@ -133,6 +152,9 @@ public sealed class ToolChainingHintsTests {
             NextActions = null!,
             Cursor = null!,
             ResumeToken = null!,
+            FlowId = null!,
+            StepId = null!,
+            Checkpoint = null!,
             Handoff = null!,
             Confidence = 0.5d
         };
@@ -140,6 +162,9 @@ public sealed class ToolChainingHintsTests {
         Assert.Empty(chain.NextActions);
         Assert.Equal(string.Empty, chain.Cursor);
         Assert.Equal(string.Empty, chain.ResumeToken);
+        Assert.Equal(string.Empty, chain.FlowId);
+        Assert.Equal(string.Empty, chain.StepId);
+        Assert.Same(ToolChainingHints.EmptyMap, chain.Checkpoint);
         Assert.Equal(0.5d, chain.Confidence);
 
         var actions = Assert.IsAssignableFrom<IList<ToolNextActionModel>>(chain.NextActions);

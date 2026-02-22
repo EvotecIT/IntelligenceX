@@ -22,8 +22,61 @@ public sealed class ToolJsonSerializationSafetyTests {
         Assert.Equal("grid", root.GetProperty("name").GetString());
 
         var raw = root.GetProperty("raw");
-        Assert.Equal(JsonValueKind.Array, raw.ValueKind);
-        Assert.Equal(8, raw.GetArrayLength());
+        Assert.Equal(JsonValueKind.Object, raw.ValueKind);
+        Assert.Equal(3, raw.GetProperty("rank").GetInt32());
+
+        var lengths = raw.GetProperty("lengths");
+        Assert.Equal(JsonValueKind.Array, lengths.ValueKind);
+        Assert.Equal(3, lengths.GetArrayLength());
+        Assert.Equal(2, lengths[0].GetInt32());
+        Assert.Equal(2, lengths[1].GetInt32());
+        Assert.Equal(2, lengths[2].GetInt32());
+
+        var lowerBounds = raw.GetProperty("lower_bounds");
+        Assert.Equal(JsonValueKind.Array, lowerBounds.ValueKind);
+        Assert.Equal(3, lowerBounds.GetArrayLength());
+        Assert.Equal(0, lowerBounds[0].GetInt32());
+        Assert.Equal(0, lowerBounds[1].GetInt32());
+        Assert.Equal(0, lowerBounds[2].GetInt32());
+
+        var values = raw.GetProperty("values");
+        Assert.Equal(JsonValueKind.Array, values.ValueKind);
+        Assert.Equal(2, values.GetArrayLength());
+        Assert.True(values[1][0][1].GetBoolean());
+    }
+
+    [Fact]
+    public void OkModel_WhenPayloadContainsNonZeroLowerBoundMultidimensionalArray_ShouldPreserveBounds() {
+        var grid = Array.CreateInstance(typeof(int), lengths: [2, 2], lowerBounds: [1, -2]);
+        grid.SetValue(21, [1, -2]);
+        grid.SetValue(42, [2, -1]);
+
+        var json = ToolResponse.OkModel(new {
+            Name = "grid",
+            Raw = grid
+        });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var raw = root.GetProperty("raw");
+
+        Assert.Equal(JsonValueKind.Object, raw.ValueKind);
+        Assert.Equal(2, raw.GetProperty("rank").GetInt32());
+
+        var lengths = raw.GetProperty("lengths");
+        Assert.Equal(2, lengths.GetArrayLength());
+        Assert.Equal(2, lengths[0].GetInt32());
+        Assert.Equal(2, lengths[1].GetInt32());
+
+        var lowerBounds = raw.GetProperty("lower_bounds");
+        Assert.Equal(2, lowerBounds.GetArrayLength());
+        Assert.Equal(1, lowerBounds[0].GetInt32());
+        Assert.Equal(-2, lowerBounds[1].GetInt32());
+
+        var values = raw.GetProperty("values");
+        Assert.Equal(2, values.GetArrayLength());
+        Assert.Equal(21, values[0][0].GetInt32());
+        Assert.Equal(42, values[1][1].GetInt32());
     }
 
     [Fact]
@@ -41,8 +94,83 @@ public sealed class ToolJsonSerializationSafetyTests {
         Assert.Equal("[cycle]", root.GetProperty("next").GetString());
     }
 
+    [Fact]
+    public void OkModel_WhenPayloadContainsNonFiniteNumbers_ShouldEmitNulls() {
+        var json = ToolResponse.OkModel(new {
+            Name = "non-finite",
+            Score = double.NaN,
+            Ratio = double.PositiveInfinity,
+            Delta = float.NegativeInfinity
+        });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("non-finite", root.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("score").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("ratio").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("delta").ValueKind);
+    }
+
+    [Fact]
+    public void OkModel_WhenFallbackPayloadContainsNonFiniteNumbers_ShouldEmitNulls() {
+        var node = new CycleNode {
+            Name = "root",
+            Score = double.NaN
+        };
+        node.Next = node;
+
+        var json = ToolResponse.OkModel(node);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("root", root.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("score").ValueKind);
+        Assert.Equal("[cycle]", root.GetProperty("next").GetString());
+    }
+
+    [Fact]
+    public void OkModel_WhenFallbackHandlesCycle_ShouldPreserveDeepChildContext() {
+        var rootNode = new CycleNode { Name = "root" };
+        var current = rootNode;
+        for (var index = 0; index < 12; index++) {
+            var next = new CycleNode { Name = $"level-{index:00}" };
+            current.Child = next;
+            current = next;
+        }
+        rootNode.Next = rootNode;
+
+        var json = ToolResponse.OkModel(rootNode);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(
+            "level-09",
+            root.GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("name")
+                .GetString());
+        Assert.Equal("[cycle]", root.GetProperty("next").GetString());
+    }
+
     private sealed class CycleNode {
         public string Name { get; set; } = string.Empty;
+        public double Score { get; set; }
+
+        public CycleNode? Child { get; set; }
 
         public CycleNode? Next { get; set; }
     }

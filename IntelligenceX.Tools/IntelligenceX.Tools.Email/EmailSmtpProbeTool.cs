@@ -14,6 +14,8 @@ namespace IntelligenceX.Tools.Email;
 /// </summary>
 public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
     private sealed record ProbeRequest;
+    private static readonly ToolPipelineReliabilityOptions ReliabilityOptions =
+        ToolPipelineReliabilityProfiles.FastNetworkProbe;
 
     private static readonly ToolDefinition DefinitionValue = new(
         SmtpProbePolicy.ProbeToolName,
@@ -39,6 +41,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
             cancellationToken: cancellationToken,
             binder: BindRequest,
             execute: ExecuteRequestAsync,
+            reliability: ReliabilityOptions,
             middleware: new ToolPipelineMiddleware<ProbeRequest>[] {
                 EnsureSmtpConfiguredAsync
             }).ConfigureAwait(false);

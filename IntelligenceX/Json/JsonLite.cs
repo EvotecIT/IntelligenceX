@@ -208,10 +208,18 @@ public static class JsonLite {
                 builder.Append(ul.ToString(CultureInfo.InvariantCulture));
                 break;
             case float f:
-                builder.Append(f.ToString("R", CultureInfo.InvariantCulture));
+                if (float.IsNaN(f) || float.IsInfinity(f)) {
+                    builder.Append("null");
+                } else {
+                    builder.Append(f.ToString("R", CultureInfo.InvariantCulture));
+                }
                 break;
             case double d:
-                builder.Append(d.ToString("R", CultureInfo.InvariantCulture));
+                if (double.IsNaN(d) || double.IsInfinity(d)) {
+                    builder.Append("null");
+                } else {
+                    builder.Append(d.ToString("R", CultureInfo.InvariantCulture));
+                }
                 break;
             case decimal dec:
                 builder.Append(dec.ToString(CultureInfo.InvariantCulture));

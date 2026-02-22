@@ -4,6 +4,25 @@
     var payload = Object.assign({ type: type }, extra || {});
     window.chrome.webview.postMessage(JSON.stringify(payload));
   }
+  // Keep bounds/default parity with ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx (C# host).
+  var exportDocxVisualMaxWidthContract = {
+    minPx: 320,
+    maxPx: 2000,
+    defaultPx: 760
+  };
+  function normalizeDocxVisualMaxWidthPxContract(value) {
+    var parsed = Number.parseInt(String(value == null ? "" : value).trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return exportDocxVisualMaxWidthContract.defaultPx;
+    }
+    if (parsed < exportDocxVisualMaxWidthContract.minPx) {
+      return exportDocxVisualMaxWidthContract.minPx;
+    }
+    if (parsed > exportDocxVisualMaxWidthContract.maxPx) {
+      return exportDocxVisualMaxWidthContract.maxPx;
+    }
+    return Math.floor(parsed);
+  }
 
   var menu = byId("menu");
   var promptEl = byId("prompt");
@@ -57,6 +76,7 @@
         saveMode: "ask",
         defaultFormat: "xlsx",
         visualThemeMode: "preserve_ui_theme",
+        docxVisualMaxWidthPx: exportDocxVisualMaxWidthContract.defaultPx,
         lastDirectory: ""
       },
       autonomy: {

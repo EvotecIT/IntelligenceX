@@ -12,6 +12,7 @@ namespace IntelligenceX.Tools.OfficeIMO;
 public sealed class OfficeImoReadResult {
     private IReadOnlyList<ToolNextActionModel> _nextActions = Array.Empty<ToolNextActionModel>();
     private IReadOnlyDictionary<string, string> _handoff = ToolChainingHints.EmptyMap;
+    private IReadOnlyDictionary<string, string> _checkpoint = ToolChainingHints.EmptyMap;
 
     /// <summary>
     /// Files ingested (resolved full paths).
@@ -96,6 +97,25 @@ public sealed class OfficeImoReadResult {
     /// Opaque resume token for orchestration loops.
     /// </summary>
     public string ResumeToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Stable flow identifier for long-running orchestration.
+    /// </summary>
+    public string FlowId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Current flow step identifier.
+    /// </summary>
+    public string StepId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Structured flow checkpoint used for resumable follow-ups.
+    /// Keys are normalized by trimming surrounding whitespace; normalized-key collisions use last-write-wins semantics.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Checkpoint {
+        get => _checkpoint;
+        set => _checkpoint = NormalizeHandoff(value);
+    }
 
     /// <summary>
     /// Structured handoff payload for downstream tools.

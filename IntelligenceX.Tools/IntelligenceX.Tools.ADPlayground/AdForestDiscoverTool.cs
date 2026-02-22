@@ -460,6 +460,9 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
             NextActions = chain.NextActions,
             Cursor = chain.Cursor,
             ResumeToken = chain.ResumeToken,
+            FlowId = chain.FlowId,
+            StepId = chain.StepId,
+            Checkpoint = chain.Checkpoint,
             Handoff = chain.Handoff,
             Confidence = chain.Confidence
         };
@@ -555,7 +558,17 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                 ("fallback", fallbackName),
                 ("failed_steps", failedSteps.ToString())),
             handoff: handoff,
-            confidence: confidence);
+            confidence: confidence,
+            flowId: ToolChainingHints.BuildToken(
+                "ad_forest_discover.flow",
+                ("forest", effectiveForest ?? string.Empty),
+                ("domain", effectiveDomain ?? string.Empty)),
+            stepId: "forest_receipt",
+            checkpoint: ToolChainingHints.Map(
+                ("domains", domains.Count),
+                ("domain_controllers", domainControllers.Count),
+                ("trusts", trusts.Count),
+                ("failed_steps", failedSteps)));
     }
 
     private static async Task CollectDcSourceAsync(

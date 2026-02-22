@@ -13,6 +13,8 @@ namespace IntelligenceX.Tools.Common;
 /// Common JSON helpers shared by tool implementations.
 /// </summary>
 public static class ToolJson {
+    private const int MaxFallbackDepth = 16;
+
     private static readonly JsonSerializerOptions SnakeCaseSerializerOptions = new() {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         // Keep dictionary keys as-is. Many tool payloads carry provider-defined keys (event data names, LDAP attribute names, headers)
@@ -80,7 +82,7 @@ public static class ToolJson {
         System.Text.Json.Nodes.JsonNode? node;
         try {
             node = JsonSerializer.SerializeToNode(value, SnakeCaseSerializerOptions);
-        } catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or JsonException) {
+        } catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or JsonException or ArgumentException) {
             var sanitized = SanitizeForJsonFallback(
                 value,
                 seen: new HashSet<object>(ReferenceEqualityComparer.Instance),
@@ -140,7 +142,7 @@ public static class ToolJson {
             return null;
         }
 
-        if (depth > 8) {
+        if (depth > MaxFallbackDepth) {
             return ConvertToInvariantString(value);
         }
 
@@ -166,9 +168,9 @@ public static class ToolJson {
             case ulong n:
                 return n;
             case float n:
-                return n;
+                return float.IsNaN(n) || float.IsInfinity(n) ? null : n;
             case double n:
-                return n;
+                return double.IsNaN(n) || double.IsInfinity(n) ? null : n;
             case decimal n:
                 return n;
             case DateTime dt:
@@ -200,6 +202,10 @@ public static class ToolJson {
         }
 
         try {
+            if (value is Array array && array.Rank > 1) {
+                return SanitizeMultidimensionalArrayFallback(array, seen, depth + 1);
+            }
+
             if (value is IDictionary dictionary) {
                 var normalized = new Dictionary<string, object?>(StringComparer.Ordinal);
                 foreach (DictionaryEntry entry in dictionary) {
@@ -253,6 +259,70 @@ public static class ToolJson {
                 seen.Remove(value);
             }
         }
+    }
+
+    /// <summary>
+    /// Shapes rank-2+ arrays into a stable fallback envelope consumed by chat/tool clients.
+    /// </summary>
+    /// <remarks>
+    /// Contract fields are:
+    /// <c>rank</c>, <c>lengths</c>, <c>lower_bounds</c>, and nested <c>values</c>.
+    /// Values are emitted as zero-based nested lists while preserving source lower bounds in metadata.
+    /// </remarks>
+    private static Dictionary<string, object?> SanitizeMultidimensionalArrayFallback(
+        Array array,
+        HashSet<object> seen,
+        int depth) {
+        var rank = array.Rank;
+        var lengths = new int[rank];
+        var lowerBounds = new int[rank];
+        for (var dimension = 0; dimension < rank; dimension++) {
+            lengths[dimension] = array.GetLength(dimension);
+            lowerBounds[dimension] = array.GetLowerBound(dimension);
+        }
+
+        var indexes = new int[rank];
+        var values = SanitizeMultidimensionalArrayLevel(
+            array: array,
+            dimension: 0,
+            indexes: indexes,
+            lowerBounds: lowerBounds,
+            seen: seen,
+            depth: depth);
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal) {
+            ["rank"] = rank,
+            ["lengths"] = lengths,
+            ["lower_bounds"] = lowerBounds,
+            ["values"] = values
+        };
+    }
+
+    private static List<object?> SanitizeMultidimensionalArrayLevel(
+        Array array,
+        int dimension,
+        int[] indexes,
+        int[] lowerBounds,
+        HashSet<object> seen,
+        int depth) {
+        var length = array.GetLength(dimension);
+        var values = new List<object?>(length);
+
+        if (dimension == array.Rank - 1) {
+            for (var index = 0; index < length; index++) {
+                indexes[dimension] = lowerBounds[dimension] + index;
+                values.Add(SanitizeForJsonFallback(array.GetValue(indexes), seen, depth + 1));
+            }
+
+            return values;
+        }
+
+        for (var index = 0; index < length; index++) {
+            indexes[dimension] = lowerBounds[dimension] + index;
+            values.Add(SanitizeMultidimensionalArrayLevel(array, dimension + 1, indexes, lowerBounds, seen, depth + 1));
+        }
+
+        return values;
     }
 
     private static string ConvertToInvariantString(object? value) {

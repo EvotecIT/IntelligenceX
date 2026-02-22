@@ -221,6 +221,7 @@ internal sealed class ChatAppState {
     public string ExportSaveMode { get; set; } = ExportPreferencesContract.DefaultSaveMode;
     public string ExportDefaultFormat { get; set; } = ExportPreferencesContract.DefaultFormat;
     public string ExportVisualThemeMode { get; set; } = ExportPreferencesContract.DefaultVisualThemeMode;
+    public int ExportDocxVisualMaxWidthPx { get; set; } = ExportPreferencesContract.DefaultDocxVisualMaxWidthPx;
     public string? ExportLastDirectory { get; set; }
     public bool QueueAutoDispatchEnabled { get; set; } = true;
     public bool ProactiveModeEnabled { get; set; } = true;

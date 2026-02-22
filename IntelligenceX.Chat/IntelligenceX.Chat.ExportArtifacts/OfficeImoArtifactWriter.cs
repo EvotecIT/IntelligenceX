@@ -13,8 +13,17 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 public static class OfficeImoArtifactWriter {
     private const string SignalFlowLabelAlternation = "Why it matters|Action|Next action|Fix action";
     private static readonly string[] SignalFlowLabels = ["Why it matters", "Action", "Next action", "Fix action"];
+    private static readonly char[] DefinitionListRiskyInlineMarkers = ['*', '_', '`', '['];
+    private const int MinDocxVisualMaxWidthPx = 320;
+    private const int MaxDocxVisualMaxWidthPx = 2000;
+    private const int DefaultDocxVisualMaxWidthPx = 760;
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(250);
 
+    // Detect ordered-list starters so definition-list escaping can skip true list items.
+    private static readonly Regex OrderedListLineRegex = new(
+        @"^\s*\d+[.)]\s",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexMatchTimeout);
     // Repair malformed strong spans like ****359**** into valid markdown emphasis.
     private static readonly Regex OverwrappedStrongSpanRegex = new(
         @"(?<!\*)\*{4}(?<inner>[^*\r\n]+)\*{4}(?!\*)",
@@ -90,7 +99,7 @@ public static class OfficeImoArtifactWriter {
     /// <param name="markdown">Transcript markdown source.</param>
     /// <param name="outputPath">Destination .docx file path.</param>
     public static void WriteDocxTranscript(string title, string markdown, string outputPath) {
-        WriteDocxTranscript(title, markdown, outputPath, additionalAllowedImageDirectories: null);
+        WriteDocxTranscript(title, markdown, outputPath, additionalAllowedImageDirectories: null, docxVisualMaxWidthPx: null);
     }
 
     /// <summary>
@@ -100,21 +109,28 @@ public static class OfficeImoArtifactWriter {
     /// <param name="markdown">Transcript markdown source.</param>
     /// <param name="outputPath">Destination .docx file path.</param>
     /// <param name="additionalAllowedImageDirectories">Additional local image directories to allow during markdown conversion.</param>
+    /// <param name="docxVisualMaxWidthPx">Optional max-width hint in pixels for materialized visual images.</param>
     public static void WriteDocxTranscript(
         string title,
         string markdown,
         string outputPath,
-        IReadOnlyList<string>? additionalAllowedImageDirectories) {
+        IReadOnlyList<string>? additionalAllowedImageDirectories,
+        int? docxVisualMaxWidthPx = null) {
         var sourceMarkdown = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
         var normalizedMarkdown = NormalizeTranscriptMarkdownForDocx(sourceMarkdown);
         var transcriptMarkdown = BuildTranscriptMarkdown(title, normalizedMarkdown);
+        var wordSafeMarkdown = NeutralizeSingleLineDefinitionLists(transcriptMarkdown);
         // Runtime export materializes visual fences before invoking this writer.
-        // This path intentionally handles only markdown normalization and image allow-listing.
+        // This path intentionally handles markdown normalization and image allow-listing.
         var allowedImageDirectories = BuildAllowedImageDirectories(additionalAllowedImageDirectories);
-        WriteDocxFromMarkdown(transcriptMarkdown, outputPath, allowedImageDirectories);
+        WriteDocxFromMarkdown(wordSafeMarkdown, outputPath, allowedImageDirectories, docxVisualMaxWidthPx);
     }
 
-    private static void WriteDocxFromMarkdown(string markdown, string outputPath, IReadOnlyList<string>? allowedImageDirectories = null) {
+    private static void WriteDocxFromMarkdown(
+        string markdown,
+        string outputPath,
+        IReadOnlyList<string>? allowedImageDirectories = null,
+        int? docxVisualMaxWidthPx = null) {
         var safeMarkdown = string.IsNullOrWhiteSpace(markdown) ? "# Transcript\n" : markdown;
         var options = new MarkdownToWordOptions {
             FontFamily = "Calibri",
@@ -123,6 +139,7 @@ public static class OfficeImoArtifactWriter {
             FitImagesToContextWidth = true,
             MaxImageWidthPercentOfContent = 100
         };
+        ApplyMarkdownImageSizingOptions(options, docxVisualMaxWidthPx);
         if (allowedImageDirectories is { Count: > 0 }) {
             for (var i = 0; i < allowedImageDirectories.Count; i++) {
                 var directory = allowedImageDirectories[i];
@@ -138,6 +155,49 @@ public static class OfficeImoArtifactWriter {
 
         using var document = safeMarkdown.LoadFromMarkdown(options);
         document.Save(outputPath);
+    }
+
+    private static void ApplyMarkdownImageSizingOptions(MarkdownToWordOptions options, int? docxVisualMaxWidthPx) {
+        var normalizedWidth = NormalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
+        TrySetMarkdownOption(options, "FitImagesToPageContentWidth", true);
+        TrySetMarkdownOption(options, "MaxImageWidthPixels", (double)normalizedWidth);
+    }
+
+    private static int NormalizeDocxVisualMaxWidthPx(int? value) {
+        if (!value.HasValue) {
+            return DefaultDocxVisualMaxWidthPx;
+        }
+
+        var normalized = value.Value;
+        if (normalized < MinDocxVisualMaxWidthPx) {
+            return MinDocxVisualMaxWidthPx;
+        }
+
+        if (normalized > MaxDocxVisualMaxWidthPx) {
+            return MaxDocxVisualMaxWidthPx;
+        }
+
+        return normalized;
+    }
+
+    private static void TrySetMarkdownOption(MarkdownToWordOptions options, string propertyName, object value) {
+        var property = options.GetType().GetProperty(propertyName);
+        if (property == null || !property.CanWrite) {
+            return;
+        }
+
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (targetType.IsInstanceOfType(value)) {
+            property.SetValue(options, value);
+            return;
+        }
+
+        try {
+            var converted = Convert.ChangeType(value, targetType);
+            property.SetValue(options, converted);
+        } catch {
+            // Option type mismatch should not block DOCX export.
+        }
     }
 
     private static IReadOnlyList<string> BuildAllowedImageDirectories(IReadOnlyList<string>? additionalDirectories) {
@@ -356,6 +416,140 @@ public static class OfficeImoArtifactWriter {
         return false;
     }
 
+    private static string NeutralizeSingleLineDefinitionLists(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return string.Empty;
+        }
+
+        var newline = DetectLineEnding(markdown);
+        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        bool insideFence = false;
+        char fenceMarker = '\0';
+        int fenceLength = 0;
+
+        for (int i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            var trimmed = line.TrimStart();
+
+            if (TryGetFenceToken(trimmed, out var marker, out var markerRunLength)) {
+                if (!insideFence) {
+                    insideFence = true;
+                    fenceMarker = marker;
+                    fenceLength = markerRunLength;
+                    continue;
+                }
+
+                if (marker == fenceMarker &&
+                    markerRunLength >= fenceLength &&
+                    IsClosingFenceLine(trimmed, markerRunLength)) {
+                    insideFence = false;
+                    fenceMarker = '\0';
+                    fenceLength = 0;
+                    continue;
+                }
+
+                // Fence-like content inside an active fence should never be rewritten.
+                if (insideFence) {
+                    continue;
+                }
+
+                continue;
+            }
+
+            if (insideFence || !LooksLikeSingleLineDefinition(trimmed) || !RequiresDefinitionListNeutralization(trimmed)) {
+                continue;
+            }
+
+            if (!TryGetDefinitionSeparatorIndex(line, out var separatorIndex)) {
+                continue;
+            }
+
+            if (separatorIndex > 0 && line[separatorIndex - 1] == '\\') {
+                continue;
+            }
+
+            lines[i] = line[..separatorIndex] + "&#58;" + line[(separatorIndex + 1)..];
+        }
+
+        return string.Join(newline, lines);
+    }
+
+    private static bool LooksLikeSingleLineDefinition(string trimmedLine) {
+        if (string.IsNullOrWhiteSpace(trimmedLine)) {
+            return false;
+        }
+
+        if (trimmedLine.StartsWith("#", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith(">", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("- ", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("* ", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("+ ", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("|", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("```", StringComparison.Ordinal) ||
+            trimmedLine.StartsWith("~~~", StringComparison.Ordinal) ||
+            OrderedListLineRegex.IsMatch(trimmedLine)) {
+            return false;
+        }
+
+        return TryGetDefinitionSeparatorIndex(trimmedLine, out _);
+    }
+
+    private static bool RequiresDefinitionListNeutralization(string trimmedLine) {
+        if (string.IsNullOrWhiteSpace(trimmedLine)) {
+            return false;
+        }
+
+        return trimmedLine.IndexOfAny(DefinitionListRiskyInlineMarkers) >= 0;
+    }
+
+    private static bool TryGetDefinitionSeparatorIndex(string line, out int index) {
+        index = -1;
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var inlineFenceLength = 0;
+        var i = 0;
+        while (i < line.Length) {
+            var ch = line[i];
+
+            // Respect escaped punctuation and escaped backticks.
+            if (ch == '\\' && i + 1 < line.Length) {
+                i += 2;
+                continue;
+            }
+
+            if (ch == '`') {
+                var runLength = CountRunLength(line, i, '`');
+                if (inlineFenceLength == 0) {
+                    inlineFenceLength = runLength;
+                    i += runLength;
+                    continue;
+                }
+
+                if (runLength >= inlineFenceLength) {
+                    inlineFenceLength = 0;
+                    i += runLength;
+                    continue;
+                }
+            }
+
+            if (inlineFenceLength == 0 &&
+                ch == ':' &&
+                i > 0 &&
+                i + 1 < line.Length &&
+                char.IsWhiteSpace(line[i + 1])) {
+                index = i;
+                return true;
+            }
+
+            i++;
+        }
+
+        return false;
+    }
+
     private static string DetectLineEnding(string text) {
         if (text.Contains("\r\n", StringComparison.Ordinal)) {
             return "\r\n";
@@ -406,6 +600,15 @@ public static class OfficeImoArtifactWriter {
         }
 
         return true;
+    }
+
+    private static int CountRunLength(string text, int startIndex, char marker) {
+        var length = 0;
+        while (startIndex + length < text.Length && text[startIndex + length] == marker) {
+            length++;
+        }
+
+        return length;
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {

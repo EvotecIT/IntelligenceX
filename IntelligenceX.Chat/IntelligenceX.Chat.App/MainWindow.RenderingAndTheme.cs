@@ -57,10 +57,10 @@ public sealed partial class MainWindow : Window {
             var filePath = LocalExportArtifactWriter.ResolveOutputPath(transcriptFormat, baseName, normalizedPath, defaultPrefix: "transcript");
 
             if (string.Equals(transcriptFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)) {
-                using var runtimeMaterialization = await MaterializeTranscriptVisualsForDocxAsync(md).ConfigureAwait(false);
+                using var runtimeMaterialization = await MaterializeTranscriptVisualsForDocxAsync(md, _exportDocxVisualMaxWidthPx).ConfigureAwait(false);
                 var exportMarkdown = runtimeMaterialization?.Markdown ?? md;
                 var allowedImageDirectories = runtimeMaterialization?.AllowedImageDirectories;
-                OfficeImoArtifactWriter.WriteDocxTranscript(baseName, exportMarkdown, filePath, allowedImageDirectories);
+                OfficeImoArtifactWriter.WriteDocxTranscript(baseName, exportMarkdown, filePath, allowedImageDirectories, _exportDocxVisualMaxWidthPx);
             } else {
                 LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
             }
@@ -258,14 +258,15 @@ public sealed partial class MainWindow : Window {
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTheme(" + json + ");").AsTask()).ConfigureAwait(false);
     }
 
-    private async Task<RuntimeVisualExportMaterialization?> MaterializeTranscriptVisualsForDocxAsync(string markdown) {
+    private async Task<RuntimeVisualExportMaterialization?> MaterializeTranscriptVisualsForDocxAsync(string markdown, int docxVisualMaxWidthPx) {
         if (!_webViewReady || string.IsNullOrWhiteSpace(markdown)) {
             return null;
         }
 
         var payloadJson = JsonSerializer.Serialize(new {
             markdown,
-            themeMode = _exportVisualThemeMode
+            themeMode = _exportVisualThemeMode,
+            docxVisualMaxWidthPx = ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx)
         });
         var script = "(async () => {" +
                      "if (!window.ixMaterializeVisualFencesForDocx) { return null; }" +

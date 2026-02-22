@@ -74,6 +74,90 @@ public sealed class ToolSerializationStressTests {
     }
 
     [Fact]
+    public void MixedEventFlowPayload_WithLowerBoundMatricesAndCycles_ShouldSerialize() {
+        var steps = new List<object>(180);
+        var warningCount = 0;
+        for (var index = 0; index < 180; index++) {
+            var status = index % 9 == 0 ? "warning" : "ok";
+            if (status == "warning") {
+                warningCount++;
+            }
+
+            var matrix = Array.CreateInstance(typeof(object), lengths: [2, 2], lowerBounds: [1, -1]);
+            matrix.SetValue(CreateDeepNode(12), [1, -1]);
+            matrix.SetValue(new Dictionary<string, object?>(StringComparer.Ordinal) {
+                ["phase"] = "collect",
+                ["step"] = index
+            }, [1, 0]);
+
+            var cyclic = new Dictionary<string, object?>(StringComparer.Ordinal) {
+                ["id"] = index
+            };
+            cyclic["self"] = cyclic;
+            matrix.SetValue(cyclic, [2, -1]);
+            matrix.SetValue(index % 2 == 0, [2, 0]);
+
+            steps.Add(new {
+                Step = index,
+                Status = status,
+                ScheduleMatrix = matrix
+            });
+        }
+
+        var json = ToolResponse.OkModel(new {
+            receipt = new {
+                steps,
+                summary = new { total_steps = steps.Count, warnings = warningCount }
+            }
+        });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(180, root.GetProperty("receipt").GetProperty("steps").GetArrayLength());
+
+        var firstMatrix = root.GetProperty("receipt").GetProperty("steps")[0].GetProperty("schedule_matrix");
+        Assert.Equal(JsonValueKind.Object, firstMatrix.ValueKind);
+        Assert.Equal(2, firstMatrix.GetProperty("rank").GetInt32());
+
+        var lengths = firstMatrix.GetProperty("lengths");
+        Assert.Equal(2, lengths.GetArrayLength());
+        Assert.Equal(2, lengths[0].GetInt32());
+        Assert.Equal(2, lengths[1].GetInt32());
+
+        Assert.Equal(1, firstMatrix.GetProperty("lower_bounds")[0].GetInt32());
+        Assert.Equal(-1, firstMatrix.GetProperty("lower_bounds")[1].GetInt32());
+
+        var values = firstMatrix.GetProperty("values");
+        Assert.Equal(2, values.GetArrayLength());
+        Assert.Equal(2, values[0].GetArrayLength());
+        Assert.Equal(2, values[1].GetArrayLength());
+
+        var deepNode = values[0][0];
+        Assert.Equal(JsonValueKind.Object, deepNode.ValueKind);
+        Assert.Equal("root", deepNode.GetProperty("name").GetString());
+        Assert.Equal("level-00", deepNode.GetProperty("child").GetProperty("name").GetString());
+        Assert.Equal(
+            "level-04",
+            deepNode.GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("name")
+                .GetString());
+
+        var collectNode = values[0][1];
+        Assert.Equal(JsonValueKind.Object, collectNode.ValueKind);
+        Assert.Equal("collect", collectNode.GetProperty("phase").GetString());
+        Assert.Equal(0, collectNode.GetProperty("step").GetInt32());
+
+        Assert.Equal("[cycle]", values[1][0].GetProperty("self").GetString());
+        Assert.True(values[1][1].GetBoolean());
+    }
+
+    [Fact]
     public void AdReplicationConnectionsPayload_WithManyMappedRows_ShouldSerialize() {
         var rows = new List<object>(320);
         for (var i = 0; i < 320; i++) {

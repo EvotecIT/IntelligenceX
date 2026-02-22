@@ -609,6 +609,8 @@ public sealed partial class MainWindow : Window {
         _appState.ExportDefaultFormat = _exportDefaultFormat;
         _exportVisualThemeMode = ExportPreferencesContract.NormalizeVisualThemeMode(_appState.ExportVisualThemeMode);
         _appState.ExportVisualThemeMode = _exportVisualThemeMode;
+        _exportDocxVisualMaxWidthPx = ExportPreferencesContract.NormalizeDocxVisualMaxWidthPx(_appState.ExportDocxVisualMaxWidthPx);
+        _appState.ExportDocxVisualMaxWidthPx = _exportDocxVisualMaxWidthPx;
         _lastExportDirectory = ExportPreferencesContract.NormalizeDirectory(_appState.ExportLastDirectory);
         _appState.ExportLastDirectory = _lastExportDirectory;
         _queueAutoDispatchEnabled = _appState.QueueAutoDispatchEnabled;

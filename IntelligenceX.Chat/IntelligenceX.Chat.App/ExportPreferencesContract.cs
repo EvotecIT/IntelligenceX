@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 
 namespace IntelligenceX.Chat.App;
@@ -17,6 +18,9 @@ internal static class ExportPreferencesContract {
     public const string FormatDocx = "docx";
     public const string FormatMarkdown = "md";
     public const string DefaultFormat = FormatXlsx;
+    public const int MinDocxVisualMaxWidthPx = 320;
+    public const int MaxDocxVisualMaxWidthPx = 2000;
+    public const int DefaultDocxVisualMaxWidthPx = 760;
 
     public static string NormalizeSaveMode(string? value) {
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -53,6 +57,31 @@ internal static class ExportPreferencesContract {
         };
 
         return format.Length > 0;
+    }
+
+    public static int NormalizeDocxVisualMaxWidthPx(int? value) {
+        if (!value.HasValue) {
+            return DefaultDocxVisualMaxWidthPx;
+        }
+
+        var normalized = value.Value;
+        if (normalized < MinDocxVisualMaxWidthPx) {
+            return MinDocxVisualMaxWidthPx;
+        }
+        if (normalized > MaxDocxVisualMaxWidthPx) {
+            return MaxDocxVisualMaxWidthPx;
+        }
+
+        return normalized;
+    }
+
+    public static int NormalizeDocxVisualMaxWidthPx(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (!int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)) {
+            return DefaultDocxVisualMaxWidthPx;
+        }
+
+        return NormalizeDocxVisualMaxWidthPx(parsed);
     }
 
     public static string? NormalizeDirectory(string? path) {

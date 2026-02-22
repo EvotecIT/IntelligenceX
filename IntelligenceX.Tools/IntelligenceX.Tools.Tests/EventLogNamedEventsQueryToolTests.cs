@@ -34,6 +34,9 @@ public sealed class EventLogNamedEventsQueryToolTests {
         Assert.True(root.TryGetProperty("next_actions", out var nextActions));
         Assert.True(root.TryGetProperty("cursor", out var cursor));
         Assert.True(root.TryGetProperty("resume_token", out var resumeToken));
+        Assert.True(root.TryGetProperty("flow_id", out var flowId));
+        Assert.True(root.TryGetProperty("step_id", out var stepId));
+        Assert.True(root.TryGetProperty("checkpoint", out var checkpoint));
         Assert.True(root.TryGetProperty("handoff", out var handoff));
         Assert.True(root.TryGetProperty("confidence", out var confidence));
 
@@ -43,6 +46,9 @@ public sealed class EventLogNamedEventsQueryToolTests {
         Assert.Equal("eventlog_entity_handoff", handoff.GetProperty("contract").GetString());
         Assert.False(string.IsNullOrWhiteSpace(cursor.GetString()));
         Assert.False(string.IsNullOrWhiteSpace(resumeToken.GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(flowId.GetString()));
+        Assert.Equal("named_events_page", stepId.GetString());
+        Assert.True(checkpoint.TryGetProperty("rows", out _));
         Assert.InRange(confidence.GetDouble(), 0d, 1d);
     }
 

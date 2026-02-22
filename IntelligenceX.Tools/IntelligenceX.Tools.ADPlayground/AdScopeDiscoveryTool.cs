@@ -461,6 +461,9 @@ public sealed class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
             next_actions = chain.NextActions,
             cursor = chain.Cursor,
             resume_token = chain.ResumeToken,
+            flow_id = chain.FlowId,
+            step_id = chain.StepId,
+            checkpoint = chain.Checkpoint,
             handoff = chain.Handoff,
             confidence = chain.Confidence
         };
@@ -534,7 +537,17 @@ public sealed class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
                 ("failed_steps", failedSteps.ToString()),
                 ("gaps", gaps.Count.ToString())),
             handoff: handoff,
-            confidence: confidence);
+            confidence: confidence,
+            flowId: ToolChainingHints.BuildToken(
+                "ad_scope_discovery.flow",
+                ("forest", effectiveForest ?? string.Empty),
+                ("domain", effectiveDomain ?? string.Empty)),
+            stepId: "scope_receipt",
+            checkpoint: ToolChainingHints.Map(
+                ("domains", domains.Count),
+                ("domain_controllers", domainControllers.Count),
+                ("gaps", gaps.Count),
+                ("failed_steps", failedSteps)));
     }
 
     private static async Task<StepExecutionResult<T>> ExecuteStepAsync<T>(

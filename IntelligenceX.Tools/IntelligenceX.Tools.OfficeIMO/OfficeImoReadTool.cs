@@ -348,11 +348,25 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
                 ("mode", result.OutputMode),
                 ("truncated", result.Truncated ? "1" : "0")),
             handoff: handoff,
-            confidence: confidence);
+            confidence: confidence,
+            flowId: ToolChainingHints.BuildToken(
+                "officeimo_read.flow",
+                ("path", fullPath ?? string.Empty),
+                ("mode", result.OutputMode)),
+            stepId: "read_result",
+            checkpoint: ToolChainingHints.Map(
+                ("files", result.Files.Count),
+                ("documents", result.Documents.Count),
+                ("chunks", result.ChunksReturned),
+                ("warnings", result.Warnings.Count),
+                ("truncated", result.Truncated)));
 
         result.NextActions = chain.NextActions;
         result.Cursor = chain.Cursor;
         result.ResumeToken = chain.ResumeToken;
+        result.FlowId = chain.FlowId;
+        result.StepId = chain.StepId;
+        result.Checkpoint = chain.Checkpoint;
         result.Handoff = chain.Handoff;
         result.Confidence = chain.Confidence;
     }
