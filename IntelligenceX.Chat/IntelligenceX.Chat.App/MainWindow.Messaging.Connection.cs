@@ -153,7 +153,21 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
-    private async Task ConnectAsync(bool fromUserAction = false, TimeSpan? connectBudgetOverride = null) {
+    internal static bool ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+        bool deferStartupMetadataSync,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress) {
+        return deferStartupMetadataSync
+               && requiresInteractiveSignIn
+               && !isAuthenticated
+               && !loginInProgress;
+    }
+
+    private async Task ConnectAsync(
+        bool fromUserAction = false,
+        TimeSpan? connectBudgetOverride = null,
+        bool deferPostConnectMetadataSync = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
             var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == 1;
@@ -450,13 +464,24 @@ public sealed partial class MainWindow : Window {
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
 
-            var deferStartupMetadataSync = ShouldDeferStartupHelloProbe(captureStartupPhaseTelemetry)
+            var deferStartupMetadataSync = deferPostConnectMetadataSync
+                                           || ShouldDeferStartupHelloProbe(captureStartupPhaseTelemetry)
                                            || ShouldDeferStartupToolCatalogSync(captureStartupPhaseTelemetry);
+            var skipDeferredMetadataUntilAuthenticated = ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+                deferStartupMetadataSync: deferStartupMetadataSync,
+                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                isAuthenticated: _isAuthenticated,
+                loginInProgress: _loginInProgress);
             if (deferStartupMetadataSync) {
                 _sessionPolicy = null;
-                LogStartupConnectPhase("hello", "deferred");
-                LogStartupConnectPhase("list_tools", "deferred");
-                QueueDeferredStartupConnectMetadataSync();
+                if (skipDeferredMetadataUntilAuthenticated) {
+                    LogStartupConnectPhase("hello", "skipped_unauthenticated");
+                    LogStartupConnectPhase("list_tools", "skipped_unauthenticated");
+                } else {
+                    LogStartupConnectPhase("hello", "deferred");
+                    LogStartupConnectPhase("list_tools", "deferred");
+                    QueueDeferredStartupConnectMetadataSync();
+                }
             } else {
                 try {
                     LogStartupConnectPhase("hello", "begin");
@@ -489,7 +514,9 @@ public sealed partial class MainWindow : Window {
             AppendStartupToolHealthWarningsFromPolicy();
             AppendUnavailablePacksFromPolicy();
 
-            if (ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry)) {
+            if (skipDeferredMetadataUntilAuthenticated) {
+                LogStartupConnectPhase("auth_refresh", "skipped_unauthenticated");
+            } else if (deferPostConnectMetadataSync || ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry)) {
                 LogStartupConnectPhase("auth_refresh", "deferred");
             } else {
                 LogStartupConnectPhase("auth_refresh", "begin");
@@ -501,7 +528,9 @@ public sealed partial class MainWindow : Window {
                     throw;
                 }
             }
-            if (ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry)) {
+            if (skipDeferredMetadataUntilAuthenticated) {
+                LogStartupConnectPhase("model_profile_sync", "skipped_unauthenticated");
+            } else if (deferPostConnectMetadataSync || ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry)) {
                 LogStartupConnectPhase("model_profile_sync", "deferred");
                 QueueDeferredStartupModelProfileSync();
             } else {

@@ -51,6 +51,8 @@ public sealed partial class MainWindow : Window {
 
         _turnStartupInProgress = true;
         var dispatchRequestId = string.Empty;
+        Task<bool>? connectWarmupTask = null;
+        DateTime? connectWarmupStartedUtc = null;
         try {
             long? queueWaitMs = null;
             if (queuedAtUtc.HasValue && queuedAtUtc.Value.Kind == DateTimeKind.Utc) {
@@ -58,6 +60,13 @@ public sealed partial class MainWindow : Window {
                 if (elapsed.TotalMilliseconds > 0) {
                     queueWaitMs = (long)Math.Round(elapsed.TotalMilliseconds);
                 }
+            }
+
+            // Start reconnect warm-up in parallel with turn preparation so auth checks
+            // and user bubble rendering do not wait on pipe/service startup.
+            if (_client is null || !_isConnected) {
+                connectWarmupStartedUtc = DateTime.UtcNow;
+                connectWarmupTask = EnsureConnectedAsync(deferPostConnectMetadataSync: true);
             }
 
             var turn = await PrepareChatTurnAsync(text, skipUserBubble).ConfigureAwait(false);
@@ -95,8 +104,15 @@ public sealed partial class MainWindow : Window {
 
             // Keep user bubble rendering immediate, but still validate connectivity
             // before we enter active send state.
-            var connectStartedUtc = DateTime.UtcNow;
-            var connected = await EnsureConnectedAsync().ConfigureAwait(false);
+            var connectStartedUtc = connectWarmupStartedUtc ?? DateTime.UtcNow;
+            var connected = connectWarmupTask is null
+                // Hot path: if we already have a connected client, avoid an eager liveness
+                // probe/reconnect before dispatch. Request-level recovery handles stale pipes.
+                ? (_client is not null && _isConnected
+                    ? true
+                    : await EnsureConnectedAsync(deferPostConnectMetadataSync: true).ConfigureAwait(false))
+                : await connectWarmupTask.ConfigureAwait(false);
+            connectWarmupTask = null;
             var connectCompletedUtc = DateTime.UtcNow;
             MarkTurnConnectStage(turn.RequestId, connectStartedUtc, connectCompletedUtc, connected);
             if (!connected) {
@@ -130,12 +146,8 @@ public sealed partial class MainWindow : Window {
                 }
                 ClearToolRoutingInsights();
                 await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
-                try {
-                    await PublishSessionStateAsync().ConfigureAwait(false);
-                } finally {
-                    // Ensure tools state is refreshed after routing reset even if session publish faults.
-                    await PublishOptionsStateSafeAsync().ConfigureAwait(false);
-                }
+                // Keep dispatch path hot: publish state asynchronously while request starts.
+                _ = PublishTurnStartUiStateBestEffortAsync();
 
                 await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
             } finally {
@@ -184,6 +196,10 @@ public sealed partial class MainWindow : Window {
                 }
             }
         } finally {
+            if (connectWarmupTask is not null) {
+                _ = ObserveConnectWarmupCompletionAsync(connectWarmupTask);
+            }
+
             if (_turnStartupInProgress) {
                 _turnStartupInProgress = false;
                 try {
@@ -201,6 +217,31 @@ public sealed partial class MainWindow : Window {
                         await RestoreHeaderStatusAfterTurnIfNeededAsync(dispatchRequestId).ConfigureAwait(false);
                     }
                 }
+            }
+        }
+    }
+
+    private async Task ObserveConnectWarmupCompletionAsync(Task<bool> connectWarmupTask) {
+        try {
+            _ = await connectWarmupTask.ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync("Background connect warm-up failed: " + ex.Message).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task PublishTurnStartUiStateBestEffortAsync() {
+        try {
+            try {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            } finally {
+                // Ensure tools state is refreshed after routing reset even if session publish faults.
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+            }
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                await AppendSystemBestEffortAsync("Turn-start UI state publish failed: " + ex.Message).ConfigureAwait(false);
             }
         }
     }

@@ -188,7 +188,7 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var cts = new CancellationTokenSource(KickoffCancelAckTimeout);
             var cancelRequest = new CancelChatRequest {
                 RequestId = NextId(),
                 ChatRequestId = kickoffRequestId

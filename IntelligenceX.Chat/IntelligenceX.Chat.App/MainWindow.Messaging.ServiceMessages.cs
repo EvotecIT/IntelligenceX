@@ -84,6 +84,19 @@ public sealed partial class MainWindow : Window {
                     }
 
                     ApplyTurnMetrics(metrics);
+                    StartupLog.Write(
+                        "TurnMetrics request_id="
+                        + (metrics.RequestId ?? string.Empty).Trim()
+                        + " duration_ms="
+                        + metrics.DurationMs.ToString(CultureInfo.InvariantCulture)
+                        + " ttft_ms="
+                        + (metrics.TtftMs?.ToString(CultureInfo.InvariantCulture) ?? "null")
+                        + " outcome="
+                        + ((metrics.Outcome ?? string.Empty).Trim().Length == 0 ? "unknown" : metrics.Outcome!.Trim())
+                        + " tool_calls="
+                        + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
+                        + " tool_rounds="
+                        + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture));
                     RequestServiceDrivenSessionPublish();
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatMetricsTrace(metrics));
@@ -489,7 +502,9 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private async Task<bool> EnsureConnectedAsync(TimeSpan? connectBudgetOverride = null) {
+    private async Task<bool> EnsureConnectedAsync(
+        TimeSpan? connectBudgetOverride = null,
+        bool deferPostConnectMetadataSync = false) {
         if (_client is not null
             && await IsClientAliveAsync(
                     _client,
@@ -512,7 +527,9 @@ public sealed partial class MainWindow : Window {
                 connectAttemptTask = inFlightTask;
                 joinedExistingInFlight = true;
             } else {
-                connectAttemptTask = EnsureConnectedCoreAsync(connectBudget);
+                connectAttemptTask = EnsureConnectedCoreAsync(
+                    connectBudget,
+                    deferPostConnectMetadataSync: deferPostConnectMetadataSync);
                 _ensureConnectedInFlightTask = connectAttemptTask;
             }
         }
@@ -542,7 +559,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task<bool> EnsureConnectedCoreAsync(TimeSpan connectBudget) {
+    private async Task<bool> EnsureConnectedCoreAsync(TimeSpan connectBudget, bool deferPostConnectMetadataSync) {
         if (_client is not null
             && await IsClientAliveAsync(
                     _client,
@@ -559,7 +576,11 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        await ConnectAsync(fromUserAction: false, connectBudgetOverride: connectBudget).ConfigureAwait(false);
+        await ConnectAsync(
+                fromUserAction: false,
+                connectBudgetOverride: connectBudget,
+                deferPostConnectMetadataSync: deferPostConnectMetadataSync)
+            .ConfigureAwait(false);
         var connected = _client is not null;
         _isConnected = connected;
         if (!connected) {
