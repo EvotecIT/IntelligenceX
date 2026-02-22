@@ -91,6 +91,10 @@ public sealed class ToolPipelineReliabilityOptions {
     /// <summary>
     /// Creates a defensive copy of the reliability options.
     /// </summary>
+    /// <remarks>
+    /// Delegate members (<see cref="UtcNowProvider"/> and <see cref="DelayAsync"/>) are copied by reference.
+    /// This method intentionally performs a shallow clone for delegate fields.
+    /// </remarks>
     public ToolPipelineReliabilityOptions Clone() {
         return new ToolPipelineReliabilityOptions {
             MaxAttempts = MaxAttempts,
