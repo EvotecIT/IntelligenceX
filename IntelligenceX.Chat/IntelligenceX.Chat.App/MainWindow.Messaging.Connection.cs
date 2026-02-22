@@ -178,7 +178,7 @@ public sealed partial class MainWindow : Window {
         bool deferPostConnectMetadataSync = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
-            var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == 1;
+            var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == StartupFlowStateRunning;
             void LogStartupConnectPhase(string phase, string state) {
                 if (captureStartupPhaseTelemetry) {
                     StartupLog.Write("StartupConnect." + phase + " " + state);

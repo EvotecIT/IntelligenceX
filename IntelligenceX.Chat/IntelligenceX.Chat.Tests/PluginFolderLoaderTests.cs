@@ -53,6 +53,7 @@ public sealed class PluginFolderLoaderTests {
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
                 EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
 
@@ -103,7 +104,8 @@ public sealed class PluginFolderLoaderTests {
                 EnablePowerShellPack = false,
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
-                EnableReviewerSetupPack = false
+                EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
             });
 
             var pluginPack = Assert.Single(packs, static p => string.Equals(p.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
@@ -145,6 +147,7 @@ public sealed class PluginFolderLoaderTests {
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
                 EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
 
@@ -201,6 +204,7 @@ public sealed class PluginFolderLoaderTests {
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
                 EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
 
@@ -235,6 +239,7 @@ public sealed class PluginFolderLoaderTests {
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
                 EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
 
@@ -275,6 +280,7 @@ public sealed class PluginFolderLoaderTests {
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
                 EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
 
@@ -333,6 +339,7 @@ public sealed class PluginFolderLoaderTests {
                     EnableTestimoXPack = false,
                     EnableEmailPack = false,
                     EnableReviewerSetupPack = false,
+                    PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                     OnBootstrapWarning = warning => warnings.Add(warning)
                 });
 
@@ -390,6 +397,7 @@ public sealed class PluginFolderLoaderTests {
                 EnableTestimoXPack = false,
                 EnableEmailPack = false,
                 EnableReviewerSetupPack = false,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 RunAsProfilePath = "C:/temp/run-as-profiles.json",
                 AuthenticationProfilePath = "C:/temp/auth-profiles.json"
             });

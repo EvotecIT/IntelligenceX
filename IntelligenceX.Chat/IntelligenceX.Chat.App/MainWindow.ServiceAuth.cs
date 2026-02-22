@@ -732,7 +732,7 @@ public sealed partial class MainWindow : Window {
             pending ??= CaptureCurrentServiceLaunchProfileOptions();
             var launchPluginPaths = ResolveServiceLaunchPluginPaths(serviceSourceDir);
             if (launchPluginPaths.Count > 0) {
-                StartupLog.Write("Service plugin paths: " + string.Join(" | ", launchPluginPaths));
+                StartupLog.Write("Service plugin paths configured count=" + launchPluginPaths.Count.ToString(CultureInfo.InvariantCulture));
             }
             var launchArgs = ServiceLaunchArguments.Build(
                 pipeName,

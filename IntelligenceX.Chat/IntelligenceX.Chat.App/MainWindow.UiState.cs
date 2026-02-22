@@ -569,7 +569,7 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        return startupMetadataSyncQueued || startupFlowState == 1;
+        return startupMetadataSyncQueued || startupFlowState == StartupFlowStateRunning;
     }
 
     private async Task PublishOptionsStateAsync() {

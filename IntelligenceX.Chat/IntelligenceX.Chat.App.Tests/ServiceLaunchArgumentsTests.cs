@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using IntelligenceX.Chat.App.Launch;
 using Xunit;
 
@@ -216,25 +218,87 @@ public sealed class ServiceLaunchArgumentsTests {
     /// </summary>
     [Fact]
     public void Build_IncludesPluginPathFlags_WhenConfigured() {
-        var args = ServiceLaunchArguments.Build(
-            "intelligencex.chat",
-            detachedServiceMode: true,
-            parentProcessId: 12345,
-            profileOptions: null,
-            additionalPluginPaths: new[] {
-                "  C:\\plugins\\main  ",
-                string.Empty,
-                "C:\\plugins\\main",
-                "C:\\plugins\\extra"
-            });
+        var unique = Guid.NewGuid().ToString("N");
+        var mainPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "ix-launch-main-" + unique));
+        var extraPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "ix-launch-extra-" + unique));
+        var relativeRoot = Path.Combine(Directory.GetCurrentDirectory(), "ix-launch-relative-" + unique);
+        var relativePluginPath = Path.Combine(relativeRoot, "plugins", "relative");
+        Directory.CreateDirectory(mainPath);
+        Directory.CreateDirectory(extraPath);
+        Directory.CreateDirectory(relativePluginPath);
 
-        Assert.Equal(new[] {
-            "--pipe",
-            "intelligencex.chat",
-            "--plugin-path",
-            "C:\\plugins\\main",
-            "--plugin-path",
-            "C:\\plugins\\extra"
-        }, args);
+        try {
+            var expectedAbsoluteMain = NormalizeForAssertion(mainPath);
+            var expectedAbsoluteRelative = NormalizeForAssertion(Path.GetFullPath(relativePluginPath));
+            var expectedAbsoluteExtra = NormalizeForAssertion(extraPath);
+            var mainPathWithTrailingSeparator = mainPath + Path.DirectorySeparatorChar;
+            var mainPathWithDotSegment = Path.GetFullPath(Path.Combine(mainPath, "..", Path.GetFileName(mainPath)));
+            var relativeEquivalent = Path.GetFullPath(Path.Combine(relativePluginPath, "..", "relative"));
+            var extraPathWithTrailingSeparator = extraPath + Path.DirectorySeparatorChar;
+
+            var args = ServiceLaunchArguments.Build(
+                "intelligencex.chat",
+                detachedServiceMode: true,
+                parentProcessId: 12345,
+                profileOptions: null,
+                additionalPluginPaths: new[] {
+                    "  " + mainPathWithTrailingSeparator + "  ",
+                    mainPathWithDotSegment,
+                    string.Empty,
+                    relativePluginPath,
+                    relativeEquivalent,
+                    extraPathWithTrailingSeparator
+                });
+
+            var pluginPaths = ExtractArgumentValues(args, "--plugin-path");
+            Assert.Equal(new[] {
+                expectedAbsoluteMain,
+                expectedAbsoluteRelative,
+                expectedAbsoluteExtra
+            }, pluginPaths);
+        } finally {
+            if (Directory.Exists(mainPath)) {
+                Directory.Delete(mainPath, recursive: true);
+            }
+
+            if (Directory.Exists(extraPath)) {
+                Directory.Delete(extraPath, recursive: true);
+            }
+
+            if (Directory.Exists(relativeRoot)) {
+                Directory.Delete(relativeRoot, recursive: true);
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> ExtractArgumentValues(IReadOnlyList<string> args, string key) {
+        var values = new List<string>();
+        for (var i = 0; i < args.Count - 1; i++) {
+            if (!string.Equals(args[i], key, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            values.Add(args[i + 1]);
+            i++;
+        }
+
+        return values;
+    }
+
+    private static string NormalizeForAssertion(string path) {
+        var normalized = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (normalized.Length == 0) {
+            return path;
+        }
+
+        var root = Path.GetPathRoot(path);
+        if (!string.IsNullOrWhiteSpace(root)) {
+            var normalizedRoot = root!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(normalized, normalizedRoot, StringComparison.OrdinalIgnoreCase)) {
+                return root!;
+            }
+        }
+
+        return normalized;
     }
 }

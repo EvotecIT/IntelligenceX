@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace IntelligenceX.Chat.App.Launch;
 
@@ -128,7 +129,7 @@ internal static class ServiceLaunchArguments {
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < values.Count; i++) {
-            var normalized = (values[i] ?? string.Empty).Trim();
+            var normalized = NormalizePathForArgument(values[i]);
             if (normalized.Length == 0 || !seen.Add(normalized)) {
                 continue;
             }
@@ -136,6 +137,41 @@ internal static class ServiceLaunchArguments {
             args.Add(key);
             args.Add(normalized);
         }
+    }
+
+    private static string NormalizePathForArgument(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        try {
+            var fullPath = Path.GetFullPath(normalized);
+            return TrimTrailingDirectorySeparators(fullPath);
+        } catch {
+            return normalized;
+        }
+    }
+
+    private static string TrimTrailingDirectorySeparators(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return string.Empty;
+        }
+
+        var root = Path.GetPathRoot(path);
+        var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return root ?? path;
+        }
+
+        if (!string.IsNullOrWhiteSpace(root)) {
+            var normalizedRoot = root!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(trimmed, normalizedRoot, StringComparison.OrdinalIgnoreCase)) {
+                return root;
+            }
+        }
+
+        return trimmed;
     }
 
     private static void AddKeyValueArg(List<string> args, string key, string? value) {
