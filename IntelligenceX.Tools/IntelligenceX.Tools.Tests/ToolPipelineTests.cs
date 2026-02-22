@@ -458,6 +458,41 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public void ReliabilityOptionsWith_ShouldThrowOnNullConfigure() {
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        Assert.Throws<ArgumentNullException>(() => baseline.With(null!));
+    }
+
+    [Fact]
+    public void ReliabilityProfilesWithOverrides_ShouldThrowOnNullConfigure() {
+        Assert.Throws<ArgumentNullException>(() => ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(null!));
+        Assert.Throws<ArgumentNullException>(() => ToolPipelineReliabilityProfiles.FastNetworkProbeWith(null!));
+    }
+
+    [Fact]
+    public void ReliabilityOptionsBuilderBuild_ShouldNormalizeOutOfRangeValues() {
+        var options = new ToolPipelineReliabilityOptionsBuilder {
+            MaxAttempts = 99,
+            AttemptTimeoutMs = -1,
+            BaseDelayMs = -5,
+            MaxDelayMs = -10,
+            JitterRatio = 2.0d,
+            CircuitFailureThreshold = 0,
+            CircuitOpenMs = 1,
+            CircuitKey = "  sample_key  "
+        }.Build();
+
+        Assert.Equal(10, options.MaxAttempts);
+        Assert.Equal(0, options.AttemptTimeoutMs);
+        Assert.Equal(0, options.BaseDelayMs);
+        Assert.Equal(0, options.MaxDelayMs);
+        Assert.Equal(0.5d, options.JitterRatio);
+        Assert.Equal(1, options.CircuitFailureThreshold);
+        Assert.Equal(100, options.CircuitOpenMs);
+        Assert.Equal("sample_key", options.CircuitKey);
+    }
+
+    [Fact]
     public void ReliabilityProfilesWithOverrides_ShouldCustomizeCopyWithoutMutatingTemplates() {
         var customizedReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(static options => {
             options.MaxAttempts = 5;

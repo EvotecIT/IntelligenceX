@@ -228,7 +228,7 @@ public sealed class ToolPipelineReliabilityOptionsBuilder {
     public Func<TimeSpan, CancellationToken, Task>? DelayAsync { get; set; }
 
     /// <summary>
-    /// Builds immutable reliability options from the current builder state.
+    /// Builds immutable, normalized reliability options from the current builder state.
     /// </summary>
     public ToolPipelineReliabilityOptions Build() {
         return new ToolPipelineReliabilityOptions {
@@ -246,7 +246,7 @@ public sealed class ToolPipelineReliabilityOptionsBuilder {
             CircuitKey = CircuitKey,
             UtcNowProvider = UtcNowProvider,
             DelayAsync = DelayAsync
-        };
+        }.Normalize();
     }
 
     internal static ToolPipelineReliabilityOptionsBuilder From(ToolPipelineReliabilityOptions options) {
