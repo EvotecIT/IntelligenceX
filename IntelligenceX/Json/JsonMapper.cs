@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace IntelligenceX.Json;
 
@@ -34,7 +35,7 @@ public static class JsonMapper {
             case DateTimeOffset dto:
                 return JsonValue.From(dto.ToUniversalTime().ToString("O"));
             case TimeSpan ts:
-                return JsonValue.From(ts.ToString());
+                return JsonValue.From(ts.ToString("c", CultureInfo.InvariantCulture));
             case Enum e:
                 return JsonValue.From(e.ToString());
             case byte or sbyte or short or ushort or int or uint or long:

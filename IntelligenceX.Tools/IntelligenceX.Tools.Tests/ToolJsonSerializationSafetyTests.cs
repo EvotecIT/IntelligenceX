@@ -159,6 +159,18 @@ public sealed class ToolJsonSerializationSafetyTests {
     }
 
     [Fact]
+    public void JsonMapper_ShouldNormalizeTimeSpanUsingInvariantConstantFormat() {
+        var span = new TimeSpan(days: 1, hours: 2, minutes: 3, seconds: 4, milliseconds: 5);
+        var mapped = global::IntelligenceX.Json.JsonMapper.FromObject(span);
+        var root = ToolJson.ToJsonObjectSnakeCase(new {
+            Elapsed = span
+        });
+
+        Assert.Equal("1.02:03:04.0050000", mapped.AsString());
+        Assert.Equal(mapped.AsString(), root.GetString("elapsed"));
+    }
+
+    [Fact]
     public void OkModel_WhenFallbackHandlesCycle_ShouldPreserveDeepChildContext() {
         var rootNode = new CycleNode { Name = "root" };
         var current = rootNode;
