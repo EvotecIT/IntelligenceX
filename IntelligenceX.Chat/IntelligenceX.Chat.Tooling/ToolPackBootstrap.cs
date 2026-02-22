@@ -148,6 +148,12 @@ public sealed record ToolPackBootstrapOptions {
     /// Additional plugin search paths (repeatable).
     /// </summary>
     public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Optional plugin archive extraction cache root.
+    /// Defaults to %LOCALAPPDATA%\IntelligenceX.Chat\plugin-cache when not provided.
+    /// </summary>
+    public string? PluginArchiveCacheRoot { get; init; }
 }
 
 /// <summary>

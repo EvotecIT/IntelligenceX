@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -443,6 +444,82 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             isAuthenticated,
             loginInProgress);
         Assert.Equal(expected, shouldSkip);
+    }
+
+    /// <summary>
+    /// Ensures deferred startup metadata plan always queues metadata sync when deferred,
+    /// including the unauthenticated native defer path.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false, true, false, false, false, false, true, true, true, false, false)]
+    [InlineData(false, true, false, false, false, true, true, true, true, true, false, true, true)]
+    [InlineData(false, false, false, false, false, false, false, false, false, false, false, false, false)]
+    public void ResolveDeferredStartupMetadataPlan_ReturnsExpectedValue(
+        bool deferPostConnectMetadataSync,
+        bool deferStartupHelloProbe,
+        bool deferStartupToolCatalogSync,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool deferStartupAuthRefresh,
+        bool deferStartupModelProfileSync,
+        bool expectedDeferStartupMetadataSync,
+        bool expectedQueueDeferredConnectMetadataSync,
+        bool expectedSkipDeferredMetadataUntilAuthenticated,
+        bool expectedDeferAuthRefresh,
+        bool expectedDeferModelProfileSync) {
+        var plan = MainWindow.ResolveDeferredStartupMetadataPlan(
+            deferPostConnectMetadataSync: deferPostConnectMetadataSync,
+            deferStartupHelloProbe: deferStartupHelloProbe,
+            deferStartupToolCatalogSync: deferStartupToolCatalogSync,
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            isAuthenticated: isAuthenticated,
+            loginInProgress: loginInProgress,
+            deferStartupAuthRefresh: deferStartupAuthRefresh,
+            deferStartupModelProfileSync: deferStartupModelProfileSync);
+
+        Assert.Equal(expectedDeferStartupMetadataSync, plan.DeferStartupMetadataSync);
+        Assert.Equal(expectedQueueDeferredConnectMetadataSync, plan.QueueDeferredConnectMetadataSync);
+        Assert.Equal(expectedSkipDeferredMetadataUntilAuthenticated, plan.SkipDeferredMetadataUntilAuthenticated);
+        Assert.Equal(expectedDeferAuthRefresh, plan.DeferAuthRefresh);
+        Assert.Equal(expectedDeferModelProfileSync, plan.DeferModelProfileSync);
+    }
+
+    /// <summary>
+    /// Ensures plugin launch path resolution handles root source directories safely
+    /// and never emits relative fallback paths.
+    /// </summary>
+    [Fact]
+    public void ResolveServiceLaunchPluginPaths_RootSourceDirectory_DoesNotEmitRelativePaths() {
+        var root = Path.GetPathRoot(AppContext.BaseDirectory);
+        Assert.False(string.IsNullOrWhiteSpace(root));
+
+        var paths = MainWindow.ResolveServiceLaunchPluginPaths(root!);
+        Assert.All(paths, static path => Assert.True(Path.IsPathRooted(path)));
+        Assert.DoesNotContain(paths, static path => string.Equals(path.Trim(), "plugins", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures tools-loading indicator is shown only while startup metadata is actively pending.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, 1, true, false)]
+    [InlineData(true, true, 1, true, false)]
+    [InlineData(true, false, 1, false, true)]
+    [InlineData(true, false, 2, true, true)]
+    [InlineData(true, false, 2, false, false)]
+    public void ShouldShowToolsLoading_ReturnsExpectedValue(
+        bool isConnected,
+        bool hasSessionPolicy,
+        int startupFlowState,
+        bool startupMetadataSyncQueued,
+        bool expected) {
+        var shouldShow = MainWindow.ShouldShowToolsLoading(
+            isConnected,
+            hasSessionPolicy,
+            startupFlowState,
+            startupMetadataSyncQueued);
+        Assert.Equal(expected, shouldShow);
     }
 
     /// <summary>

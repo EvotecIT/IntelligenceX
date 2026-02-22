@@ -13,6 +13,7 @@ namespace IntelligenceX.Chat.Tooling;
 internal static class PluginFolderToolPackLoader {
     private const string ManifestFileName = "ix-plugin.json";
     private const string PluginArchiveSuffix = ".ix-plugin.zip";
+    private const string TestAssemblyFileName = "IntelligenceX.Chat.Tests.dll";
     private const int SupportedSchemaVersion = 1;
     private const int PluginArchiveCacheMaxEntries = 128;
     private static readonly TimeSpan PluginArchiveLockTimeout = TimeSpan.FromSeconds(8);
@@ -91,7 +92,7 @@ internal static class PluginFolderToolPackLoader {
                 continue;
             }
 
-            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, onWarning)) {
+            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, options, onWarning)) {
                 TryLoadPluginDirectory(
                     pluginDirectory: pluginDirectory,
                     isExplicitRoot: root.IsExplicit,
@@ -103,12 +104,12 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, Action<string>? onWarning) {
+    private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, ToolPackBootstrapOptions options, Action<string>? onWarning) {
         if (IsPluginFolder(rootPath)) {
             yield return rootPath;
         }
 
-        foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath, onWarning)) {
+        foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath, options, onWarning)) {
             yield return archiveDirectory;
         }
 
@@ -126,7 +127,10 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static IEnumerable<string> EnumeratePluginArchiveDirectories(string rootPath, Action<string>? onWarning) {
+    private static IEnumerable<string> EnumeratePluginArchiveDirectories(
+        string rootPath,
+        ToolPackBootstrapOptions options,
+        Action<string>? onWarning) {
         string[] archives;
         try {
             archives = Directory
@@ -138,7 +142,7 @@ internal static class PluginFolderToolPackLoader {
         }
 
         foreach (var archive in archives) {
-            var extracted = TryMaterializePluginArchive(archive, onWarning);
+            var extracted = TryMaterializePluginArchive(archive, options, onWarning);
             if (!string.IsNullOrWhiteSpace(extracted)) {
                 yield return extracted!;
             }
@@ -162,7 +166,7 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static string? TryMaterializePluginArchive(string archivePath, Action<string>? onWarning) {
+    private static string? TryMaterializePluginArchive(string archivePath, ToolPackBootstrapOptions options, Action<string>? onWarning) {
         var normalizedArchive = NormalizePath(archivePath);
         if (string.IsNullOrWhiteSpace(normalizedArchive) || !File.Exists(normalizedArchive)) {
             return null;
@@ -171,10 +175,7 @@ internal static class PluginFolderToolPackLoader {
         FileStream? extractLock = null;
         string? tempDir = null;
         try {
-            var cacheRoot = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "IntelligenceX.Chat",
-                "plugin-cache");
+            var cacheRoot = ResolvePluginArchiveCacheRoot(options);
             Directory.CreateDirectory(cacheRoot);
             TryTrimPluginArchiveCache(cacheRoot, onWarning);
 
@@ -233,6 +234,16 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
+    private static string ResolvePluginArchiveCacheRoot(ToolPackBootstrapOptions options) {
+        var configured = NormalizePath(options.PluginArchiveCacheRoot);
+        if (!string.IsNullOrWhiteSpace(configured)) {
+            return configured!;
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(localAppData, "IntelligenceX.Chat", "plugin-cache");
+    }
+
     private static void TryTrimPluginArchiveCache(string cacheRoot, Action<string>? onWarning) {
         try {
             if (!Directory.Exists(cacheRoot)) {
@@ -251,6 +262,16 @@ internal static class PluginFolderToolPackLoader {
                 .Select(static path => new DirectoryInfo(path))
                 .OrderByDescending(static entry => entry.LastWriteTimeUtc)
                 .ToList();
+
+            foreach (var entry in entries.ToArray()) {
+                if (!IsLikelyTestCacheEntry(entry)) {
+                    continue;
+                }
+
+                if (TryDeleteCacheEntry(entry)) {
+                    entries.Remove(entry);
+                }
+            }
 
             foreach (var entry in entries.ToArray()) {
                 if (now - entry.LastWriteTimeUtc <= PluginArchiveCacheMaxAge) {
@@ -274,6 +295,18 @@ internal static class PluginFolderToolPackLoader {
         } catch (Exception ex) {
             onWarning?.Invoke(
                 $"[plugin] cache_trim_failed cache='{cacheRoot}' error='{ex.GetType().Name}: {ex.Message}'");
+        }
+    }
+
+    private static bool IsLikelyTestCacheEntry(DirectoryInfo entry) {
+        try {
+            if (!entry.Exists) {
+                return false;
+            }
+
+            return File.Exists(Path.Combine(entry.FullName, TestAssemblyFileName));
+        } catch {
+            return false;
         }
     }
 

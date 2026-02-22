@@ -172,13 +172,48 @@ public sealed partial class MainWindow : Window {
                && !loginInProgress;
     }
 
+    internal readonly record struct DeferredStartupMetadataPlan(
+        bool DeferStartupMetadataSync,
+        bool QueueDeferredConnectMetadataSync,
+        bool SkipDeferredMetadataUntilAuthenticated,
+        bool DeferAuthRefresh,
+        bool DeferModelProfileSync);
+
+    internal static DeferredStartupMetadataPlan ResolveDeferredStartupMetadataPlan(
+        bool deferPostConnectMetadataSync,
+        bool deferStartupHelloProbe,
+        bool deferStartupToolCatalogSync,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool deferStartupAuthRefresh,
+        bool deferStartupModelProfileSync) {
+        var deferStartupMetadataSync = deferPostConnectMetadataSync
+                                       || deferStartupHelloProbe
+                                       || deferStartupToolCatalogSync;
+        var skipDeferredMetadataUntilAuthenticated = ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+            deferStartupMetadataSync: deferStartupMetadataSync,
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            isAuthenticated: isAuthenticated,
+            loginInProgress: loginInProgress);
+
+        return new DeferredStartupMetadataPlan(
+            DeferStartupMetadataSync: deferStartupMetadataSync,
+            QueueDeferredConnectMetadataSync: deferStartupMetadataSync,
+            SkipDeferredMetadataUntilAuthenticated: skipDeferredMetadataUntilAuthenticated,
+            DeferAuthRefresh: !skipDeferredMetadataUntilAuthenticated
+                              && (deferPostConnectMetadataSync || deferStartupAuthRefresh),
+            DeferModelProfileSync: !skipDeferredMetadataUntilAuthenticated
+                                   && (deferPostConnectMetadataSync || deferStartupModelProfileSync));
+    }
+
     private async Task ConnectAsync(
         bool fromUserAction = false,
         TimeSpan? connectBudgetOverride = null,
         bool deferPostConnectMetadataSync = false) {
         await _connectGate.WaitAsync().ConfigureAwait(false);
         try {
-            var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == 1;
+            var captureStartupPhaseTelemetry = !fromUserAction && Volatile.Read(ref _startupFlowState) == StartupFlowStateRunning;
             void LogStartupConnectPhase(string phase, string state) {
                 if (captureStartupPhaseTelemetry) {
                     StartupLog.Write("StartupConnect." + phase + " " + state);
@@ -472,22 +507,20 @@ public sealed partial class MainWindow : Window {
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
 
-            var deferStartupMetadataSync = deferPostConnectMetadataSync
-                                           || ShouldDeferStartupHelloProbe(captureStartupPhaseTelemetry)
-                                           || ShouldDeferStartupToolCatalogSync(captureStartupPhaseTelemetry);
-            var skipDeferredMetadataUntilAuthenticated = ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
-                deferStartupMetadataSync: deferStartupMetadataSync,
+            var deferredMetadataPlan = ResolveDeferredStartupMetadataPlan(
+                deferPostConnectMetadataSync: deferPostConnectMetadataSync,
+                deferStartupHelloProbe: ShouldDeferStartupHelloProbe(captureStartupPhaseTelemetry),
+                deferStartupToolCatalogSync: ShouldDeferStartupToolCatalogSync(captureStartupPhaseTelemetry),
                 requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
                 isAuthenticated: _isAuthenticated,
-                loginInProgress: _loginInProgress);
-            if (deferStartupMetadataSync) {
+                loginInProgress: _loginInProgress,
+                deferStartupAuthRefresh: ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry),
+                deferStartupModelProfileSync: ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry));
+            if (deferredMetadataPlan.DeferStartupMetadataSync) {
                 _sessionPolicy = null;
-                if (skipDeferredMetadataUntilAuthenticated) {
-                    LogStartupConnectPhase("hello", "skipped_unauthenticated");
-                    LogStartupConnectPhase("list_tools", "skipped_unauthenticated");
-                } else {
-                    LogStartupConnectPhase("hello", "deferred");
-                    LogStartupConnectPhase("list_tools", "deferred");
+                LogStartupConnectPhase("hello", deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
+                LogStartupConnectPhase("list_tools", deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
+                if (deferredMetadataPlan.QueueDeferredConnectMetadataSync) {
                     QueueDeferredStartupConnectMetadataSync();
                 }
             } else {
@@ -505,7 +538,7 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            if (!deferStartupMetadataSync) {
+            if (!deferredMetadataPlan.DeferStartupMetadataSync) {
                 try {
                     LogStartupConnectPhase("list_tools", "begin");
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
@@ -522,9 +555,9 @@ public sealed partial class MainWindow : Window {
             AppendStartupToolHealthWarningsFromPolicy();
             AppendUnavailablePacksFromPolicy();
 
-            if (skipDeferredMetadataUntilAuthenticated) {
+            if (deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated) {
                 LogStartupConnectPhase("auth_refresh", "skipped_unauthenticated");
-            } else if (deferPostConnectMetadataSync || ShouldDeferStartupAuthRefresh(captureStartupPhaseTelemetry)) {
+            } else if (deferredMetadataPlan.DeferAuthRefresh) {
                 LogStartupConnectPhase("auth_refresh", "deferred");
             } else {
                 LogStartupConnectPhase("auth_refresh", "begin");
@@ -536,9 +569,9 @@ public sealed partial class MainWindow : Window {
                     throw;
                 }
             }
-            if (skipDeferredMetadataUntilAuthenticated) {
+            if (deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated) {
                 LogStartupConnectPhase("model_profile_sync", "skipped_unauthenticated");
-            } else if (deferPostConnectMetadataSync || ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry)) {
+            } else if (deferredMetadataPlan.DeferModelProfileSync) {
                 LogStartupConnectPhase("model_profile_sync", "deferred");
                 QueueDeferredStartupModelProfileSync();
             } else {

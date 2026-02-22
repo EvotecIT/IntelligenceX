@@ -39,7 +39,7 @@ public sealed partial class MainWindow : Window {
             StartupLog.Write("StartupPhase.WebView begin");
             var startupWebViewBudgetCache = SnapshotStartupWebViewBudgetCache();
             var startupWebViewBudgetDecision = ResolveStartupWebViewBudgetDecisionIfEnabled(
-                captureStartupPhaseTelemetry: Volatile.Read(ref _startupFlowState) == 1,
+                captureStartupPhaseTelemetry: Volatile.Read(ref _startupFlowState) == StartupFlowStateRunning,
                 lastEnsureWebViewMs: startupWebViewBudgetCache.LastEnsureWebViewMs,
                 consecutiveBudgetExhaustions: startupWebViewBudgetCache.ConsecutiveBudgetExhaustions,
                 consecutiveStableCompletions: startupWebViewBudgetCache.ConsecutiveStableCompletions,
@@ -81,13 +81,13 @@ public sealed partial class MainWindow : Window {
             QueueDeferredStartupAuthentication();
             StartupLog.Write("StartupPhase.Onboarding deferred");
             QueueDeferredStartupOnboarding();
-            Interlocked.Exchange(ref _startupFlowState, 2);
+            Interlocked.Exchange(ref _startupFlowState, StartupFlowStateComplete);
             StartupLog.Write("StartupPhase.DispatchPrewarm deferred");
             QueueDeferredStartupDispatchPrewarm();
             QueueDeferredStartupBenchAutoSend();
             StartupLog.Write("MainWindow.StartupFlow done");
         } catch (Exception ex) {
-            Interlocked.Exchange(ref _startupFlowState, 0);
+            Interlocked.Exchange(ref _startupFlowState, StartupFlowStateIdle);
             StartupLog.Write("MainWindow.StartupFlow failed: " + ex);
         }
     }
@@ -636,7 +636,7 @@ public sealed partial class MainWindow : Window {
                 RefreshGlobalWheelHookPolicy();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
-            var captureStartupPhaseTelemetry = Volatile.Read(ref _startupFlowState) == 1;
+            var captureStartupPhaseTelemetry = Volatile.Read(ref _startupFlowState) == StartupFlowStateRunning;
             if (ShouldDeferStartupWebViewPostInitialization(captureStartupPhaseTelemetry)) {
                 StartupLog.Write("StartupPhase.WebView.post_init deferred");
                 QueueDeferredStartupWebViewPostInitialization();

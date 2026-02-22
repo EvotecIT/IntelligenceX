@@ -99,6 +99,9 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan StartupDeferredModelProfileSyncDelay = TimeSpan.FromMilliseconds(1250);
     private static readonly TimeSpan StartupDeferredDispatchPrewarmDelay = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan StartupDeferredInteractiveBackgroundPollInterval = TimeSpan.FromMilliseconds(200);
+    private const int StartupFlowStateIdle = 0;
+    private const int StartupFlowStateRunning = 1;
+    private const int StartupFlowStateComplete = 2;
     private const int StartupWebViewBudgetFastEnsureThresholdMs = 1200;
     private const int StartupWebViewBudgetMediumEnsureThresholdMs = 2000;
     private const int StartupWebViewBudgetSlowEnsureThresholdMs = 3000;
@@ -642,7 +645,7 @@ public sealed partial class MainWindow : Window {
             RefreshGlobalWheelHookPolicy();
             EnsureRestoredIfMinimized();
 
-            if (Interlocked.CompareExchange(ref _startupFlowState, 1, 0) != 0) {
+            if (Interlocked.CompareExchange(ref _startupFlowState, StartupFlowStateRunning, StartupFlowStateIdle) != StartupFlowStateIdle) {
                 return;
             }
 

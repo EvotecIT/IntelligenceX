@@ -730,6 +730,10 @@ public sealed partial class MainWindow : Window {
         try {
             var pending = _pendingServiceLaunchProfileOptions;
             pending ??= CaptureCurrentServiceLaunchProfileOptions();
+            var launchPluginPaths = ResolveServiceLaunchPluginPaths(serviceSourceDir);
+            if (launchPluginPaths.Count > 0) {
+                StartupLog.Write("Service plugin paths configured count=" + launchPluginPaths.Count.ToString(CultureInfo.InvariantCulture));
+            }
             var launchArgs = ServiceLaunchArguments.Build(
                 pipeName,
                 DetachedServiceMode,
@@ -756,7 +760,8 @@ public sealed partial class MainWindow : Window {
                     EnablePowerShellPack = pending.EnablePowerShellPack,
                     EnableTestimoXPack = pending.EnableTestimoXPack,
                     EnableOfficeImoPack = pending.EnableOfficeImoPack
-                });
+                },
+                additionalPluginPaths: launchPluginPaths);
             var hasExe = File.Exists(exe);
             var psi = new ProcessStartInfo {
                 FileName = hasExe ? exe : "dotnet",
@@ -850,6 +855,46 @@ public sealed partial class MainWindow : Window {
             AppendSystem(SystemNotice.ServiceStartFailed(ex.Message));
             return false;
         }
+    }
+
+    internal static IReadOnlyList<string> ResolveServiceLaunchPluginPaths(string serviceSourceDir) {
+        var paths = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(serviceSourceDir)) {
+            try {
+                var normalizedSourceDir = Path.GetFullPath(serviceSourceDir);
+                var sourceParent = Path.GetDirectoryName(normalizedSourceDir);
+                if (!string.IsNullOrWhiteSpace(sourceParent)) {
+                    TryAddLaunchPluginPath(paths, seen, Path.Combine(sourceParent, "plugins"));
+                }
+            } catch {
+                // Ignore malformed source-dir values and fall back to app-base plugin path.
+            }
+        }
+
+        TryAddLaunchPluginPath(paths, seen, Path.Combine(AppContext.BaseDirectory, "plugins"));
+
+        return paths;
+    }
+
+    private static void TryAddLaunchPluginPath(List<string> paths, HashSet<string> seen, string candidate) {
+        if (string.IsNullOrWhiteSpace(candidate)) {
+            return;
+        }
+
+        string fullPath;
+        try {
+            fullPath = Path.GetFullPath(candidate);
+        } catch {
+            return;
+        }
+
+        if (!Directory.Exists(fullPath) || !seen.Add(fullPath)) {
+            return;
+        }
+
+        paths.Add(fullPath);
     }
 
     private void StopServiceIfOwned() {
