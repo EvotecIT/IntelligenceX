@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window {
         _modelKickoffAttempted = false;
         _modelKickoffInProgress = false;
         _pendingLoginPrompt = null;
-        _ = RenderTranscriptAsync();
+        QueueTranscriptRender("clear_conversation");
         _ = PublishOptionsStateSafeAsync();
         QueuePersistAppState();
     }
@@ -75,7 +75,7 @@ public sealed partial class MainWindow : Window {
         conversation.Messages.Add(("System", text, DateTime.Now, null));
         conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            _ = RenderTranscriptAsync();
+            QueueTranscriptRender("append_system");
         }
     }
 
@@ -85,6 +85,22 @@ public sealed partial class MainWindow : Window {
 
     private void AppendSystem(ConversationRuntime conversation, SystemNotice notice) {
         AppendSystem(conversation, SystemNoticeFormatter.Format(notice));
+    }
+
+    private void QueueTranscriptRender(string reason) {
+        _ = RenderTranscriptBestEffortAsync(reason);
+    }
+
+    private async Task RenderTranscriptBestEffortAsync(string reason) {
+        try {
+            await RenderTranscriptAsync().ConfigureAwait(false);
+        } catch (Exception ex) {
+            // Keep UI flow resilient; transcript failures should be visible in startup diagnostics.
+            StartupLog.Write("RenderTranscriptAsync failed (" + reason + "): " + ex.Message);
+            if (_debugMode) {
+                Debug.WriteLine("RenderTranscriptAsync failed (" + reason + "): " + ex);
+            }
+        }
     }
 
     private async Task RenderTranscriptAsync() {
