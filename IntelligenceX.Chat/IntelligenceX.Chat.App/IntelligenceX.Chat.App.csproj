@@ -78,7 +78,6 @@
 
   <ItemGroup>
     <Content Include="Ui\**\*.*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="app.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
