@@ -95,6 +95,44 @@ public sealed class ToolJsonSerializationSafetyTests {
     }
 
     [Fact]
+    public void OkModel_WhenPayloadContainsNonFiniteNumbers_ShouldEmitNulls() {
+        var json = ToolResponse.OkModel(new {
+            Name = "non-finite",
+            Score = double.NaN,
+            Ratio = double.PositiveInfinity,
+            Delta = float.NegativeInfinity
+        });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("non-finite", root.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("score").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("ratio").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("delta").ValueKind);
+    }
+
+    [Fact]
+    public void OkModel_WhenFallbackPayloadContainsNonFiniteNumbers_ShouldEmitNulls() {
+        var node = new CycleNode {
+            Name = "root",
+            Score = double.NaN
+        };
+        node.Next = node;
+
+        var json = ToolResponse.OkModel(node);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("root", root.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("score").ValueKind);
+        Assert.Equal("[cycle]", root.GetProperty("next").GetString());
+    }
+
+    [Fact]
     public void OkModel_WhenFallbackHandlesCycle_ShouldPreserveDeepChildContext() {
         var rootNode = new CycleNode { Name = "root" };
         var current = rootNode;
@@ -130,6 +168,7 @@ public sealed class ToolJsonSerializationSafetyTests {
 
     private sealed class CycleNode {
         public string Name { get; set; } = string.Empty;
+        public double Score { get; set; }
 
         public CycleNode? Child { get; set; }
 

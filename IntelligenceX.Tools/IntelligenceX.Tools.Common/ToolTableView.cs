@@ -557,10 +557,10 @@ public static class ToolTableView {
                 case ulong ul:
                     number = ul;
                     return true;
-                case float f:
+                case float f when !(float.IsNaN(f) || float.IsInfinity(f)):
                     number = (decimal)f;
                     return true;
-                case double d:
+                case double d when !(double.IsNaN(d) || double.IsInfinity(d)):
                     number = (decimal)d;
                     return true;
                 case decimal dec:
