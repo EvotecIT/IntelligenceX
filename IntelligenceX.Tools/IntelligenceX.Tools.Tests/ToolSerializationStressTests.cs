@@ -74,6 +74,58 @@ public sealed class ToolSerializationStressTests {
     }
 
     [Fact]
+    public void MixedEventFlowPayload_WithLowerBoundMatricesAndCycles_ShouldSerialize() {
+        var steps = new List<object>(180);
+        var warningCount = 0;
+        for (var index = 0; index < 180; index++) {
+            var status = index % 9 == 0 ? "warning" : "ok";
+            if (status == "warning") {
+                warningCount++;
+            }
+
+            var matrix = Array.CreateInstance(typeof(object), lengths: [2, 2], lowerBounds: [1, -1]);
+            matrix.SetValue(CreateDeepNode(12), [1, -1]);
+            matrix.SetValue(new Dictionary<string, object?>(StringComparer.Ordinal) {
+                ["phase"] = "collect",
+                ["step"] = index
+            }, [1, 0]);
+
+            var cyclic = new Dictionary<string, object?>(StringComparer.Ordinal) {
+                ["id"] = index
+            };
+            cyclic["self"] = cyclic;
+            matrix.SetValue(cyclic, [2, -1]);
+            matrix.SetValue(index % 2 == 0, [2, 0]);
+
+            steps.Add(new {
+                Step = index,
+                Status = status,
+                ScheduleMatrix = matrix
+            });
+        }
+
+        var json = ToolResponse.OkModel(new {
+            receipt = new {
+                steps,
+                summary = new { total_steps = steps.Count, warnings = warningCount }
+            }
+        });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(180, root.GetProperty("receipt").GetProperty("steps").GetArrayLength());
+
+        var firstMatrix = root.GetProperty("receipt").GetProperty("steps")[0].GetProperty("schedule_matrix");
+        Assert.Equal(JsonValueKind.Object, firstMatrix.ValueKind);
+        Assert.Equal(2, firstMatrix.GetProperty("rank").GetInt32());
+        Assert.Equal(1, firstMatrix.GetProperty("lower_bounds")[0].GetInt32());
+        Assert.Equal(-1, firstMatrix.GetProperty("lower_bounds")[1].GetInt32());
+        Assert.Equal("[cycle]", firstMatrix.GetProperty("values")[1][0].GetProperty("self").GetString());
+    }
+
+    [Fact]
     public void AdReplicationConnectionsPayload_WithManyMappedRows_ShouldSerialize() {
         var rows = new List<object>(320);
         for (var i = 0; i < 320; i++) {
