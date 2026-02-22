@@ -29,8 +29,14 @@ public static class JsonMapper {
                 return JsonValue.From(str);
             case bool b:
                 return JsonValue.From(b);
-            case byte or sbyte or short or ushort or int or uint or long or ulong:
+            case byte or sbyte or short or ushort or int or uint or long:
                 return JsonValue.From(Convert.ToInt64(value));
+            case ulong unsignedLong:
+                // JsonValue stores numbers as Int64/Double. Keep exact Int64 when possible;
+                // otherwise fall back to Double to avoid overflow exceptions.
+                return unsignedLong <= long.MaxValue
+                    ? JsonValue.From((long)unsignedLong)
+                    : JsonValue.From((double)unsignedLong);
             case float or double or decimal:
                 return JsonValue.From(Convert.ToDouble(value));
             case IDictionary dictionary:
