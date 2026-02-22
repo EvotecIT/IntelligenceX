@@ -122,6 +122,12 @@ public sealed class ToolSerializationStressTests {
         Assert.Equal(2, firstMatrix.GetProperty("rank").GetInt32());
         Assert.Equal(1, firstMatrix.GetProperty("lower_bounds")[0].GetInt32());
         Assert.Equal(-1, firstMatrix.GetProperty("lower_bounds")[1].GetInt32());
+
+        var deepNode = firstMatrix.GetProperty("values")[0][0];
+        Assert.Equal(JsonValueKind.Object, deepNode.ValueKind);
+        Assert.Equal("root", deepNode.GetProperty("name").GetString());
+        Assert.Equal("level-00", deepNode.GetProperty("child").GetProperty("name").GetString());
+
         Assert.Equal("[cycle]", firstMatrix.GetProperty("values")[1][0].GetProperty("self").GetString());
     }
 
