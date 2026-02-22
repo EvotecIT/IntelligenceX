@@ -210,4 +210,31 @@ public sealed class ServiceLaunchArgumentsTests {
         Assert.DoesNotContain("--openai-basic-password", args);
         Assert.Contains("--openai-clear-basic-auth", args);
     }
+
+    /// <summary>
+    /// Ensures repeatable plugin paths are forwarded, while empty/duplicate entries are ignored.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesPluginPathFlags_WhenConfigured() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            profileOptions: null,
+            additionalPluginPaths: new[] {
+                "  C:\\plugins\\main  ",
+                string.Empty,
+                "C:\\plugins\\main",
+                "C:\\plugins\\extra"
+            });
+
+        Assert.Equal(new[] {
+            "--pipe",
+            "intelligencex.chat",
+            "--plugin-path",
+            "C:\\plugins\\main",
+            "--plugin-path",
+            "C:\\plugins\\extra"
+        }, args);
+    }
 }

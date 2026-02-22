@@ -730,6 +730,10 @@ public sealed partial class MainWindow : Window {
         try {
             var pending = _pendingServiceLaunchProfileOptions;
             pending ??= CaptureCurrentServiceLaunchProfileOptions();
+            var launchPluginPaths = ResolveServiceLaunchPluginPaths(serviceSourceDir);
+            if (launchPluginPaths.Count > 0) {
+                StartupLog.Write("Service plugin paths: " + string.Join(" | ", launchPluginPaths));
+            }
             var launchArgs = ServiceLaunchArguments.Build(
                 pipeName,
                 DetachedServiceMode,
@@ -756,7 +760,8 @@ public sealed partial class MainWindow : Window {
                     EnablePowerShellPack = pending.EnablePowerShellPack,
                     EnableTestimoXPack = pending.EnableTestimoXPack,
                     EnableOfficeImoPack = pending.EnableOfficeImoPack
-                });
+                },
+                additionalPluginPaths: launchPluginPaths);
             var hasExe = File.Exists(exe);
             var psi = new ProcessStartInfo {
                 FileName = hasExe ? exe : "dotnet",
@@ -850,6 +855,36 @@ public sealed partial class MainWindow : Window {
             AppendSystem(SystemNotice.ServiceStartFailed(ex.Message));
             return false;
         }
+    }
+
+    private static IReadOnlyList<string> ResolveServiceLaunchPluginPaths(string serviceSourceDir) {
+        var paths = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var sourceParent = Path.GetDirectoryName(serviceSourceDir);
+        TryAddLaunchPluginPath(paths, seen, Path.Combine(sourceParent ?? string.Empty, "plugins"));
+        TryAddLaunchPluginPath(paths, seen, Path.Combine(AppContext.BaseDirectory, "plugins"));
+
+        return paths;
+    }
+
+    private static void TryAddLaunchPluginPath(List<string> paths, HashSet<string> seen, string candidate) {
+        if (string.IsNullOrWhiteSpace(candidate)) {
+            return;
+        }
+
+        string fullPath;
+        try {
+            fullPath = Path.GetFullPath(candidate);
+        } catch {
+            return;
+        }
+
+        if (!Directory.Exists(fullPath) || !seen.Add(fullPath)) {
+            return;
+        }
+
+        paths.Add(fullPath);
     }
 
     private void StopServiceIfOwned() {
