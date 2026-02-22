@@ -435,6 +435,157 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public void ReliabilityOptionsWith_ShouldReturnCustomizedCopyWithoutMutatingOriginal() {
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+
+        var customized = baseline.With(static options => {
+            options.MaxAttempts = 6;
+            options.AttemptTimeoutMs = 2_500;
+            options.CircuitKey = "custom_readonly";
+        });
+
+        Assert.NotSame(baseline, customized);
+        Assert.Equal(6, customized.MaxAttempts);
+        Assert.Equal(2_500, customized.AttemptTimeoutMs);
+        Assert.Equal("custom_readonly", customized.CircuitKey);
+
+        Assert.Equal(3, baseline.MaxAttempts);
+        Assert.Equal(0, baseline.AttemptTimeoutMs);
+        Assert.Null(baseline.CircuitKey);
+        Assert.Equal(baseline.BaseDelayMs, customized.BaseDelayMs);
+        Assert.Equal(baseline.MaxDelayMs, customized.MaxDelayMs);
+        Assert.Equal(baseline.JitterRatio, customized.JitterRatio);
+    }
+
+    [Fact]
+    public void ReliabilityOptionsWith_ShouldThrowOnNullConfigure() {
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        Assert.Throws<ArgumentNullException>(() => baseline.With(null!));
+    }
+
+    [Fact]
+    public void ReliabilityOptionsWith_ShouldProduceIndependentCopiesAcrossInvocations() {
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+
+        var first = baseline.With(static options => {
+            options.MaxAttempts = 2;
+            options.CircuitKey = "first";
+        });
+        var second = baseline.With(static options => {
+            options.MaxAttempts = 7;
+            options.CircuitKey = "second";
+        });
+
+        Assert.NotSame(first, second);
+        Assert.Equal(2, first.MaxAttempts);
+        Assert.Equal("first", first.CircuitKey);
+        Assert.Equal(7, second.MaxAttempts);
+        Assert.Equal("second", second.CircuitKey);
+        Assert.Equal(3, baseline.MaxAttempts);
+        Assert.Null(baseline.CircuitKey);
+    }
+
+    [Fact]
+    public void ReliabilityProfilesWithOverrides_ShouldThrowOnNullConfigure() {
+        Assert.Throws<ArgumentNullException>(() => ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(null!));
+        Assert.Throws<ArgumentNullException>(() => ToolPipelineReliabilityProfiles.FastNetworkProbeWith(null!));
+    }
+
+    [Fact]
+    public void ReliabilityProfilesWithOverrides_ShouldStartFromTemplateDefaults() {
+        var customizedReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(static options => {
+            options.MaxAttempts = 5;
+        });
+
+        Assert.Equal(5, customizedReadOnly.MaxAttempts);
+        Assert.Equal(120, customizedReadOnly.BaseDelayMs);
+        Assert.Equal(1200, customizedReadOnly.MaxDelayMs);
+        Assert.True(customizedReadOnly.RetryExceptions);
+        Assert.True(customizedReadOnly.EnableCircuitBreaker);
+    }
+
+    [Fact]
+    public async Task ReliabilityProfilesWithOverrides_ShouldKeepTemplatesUnchangedAcrossConcurrentCalls() {
+        var tasks = new List<Task<ToolPipelineReliabilityOptions>>();
+        for (var i = 0; i < 20; i++) {
+            var local = i;
+            tasks.Add(Task.Run(() => ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(options => {
+                options.MaxAttempts = (local % 10) + 1;
+                options.CircuitKey = $"concurrent_{local}";
+            })));
+        }
+
+        var results = await Task.WhenAll(tasks);
+
+        for (var i = 0; i < results.Length; i++) {
+            var result = results[i];
+            Assert.Equal((i % 10) + 1, result.MaxAttempts);
+            Assert.Equal($"concurrent_{i}", result.CircuitKey);
+            Assert.Equal(120, result.BaseDelayMs);
+            Assert.Equal(1200, result.MaxDelayMs);
+            Assert.True(result.EnableCircuitBreaker);
+        }
+
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        Assert.Equal(3, baseline.MaxAttempts);
+        Assert.Null(baseline.CircuitKey);
+        Assert.Equal(120, baseline.BaseDelayMs);
+        Assert.Equal(1200, baseline.MaxDelayMs);
+        Assert.True(baseline.EnableCircuitBreaker);
+    }
+
+    [Fact]
+    public void ReliabilityOptionsBuilderBuild_ShouldNormalizeOutOfRangeValues() {
+        var options = new ToolPipelineReliabilityOptionsBuilder {
+            MaxAttempts = 99,
+            AttemptTimeoutMs = -1,
+            BaseDelayMs = -5,
+            MaxDelayMs = -10,
+            JitterRatio = 2.0d,
+            CircuitFailureThreshold = 0,
+            CircuitOpenMs = 1,
+            CircuitKey = "  sample_key  "
+        }.Build();
+
+        Assert.Equal(10, options.MaxAttempts);
+        Assert.Equal(0, options.AttemptTimeoutMs);
+        Assert.Equal(0, options.BaseDelayMs);
+        Assert.Equal(0, options.MaxDelayMs);
+        Assert.Equal(0.5d, options.JitterRatio);
+        Assert.Equal(1, options.CircuitFailureThreshold);
+        Assert.Equal(100, options.CircuitOpenMs);
+        Assert.Equal("sample_key", options.CircuitKey);
+    }
+
+    [Fact]
+    public void ReliabilityProfilesWithOverrides_ShouldCustomizeCopyWithoutMutatingTemplates() {
+        var customizedReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(static options => {
+            options.MaxAttempts = 5;
+            options.BaseDelayMs = 10;
+            options.MaxDelayMs = 20;
+        });
+        Assert.Equal(5, customizedReadOnly.MaxAttempts);
+        Assert.Equal(10, customizedReadOnly.BaseDelayMs);
+        Assert.Equal(20, customizedReadOnly.MaxDelayMs);
+
+        var defaultReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+        Assert.Equal(3, defaultReadOnly.MaxAttempts);
+        Assert.Equal(120, defaultReadOnly.BaseDelayMs);
+        Assert.Equal(1200, defaultReadOnly.MaxDelayMs);
+
+        var customizedProbe = ToolPipelineReliabilityProfiles.FastNetworkProbeWith(static options => {
+            options.AttemptTimeoutMs = 2_000;
+            options.CircuitOpenMs = 2_500;
+        });
+        Assert.Equal(2_000, customizedProbe.AttemptTimeoutMs);
+        Assert.Equal(2_500, customizedProbe.CircuitOpenMs);
+
+        var defaultProbe = ToolPipelineReliabilityProfiles.FastNetworkProbe;
+        Assert.Equal(12_000, defaultProbe.AttemptTimeoutMs);
+        Assert.Equal(10_000, defaultProbe.CircuitOpenMs);
+    }
+
+    [Fact]
     public async Task Reliability_WhenCircuitOpens_ShouldShortCircuitUntilCooldownExpires() {
         var definition = new ToolDefinition(
             "pipeline_stub",
