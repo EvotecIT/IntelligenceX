@@ -446,6 +446,45 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures deferred startup metadata plan always queues metadata sync when deferred,
+    /// including the unauthenticated native defer path.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false, true, false, false, false, false, true, true, true, false, false)]
+    [InlineData(false, true, false, false, false, true, true, true, true, true, false, true, true)]
+    [InlineData(false, false, false, false, false, false, false, false, false, false, false, false, false)]
+    public void ResolveDeferredStartupMetadataPlan_ReturnsExpectedValue(
+        bool deferPostConnectMetadataSync,
+        bool deferStartupHelloProbe,
+        bool deferStartupToolCatalogSync,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool deferStartupAuthRefresh,
+        bool deferStartupModelProfileSync,
+        bool expectedDeferStartupMetadataSync,
+        bool expectedQueueDeferredConnectMetadataSync,
+        bool expectedSkipDeferredMetadataUntilAuthenticated,
+        bool expectedDeferAuthRefresh,
+        bool expectedDeferModelProfileSync) {
+        var plan = MainWindow.ResolveDeferredStartupMetadataPlan(
+            deferPostConnectMetadataSync: deferPostConnectMetadataSync,
+            deferStartupHelloProbe: deferStartupHelloProbe,
+            deferStartupToolCatalogSync: deferStartupToolCatalogSync,
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            isAuthenticated: isAuthenticated,
+            loginInProgress: loginInProgress,
+            deferStartupAuthRefresh: deferStartupAuthRefresh,
+            deferStartupModelProfileSync: deferStartupModelProfileSync);
+
+        Assert.Equal(expectedDeferStartupMetadataSync, plan.DeferStartupMetadataSync);
+        Assert.Equal(expectedQueueDeferredConnectMetadataSync, plan.QueueDeferredConnectMetadataSync);
+        Assert.Equal(expectedSkipDeferredMetadataUntilAuthenticated, plan.SkipDeferredMetadataUntilAuthenticated);
+        Assert.Equal(expectedDeferAuthRefresh, plan.DeferAuthRefresh);
+        Assert.Equal(expectedDeferModelProfileSync, plan.DeferModelProfileSync);
+    }
+
+    /// <summary>
     /// Ensures tools-loading indicator is shown only while startup metadata is actively pending.
     /// </summary>
     [Theory]
