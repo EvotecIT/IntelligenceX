@@ -29,13 +29,13 @@
 
   <Fragment>
     <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="HostFileComponent" Guid="*">
-        <File Id="HostExeFile" Source="$(var.PayloadDir)\IntelligenceX.Chat.Host.exe" KeyPath="yes" />
+      <Component Id="PrimaryExeComponent" Guid="*">
+        <File Id="PrimaryExeFile" Source="$(var.PayloadDir)\$(var.PrimaryExe)" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
     <ComponentGroup Id="ProductComponents">
-      <ComponentRef Id="HostFileComponent" />
+      <ComponentRef Id="PrimaryExeComponent" />
       <ComponentGroupRef Id="ProductFiles" />
     </ComponentGroup>
   </Fragment>

@@ -1,14 +1,23 @@
 using System.Collections;
+using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Tooling;
 
 internal static class PluginFolderToolPackLoader {
     private const string ManifestFileName = "ix-plugin.json";
+    private const string PluginArchiveSuffix = ".ix-plugin.zip";
     private const int SupportedSchemaVersion = 1;
+    private const int PluginArchiveCacheMaxEntries = 128;
+    private static readonly TimeSpan PluginArchiveLockTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan PluginArchiveCleanupLockTimeout = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan PluginArchiveCacheMaxAge = TimeSpan.FromDays(30);
 
     internal static IReadOnlyList<PluginSearchRoot> ResolvePluginSearchRoots(ToolPackBootstrapOptions options) {
         if (options is null) {
@@ -82,7 +91,7 @@ internal static class PluginFolderToolPackLoader {
                 continue;
             }
 
-            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path)) {
+            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, onWarning)) {
                 TryLoadPluginDirectory(
                     pluginDirectory: pluginDirectory,
                     isExplicitRoot: root.IsExplicit,
@@ -94,9 +103,13 @@ internal static class PluginFolderToolPackLoader {
         }
     }
 
-    private static IEnumerable<string> EnumeratePluginDirectories(string rootPath) {
+    private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, Action<string>? onWarning) {
         if (IsPluginFolder(rootPath)) {
             yield return rootPath;
+        }
+
+        foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath, onWarning)) {
+            yield return archiveDirectory;
         }
 
         IEnumerable<string> subDirectories;
@@ -109,6 +122,25 @@ internal static class PluginFolderToolPackLoader {
         foreach (var directory in subDirectories.OrderBy(static d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)) {
             if (IsPluginFolder(directory)) {
                 yield return directory;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumeratePluginArchiveDirectories(string rootPath, Action<string>? onWarning) {
+        string[] archives;
+        try {
+            archives = Directory
+                .EnumerateFiles(rootPath, "*" + PluginArchiveSuffix, SearchOption.TopDirectoryOnly)
+                .OrderBy(static file => Path.GetFileName(file), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch {
+            yield break;
+        }
+
+        foreach (var archive in archives) {
+            var extracted = TryMaterializePluginArchive(archive, onWarning);
+            if (!string.IsNullOrWhiteSpace(extracted)) {
+                yield return extracted!;
             }
         }
     }
@@ -127,6 +159,218 @@ internal static class PluginFolderToolPackLoader {
             return Directory.EnumerateFiles(path, "*.dll", SearchOption.TopDirectoryOnly).Any();
         } catch {
             return false;
+        }
+    }
+
+    private static string? TryMaterializePluginArchive(string archivePath, Action<string>? onWarning) {
+        var normalizedArchive = NormalizePath(archivePath);
+        if (string.IsNullOrWhiteSpace(normalizedArchive) || !File.Exists(normalizedArchive)) {
+            return null;
+        }
+
+        FileStream? extractLock = null;
+        string? tempDir = null;
+        try {
+            var cacheRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "IntelligenceX.Chat",
+                "plugin-cache");
+            Directory.CreateDirectory(cacheRoot);
+            TryTrimPluginArchiveCache(cacheRoot, onWarning);
+
+            var cacheKey = BuildPluginArchiveCacheKey(normalizedArchive);
+            if (string.IsNullOrWhiteSpace(cacheKey)) {
+                return null;
+            }
+
+            var extractDir = Path.Combine(cacheRoot, cacheKey);
+            var extractLockPath = extractDir + ".lock";
+            extractLock = TryAcquireFileLock(extractLockPath, PluginArchiveLockTimeout);
+            if (extractLock is null) {
+                onWarning?.Invoke(
+                    $"[plugin] archive_extract_failed archive='{normalizedArchive}' error='lock timeout ({PluginArchiveLockTimeout.TotalSeconds:0}s)'");
+                return null;
+            }
+
+            if (IsPluginFolder(extractDir)) {
+                TouchCacheEntry(extractDir);
+                return extractDir;
+            }
+
+            tempDir = extractDir + ".tmp-" + Guid.NewGuid().ToString("N");
+            if (Directory.Exists(tempDir)) {
+                Directory.Delete(tempDir, recursive: true);
+            }
+
+            TryExtractArchiveSafely(normalizedArchive, tempDir);
+            if (!IsPluginFolder(tempDir)) {
+                Directory.Delete(tempDir, recursive: true);
+                tempDir = null;
+                return null;
+            }
+
+            if (Directory.Exists(extractDir)) {
+                Directory.Delete(extractDir, recursive: true);
+            }
+
+            Directory.Move(tempDir, extractDir);
+            tempDir = null;
+            TouchCacheEntry(extractDir);
+            return extractDir;
+        } catch (Exception ex) {
+            onWarning?.Invoke(
+                $"[plugin] archive_extract_failed archive='{normalizedArchive}' error='{ex.GetType().Name}: {ex.Message}'");
+            return null;
+        } finally {
+            extractLock?.Dispose();
+            if (!string.IsNullOrWhiteSpace(tempDir) && Directory.Exists(tempDir)) {
+                try {
+                    Directory.Delete(tempDir, recursive: true);
+                } catch {
+                    // Best effort cleanup for partially materialized temporary archives.
+                }
+            }
+        }
+    }
+
+    private static void TryTrimPluginArchiveCache(string cacheRoot, Action<string>? onWarning) {
+        try {
+            if (!Directory.Exists(cacheRoot)) {
+                return;
+            }
+
+            var cleanupLockPath = Path.Combine(cacheRoot, ".cleanup.lock");
+            using var cleanupLock = TryAcquireFileLock(cleanupLockPath, PluginArchiveCleanupLockTimeout);
+            if (cleanupLock is null) {
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            var entries = Directory
+                .EnumerateDirectories(cacheRoot, "zip-v1-*", SearchOption.TopDirectoryOnly)
+                .Select(static path => new DirectoryInfo(path))
+                .OrderByDescending(static entry => entry.LastWriteTimeUtc)
+                .ToList();
+
+            foreach (var entry in entries.ToArray()) {
+                if (now - entry.LastWriteTimeUtc <= PluginArchiveCacheMaxAge) {
+                    continue;
+                }
+
+                if (TryDeleteCacheEntry(entry)) {
+                    entries.Remove(entry);
+                }
+            }
+
+            if (entries.Count <= PluginArchiveCacheMaxEntries) {
+                return;
+            }
+
+            foreach (var entry in entries
+                         .OrderBy(static candidate => candidate.LastWriteTimeUtc)
+                         .Take(entries.Count - PluginArchiveCacheMaxEntries)) {
+                _ = TryDeleteCacheEntry(entry);
+            }
+        } catch (Exception ex) {
+            onWarning?.Invoke(
+                $"[plugin] cache_trim_failed cache='{cacheRoot}' error='{ex.GetType().Name}: {ex.Message}'");
+        }
+    }
+
+    private static bool TryDeleteCacheEntry(DirectoryInfo entry) {
+        var lockPath = entry.FullName + ".lock";
+        using var entryLock = TryAcquireFileLock(lockPath, TimeSpan.Zero);
+        if (entryLock is null) {
+            return false;
+        }
+
+        try {
+            if (entry.Exists) {
+                Directory.Delete(entry.FullName, recursive: true);
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private static FileStream? TryAcquireFileLock(string lockPath, TimeSpan timeout) {
+        var deadlineUtc = DateTime.UtcNow + timeout;
+        while (true) {
+            try {
+                var lockDirectory = Path.GetDirectoryName(lockPath);
+                if (!string.IsNullOrWhiteSpace(lockDirectory)) {
+                    Directory.CreateDirectory(lockDirectory);
+                }
+
+                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            } catch (IOException) {
+                if (DateTime.UtcNow >= deadlineUtc) {
+                    return null;
+                }
+                Thread.Sleep(35);
+            } catch (UnauthorizedAccessException) {
+                if (DateTime.UtcNow >= deadlineUtc) {
+                    return null;
+                }
+                Thread.Sleep(35);
+            }
+        }
+    }
+
+    private static void TouchCacheEntry(string path) {
+        try {
+            if (Directory.Exists(path)) {
+                Directory.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+            }
+        } catch {
+            // Best effort touch to keep active cache entries warm.
+        }
+    }
+
+    private static void TryExtractArchiveSafely(string archivePath, string destinationDirectory) {
+        var rootPath = Path.GetFullPath(destinationDirectory);
+        if (!rootPath.EndsWith(Path.DirectorySeparatorChar)) {
+            rootPath += Path.DirectorySeparatorChar;
+        }
+
+        using var archive = ZipFile.OpenRead(archivePath);
+        foreach (var entry in archive.Entries) {
+            var normalizedEntry = entry.FullName
+                .Replace('/', Path.DirectorySeparatorChar)
+                .Replace('\\', Path.DirectorySeparatorChar);
+            var candidatePath = Path.GetFullPath(Path.Combine(destinationDirectory, normalizedEntry));
+            if (!candidatePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidDataException($"archive entry escapes extraction root: '{entry.FullName}'");
+            }
+
+            if (string.IsNullOrEmpty(entry.Name)) {
+                Directory.CreateDirectory(candidatePath);
+                continue;
+            }
+
+            var candidateDirectory = Path.GetDirectoryName(candidatePath);
+            if (!string.IsNullOrWhiteSpace(candidateDirectory)) {
+                Directory.CreateDirectory(candidateDirectory);
+            }
+
+            entry.ExtractToFile(candidatePath, overwrite: true);
+        }
+    }
+
+    private static string BuildPluginArchiveCacheKey(string archivePath) {
+        try {
+            var info = new FileInfo(archivePath);
+            var stamp = archivePath.ToUpperInvariant()
+                        + "|"
+                        + info.Length.ToString()
+                        + "|"
+                        + info.LastWriteTimeUtc.Ticks.ToString();
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(stamp));
+            return "zip-v1-" + Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant();
+        } catch {
+            return string.Empty;
         }
     }
 
