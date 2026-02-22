@@ -63,6 +63,11 @@ public sealed class ToolJsonSerializationSafetyTests {
         Assert.Equal(JsonValueKind.Object, raw.ValueKind);
         Assert.Equal(2, raw.GetProperty("rank").GetInt32());
 
+        var lengths = raw.GetProperty("lengths");
+        Assert.Equal(2, lengths.GetArrayLength());
+        Assert.Equal(2, lengths[0].GetInt32());
+        Assert.Equal(2, lengths[1].GetInt32());
+
         var lowerBounds = raw.GetProperty("lower_bounds");
         Assert.Equal(2, lowerBounds.GetArrayLength());
         Assert.Equal(1, lowerBounds[0].GetInt32());
