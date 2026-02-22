@@ -29,6 +29,14 @@ public static class JsonMapper {
                 return JsonValue.From(str);
             case bool b:
                 return JsonValue.From(b);
+            case DateTime dt:
+                return JsonValue.From(dt.ToUniversalTime().ToString("O"));
+            case DateTimeOffset dto:
+                return JsonValue.From(dto.ToUniversalTime().ToString("O"));
+            case TimeSpan ts:
+                return JsonValue.From(ts.ToString());
+            case Enum e:
+                return JsonValue.From(e.ToString());
             case byte or sbyte or short or ushort or int or uint or long:
                 return JsonValue.From(Convert.ToInt64(value));
             case ulong unsignedLong:

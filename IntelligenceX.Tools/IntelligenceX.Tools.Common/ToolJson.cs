@@ -19,7 +19,12 @@ public static class ToolJson {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         // Keep dictionary keys as-is. Many tool payloads carry provider-defined keys (event data names, LDAP attribute names, headers)
         // and callers expect exact casing/spelling. Prefer modeling standardized outputs as lists/records instead of dictionaries.
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = {
+            new JsonStringEnumConverter(),
+            new UtcDateTimeJsonConverter(),
+            new UtcDateTimeOffsetJsonConverter()
+        }
     };
 
     /// <summary>
@@ -323,6 +328,26 @@ public static class ToolJson {
         }
 
         return values;
+    }
+
+    private sealed class UtcDateTimeJsonConverter : JsonConverter<DateTime> {
+        public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+            return reader.GetDateTime();
+        }
+
+        public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options) {
+            writer.WriteStringValue(value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        }
+    }
+
+    private sealed class UtcDateTimeOffsetJsonConverter : JsonConverter<DateTimeOffset> {
+        public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+            return reader.GetDateTimeOffset();
+        }
+
+        public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) {
+            writer.WriteStringValue(value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        }
     }
 
     private static string ConvertToInvariantString(object? value) {
