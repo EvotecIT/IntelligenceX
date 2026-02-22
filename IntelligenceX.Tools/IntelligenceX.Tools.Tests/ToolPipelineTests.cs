@@ -492,6 +492,19 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public void ReliabilityProfilesWithOverrides_ShouldStartFromTemplateDefaults() {
+        var customizedReadOnly = ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(static options => {
+            options.MaxAttempts = 5;
+        });
+
+        Assert.Equal(5, customizedReadOnly.MaxAttempts);
+        Assert.Equal(120, customizedReadOnly.BaseDelayMs);
+        Assert.Equal(1200, customizedReadOnly.MaxDelayMs);
+        Assert.True(customizedReadOnly.RetryExceptions);
+        Assert.True(customizedReadOnly.EnableCircuitBreaker);
+    }
+
+    [Fact]
     public void ReliabilityOptionsBuilderBuild_ShouldNormalizeOutOfRangeValues() {
         var options = new ToolPipelineReliabilityOptionsBuilder {
             MaxAttempts = 99,
