@@ -464,6 +464,28 @@ public sealed class ToolPipelineTests {
     }
 
     [Fact]
+    public void ReliabilityOptionsWith_ShouldProduceIndependentCopiesAcrossInvocations() {
+        var baseline = ToolPipelineReliabilityProfiles.ReadOnlyQuery;
+
+        var first = baseline.With(static options => {
+            options.MaxAttempts = 2;
+            options.CircuitKey = "first";
+        });
+        var second = baseline.With(static options => {
+            options.MaxAttempts = 7;
+            options.CircuitKey = "second";
+        });
+
+        Assert.NotSame(first, second);
+        Assert.Equal(2, first.MaxAttempts);
+        Assert.Equal("first", first.CircuitKey);
+        Assert.Equal(7, second.MaxAttempts);
+        Assert.Equal("second", second.CircuitKey);
+        Assert.Equal(3, baseline.MaxAttempts);
+        Assert.Null(baseline.CircuitKey);
+    }
+
+    [Fact]
     public void ReliabilityProfilesWithOverrides_ShouldThrowOnNullConfigure() {
         Assert.Throws<ArgumentNullException>(() => ToolPipelineReliabilityProfiles.ReadOnlyQueryWith(null!));
         Assert.Throws<ArgumentNullException>(() => ToolPipelineReliabilityProfiles.FastNetworkProbeWith(null!));

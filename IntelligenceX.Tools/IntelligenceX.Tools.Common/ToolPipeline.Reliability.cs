@@ -117,12 +117,12 @@ public sealed class ToolPipelineReliabilityOptions {
     /// <summary>
     /// Returns a customized copy of the current options using a mutable builder.
     /// </summary>
-    /// <param name="configure">Builder mutation callback.</param>
+    /// <param name="configure">
+    /// Builder mutation callback. The builder starts from the current option values
+    /// and is normalized when the customized options are built.
+    /// </param>
     public ToolPipelineReliabilityOptions With(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
-        ArgumentNullException.ThrowIfNull(configure);
-        var builder = ToolPipelineReliabilityOptionsBuilder.From(this);
-        configure(builder);
-        return builder.Build();
+        return ToolPipelineReliabilityOptionsBuilder.Customize(this, configure);
     }
 
     internal ToolPipelineReliabilityOptions Normalize() {
@@ -249,6 +249,16 @@ public sealed class ToolPipelineReliabilityOptionsBuilder {
         }.Normalize();
     }
 
+    internal static ToolPipelineReliabilityOptions Customize(
+        ToolPipelineReliabilityOptions source,
+        Action<ToolPipelineReliabilityOptionsBuilder> configure) {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(configure);
+        var builder = From(source);
+        configure(builder);
+        return builder.Build();
+    }
+
     internal static ToolPipelineReliabilityOptionsBuilder From(ToolPipelineReliabilityOptions options) {
         ArgumentNullException.ThrowIfNull(options);
         return new ToolPipelineReliabilityOptionsBuilder {
@@ -311,12 +321,12 @@ public static class ToolPipelineReliabilityProfiles {
     /// <summary>
     /// Balanced retries for read-only queries with explicit overrides.
     /// </summary>
-    /// <param name="configure">Builder mutation callback.</param>
+    /// <param name="configure">
+    /// Builder mutation callback. The builder starts from the profile template values
+    /// and is normalized when the customized options are built.
+    /// </param>
     public static ToolPipelineReliabilityOptions ReadOnlyQueryWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
-        ArgumentNullException.ThrowIfNull(configure);
-        var builder = ToolPipelineReliabilityOptionsBuilder.From(ReadOnlyQueryTemplate);
-        configure(builder);
-        return builder.Build();
+        return ToolPipelineReliabilityOptionsBuilder.Customize(ReadOnlyQueryTemplate, configure);
     }
 
     /// <summary>
@@ -328,12 +338,12 @@ public static class ToolPipelineReliabilityProfiles {
     /// <summary>
     /// Aggressive but bounded retries for fast connectivity probes with explicit overrides.
     /// </summary>
-    /// <param name="configure">Builder mutation callback.</param>
+    /// <param name="configure">
+    /// Builder mutation callback. The builder starts from the profile template values
+    /// and is normalized when the customized options are built.
+    /// </param>
     public static ToolPipelineReliabilityOptions FastNetworkProbeWith(Action<ToolPipelineReliabilityOptionsBuilder> configure) {
-        ArgumentNullException.ThrowIfNull(configure);
-        var builder = ToolPipelineReliabilityOptionsBuilder.From(FastNetworkProbeTemplate);
-        configure(builder);
-        return builder.Build();
+        return ToolPipelineReliabilityOptionsBuilder.Customize(FastNetworkProbeTemplate, configure);
     }
 }
 
