@@ -13,7 +13,7 @@ namespace IntelligenceX.Tools.Common;
 /// Common JSON helpers shared by tool implementations.
 /// </summary>
 public static class ToolJson {
-    private const int MaxFallbackDepth = 8;
+    private const int MaxFallbackDepth = 16;
 
     private static readonly JsonSerializerOptions SnakeCaseSerializerOptions = new() {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
