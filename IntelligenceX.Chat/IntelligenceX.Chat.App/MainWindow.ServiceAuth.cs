@@ -857,12 +857,22 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private static IReadOnlyList<string> ResolveServiceLaunchPluginPaths(string serviceSourceDir) {
+    internal static IReadOnlyList<string> ResolveServiceLaunchPluginPaths(string serviceSourceDir) {
         var paths = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var sourceParent = Path.GetDirectoryName(serviceSourceDir);
-        TryAddLaunchPluginPath(paths, seen, Path.Combine(sourceParent ?? string.Empty, "plugins"));
+        if (!string.IsNullOrWhiteSpace(serviceSourceDir)) {
+            try {
+                var normalizedSourceDir = Path.GetFullPath(serviceSourceDir);
+                var sourceParent = Path.GetDirectoryName(normalizedSourceDir);
+                if (!string.IsNullOrWhiteSpace(sourceParent)) {
+                    TryAddLaunchPluginPath(paths, seen, Path.Combine(sourceParent, "plugins"));
+                }
+            } catch {
+                // Ignore malformed source-dir values and fall back to app-base plugin path.
+            }
+        }
+
         TryAddLaunchPluginPath(paths, seen, Path.Combine(AppContext.BaseDirectory, "plugins"));
 
         return paths;

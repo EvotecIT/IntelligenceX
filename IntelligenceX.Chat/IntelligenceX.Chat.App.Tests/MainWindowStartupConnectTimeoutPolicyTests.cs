@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -482,6 +483,20 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         Assert.Equal(expectedSkipDeferredMetadataUntilAuthenticated, plan.SkipDeferredMetadataUntilAuthenticated);
         Assert.Equal(expectedDeferAuthRefresh, plan.DeferAuthRefresh);
         Assert.Equal(expectedDeferModelProfileSync, plan.DeferModelProfileSync);
+    }
+
+    /// <summary>
+    /// Ensures plugin launch path resolution handles root source directories safely
+    /// and never emits relative fallback paths.
+    /// </summary>
+    [Fact]
+    public void ResolveServiceLaunchPluginPaths_RootSourceDirectory_DoesNotEmitRelativePaths() {
+        var root = Path.GetPathRoot(AppContext.BaseDirectory);
+        Assert.False(string.IsNullOrWhiteSpace(root));
+
+        var paths = MainWindow.ResolveServiceLaunchPluginPaths(root!);
+        Assert.All(paths, static path => Assert.True(Path.IsPathRooted(path)));
+        Assert.DoesNotContain(paths, static path => string.Equals(path.Trim(), "plugins", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
