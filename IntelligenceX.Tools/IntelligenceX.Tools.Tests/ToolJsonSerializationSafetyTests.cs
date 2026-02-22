@@ -94,8 +94,44 @@ public sealed class ToolJsonSerializationSafetyTests {
         Assert.Equal("[cycle]", root.GetProperty("next").GetString());
     }
 
+    [Fact]
+    public void OkModel_WhenFallbackHandlesCycle_ShouldPreserveDeepChildContext() {
+        var rootNode = new CycleNode { Name = "root" };
+        var current = rootNode;
+        for (var index = 0; index < 12; index++) {
+            var next = new CycleNode { Name = $"level-{index:00}" };
+            current.Child = next;
+            current = next;
+        }
+        rootNode.Next = rootNode;
+
+        var json = ToolResponse.OkModel(rootNode);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(
+            "level-09",
+            root.GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("child")
+                .GetProperty("name")
+                .GetString());
+        Assert.Equal("[cycle]", root.GetProperty("next").GetString());
+    }
+
     private sealed class CycleNode {
         public string Name { get; set; } = string.Empty;
+
+        public CycleNode? Child { get; set; }
 
         public CycleNode? Next { get; set; }
     }
