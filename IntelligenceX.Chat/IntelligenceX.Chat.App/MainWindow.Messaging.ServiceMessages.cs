@@ -50,7 +50,7 @@ public sealed partial class MainWindow : Window {
                         TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(_assistantStreaming.ToString()));
                     requestConversation.UpdatedUtc = DateTime.UtcNow;
                     if (string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-                        _ = RenderTranscriptAsync();
+                        QueueTranscriptRender("chat_delta");
                     }
                     break;
                 case ChatStatusMessage status:
@@ -522,6 +522,7 @@ public sealed partial class MainWindow : Window {
 
         Task<bool> connectAttemptTask;
         var joinedExistingInFlight = false;
+        var startedNewInFlightTask = false;
         lock (_ensureConnectedSync) {
             if (_ensureConnectedInFlightTask is { IsCompleted: false } inFlightTask) {
                 connectAttemptTask = inFlightTask;
@@ -531,6 +532,7 @@ public sealed partial class MainWindow : Window {
                     connectBudget,
                     deferPostConnectMetadataSync: deferPostConnectMetadataSync);
                 _ensureConnectedInFlightTask = connectAttemptTask;
+                startedNewInFlightTask = true;
             }
         }
 
@@ -552,11 +554,28 @@ public sealed partial class MainWindow : Window {
             return await connectAttemptTask.ConfigureAwait(false);
         } finally {
             lock (_ensureConnectedSync) {
-                if (ReferenceEquals(_ensureConnectedInFlightTask, connectAttemptTask) && connectAttemptTask.IsCompleted) {
+                if (ReferenceEquals(_ensureConnectedInFlightTask, connectAttemptTask)
+                    && ShouldResetEnsureConnectedInFlightTask(
+                        startedNewInFlightTask: startedNewInFlightTask,
+                        connectAttemptTaskCompleted: connectAttemptTask.IsCompleted)) {
                     _ensureConnectedInFlightTask = null;
                 }
             }
         }
+    }
+
+    internal static bool ShouldResetEnsureConnectedInFlightTask(
+        bool startedNewInFlightTask,
+        bool connectAttemptTaskCompleted) {
+        if (startedNewInFlightTask) {
+            // Owner call must always clear in finally so a faulted/canceled attempt
+            // never pins stale in-flight state for subsequent reconnects.
+            return true;
+        }
+
+        // Joiners clear only after observing task completion; do not clear an active
+        // in-flight connect attempt while it is still running.
+        return connectAttemptTaskCompleted;
     }
 
     private async Task<bool> EnsureConnectedCoreAsync(TimeSpan connectBudget, bool deferPostConnectMetadataSync) {
