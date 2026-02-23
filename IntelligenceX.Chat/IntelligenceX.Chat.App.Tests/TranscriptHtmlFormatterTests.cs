@@ -130,10 +130,11 @@ public sealed class TranscriptHtmlFormatterTests {
     public void Format_RendersAssistantTurnTraceAndProvisionalStateWhenDecorationsProvided() {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", "Running checks...", now, "gpt-5.3-codex")
+        };
         var html = TranscriptHtmlFormatter.Format(
-            new[] {
-                ("Assistant", "Running checks...", now, "gpt-5.3-codex")
-            },
+            messages,
             "HH:mm:ss",
             options,
             new Dictionary<int, TranscriptMessageDecoration> {
@@ -152,16 +153,47 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures trace rendering keeps only the latest bounded timeline items as defense-in-depth.
+    /// </summary>
+    [Fact]
+    public void Format_CapsAssistantTurnTraceTimelineToBoundedEntryCount() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 23, 21, 6, 0, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", "Status snapshot.", now, "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    Timeline = new[] {
+                        "step-1", "step-2", "step-3", "step-4", "step-5", "step-6",
+                        "step-7", "step-8", "step-9", "step-10", "step-11", "step-12"
+                    }
+                }
+            });
+
+        Assert.Contains("assistant-turn-trace-count'>8</span>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain(">step-1</li>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain(">step-2</li>", html, StringComparison.Ordinal);
+        Assert.Contains(">step-5</li>", html, StringComparison.Ordinal);
+        Assert.Contains(">step-12</li>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures non-assistant rows ignore assistant-only transcript decorations.
     /// </summary>
     [Fact]
     public void Format_IgnoresAssistantDecorationsForNonAssistantMessages() {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 22, 20, 20, 0, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("User", "hello", now, null)
+        };
         var html = TranscriptHtmlFormatter.Format(
-            new[] {
-                ("User", "hello", now, null)
-            },
+            messages,
             "HH:mm:ss",
             options,
             new Dictionary<int, TranscriptMessageDecoration> {

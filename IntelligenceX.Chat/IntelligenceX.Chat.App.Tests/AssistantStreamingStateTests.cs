@@ -94,4 +94,11 @@ public sealed class AssistantStreamingStateTests {
         Assert.Contains("hello", preview, StringComparison.Ordinal);
         Assert.True(state.HasReceivedDelta());
     }
+
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_NullDeltaThrowsArgumentNullException() {
+        var state = new AssistantStreamingState();
+
+        Assert.Throws<ArgumentNullException>(() => state.AppendDeltaAndNormalizePreview(null!));
+    }
 }

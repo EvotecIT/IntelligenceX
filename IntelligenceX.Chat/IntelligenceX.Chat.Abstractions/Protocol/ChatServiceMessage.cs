@@ -416,6 +416,7 @@ public sealed record TurnTimelineEventDto {
     public string? Message { get; init; }
     /// <summary>
     /// UTC timestamp when the event was captured.
+    /// Local values are converted to UTC; unspecified <see cref="DateTimeKind"/> is rejected.
     /// </summary>
     public DateTime AtUtc {
         get => _atUtc;
@@ -426,7 +427,9 @@ public sealed record TurnTimelineEventDto {
         return value.Kind switch {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            _ => throw new ArgumentException(
+                "Turn timeline timestamps must include an explicit UTC or local DateTimeKind.",
+                nameof(value))
         };
     }
 }

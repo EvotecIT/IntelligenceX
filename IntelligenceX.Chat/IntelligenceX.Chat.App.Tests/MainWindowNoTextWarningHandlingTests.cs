@@ -50,4 +50,22 @@ public sealed class MainWindowNoTextWarningHandlingTests {
 
         Assert.False(preserve);
     }
+
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterInterim_DoesNotAppendWhenFinalMatchesInterim() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterInterim(
+            finalAssistantText: "  Running checks now.  ",
+            interimAssistantText: "Running checks now.");
+
+        Assert.False(append);
+    }
+
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterInterim_AppendsWhenFinalDiffersFromInterim() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterInterim(
+            finalAssistantText: "Running checks now. Found two unexpected reboots.",
+            interimAssistantText: "Running checks now.");
+
+        Assert.True(append);
+    }
 }

@@ -212,7 +212,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    internal static bool MergeFinalTimeline(List<string> existingTimeline, IReadOnlyList<string> finalTimeline) {
+    internal static bool MergeFinalTimeline(List<string> existingTimeline, IReadOnlyList<string>? finalTimeline) {
         if (existingTimeline is null) {
             return false;
         }
@@ -300,6 +300,8 @@ public sealed partial class MainWindow : Window {
     }
 
     private AssistantTurnVisualState GetOrCreateAssistantVisualState(string conversationId, int messageIndex) {
+        EnsureTurnDiagnosticsLockHeld();
+
         if (!_assistantTurnVisualStateByConversationId.TryGetValue(conversationId, out var stateByIndex)) {
             stateByIndex = new Dictionary<int, AssistantTurnVisualState>();
             _assistantTurnVisualStateByConversationId[conversationId] = stateByIndex;
@@ -314,6 +316,8 @@ public sealed partial class MainWindow : Window {
     }
 
     private void TrimConversationAssistantVisualStateLocked(ConversationRuntime conversation, string conversationId) {
+        EnsureTurnDiagnosticsLockHeld();
+
         if (!_assistantTurnVisualStateByConversationId.TryGetValue(conversationId, out var stateByIndex)
             || stateByIndex.Count == 0) {
             return;
@@ -389,5 +393,18 @@ public sealed partial class MainWindow : Window {
             timeline.RemoveAt(0);
         }
         return true;
+    }
+
+    private void EnsureTurnDiagnosticsLockHeld() {
+        // Unit tests that materialize MainWindow via RuntimeHelpers.GetUninitializedObject
+        // intentionally bypass field initializers; skip lock assertions for that synthetic shape.
+        if (_turnDiagnosticsSync is null) {
+            return;
+        }
+
+        if (!System.Threading.Monitor.IsEntered(_turnDiagnosticsSync)) {
+            throw new InvalidOperationException(
+                "Assistant turn visual state access must be synchronized via _turnDiagnosticsSync.");
+        }
     }
 }

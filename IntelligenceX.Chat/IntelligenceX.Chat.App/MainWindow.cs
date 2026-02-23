@@ -359,6 +359,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _activeTurnLifecycleSync = new();
     private readonly object _turnDiagnosticsSync = new();
     private readonly List<string> _activityTimeline = new();
+    // Guarded by _turnDiagnosticsSync. Nested dictionaries/lists are mutable and must not be touched outside that lock.
     private readonly Dictionary<string, Dictionary<int, AssistantTurnVisualState>> _assistantTurnVisualStateByConversationId =
         new(StringComparer.OrdinalIgnoreCase);
     private string? _activeTurnAssistantConversationId;
@@ -469,6 +470,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private sealed class AssistantTurnVisualState {
+        // Mutable state; always access under _turnDiagnosticsSync.
         public bool IsProvisional { get; set; }
         public List<string> Timeline { get; } = new();
     }

@@ -302,14 +302,18 @@ public sealed partial class MainWindow : Window {
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
-        var appendFinalAfterInterim = HasActiveTurnInterimResult();
+        _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
+        var appendFinalAfterInterim = HasActiveTurnInterimResult()
+                                      && ShouldAppendFinalAssistantAfterInterim(assistantText, latestAssistantText);
         if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
                 _assistantStreamingState.HasReceivedDelta(),
                 assistantText,
-                TryGetLastAssistantText(conversation, out var streamedAssistantText) ? streamedAssistantText : string.Empty,
+                latestAssistantText,
                 out var runtimeWarningNotice)) {
             conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
         } else if (appendFinalAfterInterim) {
+            // Keep interim and final as separate assistant bubbles only when the final synthesis
+            // materially differs from the interim snapshot. This avoids duplicate bubble inflation.
             AppendAssistantText(conversation, assistantText);
         } else {
             ReplaceLastAssistantText(conversation, assistantText);
@@ -449,6 +453,20 @@ public sealed partial class MainWindow : Window {
         }
 
         return normalized.StartsWith("[warning] No response text was produced", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool ShouldAppendFinalAssistantAfterInterim(string? finalAssistantText, string? interimAssistantText) {
+        var finalText = (finalAssistantText ?? string.Empty).Trim();
+        if (finalText.Length == 0) {
+            return false;
+        }
+
+        var interimText = (interimAssistantText ?? string.Empty).Trim();
+        if (interimText.Length == 0) {
+            return true;
+        }
+
+        return !string.Equals(finalText, interimText, StringComparison.Ordinal);
     }
 
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {

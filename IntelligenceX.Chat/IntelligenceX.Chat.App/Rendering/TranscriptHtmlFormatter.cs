@@ -13,6 +13,7 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// Renders transcript messages into chat-shell HTML.
 /// </summary>
 internal static class TranscriptHtmlFormatter {
+    private const int MaxAssistantTurnTraceEntries = 8;
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
@@ -141,14 +142,15 @@ internal static class TranscriptHtmlFormatter {
             return false;
         }
 
-        var hasTimeline = decoration.Timeline is { Count: > 0 };
+        var timeline = BuildAssistantTraceTimelineForRendering(decoration.Timeline);
+        var hasTimeline = timeline.Count > 0;
         if (!decoration.IsProvisional && !hasTimeline) {
             return false;
         }
 
         var encoder = HtmlEncoder.Default;
         var summaryLabel = hasTimeline ? "Turn trace" : "Live stream";
-        var countLabel = hasTimeline ? decoration.Timeline.Count.ToString(CultureInfo.InvariantCulture) : string.Empty;
+        var countLabel = hasTimeline ? timeline.Count.ToString(CultureInfo.InvariantCulture) : string.Empty;
         var detailsOpen = decoration.IsProvisional ? " open" : string.Empty;
         var sb = new StringBuilder();
         sb.Append("<details class='assistant-turn-trace'").Append(detailsOpen).Append(">")
@@ -164,13 +166,8 @@ internal static class TranscriptHtmlFormatter {
 
         if (hasTimeline) {
             sb.Append("<ol class='assistant-turn-trace-list'>");
-            for (var i = 0; i < decoration.Timeline.Count; i++) {
-                var item = (decoration.Timeline[i] ?? string.Empty).Trim();
-                if (item.Length == 0) {
-                    continue;
-                }
-
-                sb.Append("<li>").Append(encoder.Encode(item)).Append("</li>");
+            for (var i = 0; i < timeline.Count; i++) {
+                sb.Append("<li>").Append(encoder.Encode(timeline[i])).Append("</li>");
             }
             sb.Append("</ol>");
         }
@@ -178,6 +175,27 @@ internal static class TranscriptHtmlFormatter {
         sb.Append("</details>");
         html = sb.ToString();
         return true;
+    }
+
+    private static IReadOnlyList<string> BuildAssistantTraceTimelineForRendering(IReadOnlyList<string>? timeline) {
+        if (timeline is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var startIndex = timeline.Count > MaxAssistantTurnTraceEntries
+            ? timeline.Count - MaxAssistantTurnTraceEntries
+            : 0;
+        var normalized = new List<string>(Math.Min(timeline.Count, MaxAssistantTurnTraceEntries));
+        for (var i = startIndex; i < timeline.Count; i++) {
+            var item = (timeline[i] ?? string.Empty).Trim();
+            if (item.Length == 0) {
+                continue;
+            }
+
+            normalized.Add(item);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized;
     }
 
     private static IEnumerable<(string Role, string Text, DateTime Time, string? Model)> ProjectLegacyMessages(IEnumerable<(string Role, string Text, DateTime Time)> messages) {
