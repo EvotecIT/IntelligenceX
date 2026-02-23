@@ -273,7 +273,7 @@
     state.options.memoryDebug = nextOptions.memoryDebug || null;
     var previousDebug = state.options.debug && typeof state.options.debug === "object"
       ? state.options.debug
-      : { showTurnTrace: false, showDraftBubbles: true };
+      : { showTurnTrace: false, showDraftBubbles: false };
     var incomingDebug = nextOptions.debug && typeof nextOptions.debug === "object"
       ? nextOptions.debug
       : {};
@@ -283,7 +283,7 @@
         : normalizeBool(previousDebug.showTurnTrace),
       showDraftBubbles: typeof incomingDebug.showDraftBubbles === "boolean"
         ? incomingDebug.showDraftBubbles
-        : (typeof previousDebug.showDraftBubbles === "boolean" ? previousDebug.showDraftBubbles : true)
+        : (typeof previousDebug.showDraftBubbles === "boolean" ? previousDebug.showDraftBubbles : false)
     };
     state.options.activeProfileName = nextOptions.activeProfileName || state.options.activeProfileName;
     state.options.profileNames = nextOptions.profileNames || state.options.profileNames;

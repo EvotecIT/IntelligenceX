@@ -2750,7 +2750,7 @@
       var debugOptions = state.options.debug || {};
       showDraftBubblesToggle.checked = typeof debugOptions.showDraftBubbles === "boolean"
         ? debugOptions.showDraftBubbles
-        : true;
+        : false;
     }
 
     var profileBadge = byId("optDebugProfileBadge");

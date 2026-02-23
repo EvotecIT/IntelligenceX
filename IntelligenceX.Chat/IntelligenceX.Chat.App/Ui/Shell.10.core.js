@@ -144,7 +144,7 @@
       },
       debug: {
         showTurnTrace: false,
-        showDraftBubbles: true
+        showDraftBubbles: false
       },
       debugToolsEnabled: false,
       toolFilter: "",

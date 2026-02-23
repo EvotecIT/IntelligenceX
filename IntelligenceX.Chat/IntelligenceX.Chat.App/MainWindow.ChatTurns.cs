@@ -11,7 +11,7 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const int MaxExecutionContractHistoryScan = 12;
-    private const int InterimFinalNearDuplicateSuffixThresholdChars = 64;
+    private const int InterimFinalNearDuplicateSuffixThresholdChars = 24;
     private sealed record ChatTurnContext(
         ConversationRuntime Conversation,
         string ConversationId,

@@ -273,7 +273,7 @@ public sealed partial class MainWindow : Window {
     private bool _loginInProgress;
     private bool _debugMode;
     private bool _showAssistantTurnTrace;
-    private bool _showAssistantDraftBubbles = true;
+    private bool _showAssistantDraftBubbles;
     private bool _isConnected;
     private string _statusText = SessionStatusFormatter.Format(SessionStatus.Disconnected());
     private SessionStatusTone _statusTone = SessionStatusToneResolver.Resolve(SessionStatus.Disconnected());

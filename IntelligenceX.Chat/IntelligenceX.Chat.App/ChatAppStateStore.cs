@@ -227,7 +227,7 @@ internal sealed class ChatAppState {
     public bool ProactiveModeEnabled { get; set; }
     public bool PersistentMemoryEnabled { get; set; } = true;
     public bool ShowAssistantTurnTrace { get; set; }
-    public bool ShowAssistantDraftBubbles { get; set; } = true;
+    public bool ShowAssistantDraftBubbles { get; set; }
     public List<ChatMemoryFactState> MemoryFacts { get; set; } = new();
     public string CachedModelsTransport { get; set; } = "native";
     public string? CachedModelsBaseUrl { get; set; }

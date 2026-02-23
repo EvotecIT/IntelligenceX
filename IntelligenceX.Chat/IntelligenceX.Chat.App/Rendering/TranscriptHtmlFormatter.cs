@@ -14,6 +14,7 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// </summary>
 internal static class TranscriptHtmlFormatter {
     private const int MaxAssistantTurnTraceEntries = 8;
+    private const string AssistantDraftBadgeText = "Draft/Thinking";
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
@@ -83,9 +84,6 @@ internal static class TranscriptHtmlFormatter {
             }
 
             var role = ResolveRoleStyle(message.Role);
-            var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal);
-            var isContinuation = hideContinuationMeta
-                && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
             var actionExtraction = string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
                 ? ExtractPendingActionsForRendering(normalizedText)
                 : new PendingActionExtraction(normalizedText, Array.Empty<PendingActionRenderItem>());
@@ -97,6 +95,10 @@ internal static class TranscriptHtmlFormatter {
             var isAssistantDraft = decoration is not null
                                    && decoration.IsProvisional
                                    && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase);
+            var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal)
+                                       && !isAssistantDraft;
+            var isContinuation = hideContinuationMeta
+                && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
             if (!showAssistantDraftBubbles && isAssistantDraft) {
                 messageIndex++;
                 continue;
@@ -132,7 +134,7 @@ internal static class TranscriptHtmlFormatter {
             }
             html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time));
             if (isAssistantDraft) {
-                html.Append(" <span class='assistant-draft-meta-pill'>Draft</span>");
+                html.Append(" <span class='assistant-draft-meta-pill'>").Append(encoder.Encode(AssistantDraftBadgeText)).Append("</span>");
             }
             html.Append("</div>")
                 .Append("<div class='").Append(bubbleClass).Append("'>").Append(bodyHtml).Append("</div>");
@@ -171,7 +173,7 @@ internal static class TranscriptHtmlFormatter {
         }
 
         var encoder = HtmlEncoder.Default;
-        var summaryLabel = hasTimeline ? "Turn trace" : "Live stream";
+        var summaryLabel = decoration.IsProvisional ? "Draft trace" : hasTimeline ? "Turn trace" : "Live stream";
         var countLabel = hasTimeline ? timeline.Count.ToString(CultureInfo.InvariantCulture) : string.Empty;
         var detailsOpen = decoration.IsProvisional ? " open" : string.Empty;
         var sb = new StringBuilder();
