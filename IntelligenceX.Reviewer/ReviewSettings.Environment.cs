@@ -46,6 +46,22 @@ internal sealed partial class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(strictness)) {
             settings.Strictness = strictness;
         }
+        var mergeBlockerSections = GetInput("merge_blocker_sections", "REVIEW_MERGE_BLOCKER_SECTIONS");
+        if (!string.IsNullOrWhiteSpace(mergeBlockerSections)) {
+            settings.MergeBlockerSections = NormalizeMergeBlockerSections(ParseList(mergeBlockerSections));
+        }
+        var mergeBlockerRequireAllSections = GetInput("merge_blocker_require_all_sections",
+            "REVIEW_MERGE_BLOCKER_REQUIRE_ALL_SECTIONS");
+        if (!string.IsNullOrWhiteSpace(mergeBlockerRequireAllSections)) {
+            settings.MergeBlockerRequireAllSections =
+                ParseBoolean(mergeBlockerRequireAllSections, settings.MergeBlockerRequireAllSections);
+        }
+        var mergeBlockerRequireSectionMatch = GetInput("merge_blocker_require_section_match",
+            "REVIEW_MERGE_BLOCKER_REQUIRE_SECTION_MATCH");
+        if (!string.IsNullOrWhiteSpace(mergeBlockerRequireSectionMatch)) {
+            settings.MergeBlockerRequireSectionMatch =
+                ParseBoolean(mergeBlockerRequireSectionMatch, settings.MergeBlockerRequireSectionMatch);
+        }
 
         var style = GetInput("style", "REVIEW_STYLE");
         if (!string.IsNullOrWhiteSpace(style)) {

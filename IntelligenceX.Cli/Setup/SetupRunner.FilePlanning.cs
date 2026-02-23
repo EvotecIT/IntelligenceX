@@ -62,6 +62,7 @@ internal static partial class SetupRunner {
     internal static string BuildReviewerConfigJson(string[] args) {
         var options = SetupOptions.Parse(args);
         ValidateAnalysisOptionContextOrThrow(options);
+        ValidateReviewOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
         return plan.Content ?? string.Empty;
     }
@@ -74,6 +75,7 @@ internal static partial class SetupRunner {
     internal static string BuildReviewerConfigJsonFromSeedForTests(string[] args, string seedContent) {
         var options = SetupOptions.Parse(args);
         ValidateAnalysisOptionContextOrThrow(options);
+        ValidateReviewOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: seedContent, seedContent: seedContent);
         return plan.Content ?? string.Empty;
     }
@@ -83,6 +85,20 @@ internal static partial class SetupRunner {
             return;
         }
         throw new InvalidOperationException(analysisOptionError ?? "Invalid analysis options.");
+    }
+
+    private static void ValidateReviewOptionContextOrThrow(SetupOptions options) {
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(options.ConfigJson) ||
+                                !string.IsNullOrWhiteSpace(options.ConfigPath);
+        if (TryValidateReviewOptionContext(
+                options,
+                isSetup: true,
+                withConfig: true,
+                hasConfigOverride: hasConfigOverride,
+                out var reviewOptionError)) {
+            return;
+        }
+        throw new InvalidOperationException(reviewOptionError ?? "Invalid review options.");
     }
 
     // Test helper for workflow upgrade coverage against existing workflow content.
@@ -261,6 +277,24 @@ internal static partial class SetupRunner {
         if (!options.ReviewProfileSet && !string.IsNullOrWhiteSpace(snapshot.Profile)) {
             settings.Profile = snapshot.Profile!;
         }
+        if (!settings.IntentSet && !string.IsNullOrWhiteSpace(snapshot.Intent)) {
+            settings.Intent = snapshot.Intent!;
+        }
+        if (!settings.StrictnessSet && !string.IsNullOrWhiteSpace(snapshot.Strictness)) {
+            settings.Strictness = snapshot.Strictness!;
+        }
+        if (!settings.VisionPathSet && !string.IsNullOrWhiteSpace(snapshot.VisionPath)) {
+            settings.VisionPath = snapshot.VisionPath!;
+        }
+        if (!settings.MergeBlockerSectionsSet && snapshot.MergeBlockerSections is { Length: > 0 }) {
+            settings.MergeBlockerSections = snapshot.MergeBlockerSections;
+        }
+        if (!settings.MergeBlockerRequireAllSectionsSet && snapshot.MergeBlockerRequireAllSections.HasValue) {
+            settings.MergeBlockerRequireAllSections = snapshot.MergeBlockerRequireAllSections.Value;
+        }
+        if (!settings.MergeBlockerRequireSectionMatchSet && snapshot.MergeBlockerRequireSectionMatch.HasValue) {
+            settings.MergeBlockerRequireSectionMatch = snapshot.MergeBlockerRequireSectionMatch.Value;
+        }
         if (!options.ReviewModeSet && !string.IsNullOrWhiteSpace(snapshot.Mode)) {
             settings.Mode = snapshot.Mode!;
         }
@@ -361,17 +395,38 @@ internal static partial class SetupRunner {
         if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
         }
+        var review = (JsonObject)root["review"]!;
+        if (!string.IsNullOrWhiteSpace(settings.Intent)) {
+            review["intent"] = settings.Intent;
+        }
+        if (!string.IsNullOrWhiteSpace(settings.Strictness)) {
+            review["strictness"] = settings.Strictness;
+        }
+        if (!string.IsNullOrWhiteSpace(settings.VisionPath)) {
+            review["visionPath"] = settings.VisionPath;
+        }
+        if (settings.MergeBlockerSections.Length > 0) {
+            var sections = new JsonArray();
+            foreach (var section in settings.MergeBlockerSections) {
+                sections.Add(section);
+            }
+            review["mergeBlockerSections"] = sections;
+        }
+        if (settings.MergeBlockerRequireAllSectionsSet) {
+            review["mergeBlockerRequireAllSections"] = settings.MergeBlockerRequireAllSections;
+        }
+        if (settings.MergeBlockerRequireSectionMatchSet) {
+            review["mergeBlockerRequireSectionMatch"] = settings.MergeBlockerRequireSectionMatch;
+        }
         if (settings.OpenAIAccountIds.Length > 0) {
             var accountIds = new JsonArray();
             foreach (var accountId in settings.OpenAIAccountIds) {
                 accountIds.Add(accountId);
             }
-            var review = (JsonObject)root["review"]!;
             review["openaiAccountIds"] = accountIds;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
-            var review = (JsonObject)root["review"]!;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }

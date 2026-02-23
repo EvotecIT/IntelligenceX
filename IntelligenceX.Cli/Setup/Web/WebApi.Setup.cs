@@ -59,6 +59,32 @@ internal sealed partial class WebApi {
         return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
     }
 
+    internal static string[] BuildSetupArgsForReviewConfigTweaksTests(
+        string? reviewIntent,
+        string? reviewStrictness,
+        string? reviewLoopPolicy,
+        string? reviewVisionPath,
+        string? mergeBlockerSections,
+        bool? mergeBlockerRequireAllSections,
+        bool? mergeBlockerRequireSectionMatch,
+        bool withConfig = true,
+        bool hasConfigOverride = false) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            WithConfig = withConfig,
+            ReviewIntent = reviewIntent,
+            ReviewStrictness = reviewStrictness,
+            ReviewLoopPolicy = reviewLoopPolicy,
+            ReviewVisionPath = reviewVisionPath,
+            MergeBlockerSections = mergeBlockerSections,
+            MergeBlockerRequireAllSections = mergeBlockerRequireAllSections,
+            MergeBlockerRequireSectionMatch = mergeBlockerRequireSectionMatch,
+            ConfigJson = hasConfigOverride ? "{}" : null
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
+    }
+
     internal static string[] BuildSetupArgsForTriageBootstrapTests(bool triageBootstrap) {
         var request = new SetupRequest {
             Repo = "owner/repo",
@@ -135,6 +161,57 @@ internal sealed partial class WebApi {
             normalizedRunStrict,
             normalizedPacks,
             normalizedExportPath,
+            error);
+    }
+
+    internal static (
+        bool Success,
+        string? NormalizedReviewIntent,
+        string? NormalizedReviewStrictness,
+        string? NormalizedReviewLoopPolicy,
+        string? NormalizedReviewVisionPath,
+        string? NormalizedMergeBlockerSections,
+        bool? NormalizedMergeBlockerRequireAllSections,
+        bool? NormalizedMergeBlockerRequireSectionMatch,
+        string? Error) ValidateReviewConfigForTests(
+        bool isSetup,
+        bool withConfig,
+        bool hasConfigOverride,
+        string? reviewIntent,
+        string? reviewStrictness,
+        string? reviewLoopPolicy,
+        string? reviewVisionPath,
+        string? mergeBlockerSections,
+        bool? mergeBlockerRequireAllSections,
+        bool? mergeBlockerRequireSectionMatch) {
+        var success = WebSetupReviewConfigValidator.TryValidateAndNormalize(
+            isSetup: isSetup,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            reviewIntent: reviewIntent,
+            reviewStrictness: reviewStrictness,
+            reviewLoopPolicy: reviewLoopPolicy,
+            reviewVisionPath: reviewVisionPath,
+            mergeBlockerSections: mergeBlockerSections,
+            mergeBlockerRequireAllSections: mergeBlockerRequireAllSections,
+            mergeBlockerRequireSectionMatch: mergeBlockerRequireSectionMatch,
+            normalizedReviewIntent: out var normalizedReviewIntent,
+            normalizedReviewStrictness: out var normalizedReviewStrictness,
+            normalizedReviewLoopPolicy: out var normalizedReviewLoopPolicy,
+            normalizedReviewVisionPath: out var normalizedReviewVisionPath,
+            normalizedMergeBlockerSections: out var normalizedMergeBlockerSections,
+            normalizedMergeBlockerRequireAllSections: out var normalizedMergeBlockerRequireAllSections,
+            normalizedMergeBlockerRequireSectionMatch: out var normalizedMergeBlockerRequireSectionMatch,
+            error: out var error);
+        return (
+            success,
+            normalizedReviewIntent,
+            normalizedReviewStrictness,
+            normalizedReviewLoopPolicy,
+            normalizedReviewVisionPath,
+            normalizedMergeBlockerSections,
+            normalizedMergeBlockerRequireAllSections,
+            normalizedMergeBlockerRequireSectionMatch,
             error);
     }
 
@@ -372,6 +449,36 @@ internal sealed partial class WebApi {
         request.AnalysisRunStrict = normalizedRunStrict;
         request.AnalysisPacks = normalizedPacks;
         request.AnalysisExportPath = normalizedExportPath;
+        if (!WebSetupReviewConfigValidator.TryValidateAndNormalize(
+            isSetup: isSetup,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            reviewIntent: request.ReviewIntent,
+            reviewStrictness: request.ReviewStrictness,
+            reviewLoopPolicy: request.ReviewLoopPolicy,
+            reviewVisionPath: request.ReviewVisionPath,
+            mergeBlockerSections: request.MergeBlockerSections,
+            mergeBlockerRequireAllSections: request.MergeBlockerRequireAllSections,
+            mergeBlockerRequireSectionMatch: request.MergeBlockerRequireSectionMatch,
+            normalizedReviewIntent: out var normalizedReviewIntent,
+            normalizedReviewStrictness: out var normalizedReviewStrictness,
+            normalizedReviewLoopPolicy: out var normalizedReviewLoopPolicy,
+            normalizedReviewVisionPath: out var normalizedReviewVisionPath,
+            normalizedMergeBlockerSections: out var normalizedMergeBlockerSections,
+            normalizedMergeBlockerRequireAllSections: out var normalizedMergeBlockerRequireAllSections,
+            normalizedMergeBlockerRequireSectionMatch: out var normalizedMergeBlockerRequireSectionMatch,
+            error: out var reviewConfigError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = reviewConfigError }).ConfigureAwait(false);
+            return;
+        }
+        request.ReviewIntent = normalizedReviewIntent;
+        request.ReviewStrictness = normalizedReviewStrictness;
+        request.ReviewLoopPolicy = normalizedReviewLoopPolicy;
+        request.ReviewVisionPath = normalizedReviewVisionPath;
+        request.MergeBlockerSections = normalizedMergeBlockerSections;
+        request.MergeBlockerRequireAllSections = normalizedMergeBlockerRequireAllSections;
+        request.MergeBlockerRequireSectionMatch = normalizedMergeBlockerRequireSectionMatch;
         if (!TryValidateAndNormalizeOpenAiAccountRouting(request, isSetup, withConfig, hasConfigOverride, out var routingError)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = routingError }).ConfigureAwait(false);
@@ -494,6 +601,36 @@ internal sealed partial class WebApi {
         request.AnalysisRunStrict = normalizedRunStrict;
         request.AnalysisPacks = normalizedPacks;
         request.AnalysisExportPath = normalizedExportPath;
+        if (!WebSetupReviewConfigValidator.TryValidateAndNormalize(
+            isSetup: isSetup,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            reviewIntent: request.ReviewIntent,
+            reviewStrictness: request.ReviewStrictness,
+            reviewLoopPolicy: request.ReviewLoopPolicy,
+            reviewVisionPath: request.ReviewVisionPath,
+            mergeBlockerSections: request.MergeBlockerSections,
+            mergeBlockerRequireAllSections: request.MergeBlockerRequireAllSections,
+            mergeBlockerRequireSectionMatch: request.MergeBlockerRequireSectionMatch,
+            normalizedReviewIntent: out var normalizedReviewIntent,
+            normalizedReviewStrictness: out var normalizedReviewStrictness,
+            normalizedReviewLoopPolicy: out var normalizedReviewLoopPolicy,
+            normalizedReviewVisionPath: out var normalizedReviewVisionPath,
+            normalizedMergeBlockerSections: out var normalizedMergeBlockerSections,
+            normalizedMergeBlockerRequireAllSections: out var normalizedMergeBlockerRequireAllSections,
+            normalizedMergeBlockerRequireSectionMatch: out var normalizedMergeBlockerRequireSectionMatch,
+            error: out var reviewConfigError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = reviewConfigError }).ConfigureAwait(false);
+            return;
+        }
+        request.ReviewIntent = normalizedReviewIntent;
+        request.ReviewStrictness = normalizedReviewStrictness;
+        request.ReviewLoopPolicy = normalizedReviewLoopPolicy;
+        request.ReviewVisionPath = normalizedReviewVisionPath;
+        request.MergeBlockerSections = normalizedMergeBlockerSections;
+        request.MergeBlockerRequireAllSections = normalizedMergeBlockerRequireAllSections;
+        request.MergeBlockerRequireSectionMatch = normalizedMergeBlockerRequireSectionMatch;
         if (!TryValidateAndNormalizeOpenAiAccountRouting(request, isSetup, withConfig, hasConfigOverride, out var routingError)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = routingError }).ConfigureAwait(false);

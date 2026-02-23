@@ -296,6 +296,32 @@
               <option value="fresh">fresh</option>
             </select>
 
+            <label>Review intent (optional)</label>
+            <input id="reviewIntent" placeholder="security | performance | maintainability" />
+
+            <label>Review strictness (optional)</label>
+            <input id="reviewStrictness" placeholder="balanced | strict | picky | custom" />
+
+            <h3 style="margin: 12px 0 8px 0;">Merge-blocker loop policy</h3>
+            <label>Loop policy preset</label>
+            <select id="reviewLoopPolicy">
+              <option value="">default (reviewer defaults)</option>
+              <option value="strict">strict</option>
+              <option value="balanced">balanced</option>
+              <option value="lenient">lenient</option>
+              <option value="todo-only">todo-only</option>
+              <option value="vision">vision</option>
+            </select>
+            <label>Vision file path (optional; vision policy only)</label>
+            <input id="reviewVisionPath" placeholder="VISION.md" />
+            <label>Merge blocker sections (comma-separated)</label>
+            <input id="mergeBlockerSections" placeholder="Todo List,Critical Issues" />
+            <div class="row">
+              <label class="inline"><input type="checkbox" id="mergeBlockerRequireAllSections" checked /> Require all configured sections</label>
+              <label class="inline"><input type="checkbox" id="mergeBlockerRequireSectionMatch" checked /> Require at least one section match</label>
+            </div>
+            <p class="hint" id="mergeBlockerHint">Use this to match your repo's review contract and no-blockers auto-resolve behavior.</p>
+
             <h3 style="margin: 12px 0 8px 0;">OpenAI account routing</h3>
             <label>Primary account id (optional)</label>
             <input id="openAiAccountId" placeholder="acc_..." />

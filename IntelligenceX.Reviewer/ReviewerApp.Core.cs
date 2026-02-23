@@ -377,7 +377,7 @@ public static partial class ReviewerApp {
                 cancellationToken).ConfigureAwait(false);
             // Merge-blocker detection depends on the review markdown contract (Todo/Critical sections)
             // produced by ReviewFormatter and prompts. Keep parser + formatter in sync.
-            var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(reviewBody);
+            var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(reviewBody, settings);
             var effectiveProvider = runner.EffectiveProvider;
             if (runner.FallbackActivated && settings.Diagnostics) {
                 Console.Error.WriteLine(

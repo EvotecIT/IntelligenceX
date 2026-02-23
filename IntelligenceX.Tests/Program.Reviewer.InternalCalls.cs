@@ -107,6 +107,21 @@ internal static partial class Program {
         return ReviewerApp.NormalizeResolveEvidenceForTests(evidence);
     }
 
+    private static IReadOnlyList<string> CallCollectEvidenceScanPaths(IReadOnlyList<PullRequestFile> files, string evidence,
+        string? preferredPath = null) {
+        return ReviewerApp.CollectEvidenceScanPathsForTests(files, evidence, preferredPath);
+    }
+
+    private static IReadOnlySet<string> CallBuildInlineMatchKeys(string path, int line, string? body = null,
+        string? snippet = null, string? signatureSource = null) {
+        return ReviewerApp.BuildInlineMatchKeysForTests(path, line, body, snippet, signatureSource);
+    }
+
+    private static string? CallBuildInlineSignatureMarker(string path, int line, string? body = null,
+        string? snippet = null, string? signatureSource = null) {
+        return ReviewerApp.BuildInlineSignatureMarkerForTests(path, line, body, snippet, signatureSource);
+    }
+
     private static (IReadOnlyList<PullRequestFile> Files, string Note) CallResolveDiffRangeFiles(GitHubClient github,
         PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles, ReviewSettings settings) {
         var result = ReviewerApp.ResolveDiffRangeFilesForTestsAsync(github, context, range, currentFiles, settings,

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Cli.Setup;
 
 namespace IntelligenceX.Cli.Setup.Host;
 
@@ -32,6 +33,19 @@ internal static class SetupArgsBuilder {
 
         if (!string.IsNullOrWhiteSpace(plan.AuthB64) && !string.IsNullOrWhiteSpace(plan.AuthB64Path)) {
             throw new InvalidOperationException("Choose only one of --auth-b64 or --auth-b64-path.");
+        }
+
+        string? normalizedReviewLoopPolicy = null;
+        if (!string.IsNullOrWhiteSpace(plan.ReviewLoopPolicy)) {
+            if (!SetupReviewLoopPolicy.TryNormalize(plan.ReviewLoopPolicy, out var normalizedPolicy)) {
+                throw new InvalidOperationException(
+                    $"Invalid --review-loop-policy value. Use {SetupReviewLoopPolicy.AllowedValuesMessage()}.");
+            }
+            normalizedReviewLoopPolicy = normalizedPolicy;
+        }
+        if (!string.IsNullOrWhiteSpace(plan.ReviewVisionPath) &&
+            !string.Equals(normalizedReviewLoopPolicy, SetupReviewLoopPolicy.Vision, StringComparison.Ordinal)) {
+            throw new InvalidOperationException("--review-vision-path requires --review-loop-policy vision.");
         }
 
         if (!string.IsNullOrWhiteSpace(plan.RepoFullName)) {
@@ -98,9 +112,44 @@ internal static class SetupArgsBuilder {
             args.Add(plan.OpenAIAccountFailover.Value ? "true" : "false");
         }
 
+        if (!string.IsNullOrWhiteSpace(plan.ReviewIntent)) {
+            args.Add("--review-intent");
+            args.Add(plan.ReviewIntent);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.ReviewStrictness)) {
+            args.Add("--review-strictness");
+            args.Add(plan.ReviewStrictness);
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.ReviewProfile)) {
             args.Add("--review-profile");
             args.Add(plan.ReviewProfile);
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedReviewLoopPolicy)) {
+            args.Add("--review-loop-policy");
+            args.Add(normalizedReviewLoopPolicy);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.ReviewVisionPath)) {
+            args.Add("--review-vision-path");
+            args.Add(plan.ReviewVisionPath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.MergeBlockerSections)) {
+            args.Add("--merge-blocker-sections");
+            args.Add(plan.MergeBlockerSections);
+        }
+
+        if (plan.MergeBlockerRequireAllSections.HasValue) {
+            args.Add("--merge-blocker-require-all-sections");
+            args.Add(plan.MergeBlockerRequireAllSections.Value ? "true" : "false");
+        }
+
+        if (plan.MergeBlockerRequireSectionMatch.HasValue) {
+            args.Add("--merge-blocker-require-section-match");
+            args.Add(plan.MergeBlockerRequireSectionMatch.Value ? "true" : "false");
         }
 
         if (!string.IsNullOrWhiteSpace(plan.ReviewMode)) {

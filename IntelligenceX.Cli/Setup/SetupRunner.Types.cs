@@ -41,7 +41,16 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
+        public string? ReviewIntent { get; set; }
+        public string? ReviewStrictness { get; set; }
         public string? ReviewProfile { get; set; }
+        public string? ReviewLoopPolicy { get; set; }
+        public string? ReviewVisionPath { get; set; }
+        public string? MergeBlockerSections { get; set; }
+        public bool MergeBlockerRequireAllSections { get; set; } = true;
+        public bool MergeBlockerRequireAllSectionsSet { get; set; }
+        public bool MergeBlockerRequireSectionMatch { get; set; } = true;
+        public bool MergeBlockerRequireSectionMatchSet { get; set; }
         public string? ReviewMode { get; set; }
         public string? ReviewCommentMode { get; set; }
         public string? ConfigPath { get; set; }
@@ -96,7 +105,12 @@ internal static partial class SetupRunner {
         public bool IncludeReviewCommentsSet { get; set; }
         public bool IncludeRelatedPullRequestsSet { get; set; }
         public bool ProgressUpdatesSet { get; set; }
+        public bool ReviewIntentSet { get; set; }
+        public bool ReviewStrictnessSet { get; set; }
         public bool ReviewProfileSet { get; set; }
+        public bool ReviewLoopPolicySet { get; set; }
+        public bool ReviewVisionPathSet { get; set; }
+        public bool MergeBlockerSectionsSet { get; set; }
         public bool ReviewModeSet { get; set; }
         public bool ReviewCommentModeSet { get; set; }
         public bool DiagnosticsSet { get; set; }
@@ -233,6 +247,36 @@ internal static partial class SetupRunner {
                     case "review-profile":
                         options.ReviewProfile = value;
                         options.ReviewProfileSet = true;
+                        break;
+                    case "review-intent":
+                        options.ReviewIntent = value;
+                        options.ReviewIntentSet = true;
+                        break;
+                    case "review-strictness":
+                        options.ReviewStrictness = value;
+                        options.ReviewStrictnessSet = true;
+                        break;
+                    case "review-loop-policy":
+                        options.ReviewLoopPolicy = value;
+                        options.ReviewLoopPolicySet = true;
+                        break;
+                    case "review-vision-path":
+                        options.ReviewVisionPath = value;
+                        options.ReviewVisionPathSet = true;
+                        break;
+                    case "merge-blocker-sections":
+                        options.MergeBlockerSections = value;
+                        options.MergeBlockerSectionsSet = true;
+                        break;
+                    case "merge-blocker-require-all-sections":
+                        options.MergeBlockerRequireAllSections =
+                            ParseBool(value, options.MergeBlockerRequireAllSections);
+                        options.MergeBlockerRequireAllSectionsSet = true;
+                        break;
+                    case "merge-blocker-require-section-match":
+                        options.MergeBlockerRequireSectionMatch =
+                            ParseBool(value, options.MergeBlockerRequireSectionMatch);
+                        options.MergeBlockerRequireSectionMatchSet = true;
                         break;
                     case "review-mode":
                         options.ReviewMode = value;
@@ -449,7 +493,19 @@ internal static partial class SetupRunner {
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
         public string OpenAIAccountRotation { get; set; } = "first-available";
         public bool OpenAIAccountFailover { get; set; } = true;
+        public string? Intent { get; set; }
+        public bool IntentSet { get; set; }
+        public string? Strictness { get; set; }
+        public bool StrictnessSet { get; set; }
+        public string? VisionPath { get; set; }
+        public bool VisionPathSet { get; set; }
         public string Profile { get; set; } = "balanced";
+        public string[] MergeBlockerSections { get; set; } = Array.Empty<string>();
+        public bool MergeBlockerSectionsSet { get; set; }
+        public bool MergeBlockerRequireAllSections { get; set; } = true;
+        public bool MergeBlockerRequireAllSectionsSet { get; set; }
+        public bool MergeBlockerRequireSectionMatch { get; set; } = true;
+        public bool MergeBlockerRequireSectionMatchSet { get; set; }
         public string Mode { get; set; } = "hybrid";
         public string CommentMode { get; set; } = "sticky";
         public bool IncludeIssueComments { get; set; } = true;
@@ -469,7 +525,7 @@ internal static partial class SetupRunner {
         public bool AnalysisPacksSet { get; set; }
 
         public static ConfigSettings FromOptions(SetupOptions options) {
-            return new ConfigSettings {
+            var settings = new ConfigSettings {
                 Provider = options.Provider ?? "openai",
                 OpenAITransport = options.OpenAITransport ?? "native",
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
@@ -478,7 +534,19 @@ internal static partial class SetupRunner {
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),
                 OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation, strict: true),
                 OpenAIAccountFailover = options.OpenAIAccountFailover,
+                Intent = NormalizeOptionalValue(options.ReviewIntent),
+                IntentSet = options.ReviewIntentSet,
+                Strictness = NormalizeOptionalValue(options.ReviewStrictness),
+                StrictnessSet = options.ReviewStrictnessSet,
+                VisionPath = NormalizeOptionalValue(options.ReviewVisionPath),
+                VisionPathSet = options.ReviewVisionPathSet,
                 Profile = options.ReviewProfile ?? "balanced",
+                MergeBlockerSections = SplitCsv(options.MergeBlockerSections),
+                MergeBlockerSectionsSet = options.MergeBlockerSectionsSet,
+                MergeBlockerRequireAllSections = options.MergeBlockerRequireAllSections,
+                MergeBlockerRequireAllSectionsSet = options.MergeBlockerRequireAllSectionsSet,
+                MergeBlockerRequireSectionMatch = options.MergeBlockerRequireSectionMatch,
+                MergeBlockerRequireSectionMatchSet = options.MergeBlockerRequireSectionMatchSet,
                 Mode = options.ReviewMode ?? "hybrid",
                 CommentMode = options.ReviewCommentMode ?? "sticky",
                 IncludeIssueComments = options.IncludeIssueComments,
@@ -497,6 +565,14 @@ internal static partial class SetupRunner {
                 AnalysisPacks = SplitCsv(options.AnalysisPacks),
                 AnalysisPacksSet = options.AnalysisPacksSet
             };
+            ValidateReviewVisionPathContext(options);
+            ApplyReviewLoopPolicy(settings,
+                options.ReviewLoopPolicy,
+                options.ReviewLoopPolicySet,
+                options.ReviewVisionPath,
+                options.ReviewVisionPathSet);
+            ValidateMergeBlockerSections(settings);
+            return settings;
         }
 
         private static string[] SplitCsv(string? raw) {
@@ -507,6 +583,118 @@ internal static partial class SetupRunner {
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static string? NormalizeOptionalValue(string? value) {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        private static void ValidateReviewVisionPathContext(SetupOptions options) {
+            if (!options.ReviewVisionPathSet) {
+                return;
+            }
+            if (!options.ReviewLoopPolicySet) {
+                throw new InvalidOperationException(
+                    "--review-vision-path requires --review-loop-policy vision.");
+            }
+            if (!SetupReviewLoopPolicy.TryNormalize(options.ReviewLoopPolicy, out var normalizedPolicy)) {
+                throw new InvalidOperationException(
+                    $"Invalid --review-loop-policy value. Use {SetupReviewLoopPolicy.AllowedValuesMessage()}.");
+            }
+            if (!string.Equals(normalizedPolicy, SetupReviewLoopPolicy.Vision, StringComparison.Ordinal)) {
+                throw new InvalidOperationException(
+                    "--review-vision-path is only supported with --review-loop-policy vision.");
+            }
+        }
+
+        private static void ValidateMergeBlockerSections(ConfigSettings settings) {
+            if (!settings.MergeBlockerSectionsSet) {
+                return;
+            }
+            if (settings.MergeBlockerSections.Length > 0) {
+                return;
+            }
+            throw new InvalidOperationException(
+                "--merge-blocker-sections requires at least one non-empty section name.");
+        }
+
+        private static void ApplyReviewLoopPolicy(
+            ConfigSettings settings,
+            string? value,
+            bool policySet,
+            string? visionPath,
+            bool visionPathSet) {
+            if (!policySet) {
+                return;
+            }
+            if (!SetupReviewLoopPolicy.TryNormalize(value, out var normalized)) {
+                throw new InvalidOperationException(
+                    $"Invalid --review-loop-policy value. Use {SetupReviewLoopPolicy.AllowedValuesMessage()}.");
+            }
+            switch (normalized) {
+                case SetupReviewLoopPolicy.Strict:
+                    ApplyMergeBlockerPolicy(settings,
+                        sections: new[] { "todo list", "critical issues" },
+                        requireAllSections: true,
+                        requireSectionMatch: true);
+                    return;
+                case SetupReviewLoopPolicy.Balanced:
+                    ApplyMergeBlockerPolicy(settings,
+                        sections: new[] { "todo list", "critical issues" },
+                        requireAllSections: false,
+                        requireSectionMatch: true);
+                    return;
+                case SetupReviewLoopPolicy.Lenient:
+                    ApplyMergeBlockerPolicy(settings,
+                        sections: new[] { "todo list", "critical issues" },
+                        requireAllSections: false,
+                        requireSectionMatch: false);
+                    return;
+                case SetupReviewLoopPolicy.TodoOnly:
+                    ApplyMergeBlockerPolicy(settings,
+                        sections: new[] { "todo list" },
+                        requireAllSections: true,
+                        requireSectionMatch: true);
+                    return;
+                case SetupReviewLoopPolicy.Vision:
+                    ApplyMergeBlockerPolicy(settings,
+                        sections: new[] { "todo list", "critical issues" },
+                        requireAllSections: false,
+                        requireSectionMatch: true);
+                    if (!settings.VisionPathSet && !string.IsNullOrWhiteSpace(visionPath)) {
+                        settings.VisionPath = visionPath.Trim();
+                        settings.VisionPathSet = true;
+                    }
+                    var visionDefaults = ResolveReviewDefaultsFromVisionDocument(settings.VisionPath, visionPathSet);
+                    if (!settings.IntentSet) {
+                        settings.Intent = visionDefaults.Intent ?? "maintainability";
+                        settings.IntentSet = true;
+                    }
+                    if (!settings.StrictnessSet) {
+                        settings.Strictness = visionDefaults.Strictness ?? "balanced";
+                        settings.StrictnessSet = true;
+                    }
+                    return;
+            }
+        }
+
+        private static void ApplyMergeBlockerPolicy(
+            ConfigSettings settings,
+            IReadOnlyList<string> sections,
+            bool requireAllSections,
+            bool requireSectionMatch) {
+            if (!settings.MergeBlockerSectionsSet) {
+                settings.MergeBlockerSections = sections.ToArray();
+                settings.MergeBlockerSectionsSet = true;
+            }
+            if (!settings.MergeBlockerRequireAllSectionsSet) {
+                settings.MergeBlockerRequireAllSections = requireAllSections;
+                settings.MergeBlockerRequireAllSectionsSet = true;
+            }
+            if (!settings.MergeBlockerRequireSectionMatchSet) {
+                settings.MergeBlockerRequireSectionMatch = requireSectionMatch;
+                settings.MergeBlockerRequireSectionMatchSet = true;
+            }
         }
 
         private static string NormalizeOpenAiAccountRotation(string? value, bool strict) {
@@ -593,7 +781,13 @@ internal static partial class SetupRunner {
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
         public string? OpenAIAccountRotation { get; set; }
         public bool? OpenAIAccountFailover { get; set; }
+        public string? Intent { get; set; }
+        public string? Strictness { get; set; }
+        public string? VisionPath { get; set; }
         public string? Profile { get; set; }
+        public string[] MergeBlockerSections { get; set; } = Array.Empty<string>();
+        public bool? MergeBlockerRequireAllSections { get; set; }
+        public bool? MergeBlockerRequireSectionMatch { get; set; }
         public string? Mode { get; set; }
         public string? CommentMode { get; set; }
         public bool? IncludeIssueComments { get; set; }
@@ -616,7 +810,13 @@ internal static partial class SetupRunner {
             OpenAIAccountIds.Length > 0 ||
             OpenAIAccountRotation is not null ||
             OpenAIAccountFailover.HasValue ||
+            Intent is not null ||
+            Strictness is not null ||
+            VisionPath is not null ||
             Profile is not null ||
+            MergeBlockerSections.Length > 0 ||
+            MergeBlockerRequireAllSections.HasValue ||
+            MergeBlockerRequireSectionMatch.HasValue ||
             Mode is not null ||
             CommentMode is not null ||
             IncludeIssueComments.HasValue ||

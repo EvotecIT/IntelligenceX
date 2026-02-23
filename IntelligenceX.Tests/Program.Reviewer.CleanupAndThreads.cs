@@ -304,6 +304,19 @@ internal static partial class Program {
         AssertEqual("\"42: fixed null check`", normalized, "unbalanced delimiters preserved");
     }
 
+    private static void TestThreadResolveEvidenceDeduplicatesPatchPathScans() {
+        var files = new[] {
+            new PullRequestFile("src/Foo.cs", "modified", "@@ -1,1 +1,2 @@\n- return oldValue;\n+ return newValue;\n+ return oldValue;"),
+            new PullRequestFile("src/Bar.cs", "modified", "@@ -5,1 +5,2 @@\n- old();\n+ updated();\n+ old();")
+        };
+
+        var scanned = CallCollectEvidenceScanPaths(files, "not-present-evidence", "src/Foo.cs");
+        AssertEqual(2, scanned.Count, "scan count with preferred path");
+        AssertEqual(2, scanned.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "scan paths are unique");
+        AssertEqual(1, scanned.Count(path => path.Equals("src/Foo.cs", StringComparison.OrdinalIgnoreCase)),
+            "preferred path scanned once");
+    }
+
     private static void TestThreadTriageEmbedPlacement() {
         var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {
@@ -408,6 +421,77 @@ internal static partial class Program {
         AssertEqual(1, resolved, "auto resolve missing inline empty keys");
         AssertEqual(true, resolvePayloadObserved, "auto resolve missing inline payload observed");
         AssertEqual(true, resolvedThreadIdObserved, "auto resolve missing inline targets thread1");
+    }
+
+    private static void TestAutoResolveMissingInlineSkipsShiftedLineWithinWindow() {
+        var resolved = 0;
+        var resolvePayloadObserved = false;
+        var inlineBody = $"{ReviewFormatter.InlineMarker}\nLegacy wording.";
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                resolvePayloadObserved = true;
+                resolved++;
+                return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread-shifted\",\"isResolved\":true}}}}");
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(inlineBody, "src/Foo.cs", 12, "intelligencex-review",
+                "thread-shifted"));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 1,
+            ReviewThreadsMax = 1,
+            ReviewThreadsMaxComments = 1,
+            ReviewThreadsAutoResolveBotsOnly = false
+        };
+        var expected = new HashSet<string>(CallBuildInlineMatchKeys("src/Foo.cs", 10, "Updated wording", null,
+            "if (value == null) return;"), StringComparer.OrdinalIgnoreCase);
+
+        CallAutoResolveMissingInlineThreads(github, context, expected, settings);
+        AssertEqual(0, resolved, "auto resolve missing inline shifted line skipped");
+        AssertEqual(false, resolvePayloadObserved, "auto resolve missing inline shifted line no resolve payload");
+    }
+
+    private static void TestAutoResolveMissingInlineSkipsSignatureMatchForRewordedBody() {
+        var resolved = 0;
+        var resolvePayloadObserved = false;
+        var signatureMarker = CallBuildInlineSignatureMarker("src/Foo.cs", 24, "Original wording", null,
+            "if (value is null) return;");
+        AssertNotNull(signatureMarker, "signature marker");
+        var inlineBody = $"{ReviewFormatter.InlineMarker}\n{signatureMarker}\nOriginal wording";
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                resolvePayloadObserved = true;
+                resolved++;
+                return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread-signature\",\"isResolved\":true}}}}");
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(inlineBody, "src/Foo.cs", 31, "intelligencex-review",
+                "thread-signature"));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 1,
+            ReviewThreadsMax = 1,
+            ReviewThreadsMaxComments = 1,
+            ReviewThreadsAutoResolveBotsOnly = false
+        };
+        var expected = new HashSet<string>(CallBuildInlineMatchKeys("src/Foo.cs", 24, "Completely reworded comment",
+            null, "if (value is null) return;"), StringComparer.OrdinalIgnoreCase);
+
+        CallAutoResolveMissingInlineThreads(github, context, expected, settings);
+        AssertEqual(0, resolved, "auto resolve missing inline signature skipped");
+        AssertEqual(false, resolvePayloadObserved, "auto resolve missing inline signature no resolve payload");
     }
 
     private static void TestResolveThreadPayloadParserRejectsInvalidJson() {

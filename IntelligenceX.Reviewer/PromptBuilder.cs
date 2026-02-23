@@ -17,6 +17,7 @@ internal static class PromptBuilder {
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
+        var mergeBlockerSectionsBlock = BuildMergeBlockerSectionsBlock(settings);
         var languageHintsBlock = LanguageHints.Build(files, settings.IncludeLanguageHints);
         var severityBlock = string.IsNullOrWhiteSpace(settings.SeverityThreshold)
             ? string.Empty
@@ -37,6 +38,7 @@ internal static class PromptBuilder {
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
+            ["MergeBlockerSectionsBlock"] = mergeBlockerSectionsBlock,
             ["LanguageHintsBlock"] = languageHintsBlock,
             ["SeverityBlock"] = severityBlock,
             ["NarrativeContractBlock"] = narrativeContractBlock,
@@ -66,11 +68,8 @@ internal static class PromptBuilder {
         if (!string.IsNullOrWhiteSpace(settings.PromptTemplatePath)) {
             return File.ReadAllText(settings.PromptTemplatePath!);
         }
-        if (!string.IsNullOrWhiteSpace(settings.OutputStyle)) {
-            var key = settings.OutputStyle.Trim().ToLowerInvariant();
-            if (key is "claude" or "claude-like" or "claude_style" or "claude-style") {
-                return TemplateLoader.Load("ReviewPrompt.Claude.md");
-            }
+        if (ReviewSettings.IsCompactOutputStyle(settings.OutputStyle)) {
+            return TemplateLoader.Load("ReviewPrompt.Compact.md");
         }
         var name = settings.Length switch {
             ReviewLength.Short => "ReviewPrompt.Short.md",
@@ -109,5 +108,15 @@ Keep wording crisp and deterministic to make merge-blockers easy to action.
 Avoid chain-of-thought.
 """
         };
+    }
+
+    private static string BuildMergeBlockerSectionsBlock(ReviewSettings settings) {
+        var sections = settings.ResolveMergeBlockerSections();
+        if (sections.Count == 0) {
+            return string.Empty;
+        }
+        return
+            $"Merge-blocker sections: {string.Join(", ", sections)}.\n" +
+            "Put merge-blocking findings only under those sections.\n";
     }
 }

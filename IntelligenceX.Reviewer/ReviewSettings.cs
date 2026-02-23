@@ -75,6 +75,13 @@ internal sealed partial class ReviewSettings {
         "(?i)authorization\\s*:\\s*(bearer|basic)\\s+[^\\s]+",
         "(?i)\\b(api[_-]?key|secret|token|password|passwd|pwd)\\b\\s*[:=]\\s*['\\\"]?[^\\s'\\\"]+"
     };
+    private static readonly IReadOnlyList<string> DefaultMergeBlockerSections = new[] {
+        "todo list",
+        "critical issues"
+    };
+    private static readonly IReadOnlyList<string> CompactMergeBlockerSections = new[] {
+        "todo list"
+    };
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
@@ -86,6 +93,21 @@ internal sealed partial class ReviewSettings {
     /// </summary>
     public string? Intent { get; set; }
     public string? Strictness { get; set; }
+    /// <summary>
+    /// Optional section names used to detect merge blockers in generated review markdown.
+    /// Matching is case-insensitive and based on header contains.
+    /// </summary>
+    public IReadOnlyList<string> MergeBlockerSections { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// When true, every configured merge-blocker section must be present in the review markdown.
+    /// Missing required sections are treated as blocked for safety.
+    /// </summary>
+    public bool MergeBlockerRequireAllSections { get; set; } = true;
+    /// <summary>
+    /// When true, at least one configured merge-blocker section must be present.
+    /// If no configured sections are found, the review is treated as blocked.
+    /// </summary>
+    public bool MergeBlockerRequireSectionMatch { get; set; } = true;
     public string? Tone { get; set; }
     public string? Style { get; set; }
     public string? OutputStyle { get; set; }
@@ -396,5 +418,22 @@ internal sealed partial class ReviewSettings {
         var settings = new ReviewSettings();
         ApplyEnvironment(settings);
         return settings;
+    }
+
+    internal IReadOnlyList<string> ResolveMergeBlockerSections() {
+        if (MergeBlockerSections.Count > 0) {
+            return MergeBlockerSections;
+        }
+        return IsCompactOutputStyle(OutputStyle)
+            ? CompactMergeBlockerSections
+            : DefaultMergeBlockerSections;
+    }
+
+    internal static bool IsCompactOutputStyle(string? outputStyle) {
+        if (string.IsNullOrWhiteSpace(outputStyle)) {
+            return false;
+        }
+        var key = outputStyle.Trim().ToLowerInvariant();
+        return key is "compact" or "compact-like" or "compact_style" or "compact-style";
     }
 }

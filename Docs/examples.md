@@ -27,7 +27,7 @@ Practical configuration examples for common IntelligenceX setups.
     "model": "gpt-4o",
     "mode": "hybrid",
     "length": "medium",
-    "outputStyle": "claude",
+    "outputStyle": "compact",
     "style": "balanced"
   }
 }
@@ -42,7 +42,7 @@ Practical configuration examples for common IntelligenceX setups.
     "model": "gpt-5.3-codex",
     "mode": "inline",
     "length": "long",
-    "outputStyle": "claude",
+    "outputStyle": "compact",
     "style": "picky"
   }
 }
@@ -56,7 +56,7 @@ Practical configuration examples for common IntelligenceX setups.
     "provider": "copilot",
     "mode": "hybrid",
     "length": "medium",
-    "outputStyle": "claude"
+    "outputStyle": "compact"
   }
 }
 ```
@@ -109,7 +109,7 @@ jobs:
     with:
       reviewer_source: release
       openai_transport: native
-      output_style: claude
+      output_style: compact
       style: balanced
     secrets:
       INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
