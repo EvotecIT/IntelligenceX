@@ -259,6 +259,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ContainsQuestionSignal(draft)) {
+            return false;
+        }
+
         return ExtractPendingActions(draft).Count == 0;
     }
 

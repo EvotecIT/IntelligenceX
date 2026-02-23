@@ -170,6 +170,19 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
+            if (TryBuildCrossDomainControllerDiscoveryFirstFallbackToolCall(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    userRequest: userRequest,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
             for (var i = 0; i < packContract.FallbackTools.Length; i++) {
                 var candidateTool = packContract.FallbackTools[i];
                 if (string.Equals(candidateTool, sourceTool, StringComparison.OrdinalIgnoreCase)) {
@@ -224,6 +237,127 @@ internal sealed partial class ChatServiceSession {
 
         reason = "pack_contract_no_applicable_fallback";
         return false;
+    }
+
+    private bool TryBuildCrossDomainControllerDiscoveryFirstFallbackToolCall(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        string? userRequest,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_dc_discovery_first_not_applicable";
+
+        if (!ShouldPreferAdDiscoveryBeforeEventlogFanOut(
+                sourcePackId: sourcePackId,
+                partialScopeReason: partialScopeReason,
+                userRequest: userRequest)) {
+            reason = "cross_dc_discovery_first_not_required";
+            return false;
+        }
+
+        var adPackId = NormalizePackId("active_directory");
+        if (adPackId.Length == 0
+            || !_packCapabilityFallbackContractsByPackId.TryGetValue(adPackId, out var adContract)
+            || adContract.FallbackTools.Length == 0) {
+            reason = "cross_dc_discovery_pack_unavailable";
+            return false;
+        }
+
+        for (var i = 0; i < adContract.FallbackTools.Length; i++) {
+            var candidateTool = adContract.FallbackTools[i];
+            if (priorCalledTools.Contains(candidateTool)) {
+                continue;
+            }
+
+            if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+                continue;
+            }
+
+            if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
+                || !string.Equals(NormalizePackId(candidatePackIdRaw), adPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var mutability = ResolveStructuredNextActionMutability(
+                declaredMutability: ActionMutability.Unknown,
+                toolName: candidateTool,
+                toolDefinition: toolDefinition,
+                mutatingToolHintsByName: mutatingToolHintsByName);
+            if (mutability != ActionMutability.ReadOnly) {
+                continue;
+            }
+
+            var fallbackArguments = BuildPackFallbackArguments(
+                sourcePackId: adPackId,
+                candidateTool: candidateTool,
+                partialScopeHints: partialScopeHints);
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_dc_discovery_first:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
+        }
+
+        reason = "cross_dc_discovery_first_no_ad_fallback";
+        return false;
+    }
+
+    private static bool ShouldPreferAdDiscoveryBeforeEventlogFanOut(
+        string sourcePackId,
+        string partialScopeReason,
+        string? userRequest) {
+        if (!string.Equals(sourcePackId, NormalizePackId("eventlog"), StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!LooksLikeConstrainedDiscoveryScopeReason(partialScopeReason)) {
+            return false;
+        }
+
+        // Keep explicit host-targeted requests on host-scoped Event Log flow.
+        if (!string.IsNullOrWhiteSpace(TryExtractHostHintFromUserRequest(userRequest))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool LooksLikeConstrainedDiscoveryScopeReason(string reason) {
+        var normalized = (reason ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized.StartsWith("evtx_access_denied", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return normalized.Equals("single_domain_controller", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("single_row", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("limited_discovery", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("truncated", StringComparison.OrdinalIgnoreCase);
     }
 
     private static JsonObject BuildPackFallbackArguments(

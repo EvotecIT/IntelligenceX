@@ -53,6 +53,29 @@ public sealed class ChatInput {
     }
 
     /// <summary>
+    /// Adds a synthetic tool call item to the input.
+    /// </summary>
+    /// <param name="callId">Tool call id.</param>
+    /// <param name="name">Tool name.</param>
+    /// <param name="input">Tool input JSON.</param>
+    public ChatInput AddToolCall(string callId, string name, string? input = null) {
+        if (string.IsNullOrWhiteSpace(callId)) {
+            throw new ArgumentException("Call id cannot be empty.", nameof(callId));
+        }
+        if (string.IsNullOrWhiteSpace(name)) {
+            throw new ArgumentException("Tool name cannot be empty.", nameof(name));
+        }
+
+        var normalizedInput = string.IsNullOrWhiteSpace(input) ? "{}" : input!.Trim();
+        _items.Add(new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("call_id", callId)
+            .Add("name", name)
+            .Add("input", normalizedInput));
+        return this;
+    }
+
+    /// <summary>
     /// Adds a tool output item to the input.
     /// </summary>
     /// <param name="callId">Tool call id.</param>

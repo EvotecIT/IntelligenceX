@@ -135,7 +135,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        return tokenCount <= 8 && normalized.Length <= 80 && ContainsQuestionSignal(normalized);
+        return tokenCount <= FollowUpQuestionMaxTokens && normalized.Length <= 80 && ContainsQuestionSignal(normalized);
     }
 
     private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {

@@ -26,6 +26,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxStructuredNextActionArgumentsChars = 32_768;
     private const int NoResultPhaseLoopThresholdWithToolActivity = 8;
     private const int NoResultPhaseLoopThresholdWithoutToolActivity = 6;
+    private const int FollowUpQuestionMaxTokens = 12;
     private enum ActionMutability {
         Unknown = 0,
         ReadOnly = 1,
@@ -422,7 +423,11 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        return nonEmptyCount >= 3 && bulletLikeCount > 0;
+        // Treat only compact "blocked + minimal input" style drafts as replay blockers.
+        // Longer evidence-heavy summaries often contain bullets but should be returned as final output.
+        return nonEmptyCount >= 3
+               && nonEmptyCount <= 10
+               && bulletLikeCount >= 2;
     }
 
     private static bool IsBulletLikeLine(string value) {
@@ -483,12 +488,18 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlyList<ToolCallDto> toolCalls,
         IReadOnlyList<ToolOutputDto> toolOutputs,
+        bool continuationFollowUpTurn,
         string userRequest,
         string assistantDraft,
         out string prompt,
         out string reason) {
         prompt = string.Empty;
         reason = "not_eligible";
+
+        if (!continuationFollowUpTurn) {
+            reason = "not_continuation_follow_up";
+            return false;
+        }
 
         if (toolDefinitions.Count == 0 || toolCalls.Count == 0 || toolOutputs.Count == 0) {
             reason = "missing_tool_context";

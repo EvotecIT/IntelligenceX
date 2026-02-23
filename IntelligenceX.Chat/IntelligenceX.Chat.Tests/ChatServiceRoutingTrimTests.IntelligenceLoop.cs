@@ -249,6 +249,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Theory]
     [InlineData(true, true, false, "Findings summary without actions.", true)]
+    [InlineData(true, true, false, "Findings summary. Do you want me to continue?", false)]
     [InlineData(false, true, false, "Findings summary without actions.", false)]
     [InlineData(true, false, false, "Findings summary without actions.", false)]
     [InlineData(true, true, true, "Findings summary without actions.", false)]

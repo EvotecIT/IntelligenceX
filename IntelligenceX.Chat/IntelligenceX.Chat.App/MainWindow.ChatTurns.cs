@@ -390,7 +390,13 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        notice = outcome.Kind switch {
+        notice = BuildPartialTurnFailureNoticeText(outcome);
+        _assistantStreamingState.ClearReceivedDelta();
+        return true;
+    }
+
+    internal static string BuildPartialTurnFailureNoticeText(AssistantTurnOutcome outcome) {
+        return outcome.Kind switch {
             AssistantTurnOutcomeKind.ToolRoundLimit =>
                 "Partial response shown above. The turn hit the tool safety limit before completion. "
                 + "Reply naturally to proceed, or narrow scope (one DC / one OU).",
@@ -401,10 +407,105 @@ public sealed partial class MainWindow : Window {
                 "Partial response shown above. Turn was canceled before completion.",
             AssistantTurnOutcomeKind.Disconnected =>
                 "Partial response shown above. Connection dropped before the turn could finish.",
+            AssistantTurnOutcomeKind.Error =>
+                BuildPartialTurnErrorNoticeText(outcome.Detail),
             _ =>
                 "Partial response shown above. The turn ended before completion."
         };
-        _assistantStreamingState.ClearReceivedDelta();
+    }
+
+    private static string BuildPartialTurnErrorNoticeText(string? detail) {
+        var summary = NormalizePartialTurnFailureDetail(detail, maxChars: 220);
+        var code = TryExtractPartialTurnFailureCode(detail);
+        if (code.Length == 0 && summary.Length == 0) {
+            return "Partial response shown above. The turn ended before completion.";
+        }
+
+        if (code.Length == 0) {
+            return "Partial response shown above. The turn ended before completion. " + summary;
+        }
+
+        if (summary.Length == 0) {
+            return "Partial response shown above. The turn ended before completion (" + code + ").";
+        }
+
+        var suffix = "(" + code + ")";
+        if (summary.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) {
+            summary = summary[..^suffix.Length].TrimEnd(' ', '.', ':', ';', '-', ',');
+        }
+
+        if (summary.Length == 0) {
+            return "Partial response shown above. The turn ended before completion (" + code + ").";
+        }
+
+        return "Partial response shown above. The turn ended before completion (" + code + "). " + summary;
+    }
+
+    private static string NormalizePartialTurnFailureDetail(string? detail, int maxChars) {
+        var text = (detail ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var firstLineEnd = text.IndexOfAny(new[] { '\r', '\n' });
+        if (firstLineEnd >= 0) {
+            text = text[..firstLineEnd].Trim();
+        }
+
+        if (text.Length <= maxChars) {
+            return text;
+        }
+
+        return text[..maxChars].TrimEnd() + "...";
+    }
+
+    private static string TryExtractPartialTurnFailureCode(string? detail) {
+        var text = (detail ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var close = text.LastIndexOf(')');
+        if (close == text.Length - 1) {
+            var open = text.LastIndexOf('(', close);
+            if (open >= 0 && open + 1 < close) {
+                var candidate = text[(open + 1)..close].Trim();
+                if (LooksLikePartialTurnFailureCode(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+
+        const string marker = "reason code:";
+        var markerIndex = text.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return string.Empty;
+        }
+
+        var value = text[(markerIndex + marker.Length)..].Trim();
+        var lineEnd = value.IndexOfAny(new[] { '\r', '\n', '.', ';', ',', ' ' });
+        if (lineEnd > 0) {
+            value = value[..lineEnd].Trim();
+        }
+
+        return LooksLikePartialTurnFailureCode(value) ? value : string.Empty;
+    }
+
+    private static bool LooksLikePartialTurnFailureCode(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length is < 3 or > 80) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch) || ch == '_' || ch == '-' || ch == '.') {
+                continue;
+            }
+
+            return false;
+        }
+
         return true;
     }
 

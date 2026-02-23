@@ -395,6 +395,12 @@ internal sealed partial class ChatServiceSession {
                     }
 
                     var carryoverHostNextInput = new ChatInput();
+                    if (carryoverHostOutputs.Count > 0) {
+                        carryoverHostNextInput.AddToolCall(
+                            carryoverStructuredNextActionCall.CallId,
+                            carryoverStructuredNextActionCall.Name,
+                            carryoverStructuredNextActionCall.Input);
+                    }
                     foreach (var output in carryoverHostOutputs) {
                         carryoverHostNextInput.AddToolOutput(output.CallId, output.Output);
                     }
@@ -627,8 +633,7 @@ internal sealed partial class ChatServiceSession {
                     out _,
                     out _,
                     out _);
-                var allowHostStructuredReplay = continuationFollowUpTurn
-                                                || ShouldAllowHostStructuredNextActionReplay(text);
+                var allowHostStructuredReplay = ShouldAllowHostStructuredNextActionReplay(text);
                 if (!hostStructuredNextActionReplayUsed
                     && allowHostStructuredReplay
                     && toolCalls.Count > 0
@@ -734,6 +739,12 @@ internal sealed partial class ChatServiceSession {
                     }
 
                     var hostStructuredNextInput = new ChatInput();
+                    if (hostStructuredOutputs.Count > 0) {
+                        hostStructuredNextInput.AddToolCall(
+                            hostStructuredNextActionCall.CallId,
+                            hostStructuredNextActionCall.Name,
+                            hostStructuredNextActionCall.Input);
+                    }
                     foreach (var output in hostStructuredOutputs) {
                         hostStructuredNextInput.AddToolOutput(output.CallId, output.Output);
                     }
@@ -859,6 +870,12 @@ internal sealed partial class ChatServiceSession {
                     }
 
                     var packFallbackNextInput = new ChatInput();
+                    if (packFallbackOutputs.Count > 0) {
+                        packFallbackNextInput.AddToolCall(
+                            packFallbackCall.CallId,
+                            packFallbackCall.Name,
+                            packFallbackCall.Input);
+                    }
                     foreach (var output in packFallbackOutputs) {
                         packFallbackNextInput.AddToolOutput(output.CallId, output.Output);
                     }
@@ -883,6 +900,7 @@ internal sealed partial class ChatServiceSession {
                         toolDefinitions: structuredNextActionToolDefs,
                         toolCalls: toolCalls,
                         toolOutputs: toolOutputs,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
                         userRequest: routedUserRequest,
                         assistantDraft: text,
                         out var structuredNextActionPrompt,
@@ -997,6 +1015,8 @@ internal sealed partial class ChatServiceSession {
 
                 if (!noResultWatchdogTriggered
                     && !interimResultSent
+                    && planExecuteReviewLoop
+                    && maxReviewPasses > 0
                     && hasToolActivity
                     && ShouldEmitInterimResultSnapshot(text)) {
                     interimResultSent = true;

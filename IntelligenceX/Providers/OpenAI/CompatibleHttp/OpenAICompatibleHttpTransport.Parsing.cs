@@ -369,6 +369,36 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
                         userText.Append(text);
                         break;
                     }
+                case "custom_tool_call": {
+                        FlushUserText();
+                        var callId = item.GetString("call_id");
+                        if (string.IsNullOrWhiteSpace(callId)) {
+                            throw new InvalidOperationException("Tool call item is missing call_id.");
+                        }
+
+                        var name = item.GetString("name");
+                        if (string.IsNullOrWhiteSpace(name)) {
+                            throw new InvalidOperationException("Tool call item is missing name.");
+                        }
+
+                        var arguments = item.GetString("input");
+                        if (string.IsNullOrWhiteSpace(arguments)) {
+                            arguments = item.GetString("arguments");
+                        }
+                        var normalizedArguments = string.IsNullOrWhiteSpace(arguments) ? "{}" : arguments!.Trim();
+
+                        messages.Add(new JsonObject()
+                            .Add("role", "assistant")
+                            .Add("content", JsonValue.Null)
+                            .Add("tool_calls", new JsonArray()
+                                .Add(new JsonObject()
+                                    .Add("id", callId!.Trim())
+                                    .Add("type", "function")
+                                    .Add("function", new JsonObject()
+                                        .Add("name", name!.Trim())
+                                        .Add("arguments", normalizedArguments)))));
+                        break;
+                    }
                 case "custom_tool_call_output": {
                         FlushUserText();
                         var callId = item.GetString("call_id");

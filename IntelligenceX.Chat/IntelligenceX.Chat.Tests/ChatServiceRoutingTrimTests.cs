@@ -304,6 +304,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("dalej?")]
     [InlineData("please continue failed logon report for ado？")]
     [InlineData("please continue failed logon report for ado؟")]
+    [InlineData("ok can you check if other dcs had similar patterns?")]
     [InlineData("继续")]
     [InlineData("继续执行")]
     [InlineData("xqzz ltmv")]
@@ -623,6 +624,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("please continue failed logon report for ado?", true)]
     [InlineData("please continue failed logon report for ado？", true)]
     [InlineData("please continue failed logon report for ado؟", true)]
+    [InlineData("ok can you check if other dcs had similar patterns?", true)]
     [InlineData("please continue failed logon report for ado", false)]
     public void LooksLikeCompactFollowUp_RecognizesUnicodeQuestionPunctuation(string userRequest, bool expected) {
         var result = LooksLikeCompactFollowUpMethod.Invoke(null, new object?[] { userRequest });
