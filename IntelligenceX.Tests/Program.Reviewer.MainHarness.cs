@@ -30,6 +30,8 @@ internal static partial class Program {
         failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
         failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);
         failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
+        failed += Run("Auto-resolve missing inline shifted line window", TestAutoResolveMissingInlineSkipsShiftedLineWithinWindow);
+        failed += Run("Auto-resolve missing inline signature match", TestAutoResolveMissingInlineSkipsSignatureMatchForRewordedBody);
         failed += Run("Resolve thread payload parser rejects invalid JSON", TestResolveThreadPayloadParserRejectsInvalidJson);
         failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
         failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
@@ -589,4 +591,3 @@ internal static partial class Program {
 #endif
     }
 }
-
