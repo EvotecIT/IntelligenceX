@@ -178,7 +178,7 @@ public sealed partial class MainWindow : Window {
                         }
                     }
                 }
-                _activeTurnReceivedDelta = false;
+                _assistantStreamingState.ClearReceivedDelta();
                 _activeTurnQueueWaitMs = null;
                 try {
                     await PublishSessionStateAsync().ConfigureAwait(false);

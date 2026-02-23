@@ -14,7 +14,6 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
-using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -186,11 +185,10 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        _assistantStreaming.Append(delta);
-        _activeTurnReceivedDelta = true;
+        var normalizedPreview = _assistantStreamingState.AppendDeltaAndNormalizePreview(delta);
         ReplaceLastAssistantText(
             conversation,
-            TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(_assistantStreaming.ToString()));
+            normalizedPreview);
         conversation.UpdatedUtc = DateTime.UtcNow;
         BindActiveTurnAssistantMessage(conversation);
         SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents);

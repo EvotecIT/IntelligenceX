@@ -53,7 +53,7 @@ public sealed partial class MainWindow : Window {
         conversation.ThreadId = null;
         conversation.UpdatedUtc = DateTime.UtcNow;
         _messages = conversation.Messages;
-        _assistantStreaming.Clear();
+        _assistantStreamingState.Reset();
         _threadId = null;
         ClearToolRoutingInsights();
         if (string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
@@ -118,7 +118,7 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
-            if (_isSending && _assistantStreaming.Length > 0) {
+            if (_isSending && _assistantStreamingState.HasBufferedContent()) {
                 var previousTicks = Interlocked.Read(ref _transcriptLastRenderUtcTicks);
                 if (previousTicks > 0) {
                     var elapsedTicks = DateTime.UtcNow.Ticks - previousTicks;

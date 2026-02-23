@@ -373,7 +373,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _turnWatchdogSync = new();
     private CancellationTokenSource? _turnWatchdogCts;
     private string _latestServiceActivityText = string.Empty;
-    private bool _activeTurnReceivedDelta;
+    private readonly AssistantStreamingState _assistantStreamingState = new();
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;
     private bool _autoSignInAttempted;
@@ -394,7 +394,6 @@ public sealed partial class MainWindow : Window {
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
     private List<(string Role, string Text, DateTime Time, string? Model)> _messages = new();
-    private readonly StringBuilder _assistantStreaming = new();
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
     private long _transcriptRenderGeneration;
     private long _transcriptLastRenderUtcTicks;

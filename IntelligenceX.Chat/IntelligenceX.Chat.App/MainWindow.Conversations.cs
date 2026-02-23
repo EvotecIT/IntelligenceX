@@ -297,7 +297,7 @@ public sealed partial class MainWindow : Window {
         _conversations.Add(conversation);
         TrimConversationsToLimit();
         ActivateConversation(conversation.Id);
-        _assistantStreaming.Clear();
+        _assistantStreamingState.Reset();
         _activeRequestConversationId = null;
         _modelKickoffAttempted = false;
         _modelKickoffInProgress = false;
@@ -380,7 +380,7 @@ public sealed partial class MainWindow : Window {
 
             if (isActiveConversation) {
                 _messages = conversation.Messages;
-                _assistantStreaming.Clear();
+                _assistantStreamingState.Reset();
                 _threadId = null;
                 ClearToolRoutingInsights();
                 _modelKickoffAttempted = false;
