@@ -62,7 +62,8 @@ internal sealed partial class ReviewSettings {
     };
     private static readonly IReadOnlyList<string> DefaultReviewThreadsBotLogins = new[] {
         "intelligencex-review",
-        "copilot-pull-request-reviewer"
+        "copilot-pull-request-reviewer",
+        "chatgpt-codex-connector"
     };
     private static readonly IReadOnlyList<string> DefaultRedactionPatterns = new[] {
         "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]*PRIVATE KEY-----",

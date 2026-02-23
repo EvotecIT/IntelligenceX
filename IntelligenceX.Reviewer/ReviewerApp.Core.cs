@@ -250,6 +250,7 @@ public static partial class ReviewerApp {
 
             var files = await codeHostReader.GetPullRequestFilesAsync(context, cancellationToken)
                 .ConfigureAwait(false);
+            var allFiles = files;
 
             if (files.Count == 0) {
                 Console.WriteLine("No files to review.");
@@ -301,7 +302,6 @@ public static partial class ReviewerApp {
                 return 0;
             }
 
-            var allFiles = files;
             var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(codeHostReader, context, settings, files, cancellationToken)
                 .ConfigureAwait(false);
             reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths,

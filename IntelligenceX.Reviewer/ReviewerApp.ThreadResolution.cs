@@ -566,18 +566,65 @@ public static partial class ReviewerApp {
         if (string.IsNullOrWhiteSpace(evidence)) {
             return false;
         }
-        if (!TryGetThreadLocation(thread, out var path, out var line)) {
+        var normalizedEvidence = NormalizeResolveEvidence(evidence);
+        if (normalizedEvidence.Length == 0) {
             return false;
         }
-        var context = BuildThreadDiffContext(patchIndex, patchLookup, path, line, maxPatchChars);
-        if (string.IsNullOrWhiteSpace(context) || context == "<unavailable>") {
+        if (TryGetThreadLocation(thread, out var path, out var line)) {
+            var context = BuildThreadDiffContext(patchIndex, patchLookup, path, line, maxPatchChars);
+            if (!IsUnavailableDiffContext(context) && HasEvidenceInContext(context, normalizedEvidence)) {
+                return true;
+            }
+        }
+        return HasEvidenceInAnyDiffContext(patchIndex, patchLookup, normalizedEvidence);
+    }
+
+    private static string NormalizeResolveEvidence(string evidence) {
+        var normalized = evidence.Trim().Trim('"').Trim();
+        normalized = normalized.Trim('`').Trim();
+        if (normalized.Length >= 2 && normalized[0] == '\'' && normalized[^1] == '\'') {
+            normalized = normalized.Substring(1, normalized.Length - 2).Trim();
+        }
+        return normalized;
+    }
+
+    private static bool IsUnavailableDiffContext(string? context) {
+        return string.IsNullOrWhiteSpace(context) || context.Equals("<unavailable>", StringComparison.Ordinal);
+    }
+
+    private static bool HasEvidenceInAnyDiffContext(Dictionary<string, List<PatchLine>> patchIndex,
+        IReadOnlyDictionary<string, string> patchLookup, string evidence) {
+        foreach (var lines in patchIndex.Values) {
+            if (lines.Count == 0) {
+                continue;
+            }
+            var context = string.Join("\n", lines.Select(static line => $"{line.LineNumber}: {line.Text}"));
+            if (HasEvidenceInContext(context, evidence)) {
+                return true;
+            }
+        }
+        foreach (var patch in patchLookup.Values) {
+            if (string.IsNullOrWhiteSpace(patch)) {
+                continue;
+            }
+            var context = $"<file patch>\n{patch}";
+            if (HasEvidenceInContext(context, evidence)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool HasEvidenceInContext(string context, string evidence) {
+        if (context.Contains(evidence, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        var normalizedContext = NormalizeSnippetText(context);
+        var normalizedEvidence = NormalizeSnippetText(evidence);
+        if (string.IsNullOrWhiteSpace(normalizedContext) || string.IsNullOrWhiteSpace(normalizedEvidence)) {
             return false;
         }
-        var normalized = evidence.Trim().Trim('"');
-        if (normalized.Length == 0) {
-            return false;
-        }
-        return context.Contains(normalized, StringComparison.OrdinalIgnoreCase);
+        return normalizedContext.Contains(normalizedEvidence, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeThreadAssessmentId(string? id) {
