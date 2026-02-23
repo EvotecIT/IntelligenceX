@@ -572,8 +572,8 @@ public static partial class ReviewerApp {
         }
         if (TryGetThreadLocation(thread, out var path, out var line)) {
             var context = BuildThreadDiffContext(patchIndex, patchLookup, path, line, maxPatchChars);
-            if (!IsUnavailableDiffContext(context) && HasEvidenceInContext(context, normalizedEvidence)) {
-                return true;
+            if (!IsUnavailableDiffContext(context)) {
+                return HasEvidenceInContext(context, normalizedEvidence);
             }
         }
         return HasEvidenceInAnyDiffContext(patchIndex, patchLookup, normalizedEvidence);
