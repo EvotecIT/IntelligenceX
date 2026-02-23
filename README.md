@@ -19,6 +19,20 @@ Your credentials, your GitHub App, your control.
 
 Note: some tool packs are private/licensed by default depending on deployment and usage.
 
+## Visual Overview
+
+Screenshots below are sourced from current blog/gallery assets and mirrored under `Assets/README/` for stable GitHub rendering.
+
+| Area | Preview |
+| --- | --- |
+| GitHub Actions Reviewer | <img src="Assets/README/reviewer.jpg" alt="IntelligenceX reviewer output on GitHub PR" width="420" /> |
+| IX Chat | <img src="Assets/README/chat.png" alt="IX Chat AD triage conversation" width="420" /> |
+| IX Tools | <img src="Assets/README/tools.png" alt="IX Tools pack list and toggles" width="420" /> |
+| CLI Tools | <img src="Assets/README/cli.svg" alt="CLI product visual" width="420" /> |
+| .NET Library | <img src="Assets/README/library.svg" alt=".NET library product visual" width="420" /> |
+| PowerShell Module | <img src="Assets/README/powershell.svg" alt="PowerShell module product visual" width="420" /> |
+| Issue Ops + Project Control | <img src="Assets/README/issue-ops.svg" alt="Issue Ops project board visual" width="420" /> |
+
 ## Quick Start
 
 Recommended onboarding:

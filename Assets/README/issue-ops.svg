@@ -1,0 +1,80 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Issue Ops project board overview">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#020817"/>
+      <stop offset="1" stop-color="#0B1D3A"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="64" y1="112" x2="1536" y2="852" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1222"/>
+      <stop offset="1" stop-color="#081225"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect x="36" y="28" width="1528" height="844" rx="20" fill="url(#panel)" stroke="#1E3A64"/>
+
+  <rect x="36" y="28" width="1528" height="68" rx="20" fill="#08162C"/>
+  <circle cx="74" cy="62" r="8" fill="#334E76"/>
+  <circle cx="102" cy="62" r="8" fill="#334E76"/>
+  <circle cx="130" cy="62" r="8" fill="#334E76"/>
+  <rect x="170" y="44" width="410" height="36" rx="10" fill="#102647"/>
+  <text x="194" y="67" fill="#A5C8F1" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">EvotecIT / Projects / IX Issue Ops Control</text>
+  <rect x="1268" y="44" width="264" height="36" rx="10" fill="#0C2B24" stroke="#1D7A63"/>
+  <text x="1292" y="67" fill="#97F3CD" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Issue Ops view</text>
+
+  <rect x="72" y="126" width="1456" height="66" rx="12" fill="#0D1C34" stroke="#1A335A"/>
+  <text x="96" y="166" fill="#CFE4FF" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">Filter by keyword or field</text>
+
+  <rect x="72" y="212" width="1456" height="620" rx="14" fill="#08172B" stroke="#1A335A"/>
+  <rect x="72" y="212" width="1456" height="56" rx="14" fill="#0D223E"/>
+  <text x="108" y="246" fill="#A3C6EF" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Title</text>
+  <text x="818" y="246" fill="#A3C6EF" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Status</text>
+  <text x="1008" y="246" fill="#A3C6EF" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Issue Review Action</text>
+  <text x="1240" y="246" fill="#A3C6EF" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Confidence</text>
+  <text x="1380" y="246" fill="#A3C6EF" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Matched PR</text>
+
+  <line x1="794" y1="212" x2="794" y2="832" stroke="#173154"/>
+  <line x1="984" y1="212" x2="984" y2="832" stroke="#173154"/>
+  <line x1="1230" y1="212" x2="1230" y2="832" stroke="#173154"/>
+  <line x1="1368" y1="212" x2="1368" y2="832" stroke="#173154"/>
+
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="14">
+    <text x="96" y="305" fill="#E2ECFF">#362 Infra blocker: PR checks failing with no space left on device</text>
+    <text x="822" y="305" fill="#D8E6FC">Open</text>
+    <rect x="1002" y="282" width="120" height="30" rx="14" fill="#123E2E" stroke="#2E8861"/>
+    <text x="1041" y="301" fill="#A0F2CE" font-size="13" font-weight="700">close</text>
+    <text x="1251" y="304" fill="#A8EED4" font-size="13" font-weight="700">91 / high</text>
+    <text x="1390" y="305" fill="#D8E6FC">#359</text>
+
+    <text x="96" y="371" fill="#E2ECFF">#440 Infra blocker: PR checks stuck in Setup .NET</text>
+    <text x="822" y="371" fill="#D8E6FC">Open</text>
+    <rect x="1002" y="348" width="206" height="30" rx="14" fill="#3A2F14" stroke="#B98B31"/>
+    <text x="1028" y="367" fill="#FBE3A2" font-size="13" font-weight="700">needs-human-review</text>
+    <text x="1246" y="370" fill="#F8DFA1" font-size="13" font-weight="700">63 / medium</text>
+    <text x="1390" y="371" fill="#D8E6FC">#438</text>
+
+    <text x="96" y="437" fill="#E2ECFF">#345 CI infra: Website Build fails when browser deps unavailable</text>
+    <text x="822" y="437" fill="#D8E6FC">Open</text>
+    <rect x="1002" y="414" width="146" height="30" rx="14" fill="#133151" stroke="#3178B2"/>
+    <text x="1037" y="433" fill="#A9D8FF" font-size="13" font-weight="700">keep-open</text>
+    <text x="1251" y="436" fill="#A7D7FF" font-size="13" font-weight="700">86 / high</text>
+    <text x="1390" y="437" fill="#D8E6FC">#355</text>
+
+    <text x="96" y="503" fill="#E2ECFF">#259 Improve documentation</text>
+    <text x="822" y="503" fill="#D8E6FC">Open</text>
+    <rect x="1002" y="480" width="146" height="30" rx="14" fill="#133151" stroke="#3178B2"/>
+    <text x="1037" y="499" fill="#A9D8FF" font-size="13" font-weight="700">keep-open</text>
+    <text x="1246" y="502" fill="#F8DFA1" font-size="13" font-weight="700">58 / medium</text>
+    <text x="1390" y="503" fill="#D8E6FC">#531</text>
+  </g>
+
+  <line x1="72" y1="334" x2="1528" y2="334" stroke="#173154"/>
+  <line x1="72" y1="400" x2="1528" y2="400" stroke="#173154"/>
+  <line x1="72" y1="466" x2="1528" y2="466" stroke="#173154"/>
+  <line x1="72" y1="532" x2="1528" y2="532" stroke="#173154"/>
+
+  <rect x="92" y="734" width="440" height="78" rx="10" fill="#0D223E" stroke="#1A335A"/>
+  <text x="116" y="763" fill="#9FC3EE" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Run summary</text>
+  <text x="116" y="788" fill="#D9E8FF" font-family="Segoe UI, Arial, sans-serif" font-size="13">close: 4  keep-open: 7  needs-human-review: 3</text>
+  <text x="116" y="806" fill="#7EAED9" font-family="Segoe UI, Arial, sans-serif" font-size="12">mode: proposal-only  threshold: 80  state streak: 2</text>
+</svg>
