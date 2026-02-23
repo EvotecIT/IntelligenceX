@@ -42,6 +42,22 @@ public sealed class MainWindowConversationTrimTests {
                                                                              "_activeRequestConversationId",
                                                                              BindingFlags.NonPublic | BindingFlags.Instance)
                                                                          ?? throw new InvalidOperationException("_activeRequestConversationId field not found.");
+    private static readonly FieldInfo TurnDiagnosticsSyncField = typeof(MainWindow).GetField(
+                                                                     "_turnDiagnosticsSync",
+                                                                     BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                 ?? throw new InvalidOperationException("_turnDiagnosticsSync field not found.");
+    private static readonly FieldInfo AssistantTurnVisualStateByConversationIdField = typeof(MainWindow).GetField(
+        "_assistantTurnVisualStateByConversationId",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_assistantTurnVisualStateByConversationId field not found.");
+    private static readonly FieldInfo ActiveTurnAssistantMessageIndexField = typeof(MainWindow).GetField(
+                                                                                 "_activeTurnAssistantMessageIndex",
+                                                                                 BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                             ?? throw new InvalidOperationException("_activeTurnAssistantMessageIndex field not found.");
+    private static readonly FieldInfo ActiveTurnAssistantPendingTimelineField = typeof(MainWindow).GetField(
+                                                                                    "_activeTurnAssistantPendingTimeline",
+                                                                                    BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                                ?? throw new InvalidOperationException("_activeTurnAssistantPendingTimeline field not found.");
 
     private static readonly PropertyInfo ConversationIdProperty = ConversationRuntimeType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)
                                                               ?? throw new InvalidOperationException("ConversationRuntime.Id property not found.");
@@ -54,7 +70,7 @@ public sealed class MainWindowConversationTrimTests {
     /// </summary>
     [Fact]
     public void TrimConversationsToLimit_EnforcesCapWhenUserConversationsShareActiveId() {
-        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var window = CreateWindowForConversationTrimTests();
         var conversations = CreateConversationList();
 
         // Build 41 user conversations with duplicated active id + one reserved system conversation.
@@ -94,7 +110,7 @@ public sealed class MainWindowConversationTrimTests {
     /// </summary>
     [Fact]
     public void BuildConversationStateSnapshot_PreservesSystemConversationWhenTrimmedToCap() {
-        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var window = CreateWindowForConversationTrimTests();
         var conversations = CreateConversationList();
         var nowUtc = new DateTime(2026, 2, 17, 8, 0, 0, DateTimeKind.Utc);
 
@@ -120,6 +136,17 @@ public sealed class MainWindowConversationTrimTests {
     private static IList CreateConversationList() {
         var listType = typeof(List<>).MakeGenericType(ConversationRuntimeType);
         return Assert.IsAssignableFrom<IList>(Activator.CreateInstance(listType));
+    }
+
+    private static MainWindow CreateWindowForConversationTrimTests() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        TurnDiagnosticsSyncField.SetValue(window, new object());
+        AssistantTurnVisualStateByConversationIdField.SetValue(
+            window,
+            Activator.CreateInstance(AssistantTurnVisualStateByConversationIdField.FieldType));
+        ActiveTurnAssistantMessageIndexField.SetValue(window, -1);
+        ActiveTurnAssistantPendingTimelineField.SetValue(window, new List<string>());
+        return window;
     }
 
     private static object CreateConversation(string id, DateTime updatedUtc) {

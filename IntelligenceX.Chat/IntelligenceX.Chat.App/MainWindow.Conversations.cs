@@ -42,6 +42,8 @@ public sealed partial class MainWindow : Window {
             _activeTurnAssistantPendingTimeline.Clear();
             _activeTurnAssistantProvisional = false;
             _activeTurnUsesProvisionalEvents = false;
+            _activeTurnInterimResultSeen = false;
+            _activeTurnInterimFingerprint = null;
         }
         if (state.Conversations is { Count: > 0 }) {
             foreach (var stored in state.Conversations) {

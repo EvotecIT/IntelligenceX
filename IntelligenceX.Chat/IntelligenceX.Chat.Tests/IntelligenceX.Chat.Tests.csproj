@@ -24,6 +24,7 @@
     <ProjectReference Include="..\IntelligenceX.Chat.Abstractions\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\IntelligenceX.Chat.Tooling\IntelligenceX.Chat.Tooling.csproj" />
     <ProjectReference Include="..\IntelligenceX.Chat.Host\IntelligenceX.Chat.Host.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Chat.Client\IntelligenceX.Chat.Client.csproj" />
   </ItemGroup>
 
 </Project>
