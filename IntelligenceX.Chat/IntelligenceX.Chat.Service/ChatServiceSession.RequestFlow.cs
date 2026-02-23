@@ -55,6 +55,39 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private async Task TryWriteInterimResultAsync(
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        string text,
+        string? stage,
+        int toolCallsCount,
+        int toolOutputsCount) {
+        var normalizedText = (text ?? string.Empty).Trim();
+        if (normalizedText.Length == 0) {
+            return;
+        }
+
+        var normalizedStage = (stage ?? string.Empty).Trim();
+        if (normalizedStage.Length == 0) {
+            normalizedStage = null;
+        }
+
+        try {
+            await WriteAsync(writer, new ChatInterimResultMessage {
+                Kind = ChatServiceMessageKind.Event,
+                RequestId = requestId,
+                ThreadId = threadId,
+                Text = normalizedText,
+                Stage = normalizedStage,
+                ToolCallsCount = Math.Max(0, toolCallsCount),
+                ToolOutputsCount = Math.Max(0, toolOutputsCount)
+            }, CancellationToken.None).ConfigureAwait(false);
+        } catch {
+            // Best-effort streaming; ignore pipe failures.
+        }
+    }
+
     private async Task TryWriteStatusAsync(StreamWriter writer, string requestId, string threadId, string status, string? toolName = null,
         string? toolCallId = null, long? durationMs = null, string? message = null) {
         CaptureTurnTimelineEvent(requestId, status, toolName, toolCallId, durationMs, message);
@@ -71,6 +104,54 @@ internal sealed partial class ChatServiceSession {
             }, CancellationToken.None).ConfigureAwait(false);
         } catch {
             // Best-effort; ignore pipe failures.
+        }
+    }
+
+    private int CountTrailingPhaseLoopEvents(string requestId) {
+        if (string.IsNullOrWhiteSpace(requestId)) {
+            return 0;
+        }
+
+        var normalized = requestId.Trim();
+        lock (_turnTimelineSync) {
+            if (!string.Equals(_capturedTurnTimelineRequestId, normalized, StringComparison.Ordinal)
+                || _capturedTurnTimelineEvents is null
+                || _capturedTurnTimelineEvents.Count == 0) {
+                return 0;
+            }
+
+            var count = 0;
+            for (var i = _capturedTurnTimelineEvents.Count - 1; i >= 0; i--) {
+                var ev = _capturedTurnTimelineEvents[i];
+                var status = (ev.Status ?? string.Empty).Trim();
+                if (status.Length == 0) {
+                    continue;
+                }
+
+                if (string.Equals(status, ChatStatusCodes.PhasePlan, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.PhaseReview, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.PhaseHeartbeat, StringComparison.OrdinalIgnoreCase)) {
+                    count++;
+                    continue;
+                }
+
+                if (string.Equals(status, ChatStatusCodes.ToolCall, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolRunning, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolCompleted, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolRoundStarted, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolRoundCompleted, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.PhaseExecute, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolBatchStarted, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolBatchProgress, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolBatchHeartbeat, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolBatchRecovering, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolBatchRecovered, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolBatchCompleted, StringComparison.OrdinalIgnoreCase)) {
+                    break;
+                }
+            }
+
+            return count;
         }
     }
 

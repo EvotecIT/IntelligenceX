@@ -589,6 +589,7 @@ internal sealed partial class ChatServiceSession {
         _registry = registry;
 
         UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
+        RebuildPackCapabilityFallbackContracts(registry.GetDefinitions());
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();

@@ -198,6 +198,21 @@ internal sealed partial class ChatServiceSession {
         return body + Environment.NewLine + Environment.NewLine + notice;
     }
 
+    private static bool ShouldEmitInterimResultSnapshot(string assistantDraft) {
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length < 48 || draft.Length > 6_000) {
+            return false;
+        }
+
+        if (draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionWatchdogMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static string ResolveTurnCompletionReason(TurnInfo turn) {
         try {
             var response = turn.Raw.GetObject("response");

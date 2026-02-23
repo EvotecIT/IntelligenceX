@@ -249,6 +249,9 @@ internal sealed partial class ChatServiceSession {
         var structuredNextActionRetryUsed = false;
         var toolProgressRecoveryUsed = false;
         var hostStructuredNextActionReplayUsed = false;
+        var packCapabilityFallbackReplayUsed = false;
+        var noResultPhaseLoopWatchdogUsed = false;
+        var interimResultSent = false;
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
 
@@ -624,8 +627,10 @@ internal sealed partial class ChatServiceSession {
                     out _,
                     out _,
                     out _);
+                var allowHostStructuredReplay = continuationFollowUpTurn
+                                                || ShouldAllowHostStructuredNextActionReplay(text);
                 if (!hostStructuredNextActionReplayUsed
-                    && continuationFollowUpTurn
+                    && allowHostStructuredReplay
                     && toolCalls.Count > 0
                     && toolOutputs.Count > 0
                     && TryBuildHostStructuredNextActionToolCall(
@@ -748,6 +753,130 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                if (!packCapabilityFallbackReplayUsed
+                    && allowHostStructuredReplay
+                    && toolCalls.Count > 0
+                    && toolOutputs.Count > 0
+                    && TryBuildPackCapabilityFallbackToolCall(
+                        toolDefinitions: structuredNextActionToolDefs,
+                        toolCalls: toolCalls,
+                        toolOutputs: toolOutputs,
+                        mutatingToolHintsByName: mutatingToolHints,
+                        out var packFallbackCall,
+                        out var packFallbackReason)) {
+                    packCapabilityFallbackReplayUsed = true;
+                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+
+                    Trace.WriteLine(
+                        $"[pack-capability-fallback] outcome=execute reason={packFallbackReason} continuation={continuationFollowUpTurn} tool={packFallbackCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+
+                    toolRounds++;
+                    var packFallbackRoundNumber = round + 1;
+                    await WriteToolRoundStartedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            packFallbackRoundNumber,
+                            maxRounds,
+                            1,
+                            parallelTools,
+                            allowMutatingParallel)
+                        .ConfigureAwait(false);
+                    if (planExecuteReviewLoop) {
+                        await TryWriteStatusAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                status: ChatStatusCodes.PhaseExecute,
+                                message: $"Executing pack fallback discovery action ({packFallbackCall.Name})...")
+                            .ConfigureAwait(false);
+                    }
+
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.ToolCall,
+                            toolName: packFallbackCall.Name,
+                            toolCallId: packFallbackCall.CallId)
+                        .ConfigureAwait(false);
+                    toolCalls.Add(new ToolCallDto {
+                        CallId = packFallbackCall.CallId,
+                        Name = packFallbackCall.Name,
+                        ArgumentsJson = packFallbackCall.Arguments is null
+                            ? "{}"
+                            : JsonLite.Serialize(packFallbackCall.Arguments)
+                    });
+
+                    var packFallbackCalls = new[] { packFallbackCall };
+                    var packFallbackOutputs = await ExecuteToolsAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            packFallbackCalls,
+                            parallel: false,
+                            allowMutatingParallel: allowMutatingParallel,
+                            mutatingToolHintsByName: mutatingToolHints,
+                            toolTimeoutSeconds: toolTimeoutSeconds,
+                            cancellationToken: turnToken)
+                        .ConfigureAwait(false);
+                    var packFallbackFailedCalls = CountFailedToolOutputs(packFallbackOutputs);
+                    await WriteToolRoundCompletedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            packFallbackRoundNumber,
+                            maxRounds,
+                            packFallbackOutputs.Count,
+                            packFallbackFailedCalls)
+                        .ConfigureAwait(false);
+                    UpdateToolRoutingStats(packFallbackCalls, packFallbackOutputs);
+                    foreach (var output in packFallbackOutputs) {
+                        if (WasProjectionFallbackApplied(output)) {
+                            projectionFallbackCount++;
+                        }
+
+                        toolOutputs.Add(new ToolOutputDto {
+                            CallId = output.CallId,
+                            Output = output.Output,
+                            Ok = output.Ok,
+                            ErrorCode = output.ErrorCode,
+                            Error = output.Error,
+                            Hints = output.Hints,
+                            IsTransient = output.IsTransient,
+                            SummaryMarkdown = output.SummaryMarkdown,
+                            MetaJson = output.MetaJson,
+                            RenderJson = output.RenderJson,
+                            FailureJson = output.FailureJson
+                        });
+                    }
+
+                    var packFallbackNextInput = new ChatInput();
+                    foreach (var output in packFallbackOutputs) {
+                        packFallbackNextInput.AddToolOutput(output.CallId, output.Output);
+                    }
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            packFallbackNextInput,
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                            phaseMessage: "Reviewing fallback discovery results...",
+                            heartbeatLabel: "Reviewing fallback results",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 if (!structuredNextActionRetryUsed
                     && TryBuildStructuredNextActionRetryPrompt(
                         toolDefinitions: structuredNextActionToolDefs,
@@ -829,6 +958,32 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var noResultWatchdogTriggered = false;
+                var trailingPhaseLoopEvents = CountTrailingPhaseLoopEvents(request.RequestId);
+                if (ShouldTriggerNoResultPhaseLoopWatchdog(
+                        trailingPhaseLoopEvents: trailingPhaseLoopEvents,
+                        hasToolActivity: hasToolActivity,
+                        watchdogAlreadyUsed: noResultPhaseLoopWatchdogUsed,
+                        executionContractApplies: executionContractApplies,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
+                        assistantDraft: text,
+                        out var noResultWatchdogReason)) {
+                    noResultPhaseLoopWatchdogUsed = true;
+                    noResultWatchdogTriggered = true;
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.NoResultWatchdogTriggered,
+                            message: $"No-result watchdog triggered after repeated plan/review loops ({trailingPhaseLoopEvents} phase events).")
+                        .ConfigureAwait(false);
+                    text = BuildExecutionContractBlockerText(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        reason: "no_result_watchdog_" + noResultWatchdogReason);
+                }
+
                 if (executionContractApplies && !hasToolActivity) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
@@ -839,7 +994,24 @@ internal sealed partial class ChatServiceSession {
                         reason: blockerReason);
                 }
 
-                if (planExecuteReviewLoop
+                if (!noResultWatchdogTriggered
+                    && !interimResultSent
+                    && hasToolActivity
+                    && ShouldEmitInterimResultSnapshot(text)) {
+                    interimResultSent = true;
+                    await TryWriteInterimResultAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            text,
+                            stage: "interim_review_draft",
+                            toolCallsCount: toolCalls.Count,
+                            toolOutputsCount: toolOutputs.Count)
+                        .ConfigureAwait(false);
+                }
+
+                if (!noResultWatchdogTriggered
+                    && planExecuteReviewLoop
                     && ShouldAttemptResponseQualityReview(
                         userRequest: routedUserRequest,
                         assistantDraft: text,
@@ -870,7 +1042,8 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                if (ShouldAttemptProactiveFollowUpReview(
+                if (!noResultWatchdogTriggered
+                    && ShouldAttemptProactiveFollowUpReview(
                         proactiveModeEnabled: proactiveModeEnabled,
                         hasToolActivity: hasToolActivity,
                         proactiveFollowUpUsed: proactiveFollowUpUsed,

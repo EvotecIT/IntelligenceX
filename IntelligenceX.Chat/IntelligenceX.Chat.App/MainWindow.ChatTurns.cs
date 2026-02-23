@@ -302,12 +302,15 @@ public sealed partial class MainWindow : Window {
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
+        var appendFinalAfterInterim = HasActiveTurnInterimResult();
         if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
                 _assistantStreamingState.HasReceivedDelta(),
                 assistantText,
                 TryGetLastAssistantText(conversation, out var streamedAssistantText) ? streamedAssistantText : string.Empty,
                 out var runtimeWarningNotice)) {
             conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
+        } else if (appendFinalAfterInterim) {
+            AppendAssistantText(conversation, assistantText);
         } else {
             ReplaceLastAssistantText(conversation, assistantText);
         }

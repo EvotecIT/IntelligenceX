@@ -73,6 +73,16 @@ public sealed partial class MainWindow : Window {
                         preferProvisionalEvents: true,
                         renderReason: "assistant_provisional");
                     break;
+                case ChatInterimResultMessage interim:
+                    if (!ShouldProcessLiveRequestMessage(interim.RequestId)) {
+                        break;
+                    }
+                    if (!IsActiveTurnRequest(interim.RequestId)) {
+                        break;
+                    }
+
+                    ApplyInterimAssistantResult(requestConversation, interim.Text);
+                    break;
                 case ChatStatusMessage status:
                     if (!ShouldProcessLiveRequestMessage(status.RequestId)) {
                         break;
@@ -196,6 +206,21 @@ public sealed partial class MainWindow : Window {
         SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             QueueTranscriptRender(renderReason);
+        }
+    }
+
+    private void ApplyInterimAssistantResult(ConversationRuntime conversation, string? text) {
+        var interimText = (text ?? string.Empty).Trim();
+        if (interimText.Length == 0 || !TryMarkActiveTurnInterimResult(interimText)) {
+            return;
+        }
+
+        AppendAssistantText(conversation, interimText);
+        conversation.UpdatedUtc = DateTime.UtcNow;
+        BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            QueueTranscriptRender("assistant_interim_result");
         }
     }
 

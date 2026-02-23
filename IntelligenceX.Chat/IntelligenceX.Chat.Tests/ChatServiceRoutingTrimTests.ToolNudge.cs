@@ -1141,6 +1141,165 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAllowHostStructuredNextActionReplay_TrueForExecutionAcknowledgeDraft() {
+        var result = ShouldAllowHostStructuredNextActionReplayMethod.Invoke(
+            null,
+            new object?[] { "On it. Running the all-DC baseline now and returning the comparison matrix." });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAllowHostStructuredNextActionReplay_FalseForQuestionDraft() {
+        var result = ShouldAllowHostStructuredNextActionReplayMethod.Invoke(
+            null,
+            new object?[] { "If you want, should I run that now?" });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldTriggerNoResultPhaseLoopWatchdog_TriggersForRepeatedPhaseLoopsWithToolActivity() {
+        var args = new object?[] {
+            9,
+            true,
+            false,
+            false,
+            false,
+            true,
+            """
+            On it. Running now.
+            I can return a side-by-side matrix right after this pass.
+            """,
+            null
+        };
+
+        var result = ShouldTriggerNoResultPhaseLoopWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("phase_loop_with_tool_activity", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldTriggerNoResultPhaseLoopWatchdog_DoesNotTriggerBelowThreshold() {
+        var args = new object?[] {
+            3,
+            true,
+            false,
+            true,
+            true,
+            true,
+            "On it.",
+            null
+        };
+
+        var result = ShouldTriggerNoResultPhaseLoopWatchdogMethod.Invoke(null, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("phase_loop_threshold_not_met", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldEmitInterimResultSnapshot_TrueForNormalExecutionDraft() {
+        var draft = """
+            I checked AD0 and confirmed a reboot window around 2026-02-22 17:56 UTC.
+            I am correlating matching events on AD1 and AD2 and will return a compact matrix.
+            """;
+        var result = ShouldEmitInterimResultSnapshotMethod.Invoke(null, new object?[] { draft });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldEmitInterimResultSnapshot_FalseForExecutionContractMarkerDraft() {
+        var draft = """
+            I could not execute in this turn.
+            ix:execution-contract:v1
+            reason: no_tool_calls_after_watchdog_retry
+            """;
+        var result = ShouldEmitInterimResultSnapshotMethod.Invoke(null, new object?[] { draft });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsReadOnlyFallbackForAdPartialScope() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_environment_discover"] = "active_directory";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("ad_environment_discover", "discover", schema),
+            new("ad_scope_discovery", "scope", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-1", Name = "ad_environment_discover" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = """
+                         {"discovery_status":{"limited_discovery":true,"domain_name":"contoso.local","forest_name":"contoso.local","include_trusts":true}}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[4]);
+        var reason = Assert.IsType<string>(args[5]);
+        Assert.Equal("ad_scope_discovery", toolCall.Name);
+        Assert.Contains("pack_contract_partial_scope_autofallback", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildWhenNoPartialScopeSignal() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_environment_discover"] = "active_directory";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("ad_environment_discover", "discover", schema),
+            new("ad_scope_discovery", "scope", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-2", Name = "ad_environment_discover" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-2",
+                Output = """{"ok":true,"domain_controllers":["AD0","AD1","AD2"]}""",
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
     public void ShouldSkipWeightedRouting_TrueForActionSelectionPayload() {
         var request = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { request });

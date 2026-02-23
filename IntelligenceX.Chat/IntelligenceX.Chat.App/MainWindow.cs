@@ -366,6 +366,8 @@ public sealed partial class MainWindow : Window {
     private readonly List<string> _activeTurnAssistantPendingTimeline = new();
     private bool _activeTurnAssistantProvisional;
     private bool _activeTurnUsesProvisionalEvents;
+    private bool _activeTurnInterimResultSeen;
+    private string? _activeTurnInterimFingerprint;
     private TurnMetricsSnapshot? _lastTurnMetrics;
     private readonly Dictionary<string, AccountUsageSnapshot> _accountUsageByKey = new(StringComparer.OrdinalIgnoreCase);
     private long? _activeTurnQueueWaitMs;

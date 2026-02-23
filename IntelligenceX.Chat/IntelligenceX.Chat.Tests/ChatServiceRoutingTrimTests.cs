@@ -77,6 +77,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptToolProgressRecoveryMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolProgressRecovery", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolProgressRecovery not found.");
+    private static readonly MethodInfo ShouldAllowHostStructuredNextActionReplayMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAllowHostStructuredNextActionReplay", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAllowHostStructuredNextActionReplay not found.");
+    private static readonly MethodInfo ShouldTriggerNoResultPhaseLoopWatchdogMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldTriggerNoResultPhaseLoopWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldTriggerNoResultPhaseLoopWatchdog not found.");
+    private static readonly MethodInfo ShouldEmitInterimResultSnapshotMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldEmitInterimResultSnapshot", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldEmitInterimResultSnapshot not found.");
+    private static readonly MethodInfo RebuildPackCapabilityFallbackContractsMethod =
+        typeof(ChatServiceSession).GetMethod("RebuildPackCapabilityFallbackContracts", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RebuildPackCapabilityFallbackContracts not found.");
+    private static readonly MethodInfo TryBuildPackCapabilityFallbackToolCallMethod =
+        typeof(ChatServiceSession).GetMethod("TryBuildPackCapabilityFallbackToolCall", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("TryBuildPackCapabilityFallbackToolCall not found.");
     private static readonly MethodInfo BuildToolProgressRecoveryPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolProgressRecoveryPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolProgressRecoveryPrompt not found.");
@@ -200,6 +215,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly FieldInfo LastUserIntentSeenUtcTicksField =
         typeof(ChatServiceSession).GetField("_lastUserIntentSeenUtcTicks", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_lastUserIntentSeenUtcTicks not found.");
+    private static readonly FieldInfo ToolPackIdsByToolNameField =
+        typeof(ChatServiceSession).GetField("_toolPackIdsByToolName", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolPackIdsByToolName not found.");
 
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {

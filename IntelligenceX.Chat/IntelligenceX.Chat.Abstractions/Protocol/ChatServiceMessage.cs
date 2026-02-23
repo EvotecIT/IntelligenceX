@@ -25,6 +25,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatStatusMessage), "chat_status")]
 [JsonDerivedType(typeof(ChatDeltaMessage), "chat_delta")]
 [JsonDerivedType(typeof(ChatAssistantProvisionalMessage), "assistant_provisional")]
+[JsonDerivedType(typeof(ChatInterimResultMessage), "chat_interim_result")]
 [JsonDerivedType(typeof(ChatMetricsMessage), "chat_metrics")]
 [JsonDerivedType(typeof(ChatResultMessage), "chat_result")]
 public abstract record ChatServiceMessage {
@@ -359,6 +360,32 @@ public sealed record ChatAssistantProvisionalMessage : ChatServiceMessage {
     /// Provisional text fragment.
     /// </summary>
     public required string Text { get; init; }
+}
+
+/// <summary>
+/// Interim assistant result snapshot emitted before final synthesis.
+/// </summary>
+public sealed record ChatInterimResultMessage : ChatServiceMessage {
+    /// <summary>
+    /// Active thread id for the interim snapshot.
+    /// </summary>
+    public required string ThreadId { get; init; }
+    /// <summary>
+    /// Interim assistant text.
+    /// </summary>
+    public required string Text { get; init; }
+    /// <summary>
+    /// Optional stage marker (for example review_draft/final_draft).
+    /// </summary>
+    public string? Stage { get; init; }
+    /// <summary>
+    /// Optional tool-call count at interim capture.
+    /// </summary>
+    public int? ToolCallsCount { get; init; }
+    /// <summary>
+    /// Optional tool-output count at interim capture.
+    /// </summary>
+    public int? ToolOutputsCount { get; init; }
 }
 
 /// <summary>

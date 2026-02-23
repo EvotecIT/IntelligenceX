@@ -15,6 +15,8 @@ public sealed partial class MainWindow : Window {
             _activeTurnAssistantPendingTimeline.Clear();
             _activeTurnAssistantProvisional = false;
             _activeTurnUsesProvisionalEvents = false;
+            _activeTurnInterimResultSeen = false;
+            _activeTurnInterimFingerprint = null;
         }
     }
 
@@ -32,7 +34,32 @@ public sealed partial class MainWindow : Window {
                 _activeTurnAssistantPendingTimeline.Clear();
                 _activeTurnAssistantProvisional = false;
                 _activeTurnUsesProvisionalEvents = false;
+                _activeTurnInterimResultSeen = false;
+                _activeTurnInterimFingerprint = null;
             }
+        }
+    }
+
+    private bool TryMarkActiveTurnInterimResult(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (string.Equals(_activeTurnInterimFingerprint, normalized, StringComparison.Ordinal)) {
+                return false;
+            }
+
+            _activeTurnInterimResultSeen = true;
+            _activeTurnInterimFingerprint = normalized;
+            return true;
+        }
+    }
+
+    private bool HasActiveTurnInterimResult() {
+        lock (_turnDiagnosticsSync) {
+            return _activeTurnInterimResultSeen;
         }
     }
 

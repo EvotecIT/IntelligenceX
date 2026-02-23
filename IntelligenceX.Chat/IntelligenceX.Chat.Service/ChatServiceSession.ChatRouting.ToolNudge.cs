@@ -24,6 +24,8 @@ internal sealed partial class ChatServiceSession {
     private const string StructuredNextActionRetryMarker = "ix:structured-next-action-retry:v1";
     private const string ToolProgressRecoveryMarker = "ix:tool-progress-recovery:v1";
     private const int MaxStructuredNextActionArgumentsChars = 32_768;
+    private const int NoResultPhaseLoopThresholdWithToolActivity = 8;
+    private const int NoResultPhaseLoopThresholdWithoutToolActivity = 6;
     private enum ActionMutability {
         Unknown = 0,
         ReadOnly = 1,
@@ -571,6 +573,75 @@ internal sealed partial class ChatServiceSession {
         }
 
         reason = "blocker_like_draft_after_tool_activity";
+        return true;
+    }
+
+    private static bool ShouldAllowHostStructuredNextActionReplay(string assistantDraft) {
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0 || ContainsQuestionSignal(draft)) {
+            return false;
+        }
+
+        return LooksLikeMultilineFollowUpBlockerDraft(draft)
+               || LooksLikeExecutionAcknowledgeDraft(draft);
+    }
+
+    private static bool ShouldTriggerNoResultPhaseLoopWatchdog(
+        int trailingPhaseLoopEvents,
+        bool hasToolActivity,
+        bool watchdogAlreadyUsed,
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
+        string assistantDraft,
+        out string reason) {
+        reason = "not_eligible";
+        if (watchdogAlreadyUsed) {
+            reason = "watchdog_already_used";
+            return false;
+        }
+
+        var threshold = hasToolActivity
+            ? NoResultPhaseLoopThresholdWithToolActivity
+            : NoResultPhaseLoopThresholdWithoutToolActivity;
+        if (trailingPhaseLoopEvents < threshold) {
+            reason = "phase_loop_threshold_not_met";
+            return false;
+        }
+
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0) {
+            reason = "empty_assistant_draft";
+            return false;
+        }
+
+        if (draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionWatchdogMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)) {
+            reason = "watchdog_marker_present";
+            return false;
+        }
+
+        var blockerLikeDraft = LooksLikeMultilineFollowUpBlockerDraft(draft)
+                               || LooksLikeExecutionAcknowledgeDraft(draft);
+        if (!executionContractApplies
+            && !continuationFollowUpTurn
+            && !compactFollowUpTurn
+            && !blockerLikeDraft) {
+            reason = "turn_not_execution_shaped";
+            return false;
+        }
+
+        if (!executionContractApplies
+            && ContainsQuestionSignal(draft)
+            && !blockerLikeDraft) {
+            reason = "assistant_question_without_execution_contract";
+            return false;
+        }
+
+        reason = hasToolActivity
+            ? "phase_loop_with_tool_activity"
+            : "phase_loop_without_tool_activity";
         return true;
     }
 

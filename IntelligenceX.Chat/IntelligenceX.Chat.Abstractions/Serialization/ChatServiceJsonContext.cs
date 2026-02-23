@@ -50,6 +50,7 @@ namespace IntelligenceX.Chat.Abstractions.Serialization;
 [JsonSerializable(typeof(ChatStatusMessage))]
 [JsonSerializable(typeof(ChatDeltaMessage))]
 [JsonSerializable(typeof(ChatAssistantProvisionalMessage))]
+[JsonSerializable(typeof(ChatInterimResultMessage))]
 [JsonSerializable(typeof(ChatMetricsMessage))]
 [JsonSerializable(typeof(ChatResultMessage))]
 [JsonSerializable(typeof(ToolDefinitionDto))]
