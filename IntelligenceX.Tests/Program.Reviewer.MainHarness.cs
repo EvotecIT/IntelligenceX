@@ -18,7 +18,11 @@ internal static partial class Program {
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
+        failed += Run("Review thread inline key codex connector default", TestReviewThreadInlineKeyCodexConnectorDefault);
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
+        failed += Run("Thread resolve evidence cross-file fallback", TestThreadResolveEvidenceCrossFileFallback);
+        failed += Run("Thread resolve evidence prefers thread context", TestThreadResolveEvidenceUsesThreadContextWhenAvailable);
+        failed += Run("Thread resolve evidence cross-file fallback stale-only", TestThreadResolveEvidenceCrossFileFallbackOnlyForStaleThreads);
         failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
         failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
         failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);

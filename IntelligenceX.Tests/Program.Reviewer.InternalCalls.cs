@@ -220,6 +220,40 @@ internal static partial class Program {
         return result ?? string.Empty;
     }
 
+    private static bool CallHasValidResolveEvidence(string evidence, PullRequestReviewThread thread,
+        IReadOnlyList<PullRequestFile> files, int maxPatchChars) {
+        var buildPatchIndexMethod = typeof(ReviewerApp).GetMethod("BuildInlinePatchIndex",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (buildPatchIndexMethod is null) {
+            throw new InvalidOperationException("BuildInlinePatchIndex method not found.");
+        }
+        var patchIndex = buildPatchIndexMethod.Invoke(null, new object?[] { files });
+        if (patchIndex is null) {
+            throw new InvalidOperationException("BuildInlinePatchIndex returned null.");
+        }
+
+        var buildPatchLookupMethod = typeof(ReviewerApp).GetMethod("BuildPatchLookup",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (buildPatchLookupMethod is null) {
+            throw new InvalidOperationException("BuildPatchLookup method not found.");
+        }
+        var patchLookup = buildPatchLookupMethod.Invoke(null, new object?[] { files, maxPatchChars });
+        if (patchLookup is null) {
+            throw new InvalidOperationException("BuildPatchLookup returned null.");
+        }
+
+        var method = typeof(ReviewerApp).GetMethod("HasValidResolveEvidence",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("HasValidResolveEvidence method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { evidence, thread, patchIndex, patchLookup, maxPatchChars });
+        if (result is bool value) {
+            return value;
+        }
+        throw new InvalidOperationException("HasValidResolveEvidence returned unexpected result.");
+    }
+
     private static (IReadOnlyList<PullRequestFile> Files, string Note) CallResolveDiffRangeFiles(GitHubClient github,
         PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles, ReviewSettings settings) {
         var method = typeof(ReviewerApp).GetMethod("ResolveDiffRangeFilesAsync",

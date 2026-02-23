@@ -245,6 +245,55 @@ internal static partial class Program {
         AssertEqual(false, ok, "inline key allowlist");
     }
 
+    private static void TestReviewThreadInlineKeyCodexConnectorDefault() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveBotsOnly = true
+        };
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.",
+            "chatgpt-codex-connector", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out var key);
+        AssertEqual(true, ok, "inline key codex connector");
+        AssertEqual("src/Foo.cs:10", key, "inline key codex connector value");
+    }
+
+    private static void TestThreadResolveEvidenceCrossFileFallback() {
+        var threadComment = new PullRequestReviewThreadComment(null, null, "Looks fixed.", "intelligencex-review",
+            "src/Foo.cs", 80);
+        var thread = new PullRequestReviewThread("thread-1", false, true, 1, new[] { threadComment });
+        var files = new[] {
+            new PullRequestFile("src/Bar.cs", "modified", "@@ -10,1 +10,2 @@\n- return oldValue;\n+ if (featureFlag) return newValue;\n+ return oldValue;")
+        };
+
+        var hasEvidence = CallHasValidResolveEvidence("10: if (featureFlag) return newValue;", thread, files, 4000);
+        AssertEqual(true, hasEvidence, "cross-file evidence fallback");
+    }
+
+    private static void TestThreadResolveEvidenceUsesThreadContextWhenAvailable() {
+        var threadComment = new PullRequestReviewThreadComment(null, null, "Looks fixed.", "intelligencex-review",
+            "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("thread-2", false, false, 1, new[] { threadComment });
+        var files = new[] {
+            new PullRequestFile("src/Foo.cs", "modified", "@@ -10,1 +10,2 @@\n- return oldValue;\n+ return currentValue;\n+ return oldValue;"),
+            new PullRequestFile("src/Bar.cs", "modified", "@@ -10,1 +10,2 @@\n- return oldValue;\n+ if (featureFlag) return newValue;\n+ return oldValue;")
+        };
+
+        var hasEvidence = CallHasValidResolveEvidence("10: if (featureFlag) return newValue;", thread, files, 4000);
+        AssertEqual(false, hasEvidence, "thread-local evidence required when context is available");
+    }
+
+    private static void TestThreadResolveEvidenceCrossFileFallbackOnlyForStaleThreads() {
+        var threadComment = new PullRequestReviewThreadComment(null, null, "Looks fixed.", "intelligencex-review",
+            "src/Foo.cs", 80);
+        var thread = new PullRequestReviewThread("thread-3", false, false, 1, new[] { threadComment });
+        var files = new[] {
+            new PullRequestFile("src/Bar.cs", "modified", "@@ -10,1 +10,2 @@\n- return oldValue;\n+ if (featureFlag) return newValue;\n+ return oldValue;")
+        };
+
+        var hasEvidence = CallHasValidResolveEvidence("10: if (featureFlag) return newValue;", thread, files, 4000);
+        AssertEqual(false, hasEvidence, "cross-file fallback is limited to stale threads");
+    }
+
     private static void TestThreadTriageEmbedPlacement() {
         var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {
