@@ -76,9 +76,9 @@ Current packs and representative tools:
 | Email (Mailozaurr) | `email_pack_info`, `email_imap_search`, `email_imap_get`, `email_smtp_send` | MIT | Open-source pack; runtime dependency gated. |
 | Office Documents (OfficeIMO) | `officeimo_pack_info`, `officeimo_read` | MIT | Open-source pack; runtime dependency gated. |
 | PowerShell Runtime | `powershell_pack_info`, `powershell_environment_discover`, `powershell_hosts`, `powershell_run` | MIT | Open-source pack; opt-in by policy due execution risk. |
-| ADPlayground | `ad_pack_info`, `ad_domain_info`, `ad_group_members`, `ad_search` | Private/commercial | Usable in licensed/private builds; external/custom-host use requires separate license. |
-| TestimoX | `testimox_pack_info`, `testimox_rules_list`, `testimox_rules_run` | Private/commercial | Usable in licensed/private builds; external/custom-host use requires separate license. |
-| ComputerX | `system_pack_info`, `system_info`, `system_process_list`, `system_service_list` | Private/commercial | Usable in licensed/private builds; external/custom-host use requires separate license. |
+| ADPlayground | `ad_pack_info`, `ad_domain_info`, `ad_group_members`, `ad_search` | Private/commercial | Usable inside IntelligenceX (licensed/private builds) only; not for external/custom-host reuse. |
+| TestimoX | `testimox_pack_info`, `testimox_rules_list`, `testimox_rules_run` | Private/commercial | Usable inside IntelligenceX (licensed/private builds) only; not for external/custom-host reuse. |
+| ComputerX | `system_pack_info`, `system_info`, `system_process_list`, `system_service_list` | Private/commercial | Usable inside IntelligenceX (licensed/private builds) only; not for external/custom-host reuse. |
 
 Picture 1:
 
