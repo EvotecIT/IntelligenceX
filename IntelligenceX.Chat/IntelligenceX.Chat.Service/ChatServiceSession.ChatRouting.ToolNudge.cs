@@ -125,7 +125,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(userRequest);
-        if (!executionContractApplies && !continuationFollowUpTurn && !compactFollowUpTurn) {
+        var contextualFollowUp = LooksLikeContextualFollowUpForExecutionNudge(userRequest, assistantDraft);
+        var postRecoveryWatchdogEligible = executionNudgeUsed || toolReceiptCorrectionUsed || contextualFollowUp;
+        if (!executionContractApplies
+            && !continuationFollowUpTurn
+            && !compactFollowUpTurn
+            && !postRecoveryWatchdogEligible) {
             reason = "execution_contract_or_follow_up_not_applicable";
             return false;
         }
@@ -162,6 +167,11 @@ internal sealed partial class ChatServiceSession {
             if (!LooksLikeMultilineFollowUpBlockerDraft(draft) && !LooksLikeExecutionAcknowledgeDraft(draft)) {
                 reason = "follow_up_draft_not_blocker_like";
                 return false;
+            }
+
+            if (contextualFollowUp && !compactFollowUpTurn && !continuationFollowUpTurn) {
+                reason = "contextual_follow_up_watchdog_retry";
+                return true;
             }
 
             reason = "compact_follow_up_watchdog_retry";

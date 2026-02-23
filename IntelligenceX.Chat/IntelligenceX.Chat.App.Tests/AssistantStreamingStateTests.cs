@@ -101,4 +101,26 @@ public sealed class AssistantStreamingStateTests {
 
         Assert.Throws<ArgumentNullException>(() => state.AppendDeltaAndNormalizePreview(null!));
     }
+
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_MergesChatDeltaSnapshotFragmentsWithoutPrefixDuplication() {
+        var state = new AssistantStreamingState();
+        state.AppendDeltaAndNormalizePreview("Thanks for");
+
+        var preview = state.AppendDeltaAndNormalizePreview("Thanks for the nudge — I checked AD0.");
+
+        Assert.Contains("Thanks for the nudge", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("Thanks forThanks for", preview, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_MergesProvisionalSnapshotFragmentsWithoutPrefixDuplication() {
+        var state = new AssistantStreamingState();
+        state.AppendDeltaAndNormalizePreview("Done");
+
+        var preview = state.AppendDeltaAndNormalizePreview("Done — and I hit an environment limit.", fromProvisionalEvent: true);
+
+        Assert.Contains("Done — and I hit an environment limit.", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("DoneDone", preview, StringComparison.Ordinal);
+    }
 }

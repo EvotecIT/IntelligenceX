@@ -975,6 +975,60 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptNoToolExecutionWatchdog_TriggersForContextualFollowUpWithoutCompactHint() {
+        var args = new object?[] {
+            "could we check if all other dcs had similar issues?",
+            """
+            Absolutely — I can check if all other DCs had similar issues, but I hit one blocker:
+            - discovery returned one candidate.
+            - I need one more execution pass to continue.
+            """,
+            true,
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            null
+        };
+
+        var result = ShouldAttemptNoToolExecutionWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("contextual_follow_up_watchdog_retry", Assert.IsType<string>(args[11]));
+    }
+
+    [Fact]
+    public void ShouldAttemptNoToolExecutionWatchdog_TriggersAfterExecutionNudgeOutsideCompactFollowUp() {
+        var args = new object?[] {
+            "please continue",
+            """
+            I started, but I hit one blocker:
+            - discovery returned one candidate.
+            - I need one more execution pass to continue.
+            """,
+            true,
+            0,
+            0,
+            0,
+            false,
+            false,
+            true,
+            false,
+            false,
+            null
+        };
+
+        var result = ShouldAttemptNoToolExecutionWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("compact_follow_up_watchdog_retry", Assert.IsType<string>(args[11]));
+    }
+
+    [Fact]
     public void ShouldSuppressLocalToolRecoveryRetries_SuppressesNonFollowUpLocalReadOnlyFirstPass() {
         var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
             null,
