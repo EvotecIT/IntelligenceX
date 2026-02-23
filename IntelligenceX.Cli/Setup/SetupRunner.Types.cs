@@ -6,8 +6,8 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
-    private const string DefaultActionsRepo = "evotecit/github-actions";
-    private const string DefaultActionsRef = "5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf";
+    private const string DefaultActionsRepo = "evotecit/intelligencex";
+    private const string DefaultActionsRef = "fb72170966841eb32cfcb00c46461bbf8f46233f";
     private const string DefaultRunsOn =
         "${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '[\"self-hosted\",\"ubuntu\"]' || '[\"ubuntu-latest\"]' }}";
 

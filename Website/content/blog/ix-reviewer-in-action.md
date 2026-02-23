@@ -105,7 +105,7 @@ If you want output shape similar to this walkthrough, start with this split.
 ```yaml
 jobs:
   review:
-    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex.yml@<pinned-sha>
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-reusable.yml@<pinned-sha>
     with:
       reviewer_source: source
       provider: openai

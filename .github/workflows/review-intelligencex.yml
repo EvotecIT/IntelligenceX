@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@5f823fad4dbdb34a2de64c741cdc9cdfbcd1e4cf
+    uses: ./.github/workflows/review-intelligencex-reusable.yml
     with:
       runs_on: ${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]' }}
       reviewer_source: source
