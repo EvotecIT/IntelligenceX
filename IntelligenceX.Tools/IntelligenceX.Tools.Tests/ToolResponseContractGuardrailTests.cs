@@ -32,6 +32,9 @@ public sealed class ToolResponseContractGuardrailTests {
     };
 
     private static readonly HashSet<string> AllowedUnsafeDictionaryResponseProperties = new(StringComparer.Ordinal) {
+        // Structured next-action arguments intentionally allow typed dynamic values.
+        "IntelligenceX.Tools.Common.ToolNextActionModel.Arguments",
+
         // Existing dynamic payload contracts kept for backward compatibility.
         "IntelligenceX.Tools.EventLog.EventLogNamedEventsQueryTool+NamedEventsQueryRow.Payload"
     };
