@@ -401,6 +401,27 @@ document.addEventListener('DOMContentLoaded', function () {
     return null;
   }
 
+  function hasHomepageCodeExamples() {
+    return !!document.querySelector('.code-examples pre code[class*="language-"]');
+  }
+
+  function ensurePrismThemeLoaded() {
+    if (!hasHomepageCodeExamples()) {
+      return;
+    }
+
+    var existing = document.querySelector('link[data-prism-theme="true"], link[href*="/css/prism-theme"]');
+    if (existing) {
+      return;
+    }
+
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/css/prism-theme.css';
+    link.setAttribute('data-prism-theme', 'true');
+    document.head.appendChild(link);
+  }
+
   function ensurePrismLoaded() {
     if (window.Prism && (typeof window.Prism.highlightAllUnder === 'function' || typeof window.Prism.highlightAll === 'function')) {
       return Promise.resolve(true);
@@ -433,6 +454,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function highlightCodeBlocksWhenReady(scope, attemptsLeft) {
+    ensurePrismThemeLoaded();
+
     if (window.Prism) {
       highlightCodeBlocks(scope);
       return;
