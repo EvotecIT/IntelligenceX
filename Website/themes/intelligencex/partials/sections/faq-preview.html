@@ -12,7 +12,13 @@
                 {{ for item in section.items }}
                 <div class="pf-faq-item" id="faq-{{ item.id }}">
                     <h3>{{ item.question }}</h3>
+                    {{ if item.answer && item.answer.size > 0 }}
+                    {{ for block in item.answer }}
+                    <p>{{ block }}</p>
+                    {{ end }}
+                    {{ else }}
                     <p>{{ item.answer }}</p>
+                    {{ end }}
                 </div>
                 {{ end }}
             </div>
