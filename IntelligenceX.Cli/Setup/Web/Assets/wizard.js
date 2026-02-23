@@ -34,6 +34,8 @@ let lastUsageSummary = null;
 let openAiAccountId = '';
 let onboardingContractVersion = null;
 let onboardingContractFingerprint = null;
+let mergeBlockerRequireAllSectionsTouched = false;
+let mergeBlockerRequireSectionMatchTouched = false;
 
 const FALLBACK_ONBOARDING_PATHS = [
   {
@@ -866,6 +868,24 @@ function normalizeOpenAiAccountIdsCsv(raw) {
   return values;
 }
 
+function normalizeLoopPolicy(rawValue) {
+  const value = String(rawValue || '').trim().toLowerCase();
+  if (!value) return '';
+  return value;
+}
+
+function isVisionLoopPolicy(rawValue) {
+  return normalizeLoopPolicy(rawValue) === 'vision';
+}
+
+function shouldIncludeMergeBlockerBooleansInPayload(mergeBlockerSectionsValue, requireAllSectionsValue, requireSectionMatchValue) {
+  return mergeBlockerSectionsValue.length > 0 ||
+    mergeBlockerRequireAllSectionsTouched ||
+    mergeBlockerRequireSectionMatchTouched ||
+    !requireAllSectionsValue ||
+    !requireSectionMatchValue;
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
@@ -885,6 +905,7 @@ function buildReviewTable() {
   const reviewIntentValue = reviewIntentInput ? reviewIntentInput.value.trim() : '';
   const reviewStrictnessValue = reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '';
   const reviewLoopPolicyValue = reviewLoopPolicy ? reviewLoopPolicy.value : '';
+  const reviewLoopPolicyKey = normalizeLoopPolicy(reviewLoopPolicyValue);
   const reviewVisionPathValue = reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '';
   const mergeBlockerSectionsValue = mergeBlockerSectionsInput ? mergeBlockerSectionsInput.value.trim() : '';
   const mergeBlockerRequireAllSectionsValue = mergeBlockerRequireAllSectionsInput
@@ -893,6 +914,13 @@ function buildReviewTable() {
   const mergeBlockerRequireSectionMatchValue = mergeBlockerRequireSectionMatchInput
     ? !!mergeBlockerRequireSectionMatchInput.checked
     : true;
+  const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload(
+    mergeBlockerSectionsValue,
+    mergeBlockerRequireAllSectionsValue,
+    mergeBlockerRequireSectionMatchValue
+  );
+  const visionPolicySelected = isVisionLoopPolicy(reviewLoopPolicyKey);
+  const includeReviewVisionPath = visionPolicySelected && reviewVisionPathValue.length > 0;
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -913,10 +941,18 @@ function buildReviewTable() {
   const safeReviewIntent = escapeHtml(reviewIntentValue || '(default)');
   const safeReviewStrictness = escapeHtml(reviewStrictnessValue || '(default)');
   const safeReviewLoopPolicy = escapeHtml(reviewLoopPolicyValue || '(default)');
-  const safeReviewVisionPath = escapeHtml(reviewVisionPathValue || '(auto: VISION.md|vision.md)');
+  const safeReviewVisionPath = escapeHtml(
+    includeReviewVisionPath
+      ? reviewVisionPathValue
+      : (visionPolicySelected ? '(auto: VISION.md|vision.md)' : '(not sent)')
+  );
   const safeMergeBlockerSections = escapeHtml(mergeBlockerSectionsValue || '(default)');
-  const safeMergeBlockerRequireAllSections = mergeBlockerRequireAllSectionsValue ? 'true' : 'false';
-  const safeMergeBlockerRequireSectionMatch = mergeBlockerRequireSectionMatchValue ? 'true' : 'false';
+  const safeMergeBlockerRequireAllSections = includeMergeBlockerBooleans
+    ? (mergeBlockerRequireAllSectionsValue ? 'true' : 'false')
+    : '(preset/default)';
+  const safeMergeBlockerRequireSectionMatch = includeMergeBlockerBooleans
+    ? (mergeBlockerRequireSectionMatchValue ? 'true' : 'false')
+    : '(preset/default)';
   const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
   const openAiAccountIdsValue = openAiAccountIdsInput
     ? normalizeOpenAiAccountIdsCsv(openAiAccountIdsInput.value).join(',')
@@ -1119,6 +1155,7 @@ function buildRequestBody(dryRun) {
   const reviewIntentValue = reviewIntentInput ? reviewIntentInput.value.trim() : '';
   const reviewStrictnessValue = reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '';
   const reviewLoopPolicyValue = reviewLoopPolicy ? reviewLoopPolicy.value.trim() : '';
+  const reviewLoopPolicyKey = normalizeLoopPolicy(reviewLoopPolicyValue);
   const reviewVisionPathValue = reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '';
   const mergeBlockerSectionsValue = mergeBlockerSectionsInput ? mergeBlockerSectionsInput.value.trim() : '';
   const mergeBlockerRequireAllSectionsValue = mergeBlockerRequireAllSectionsInput
@@ -1170,13 +1207,15 @@ function buildRequestBody(dryRun) {
     if (reviewIntentValue.length > 0) body.reviewIntent = reviewIntentValue;
     if (reviewStrictnessValue.length > 0) body.reviewStrictness = reviewStrictnessValue;
     if (reviewLoopPolicyValue.length > 0) body.reviewLoopPolicy = reviewLoopPolicyValue;
-    if (reviewVisionPathValue.length > 0) body.reviewVisionPath = reviewVisionPathValue;
+    if (isVisionLoopPolicy(reviewLoopPolicyKey) && reviewVisionPathValue.length > 0) {
+      body.reviewVisionPath = reviewVisionPathValue;
+    }
     if (mergeBlockerSectionsValue.length > 0) body.mergeBlockerSections = mergeBlockerSectionsValue;
-    const includeMergeBlockerBooleans =
-      reviewLoopPolicyValue.length > 0 ||
-      mergeBlockerSectionsValue.length > 0 ||
-      !mergeBlockerRequireAllSectionsValue ||
-      !mergeBlockerRequireSectionMatchValue;
+    const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload(
+      mergeBlockerSectionsValue,
+      mergeBlockerRequireAllSectionsValue,
+      mergeBlockerRequireSectionMatchValue
+    );
     if (includeMergeBlockerBooleans) {
       body.mergeBlockerRequireAllSections = mergeBlockerRequireAllSectionsValue;
       body.mergeBlockerRequireSectionMatch = mergeBlockerRequireSectionMatchValue;
@@ -1782,6 +1821,16 @@ function updateReviewConfigControls() {
 }
 updateReviewConfigControls();
 if (reviewLoopPolicy) reviewLoopPolicy.addEventListener('change', updateReviewConfigControls);
+if (mergeBlockerRequireAllSectionsInput) {
+  mergeBlockerRequireAllSectionsInput.addEventListener('change', () => {
+    mergeBlockerRequireAllSectionsTouched = true;
+  });
+}
+if (mergeBlockerRequireSectionMatchInput) {
+  mergeBlockerRequireSectionMatchInput.addEventListener('change', () => {
+    mergeBlockerRequireSectionMatchTouched = true;
+  });
+}
 
 function updateOpenAiAccountControls() {
   const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
