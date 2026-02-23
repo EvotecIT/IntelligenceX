@@ -36,6 +36,26 @@ IntelligenceX already provides the foundations needed for this:
 
 This RFC proposes connecting those parts into one explicit PR babysitter contract.
 
+## Reviewer vs Babysitter (Clarification)
+
+### Current IX Reviewer (today)
+
+- Runs per PR/review invocation and produces structured findings.
+- Focuses on code/diff correctness and merge blockers.
+- Provides high-quality analysis output, but is not itself a persistent PR-state orchestrator.
+
+### Proposed IX Babysitter (new)
+
+- Runs as a continuous stateful loop around PR lifecycle events.
+- Watches CI/review/mergeability drift and recommends deterministic next actions.
+- Keeps working until strict terminal conditions are reached (ready/closed/user-help-required).
+
+### Relationship
+
+- Reviewer is the analysis engine.
+- Babysitter is the operational control loop.
+- Babysitter consumes reviewer outputs and keeps the PR moving end-to-end.
+
 ## External Patterns Worth Adopting
 
 From OpenAI Codex commit `7e569f11625605f501675e455cfc5e0d642503f2` (Feb 22, 2026):
@@ -89,6 +109,31 @@ Stop only when one is true:
   - review approval gate not blocking,
   - mergeability not conflict/blocked,
 - user-help-required blocker (infra, permissions, ambiguous product decision, retry budget exhausted).
+
+## Review Comments From "Other" Sources
+
+Babysitter should handle review feedback from multiple sources, not only IntelligenceX reviewer output.
+
+### Source Categories
+
+- Maintainer/human trusted authors (OWNER, MEMBER, COLLABORATOR, configured operator accounts): blocking-capable and actionable.
+- Approved automation bots (for example IntelligenceX reviewer, Codex reviewer, configured allow-list bots): actionable when items are concrete and reproducible.
+- Untrusted/unknown external authors or noisy bots: informational by default, non-blocking unless maintainers explicitly escalate.
+
+### Handling Policy
+
+1. Normalize all incoming feedback into a single review-item queue with source metadata.
+2. De-duplicate by stable keys (comment/review id + thread context).
+3. Prioritize actionable trusted human items first.
+4. Process approved bot checklist/critical items next.
+5. Ignore style-only/noise items from non-trusted sources unless escalated by maintainers.
+6. Mark ambiguous or non-reproducible items as `needs-human-review` and avoid churn loops.
+
+### Governance Extension
+
+- Add a repository-level allow-list for approved review bots.
+- Keep explicit mapping from source type to default severity (`blocking`, `advisory`, `ignore-until-escalated`).
+- Persist source attribution in watcher state and summary artifacts for auditability.
 
 ## Operating Model (How It Should Run)
 
