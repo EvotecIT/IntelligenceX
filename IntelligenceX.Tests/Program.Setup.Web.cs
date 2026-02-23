@@ -233,6 +233,26 @@ internal static partial class Program {
             "web setup args merge blocker require section match value");
     }
 
+    private static void TestWebSetupBuildSetupArgsOmitsMergeBlockerBooleansWhenUnset() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForReviewConfigTweaksTests(
+            reviewIntent: null,
+            reviewStrictness: null,
+            reviewLoopPolicy: "balanced",
+            reviewVisionPath: null,
+            mergeBlockerSections: "Todo List,Critical Issues",
+            mergeBlockerRequireAllSections: null,
+            mergeBlockerRequireSectionMatch: null);
+
+        AssertEqual(true, Array.IndexOf(args, "--review-loop-policy") >= 0,
+            "web setup args omit merge blocker booleans loop policy flag");
+        AssertEqual(true, Array.IndexOf(args, "--merge-blocker-sections") >= 0,
+            "web setup args omit merge blocker booleans sections flag");
+        AssertEqual(false, Array.IndexOf(args, "--merge-blocker-require-all-sections") >= 0,
+            "web setup args omit merge blocker booleans require all sections flag");
+        AssertEqual(false, Array.IndexOf(args, "--merge-blocker-require-section-match") >= 0,
+            "web setup args omit merge blocker booleans require section match flag");
+    }
+
     private static void TestWebSetupBuildSetupArgsPropagatesTriageBootstrap() {
         var enabled = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForTriageBootstrapTests(triageBootstrap: true);
         AssertEqual(true, Array.IndexOf(enabled, "--triage-bootstrap") >= 0,
@@ -395,6 +415,10 @@ internal static partial class Program {
         AssertEqual(true, result.Success, "web setup review config validation todo-only loop policy success");
         AssertEqual("todo-only", result.NormalizedReviewLoopPolicy,
             "web setup review config validation normalized todo-only loop policy");
+        AssertEqual(null, result.NormalizedMergeBlockerRequireAllSections,
+            "web setup review config validation todo-only loop policy keep require all unset");
+        AssertEqual(null, result.NormalizedMergeBlockerRequireSectionMatch,
+            "web setup review config validation todo-only loop policy keep require section match unset");
     }
 
     private static void TestWebSetupReviewConfigValidationRejectsOutsidePresetGeneration() {

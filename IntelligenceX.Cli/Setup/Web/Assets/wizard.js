@@ -878,12 +878,9 @@ function isVisionLoopPolicy(rawValue) {
   return normalizeLoopPolicy(rawValue) === 'vision';
 }
 
-function shouldIncludeMergeBlockerBooleansInPayload(mergeBlockerSectionsValue, requireAllSectionsValue, requireSectionMatchValue) {
-  return mergeBlockerSectionsValue.length > 0 ||
-    mergeBlockerRequireAllSectionsTouched ||
-    mergeBlockerRequireSectionMatchTouched ||
-    !requireAllSectionsValue ||
-    !requireSectionMatchValue;
+function shouldIncludeMergeBlockerBooleansInPayload() {
+  // Preserve loop-policy defaults unless the user explicitly touched these controls.
+  return mergeBlockerRequireAllSectionsTouched || mergeBlockerRequireSectionMatchTouched;
 }
 
 // ── Build review grid ──
@@ -914,11 +911,7 @@ function buildReviewTable() {
   const mergeBlockerRequireSectionMatchValue = mergeBlockerRequireSectionMatchInput
     ? !!mergeBlockerRequireSectionMatchInput.checked
     : true;
-  const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload(
-    mergeBlockerSectionsValue,
-    mergeBlockerRequireAllSectionsValue,
-    mergeBlockerRequireSectionMatchValue
-  );
+  const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload();
   const visionPolicySelected = isVisionLoopPolicy(reviewLoopPolicyKey);
   const includeReviewVisionPath = visionPolicySelected && reviewVisionPathValue.length > 0;
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
@@ -1211,11 +1204,7 @@ function buildRequestBody(dryRun) {
       body.reviewVisionPath = reviewVisionPathValue;
     }
     if (mergeBlockerSectionsValue.length > 0) body.mergeBlockerSections = mergeBlockerSectionsValue;
-    const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload(
-      mergeBlockerSectionsValue,
-      mergeBlockerRequireAllSectionsValue,
-      mergeBlockerRequireSectionMatchValue
-    );
+    const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload();
     if (includeMergeBlockerBooleans) {
       body.mergeBlockerRequireAllSections = mergeBlockerRequireAllSectionsValue;
       body.mergeBlockerRequireSectionMatch = mergeBlockerRequireSectionMatchValue;

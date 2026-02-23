@@ -229,6 +229,8 @@ internal static partial class Program {
         failed += Run("Web setup args propagate analysis run strict", TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict);
         failed += Run("Web setup args propagate review config tweaks",
             TestWebSetupBuildSetupArgsPropagatesReviewConfigTweaks);
+        failed += Run("Web setup args omit merge blocker booleans when unset",
+            TestWebSetupBuildSetupArgsOmitsMergeBlockerBooleansWhenUnset);
         failed += Run("Web setup args propagate triage bootstrap", TestWebSetupBuildSetupArgsPropagatesTriageBootstrap);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup OpenAI routing validation rejects config override",
