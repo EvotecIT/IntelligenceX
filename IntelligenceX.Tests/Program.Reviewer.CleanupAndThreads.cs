@@ -304,6 +304,19 @@ internal static partial class Program {
         AssertEqual("\"42: fixed null check`", normalized, "unbalanced delimiters preserved");
     }
 
+    private static void TestThreadResolveEvidenceDeduplicatesPatchPathScans() {
+        var files = new[] {
+            new PullRequestFile("src/Foo.cs", "modified", "@@ -1,1 +1,2 @@\n- return oldValue;\n+ return newValue;\n+ return oldValue;"),
+            new PullRequestFile("src/Bar.cs", "modified", "@@ -5,1 +5,2 @@\n- old();\n+ updated();\n+ old();")
+        };
+
+        var scanned = CallCollectEvidenceScanPaths(files, "not-present-evidence", "src/Foo.cs");
+        AssertEqual(2, scanned.Count, "scan count with preferred path");
+        AssertEqual(2, scanned.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "scan paths are unique");
+        AssertEqual(1, scanned.Count(path => path.Equals("src/Foo.cs", StringComparison.OrdinalIgnoreCase)),
+            "preferred path scanned once");
+    }
+
     private static void TestThreadTriageEmbedPlacement() {
         var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {
@@ -676,3 +689,4 @@ internal static partial class Program {
 
 }
 #endif
+

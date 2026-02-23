@@ -285,17 +285,31 @@ public static partial class ReviewerApp {
     private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken) {
         var resolved = 0;
+        var scanned = 0;
+        var skippedResolved = 0;
+        var skippedNotOutdated = 0;
+        var skippedNonBot = 0;
+        var skippedPartialBotView = 0;
+        var failed = 0;
         foreach (var thread in threads) {
+            scanned++;
             if (resolved >= settings.ReviewThreadsAutoResolveMax) {
                 break;
             }
-            if (thread.IsResolved || !thread.IsOutdated) {
+            if (thread.IsResolved) {
+                skippedResolved++;
+                continue;
+            }
+            if (!thread.IsOutdated) {
+                skippedNotOutdated++;
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
+                skippedNonBot++;
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                skippedPartialBotView++;
                 continue;
             }
 
@@ -304,7 +318,15 @@ public static partial class ReviewerApp {
                 resolved++;
                 continue;
             }
+            failed++;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {result.Error ?? "unknown error"}");
+        }
+
+        if (scanned > 0) {
+            Console.Error.WriteLine(
+                $"Thread auto-resolve (stale): scanned={scanned}; resolved={resolved}; failed={failed}; " +
+                $"skip_resolved={skippedResolved}; skip_not_outdated={skippedNotOutdated}; " +
+                $"skip_non_bot={skippedNonBot}; skip_partial_view={skippedPartialBotView}.");
         }
     }
 
@@ -322,20 +344,31 @@ public static partial class ReviewerApp {
             .ConfigureAwait(false);
 
         var resolved = 0;
+        var scanned = 0;
+        var skippedResolved = 0;
+        var skippedPartialBotView = 0;
+        var skippedNoInlineKey = 0;
+        var skippedExpectedMatch = 0;
+        var failed = 0;
         foreach (var thread in threads) {
+            scanned++;
             if (resolved >= settings.ReviewThreadsAutoResolveMax) {
                 break;
             }
             if (thread.IsResolved) {
+                skippedResolved++;
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                skippedPartialBotView++;
                 continue;
             }
-            if (!TryGetInlineThreadKey(thread, settings, out var key)) {
+            if (!TryGetInlineThreadMatchKeys(thread, settings, out var threadKeys) || threadKeys.Count == 0) {
+                skippedNoInlineKey++;
                 continue;
             }
-            if (keys.Contains(key)) {
+            if (threadKeys.Any(keys.Contains)) {
+                skippedExpectedMatch++;
                 continue;
             }
 
@@ -344,7 +377,15 @@ public static partial class ReviewerApp {
                 resolved++;
                 continue;
             }
+            failed++;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {result.Error ?? "unknown error"}");
+        }
+
+        if (scanned > 0) {
+            Console.Error.WriteLine(
+                $"Thread auto-resolve (missing-inline): expected_keys={keys.Count}; scanned={scanned}; resolved={resolved}; failed={failed}; " +
+                $"skip_resolved={skippedResolved}; skip_partial_view={skippedPartialBotView}; " +
+                $"skip_no_inline_key={skippedNoInlineKey}; skip_expected_match={skippedExpectedMatch}.");
         }
     }
 
@@ -427,3 +468,5 @@ public static partial class ReviewerApp {
     }
 
 }
+
+

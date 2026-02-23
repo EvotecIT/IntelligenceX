@@ -610,12 +610,15 @@ public static partial class ReviewerApp {
     }
 
     private static bool HasEvidenceInAnyDiffContext(Dictionary<string, List<PatchLine>> patchIndex,
-        IReadOnlyDictionary<string, string> patchLookup, string evidence, string? preferredPath = null) {
+        IReadOnlyDictionary<string, string> patchLookup, string evidence, string? preferredPath = null,
+        List<string>? scannedPaths = null) {
         var preferred = string.IsNullOrWhiteSpace(preferredPath) ? string.Empty : NormalizePath(preferredPath);
         if (!string.IsNullOrWhiteSpace(preferred) &&
-            TryGetPatchContextForPath(preferred, patchIndex, patchLookup, out var preferredContext) &&
-            HasEvidenceInContext(preferredContext, evidence)) {
-            return true;
+            TryGetPatchContextForPath(preferred, patchIndex, patchLookup, out var preferredContext)) {
+            scannedPaths?.Add(preferred);
+            if (HasEvidenceInContext(preferredContext, evidence)) {
+                return true;
+            }
         }
 
         var visitedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -627,6 +630,7 @@ public static partial class ReviewerApp {
             if (!visitedPaths.Add(path) || lines.Count == 0) {
                 continue;
             }
+            scannedPaths?.Add(path);
             var context = string.Join("\n", lines.Select(static line => $"{line.LineNumber}: {line.Text}"));
             if (HasEvidenceInContext(context, evidence)) {
                 return true;
@@ -637,6 +641,7 @@ public static partial class ReviewerApp {
             if (!visitedPaths.Add(path) || string.IsNullOrWhiteSpace(patch)) {
                 continue;
             }
+            scannedPaths?.Add(path);
             var context = $"<file patch>\n{patch}";
             if (HasEvidenceInContext(context, evidence)) {
                 return true;
@@ -807,3 +812,4 @@ public static partial class ReviewerApp {
     }
 
 }
+
