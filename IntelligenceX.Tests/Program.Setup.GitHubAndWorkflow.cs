@@ -67,7 +67,7 @@ jobs:
       - run: echo pre
   __IX_BEGIN__
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@fb72170966841eb32cfcb00c46461bbf8f46233f
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
       model: gpt-5.3-codex
@@ -111,7 +111,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@fb72170966841eb32cfcb00c46461bbf8f46233f
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
       model: gpt-5.3-codex
@@ -153,7 +153,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@fb72170966841eb32cfcb00c46461bbf8f46233f
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
       model: gpt-5.3-codex
@@ -181,7 +181,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@fb72170966841eb32cfcb00c46461bbf8f46233f
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
       model: gpt-5.3-codex
