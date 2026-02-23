@@ -84,6 +84,16 @@ public static partial class ReviewerApp {
         return scannedPaths;
     }
 
+    /// <summary>Test-only helper that exposes inline composite matching keys used by missing-inline auto-resolve.</summary>
+    internal static IReadOnlySet<string> BuildInlineMatchKeysForTests(string path, int line, string? body, string? snippet,
+        string? signatureSource) =>
+        BuildInlineMatchKeys(path, line, body, snippet, signatureSource);
+
+    /// <summary>Test-only helper that exposes hidden inline signature marker formatting.</summary>
+    internal static string? BuildInlineSignatureMarkerForTests(string path, int line, string? body, string? snippet,
+        string? signatureSource) =>
+        TryBuildInlineSignatureMarker(path, line, body, snippet, signatureSource);
+
     /// <summary>Test-only forwarder for diff-range file resolution.</summary>
     internal static Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveDiffRangeFilesForTestsAsync(
         GitHubClient github, PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles,

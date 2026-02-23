@@ -1,18 +1,15 @@
 namespace IntelligenceX.Reviewer;
 
 public static partial class ReviewerApp {
+    private const int InlineLineWindowSize = 3;
+    private const string InlineSignatureMarkerPrefix = "<!-- intelligencex:inline-sig:v1 ";
+    private const string InlineSignatureMarkerSuffix = " -->";
+
     internal static bool TryGetInlineThreadKey(PullRequestReviewThread thread, ReviewSettings settings, out string key) {
         key = string.Empty;
-        if (thread.Comments.Count == 0) {
-            return false;
-        }
-        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
-            return false;
-        }
-
-        var marker = thread.Comments.FirstOrDefault(comment =>
-            comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase));
-        if (marker is null || string.IsNullOrWhiteSpace(marker.Path) || !marker.Line.HasValue) {
+        if (!TryGetInlineMarkerComment(thread, settings, out var marker) ||
+            string.IsNullOrWhiteSpace(marker.Path) ||
+            !marker.Line.HasValue) {
             return false;
         }
 
@@ -23,10 +20,32 @@ public static partial class ReviewerApp {
     private static bool TryGetInlineThreadMatchKeys(PullRequestReviewThread thread, ReviewSettings settings,
         out HashSet<string> keys) {
         keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!TryGetInlineThreadKey(thread, settings, out var key)) {
+        if (!TryGetInlineMarkerComment(thread, settings, out var marker) ||
+            string.IsNullOrWhiteSpace(marker.Path) ||
+            !marker.Line.HasValue) {
             return false;
         }
-        keys.Add(key);
+
+        keys = BuildInlineMatchKeys(marker.Path!, marker.Line.Value, marker.Body, snippet: null, signatureSource: null);
+        return keys.Count > 0;
+    }
+
+    private static bool TryGetInlineMarkerComment(PullRequestReviewThread thread, ReviewSettings settings,
+        out PullRequestReviewThreadComment marker) {
+        marker = default!;
+        if (thread.Comments.Count == 0) {
+            return false;
+        }
+        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
+            return false;
+        }
+
+        var candidate = thread.Comments.FirstOrDefault(comment =>
+            comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase));
+        if (candidate is null) {
+            return false;
+        }
+        marker = candidate;
         return true;
     }
 
@@ -201,7 +220,11 @@ public static partial class ReviewerApp {
             if (!comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            existingKeys.Add(BuildInlineKey(comment.Path!, comment.Line.Value));
+            var matchKeys = BuildInlineMatchKeys(comment.Path!, comment.Line.Value, comment.Body, snippet: null,
+                signatureSource: null);
+            foreach (var matchKey in matchKeys) {
+                existingKeys.Add(matchKey);
+            }
         }
 
         var posted = 0;
@@ -227,12 +250,20 @@ public static partial class ReviewerApp {
             if (string.IsNullOrWhiteSpace(body)) {
                 continue;
             }
+            var signatureSource = ResolveInlineSignatureSource(normalizedPath, lineNumber, inline.Snippet, body, patchIndex);
+            var matchKeys = BuildInlineMatchKeys(normalizedPath, lineNumber, body, inline.Snippet, signatureSource);
+            foreach (var matchKey in matchKeys) {
+                expectedKeys.Add(matchKey);
+            }
             var key = BuildInlineKey(normalizedPath, lineNumber);
-            expectedKeys.Add(key);
-            if (!allowPost || existingKeys.Contains(key) || !seen.Add(key)) {
+            if (!allowPost || existingKeys.Overlaps(matchKeys) || !seen.Add(key)) {
                 continue;
             }
-            body = $"{ReviewFormatter.InlineMarker}\n{body}";
+            var signatureMarker = TryBuildInlineSignatureMarker(normalizedPath, lineNumber, body, inline.Snippet,
+                signatureSource);
+            body = string.IsNullOrWhiteSpace(signatureMarker)
+                ? $"{ReviewFormatter.InlineMarker}\n{body}"
+                : $"{ReviewFormatter.InlineMarker}\n{signatureMarker}\n{body}";
 
             try {
                 await github.CreatePullRequestReviewCommentAsync(context.Owner, context.Repo, context.Number, body,
@@ -462,6 +493,126 @@ public static partial class ReviewerApp {
         return normalized;
     }
 
+    private static string? ResolveInlineSignatureSource(string path, int line, string? snippet, string body,
+        IReadOnlyDictionary<string, List<PatchLine>> patchIndex) {
+        if (!string.IsNullOrWhiteSpace(snippet)) {
+            return snippet;
+        }
+        var normalizedPath = NormalizePath(path);
+        if (line > 0 &&
+            !string.IsNullOrWhiteSpace(normalizedPath) &&
+            patchIndex.TryGetValue(normalizedPath, out var lines) &&
+            lines.Count > 0) {
+            var patchLine = lines.FirstOrDefault(item => item.LineNumber == line);
+            if (patchLine is not null && !string.IsNullOrWhiteSpace(patchLine.NormalizedText)) {
+                return patchLine.NormalizedText;
+            }
+        }
+        return ExtractInlineBodySignatureSource(body);
+    }
+
+    private static string? ExtractInlineBodySignatureSource(string? body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
+        }
+        var lines = body.Replace("\r\n", "\n").Split('\n');
+        foreach (var line in lines) {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+            if (trimmed.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (trimmed.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            return trimmed;
+        }
+        return null;
+    }
+
+    private static string? TryBuildInlineSignatureMarker(string path, int line, string? body, string? snippet,
+        string? signatureSource) {
+        var signature = BuildInlineSignature(path, line, signatureSource ?? snippet ?? ExtractInlineBodySignatureSource(body));
+        if (string.IsNullOrWhiteSpace(signature)) {
+            return null;
+        }
+        return $"{InlineSignatureMarkerPrefix}{signature}{InlineSignatureMarkerSuffix}";
+    }
+
+    private static string? TryExtractInlineSignature(string? body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
+        }
+        var start = body.IndexOf(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) {
+            return null;
+        }
+        start += InlineSignatureMarkerPrefix.Length;
+        var end = body.IndexOf(InlineSignatureMarkerSuffix, start, StringComparison.Ordinal);
+        if (end < 0 || end <= start) {
+            return null;
+        }
+        var signature = body.Substring(start, end - start).Trim();
+        if (signature.Length == 0 || signature.Length > 128) {
+            return null;
+        }
+        for (var i = 0; i < signature.Length; i++) {
+            if (!Uri.IsHexDigit(signature[i])) {
+                return null;
+            }
+        }
+        return signature.ToLowerInvariant();
+    }
+
+    private static string? BuildInlineSignature(string path, int line, string? source) {
+        var normalizedSource = NormalizeSnippetText(source ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(normalizedSource) || normalizedSource.Length < 3) {
+            return null;
+        }
+        var normalizedPath = NormalizePath(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath) || line <= 0) {
+            return null;
+        }
+        var input = $"{normalizedPath}|{normalizedSource}";
+        var digest = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(digest).ToLowerInvariant();
+    }
+
+    private static HashSet<string> BuildInlineMatchKeys(string path, int line, string? body, string? snippet,
+        string? signatureSource) {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var normalizedPath = NormalizePath(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath) || line <= 0) {
+            return keys;
+        }
+
+        keys.Add(BuildInlineKey(normalizedPath, line));
+        var lower = Math.Max(1, line - InlineLineWindowSize);
+        var upper = line + InlineLineWindowSize;
+        for (var candidate = lower; candidate <= upper; candidate++) {
+            keys.Add(BuildInlineWindowKey(normalizedPath, candidate));
+        }
+
+        var signature = TryExtractInlineSignature(body);
+        if (string.IsNullOrWhiteSpace(signature)) {
+            signature = BuildInlineSignature(normalizedPath, line, signatureSource ?? snippet);
+        }
+        if (!string.IsNullOrWhiteSpace(signature)) {
+            keys.Add(BuildInlineSignatureKey(normalizedPath, signature));
+        }
+        return keys;
+    }
+
+    private static string BuildInlineWindowKey(string path, int line) {
+        return $"window:{NormalizePath(path)}:{line}";
+    }
+
+    private static string BuildInlineSignatureKey(string path, string signature) {
+        return $"signature:{NormalizePath(path)}:{signature}";
+    }
+
     private static string BuildInlineKey(string path, int line) {
         return $"{NormalizePath(path)}:{line}";
     }
@@ -589,4 +740,3 @@ public static partial class ReviewerApp {
     }
 
 }
-
