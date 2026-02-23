@@ -215,13 +215,30 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        AppendAssistantText(conversation, interimText);
+        var appendInterimBubble = ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: _assistantStreamingState.HasReceivedDelta(),
+            activeTurnBoundToConversation: IsActiveTurnBoundToConversation(conversation));
+        if (appendInterimBubble) {
+            AppendAssistantText(conversation, interimText);
+        } else {
+            ReplaceLastAssistantText(conversation, interimText);
+        }
         conversation.UpdatedUtc = DateTime.UtcNow;
         BindActiveTurnAssistantMessage(conversation);
         SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             QueueTranscriptRender("assistant_interim_result");
         }
+    }
+
+    internal static bool ShouldAppendInterimAssistantResult(bool activeTurnReceivedDelta, bool activeTurnBoundToConversation) {
+        // Interim snapshots should replace the active provisional draft when this turn has already streamed
+        // assistant content; appending in that case creates duplicate assistant bubbles.
+        if (activeTurnReceivedDelta && activeTurnBoundToConversation) {
+            return false;
+        }
+
+        return true;
     }
 
     private void QueuePostLoginCompletion() {

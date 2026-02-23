@@ -761,6 +761,7 @@ internal sealed partial class ChatServiceSession {
                         toolDefinitions: structuredNextActionToolDefs,
                         toolCalls: toolCalls,
                         toolOutputs: toolOutputs,
+                        userRequest: routedUserRequest,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var packFallbackCall,
                         out var packFallbackReason)) {

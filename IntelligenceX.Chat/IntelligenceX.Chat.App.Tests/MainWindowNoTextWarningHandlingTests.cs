@@ -68,4 +68,31 @@ public sealed class MainWindowNoTextWarningHandlingTests {
 
         Assert.True(append);
     }
+
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterInterim_DoesNotAppendForWhitespaceAndPunctuationOnlyDiffs() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterInterim(
+            finalAssistantText: "  Running checks now!  ",
+            interimAssistantText: "running checks now");
+
+        Assert.False(append);
+    }
+
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_DoesNotAppendWhenStreamingDraftExists() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: true,
+            activeTurnBoundToConversation: true);
+
+        Assert.False(append);
+    }
+
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_AppendsWhenNoStreamingDraftExists() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: false,
+            activeTurnBoundToConversation: true);
+
+        Assert.True(append);
+    }
 }

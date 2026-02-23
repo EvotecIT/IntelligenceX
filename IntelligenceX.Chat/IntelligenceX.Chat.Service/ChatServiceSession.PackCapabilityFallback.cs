@@ -41,8 +41,8 @@ internal sealed partial class ChatServiceSession {
         AddPackCapabilityFallbackContract(
             packId: "eventlog",
             candidateTools: new[] {
-                "eventlog_live_stats",
                 "eventlog_live_query",
+                "eventlog_live_stats",
                 "eventlog_top_events",
                 "eventlog_timeline_query"
             },
@@ -111,6 +111,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlyList<ToolCallDto> toolCalls,
         IReadOnlyList<ToolOutputDto> toolOutputs,
+        string? userRequest,
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out ToolCall toolCall,
         out string reason) {
@@ -157,7 +158,15 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (!TryReadDiscoveryPartialScopeHints(output.Output, out var partialScopeHints, out var partialScopeReason)) {
-                continue;
+                if (!TryReadPackCapabilityErrorFallbackHints(
+                        sourcePackId: sourcePackId,
+                        sourceTool: sourceTool,
+                        output: output,
+                        userRequest: userRequest,
+                        out partialScopeHints,
+                        out partialScopeReason)) {
+                    continue;
+                }
             }
 
             for (var i = 0; i < packContract.FallbackTools.Length; i++) {
@@ -304,6 +313,57 @@ internal sealed partial class ChatServiceSession {
         return args;
     }
 
+    private static bool TryReadPackCapabilityErrorFallbackHints(
+        string sourcePackId,
+        string sourceTool,
+        ToolOutputDto output,
+        string? userRequest,
+        out JsonObject hints,
+        out string reason) {
+        hints = new JsonObject(StringComparer.Ordinal);
+        reason = "no_error_fallback_signal";
+
+        if (!string.Equals(sourcePackId, NormalizePackId("eventlog"), StringComparison.OrdinalIgnoreCase)) {
+            reason = "source_pack_not_supported";
+            return false;
+        }
+
+        if (!string.Equals(sourceTool, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(sourceTool, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(sourceTool, "eventlog_evtx_stats", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(sourceTool, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
+            reason = "source_tool_not_evtx";
+            return false;
+        }
+
+        if (!LooksLikeEvtxAccessDeniedFallbackCandidate(output)) {
+            reason = "evtx_access_denied_not_detected";
+            return false;
+        }
+
+        TryCopyEventlogFallbackHintsFromOutput(output.Output, hints);
+        var machineName = ReadNonEmptyHint(hints, "machine_name")
+                          ?? ReadNonEmptyHint(hints, "computer_name");
+        if (string.IsNullOrWhiteSpace(machineName)) {
+            machineName = TryExtractHostHintFromUserRequest(userRequest);
+        }
+
+        if (string.IsNullOrWhiteSpace(machineName)) {
+            reason = "evtx_access_denied_missing_machine_hint";
+            return false;
+        }
+
+        if (ReadNonEmptyHint(hints, "machine_name") is null) {
+            hints.Add("machine_name", machineName);
+        }
+        if (ReadNonEmptyHint(hints, "log_name") is null) {
+            hints.Add("log_name", "System");
+        }
+
+        reason = "evtx_access_denied_live_query_fallback";
+        return true;
+    }
+
     private static bool TryReadDiscoveryPartialScopeHints(string? outputJson, out JsonObject hints, out string reason) {
         hints = new JsonObject(StringComparer.Ordinal);
         reason = "no_partial_scope_signal";
@@ -364,6 +424,196 @@ internal sealed partial class ChatServiceSession {
             reason = "tool_output_parse_failed";
             return false;
         }
+    }
+
+    private static bool LooksLikeEvtxAccessDeniedFallbackCandidate(ToolOutputDto output) {
+        var errorCode = (output.ErrorCode ?? string.Empty).Trim();
+        if (errorCode.Length == 0) {
+            errorCode = TryReadErrorCodeFromOutputPayload(output.Output);
+        }
+
+        if (errorCode.Length == 0) {
+            return false;
+        }
+
+        return errorCode.Contains("access_denied", StringComparison.OrdinalIgnoreCase)
+               || errorCode.Contains("not_authorized", StringComparison.OrdinalIgnoreCase)
+               || errorCode.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
+               || errorCode.Contains("forbidden", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string TryReadErrorCodeFromOutputPayload(string? outputJson) {
+        var payload = (outputJson ?? string.Empty).Trim();
+        if (payload.Length == 0 || payload[0] != '{') {
+            return string.Empty;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(payload, ActionSelectionJsonOptions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return string.Empty;
+            }
+
+            if (TryReadStringProperty(doc.RootElement, "error_code", out var errorCode)) {
+                return errorCode;
+            }
+
+            if (doc.RootElement.TryGetProperty("error", out var errorNode)
+                && errorNode.ValueKind == JsonValueKind.Object
+                && TryReadStringProperty(errorNode, "code", out errorCode)) {
+                return errorCode;
+            }
+
+            return string.Empty;
+        } catch (JsonException) {
+            return string.Empty;
+        }
+    }
+
+    private static bool TryReadStringProperty(JsonElement source, string propertyName, out string value) {
+        value = string.Empty;
+        if (!source.TryGetProperty(propertyName, out var node) || node.ValueKind != JsonValueKind.String) {
+            return false;
+        }
+
+        value = (node.GetString() ?? string.Empty).Trim();
+        return value.Length > 0;
+    }
+
+    private static void TryCopyEventlogFallbackHintsFromOutput(string? outputJson, JsonObject hints) {
+        var payload = (outputJson ?? string.Empty).Trim();
+        if (payload.Length == 0 || payload[0] != '{') {
+            return;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(payload, ActionSelectionJsonOptions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return;
+            }
+
+            var root = doc.RootElement;
+            CopyHintIfPresent(root, hints, "machine_name");
+            CopyHintIfPresent(root, hints, "computer_name");
+            CopyHintIfPresent(root, hints, "log_name");
+            if (TryReadDiscoveryStatusObject(root, out var discoveryStatus)) {
+                CopyHintIfPresent(discoveryStatus, hints, "machine_name");
+                CopyHintIfPresent(discoveryStatus, hints, "computer_name");
+                CopyHintIfPresent(discoveryStatus, hints, "log_name");
+            }
+        } catch (JsonException) {
+            // Best-effort extraction only.
+        }
+    }
+
+    private static string? TryExtractHostHintFromUserRequest(string? userRequest) {
+        var text = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        if (text.Length == 0) {
+            return null;
+        }
+
+        var bestCandidate = string.Empty;
+        var bestScore = 0;
+        var tokenStart = -1;
+        for (var i = 0; i <= text.Length; i++) {
+            var ch = i < text.Length ? text[i] : '\0';
+            var tokenChar = i < text.Length
+                            && (char.IsLetterOrDigit(ch) || ch == '.' || ch == '-' || ch == '_');
+            if (tokenChar) {
+                if (tokenStart < 0) {
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (tokenStart < 0) {
+                continue;
+            }
+
+            var candidate = text.Substring(tokenStart, i - tokenStart);
+            tokenStart = -1;
+            var score = ScoreHostHintCandidate(candidate);
+            if (score <= bestScore) {
+                continue;
+            }
+
+            bestScore = score;
+            bestCandidate = candidate;
+        }
+
+        return bestScore > 0 ? bestCandidate : null;
+    }
+
+    private static int ScoreHostHintCandidate(string candidate) {
+        var value = (candidate ?? string.Empty).Trim();
+        if (value.Length is < 3 or > 255) {
+            return 0;
+        }
+
+        if (value.StartsWith(".", StringComparison.Ordinal)
+            || value.EndsWith(".", StringComparison.Ordinal)
+            || value.Contains("..", StringComparison.Ordinal)) {
+            return 0;
+        }
+
+        var hasLetter = false;
+        var hasDigit = false;
+        var hasDot = false;
+        var hasDash = false;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsLetter(ch)) {
+                hasLetter = true;
+                continue;
+            }
+
+            if (char.IsDigit(ch)) {
+                hasDigit = true;
+                continue;
+            }
+
+            if (ch == '.') {
+                hasDot = true;
+                continue;
+            }
+
+            if (ch == '-') {
+                hasDash = true;
+                continue;
+            }
+
+            if (ch == '_') {
+                continue;
+            }
+
+            return 0;
+        }
+
+        if (!hasLetter) {
+            return 0;
+        }
+
+        // Keep the heuristic shape-based and language-agnostic:
+        // host-like candidates should look like inventory labels (digit/dot) or longer dashed ids.
+        if (!hasDigit && !hasDot && !(hasDash && value.Length >= 6)) {
+            return 0;
+        }
+
+        var score = 1;
+        if (hasDot) {
+            score += 3;
+        }
+        if (hasDigit) {
+            score += 2;
+        }
+        if (hasDash) {
+            score += 1;
+        }
+        if (value.Length >= 8) {
+            score += 1;
+        }
+
+        return score;
     }
 
     private static bool TryReadDiscoveryStatusObject(JsonElement root, out JsonElement discoveryStatus) {

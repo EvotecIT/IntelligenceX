@@ -11,6 +11,7 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const int MaxExecutionContractHistoryScan = 12;
+    private const int InterimFinalNearDuplicateSuffixThresholdChars = 64;
     private sealed record ChatTurnContext(
         ConversationRuntime Conversation,
         string ConversationId,
@@ -456,17 +457,77 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static bool ShouldAppendFinalAssistantAfterInterim(string? finalAssistantText, string? interimAssistantText) {
-        var finalText = (finalAssistantText ?? string.Empty).Trim();
+        var finalText = NormalizeAssistantSnapshotForAppendDecision(finalAssistantText);
         if (finalText.Length == 0) {
             return false;
         }
 
-        var interimText = (interimAssistantText ?? string.Empty).Trim();
+        var interimText = NormalizeAssistantSnapshotForAppendDecision(interimAssistantText);
         if (interimText.Length == 0) {
             return true;
         }
 
-        return !string.Equals(finalText, interimText, StringComparison.Ordinal);
+        if (string.Equals(finalText, interimText, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (AreNearDuplicateAssistantSnapshots(finalText, interimText)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string NormalizeAssistantSnapshotForAppendDecision(string? text) {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        var normalized = new System.Text.StringBuilder(value.Length);
+        var previousSpace = false;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsWhiteSpace(ch)) {
+                if (!previousSpace) {
+                    normalized.Append(' ');
+                    previousSpace = true;
+                }
+                continue;
+            }
+
+            previousSpace = false;
+            normalized.Append(ch);
+        }
+
+        var compact = normalized.ToString().Trim();
+        while (compact.Length > 0) {
+            var tail = compact[^1];
+            if (tail is '.' or '!' or '?' or ':' or ';' or ',') {
+                compact = compact[..^1].TrimEnd();
+                continue;
+            }
+
+            break;
+        }
+
+        return compact;
+    }
+
+    private static bool AreNearDuplicateAssistantSnapshots(string finalText, string interimText) {
+        if (finalText.Length == 0 || interimText.Length == 0) {
+            return false;
+        }
+
+        if (finalText.StartsWith(interimText, StringComparison.OrdinalIgnoreCase)) {
+            return finalText.Length - interimText.Length <= InterimFinalNearDuplicateSuffixThresholdChars;
+        }
+
+        if (interimText.StartsWith(finalText, StringComparison.OrdinalIgnoreCase)) {
+            return interimText.Length - finalText.Length <= InterimFinalNearDuplicateSuffixThresholdChars;
+        }
+
+        return false;
     }
 
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {

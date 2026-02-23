@@ -1252,12 +1252,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ["ad_scope_discovery"] = false
         };
 
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run discovery", mutabilityHints, null, null };
         var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var toolCall = Assert.IsType<ToolCall>(args[4]);
-        var reason = Assert.IsType<string>(args[5]);
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.Contains("pack_contract_partial_scope_autofallback", reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
@@ -1292,11 +1292,105 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ["ad_scope_discovery"] = false
         };
 
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run discovery", mutabilityHints, null, null };
         var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[5]));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsEventlogLiveQueryFallbackWhenEvtxAccessDeniedWithHostHint() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_evtx_find"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_evtx_find", "find evtx", schema),
+            new("eventlog_live_query", "live query", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-3", Name = "eventlog_evtx_find" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-3",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Can you find out why and when AD0 was rebooted?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+        Assert.Contains("pack_contract_partial_scope_autofallback", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("evtx_access_denied_live_query_fallback", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildEventlogFallbackWithoutHostHint() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_evtx_find"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_evtx_find", "find evtx", schema),
+            new("eventlog_live_query", "live query", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-4", Name = "eventlog_evtx_find" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-4",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Please continue with reboot checks.",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
     }
 
     [Fact]
