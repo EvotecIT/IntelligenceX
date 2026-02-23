@@ -17,21 +17,91 @@ Your credentials, your GitHub App, your control.
 - PowerShell module
 - Issue Ops + Project Control
 
-Note: some tool packs are private/licensed by default depending on deployment and usage.
-
-## Visual Overview
+## Product Walkthrough
 
 Screenshots below are sourced from current blog/gallery assets and mirrored under `Assets/README/` for stable GitHub rendering.
 
-| Area | Preview |
-| --- | --- |
-| GitHub Actions Reviewer | <img src="Assets/README/reviewer.jpg" alt="IntelligenceX reviewer output on GitHub PR" width="420" /> |
-| IX Chat | <img src="Assets/README/chat.png" alt="IX Chat AD triage conversation" width="420" /> |
-| IX Tools | <img src="Assets/README/tools.png" alt="IX Tools pack list and toggles" width="420" /> |
-| CLI Tools | <img src="Assets/README/cli.svg" alt="CLI product visual" width="420" /> |
-| .NET Library | <img src="Assets/README/library.svg" alt=".NET library product visual" width="420" /> |
-| PowerShell Module | <img src="Assets/README/powershell.svg" alt="PowerShell module product visual" width="420" /> |
-| Issue Ops + Project Control | <img src="Assets/README/issue-ops.svg" alt="Issue Ops project board visual" width="420" /> |
+### GitHub Actions Reviewer
+
+AI PR reviewer for actionable findings, merge-blocking triage, and cleaner review loops.
+
+- Docs: `Docs/reviewer/overview.md`
+- Blog: `Website/content/blog/ix-reviewer-in-action.md`
+
+Picture 1:
+
+<img src="Assets/README/reviewer.jpg" alt="IntelligenceX reviewer output on a runtime pull request" width="760" />
+
+Picture 2:
+
+<img src="Assets/README/reviewer-2.jpg" alt="Inline reviewer follow-up thread with implementation evidence checks" width="760" />
+
+### IX Chat
+
+Windows tray chat app with provider/runtime selection and tool-calling support for diagnostics and investigation workflows.
+
+Warning: IX Chat is experimental and not intended for production operations. Use in dev/test environments only with human review in the loop.
+
+- Docs: `Docs/chat/overview.md`
+- Blog: `Website/content/blog/chat-flow-and-options.md`
+- Blog: `Website/content/blog/multilanguage-support-in-action.md`
+
+Picture 1:
+
+<img src="Assets/README/chat.png" alt="IX Chat AD triage conversation with summary findings" width="760" />
+
+Picture 2:
+
+<img src="Assets/README/chat-2.png" alt="IX Chat remediation-focused follow-up response" width="760" />
+
+### IX Tools
+
+Tool packs for event/AD/system workflows used by IX Chat and custom integrations.
+
+- Docs: `Docs/tools/overview.md`
+- Docs: `Docs/library/tool-packs.md`
+- Blog: `Website/content/blog/event-viewer-in-action.md`
+
+Picture 1:
+
+<img src="Assets/README/tools.png" alt="Tools pack availability and toggle controls" width="760" />
+
+Picture 2:
+
+<img src="Assets/README/tools-2.png" alt="Expanded TestimoX tool pack view with specific tools" width="760" />
+
+### Issue Ops + Project Control
+
+Project board and issue triage workflows for handling blockers, confidence signals, and follow-up actions.
+
+- Docs: `Docs/project-ops/overview.md`
+- Docs: `Docs/reviewer/projects-pr-monitoring.md`
+- Blog: `Website/content/blog/ix-issue-ops-in-action.md`
+
+Picture 1:
+
+<img src="Assets/README/issue-ops.svg" alt="Issue Ops board overview" width="760" />
+
+Picture 2:
+
+<img src="Assets/README/issue-ops-2.svg" alt="Issue review columns and confidence signals" width="760" />
+
+### CLI + .NET + PowerShell
+
+Developer-facing interfaces for setup automation, embedding IntelligenceX in .NET apps, and scripting in PowerShell.
+
+- Docs: `Docs/cli/overview.md`
+- Docs: `Docs/library/overview.md`
+- Docs: `Docs/powershell/overview.md`
+- Blog: `Website/content/blog/setup-best-practices-for-teams.md`
+
+Picture 1:
+
+<img src="Assets/README/cli.svg" alt="CLI product visual" width="760" />
+
+Picture 2:
+
+<img src="Assets/README/library.svg" alt=".NET library product visual" width="760" />
 
 ## Quick Start
 

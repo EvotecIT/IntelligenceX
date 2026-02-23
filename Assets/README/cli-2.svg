@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" fill="none">
+  <!-- Background -->
+  <rect width="1200" height="740" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="1200" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="1200" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="600" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">IntelligenceX - Web Setup</text>
+
+  <!-- Browser URL bar -->
+  <rect x="100" y="8" width="500" height="24" rx="4" fill="#0A0E1A"/>
+  <text x="116" y="24" fill="#8892B0" font-family="monospace" font-size="10">https://ix.corp.local/setup</text>
+
+  <!-- Sidebar nav -->
+  <rect x="0" y="40" width="240" height="700" fill="#141824"/>
+  <text x="20" y="72" fill="#00D9FF" font-family="monospace" font-size="12" font-weight="bold">IX Setup</text>
+
+  <rect x="0" y="88" width="240" height="32" fill="transparent"/>
+  <rect x="0" y="88" width="3" height="32" fill="#10B981"/>
+  <text x="20" y="108" fill="#10B981" font-family="monospace" font-size="11">&#x2713; General</text>
+
+  <rect x="0" y="120" width="240" height="32" fill="transparent"/>
+  <rect x="0" y="120" width="3" height="32" fill="#10B981"/>
+  <text x="20" y="140" fill="#10B981" font-family="monospace" font-size="11">&#x2713; AI Provider</text>
+
+  <rect x="0" y="152" width="240" height="32" fill="#00D9FF" opacity="0.06"/>
+  <rect x="0" y="152" width="3" height="32" fill="#00D9FF"/>
+  <text x="20" y="172" fill="#00D9FF" font-family="monospace" font-size="11">&#x25B6; Repositories</text>
+
+  <rect x="0" y="184" width="240" height="32" fill="transparent"/>
+  <text x="20" y="204" fill="#8892B0" font-family="monospace" font-size="11">&#x25CB; Tool Packs</text>
+
+  <rect x="0" y="216" width="240" height="32" fill="transparent"/>
+  <text x="20" y="236" fill="#8892B0" font-family="monospace" font-size="11">&#x25CB; Users &amp; Roles</text>
+
+  <rect x="0" y="248" width="240" height="32" fill="transparent"/>
+  <text x="20" y="268" fill="#8892B0" font-family="monospace" font-size="11">&#x25CB; Review</text>
+
+  <!-- Main content area -->
+  <text x="268" y="76" fill="#E2E8F0" font-family="monospace" font-size="16" font-weight="bold">Repository Configuration</text>
+  <text x="268" y="98" fill="#8892B0" font-family="monospace" font-size="12">Select repositories for PR review and configure review settings.</text>
+
+  <!-- GitHub connection status -->
+  <rect x="268" y="116" width="904" height="40" rx="6" fill="#10B981" opacity="0.08" stroke="#10B981" stroke-width="1" stroke-opacity="0.3"/>
+  <text x="284" y="141" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Connected to GitHub as corp-org | 24 repositories available</text>
+
+  <!-- Repository selection -->
+  <rect x="268" y="170" width="904" height="44" rx="6" fill="#1E2435"/>
+  <text x="284" y="192" fill="#8892B0" font-family="monospace" font-size="11">Search repositories...</text>
+  <rect x="1100" y="180" width="56" height="24" rx="4" fill="#334155"/>
+  <text x="1128" y="196" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="10">Filter</text>
+
+  <!-- Repo cards -->
+  <rect x="268" y="226" width="440" height="130" rx="8" fill="#1E2435" stroke="#00D9FF" stroke-width="1" stroke-opacity="0.4"/>
+  <rect x="284" y="238" width="16" height="16" rx="3" fill="#00D9FF" opacity="0.2"/>
+  <text x="292" y="251" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10">&#x2713;</text>
+  <text x="308" y="251" fill="#E2E8F0" font-family="monospace" font-size="12" font-weight="bold">corp-org/backend-api</text>
+  <text x="284" y="272" fill="#8892B0" font-family="monospace" font-size="10">.NET 8 | 142 PRs/month | Last review: 2 hours ago</text>
+  <text x="284" y="296" fill="#8892B0" font-family="monospace" font-size="10">Review mode:</text>
+  <rect x="360" y="284" width="100" height="20" rx="4" fill="#00D9FF" opacity="0.12"/>
+  <text x="410" y="298" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="9">Auto-review</text>
+  <text x="284" y="318" fill="#8892B0" font-family="monospace" font-size="10">Branches:</text>
+  <rect x="346" y="306" width="50" height="20" rx="4" fill="#334155"/>
+  <text x="371" y="320" text-anchor="middle" fill="#E2E8F0" font-family="monospace" font-size="9">main</text>
+  <rect x="402" y="306" width="70" height="20" rx="4" fill="#334155"/>
+  <text x="437" y="320" text-anchor="middle" fill="#E2E8F0" font-family="monospace" font-size="9">develop</text>
+  <text x="284" y="345" fill="#8892B0" font-family="monospace" font-size="10">Reviewers: @team-leads, @security</text>
+
+  <rect x="732" y="226" width="440" height="130" rx="8" fill="#1E2435" stroke="#00D9FF" stroke-width="1" stroke-opacity="0.4"/>
+  <rect x="748" y="238" width="16" height="16" rx="3" fill="#00D9FF" opacity="0.2"/>
+  <text x="756" y="251" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10">&#x2713;</text>
+  <text x="772" y="251" fill="#E2E8F0" font-family="monospace" font-size="12" font-weight="bold">corp-org/frontend-app</text>
+  <text x="748" y="272" fill="#8892B0" font-family="monospace" font-size="10">TypeScript | 87 PRs/month | Last review: 5 hours ago</text>
+  <text x="748" y="296" fill="#8892B0" font-family="monospace" font-size="10">Review mode:</text>
+  <rect x="824" y="284" width="100" height="20" rx="4" fill="#00D9FF" opacity="0.12"/>
+  <text x="874" y="298" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="9">Auto-review</text>
+  <text x="748" y="318" fill="#8892B0" font-family="monospace" font-size="10">Branches:</text>
+  <rect x="810" y="306" width="50" height="20" rx="4" fill="#334155"/>
+  <text x="835" y="320" text-anchor="middle" fill="#E2E8F0" font-family="monospace" font-size="9">main</text>
+  <text x="748" y="345" fill="#8892B0" font-family="monospace" font-size="10">Reviewers: @frontend-team</text>
+
+  <!-- Unchecked repos -->
+  <rect x="268" y="370" width="440" height="80" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <rect x="284" y="386" width="16" height="16" rx="3" fill="#334155"/>
+  <text x="308" y="399" fill="#8892B0" font-family="monospace" font-size="12">corp-org/infrastructure</text>
+  <text x="284" y="418" fill="#8892B0" font-family="monospace" font-size="10">Terraform | 12 PRs/month</text>
+  <text x="284" y="436" fill="#8892B0" font-family="monospace" font-size="10">Not configured</text>
+
+  <rect x="732" y="370" width="440" height="80" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <rect x="748" y="386" width="16" height="16" rx="3" fill="#334155"/>
+  <text x="772" y="399" fill="#8892B0" font-family="monospace" font-size="12">corp-org/mobile-app</text>
+  <text x="748" y="418" fill="#8892B0" font-family="monospace" font-size="10">Kotlin | 34 PRs/month</text>
+  <text x="748" y="436" fill="#8892B0" font-family="monospace" font-size="10">Not configured</text>
+
+  <!-- Review settings panel -->
+  <rect x="268" y="468" width="904" height="200" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="284" y="496" fill="#E2E8F0" font-family="monospace" font-size="13" font-weight="bold">Default Review Settings</text>
+
+  <!-- Toggle rows -->
+  <text x="284" y="528" fill="#E2E8F0" font-family="monospace" font-size="11">Auto-review on PR open</text>
+  <rect x="1100" y="516" width="40" height="20" rx="10" fill="#10B981"/>
+  <circle cx="1129" cy="526" r="8" fill="#E2E8F0"/>
+
+  <text x="284" y="558" fill="#E2E8F0" font-family="monospace" font-size="11">Review on push to existing PR</text>
+  <rect x="1100" y="546" width="40" height="20" rx="10" fill="#10B981"/>
+  <circle cx="1129" cy="556" r="8" fill="#E2E8F0"/>
+
+  <text x="284" y="588" fill="#E2E8F0" font-family="monospace" font-size="11">Post inline comments</text>
+  <rect x="1100" y="576" width="40" height="20" rx="10" fill="#10B981"/>
+  <circle cx="1129" cy="586" r="8" fill="#E2E8F0"/>
+
+  <text x="284" y="618" fill="#E2E8F0" font-family="monospace" font-size="11">Require human approval before merge</text>
+  <rect x="1100" y="606" width="40" height="20" rx="10" fill="#334155"/>
+  <circle cx="1111" cy="616" r="8" fill="#8892B0"/>
+
+  <text x="284" y="648" fill="#E2E8F0" font-family="monospace" font-size="11">Security vulnerability scanning</text>
+  <rect x="1100" y="636" width="40" height="20" rx="10" fill="#10B981"/>
+  <circle cx="1129" cy="646" r="8" fill="#E2E8F0"/>
+
+  <!-- Bottom action bar -->
+  <rect x="268" y="686" width="904" height="40" rx="6" fill="#1E2435"/>
+  <rect x="1048" y="694" width="108" height="24" rx="4" fill="#00D9FF" opacity="0.15"/>
+  <text x="1102" y="710" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11">Save &amp; Next</text>
+  <rect x="960" y="694" width="76" height="24" rx="4" fill="#334155"/>
+  <text x="998" y="710" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="11">Back</text>
+</svg>
