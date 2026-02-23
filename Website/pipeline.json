@@ -168,7 +168,7 @@
       "imageEnhanceTags": true,
       "hashAssets": true,
       "hashExtensions": [".css", ".js"],
-      "hashExclude": ["**/assets/prism/components/**"],
+      "hashExclude": ["**/assets/prism/components/**", "**/css/prism-theme.css"],
       "reportPath": "./_reports/optimize-report.json",
       "cacheHeaders": true,
       "cacheHeadersOut": "_headers"
