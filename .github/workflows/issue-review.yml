@@ -59,7 +59,10 @@ env:
 
 jobs:
   issue-review:
-    runs-on: ubuntu-latest
+    # While private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+    # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
+    # When public, use GitHub-hosted runners by default.
+    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     steps:
       - name: Checkout
