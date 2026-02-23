@@ -145,11 +145,70 @@ public sealed class TranscriptHtmlFormatterTests {
             });
 
         Assert.Contains("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.Contains("msg-row assistant assistant-draft", html, StringComparison.Ordinal);
+        Assert.Contains("assistant-draft-meta-pill", html, StringComparison.Ordinal);
         Assert.Contains("assistant-turn-live-pill", html, StringComparison.Ordinal);
         Assert.Contains("assistant-turn-trace-list", html, StringComparison.Ordinal);
         Assert.Contains(">plan</li>", html, StringComparison.Ordinal);
         Assert.Contains(">execute</li>", html, StringComparison.Ordinal);
         Assert.Contains(">review</li>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures trace sections can be suppressed while keeping provisional bubble styling.
+    /// </summary>
+    [Fact]
+    public void Format_DoesNotRenderAssistantTurnTraceWhenDisabled() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", "Running checks...", now, "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "plan", "execute", "review" }
+                }
+            },
+            showAssistantTurnTrace: false);
+
+        Assert.Contains("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant-turn-trace", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures provisional assistant draft bubbles can be hidden while final responses remain available.
+    /// </summary>
+    [Fact]
+    public void Format_HidesAssistantDraftBubbleWhenDraftVisibilityDisabled() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 23, 19, 12, 0, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("User", "Run check", now, null),
+            ("Assistant", "Running checks...", now.AddSeconds(1), "gpt-5.3-codex"),
+            ("Assistant", "Done.", now.AddSeconds(2), "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [1] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "plan", "execute" }
+                }
+            },
+            showAssistantTurnTrace: true,
+            showAssistantDraftBubbles: false);
+
+        Assert.DoesNotContain("Running checks...", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant-draft-meta-pill", html, StringComparison.Ordinal);
+        Assert.Contains("Done.", html, StringComparison.Ordinal);
     }
 
     /// <summary>

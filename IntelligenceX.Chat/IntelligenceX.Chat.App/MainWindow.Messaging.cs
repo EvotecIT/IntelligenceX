@@ -199,6 +199,22 @@ public sealed partial class MainWindow : Window {
                         }
                         break;
                     }
+                case "set_show_turn_trace":
+                    {
+                        var enabled = TryGetBoolean(root, "enabled");
+                        if (enabled.HasValue) {
+                            await SetShowAssistantTurnTraceAsync(enabled.Value).ConfigureAwait(true);
+                        }
+                        break;
+                    }
+                case "set_show_draft_bubbles":
+                    {
+                        var enabled = TryGetBoolean(root, "enabled");
+                        if (enabled.HasValue) {
+                            await SetShowAssistantDraftBubblesAsync(enabled.Value).ConfigureAwait(true);
+                        }
+                        break;
+                    }
                 case "set_proactive_mode":
                     {
                         var enabled = TryGetBoolean(root, "enabled");

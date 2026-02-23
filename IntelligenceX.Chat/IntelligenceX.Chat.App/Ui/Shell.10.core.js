@@ -91,7 +91,7 @@
         maxReviewPasses: null,
         modelHeartbeatSeconds: null,
         queueAutoDispatch: true,
-        proactiveMode: true
+        proactiveMode: false
       },
       memory: {
         enabled: true,
@@ -141,6 +141,10 @@
           detectedBaseUrl: "",
           warning: ""
         }
+      },
+      debug: {
+        showTurnTrace: false,
+        showDraftBubbles: true
       },
       debugToolsEnabled: false,
       toolFilter: "",

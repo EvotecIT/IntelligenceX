@@ -138,7 +138,16 @@ public sealed partial class MainWindow : Window {
             var messageDecorations = SnapshotTranscriptMessageDecorations(conversation);
             var timestampFormat = _timestampFormat;
             var markdownOptions = _markdownOptions;
-            var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat, markdownOptions, messageDecorations)).ConfigureAwait(false);
+            var showAssistantTurnTrace = _showAssistantTurnTrace;
+            var showAssistantDraftBubbles = _showAssistantDraftBubbles;
+            var html = await Task.Run(() => BuildMessagesHtml(
+                    messagesSnapshot,
+                    timestampFormat,
+                    markdownOptions,
+                    messageDecorations,
+                    showAssistantTurnTrace,
+                    showAssistantDraftBubbles))
+                .ConfigureAwait(false);
             latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
             if (requestedGeneration < latestGeneration) {
                 return;
@@ -625,6 +634,10 @@ public sealed partial class MainWindow : Window {
             },
             memory = BuildMemoryState(),
             memoryDebug = BuildMemoryDebugState(),
+            debug = new {
+                showTurnTrace = _showAssistantTurnTrace,
+                showDraftBubbles = _showAssistantDraftBubbles
+            },
             activeProfileName = _appProfileName,
             profileNames = BuildKnownProfiles(),
             activeConversationId = _activeConversationId,

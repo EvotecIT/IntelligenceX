@@ -2741,6 +2741,17 @@
     if (toggle) {
       toggle.checked = enabled;
     }
+    var showTurnTraceToggle = byId("optShowTurnTrace");
+    if (showTurnTraceToggle) {
+      showTurnTraceToggle.checked = normalizeBool(state.options.debug && state.options.debug.showTurnTrace);
+    }
+    var showDraftBubblesToggle = byId("optShowDraftBubbles");
+    if (showDraftBubblesToggle) {
+      var debugOptions = state.options.debug || {};
+      showDraftBubblesToggle.checked = typeof debugOptions.showDraftBubbles === "boolean"
+        ? debugOptions.showDraftBubbles
+        : true;
+    }
 
     var profileBadge = byId("optDebugProfileBadge");
     if (profileBadge) {

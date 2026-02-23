@@ -792,6 +792,10 @@ public sealed partial class MainWindow : Window {
         _appState.ProactiveModeEnabled = _proactiveModeEnabled;
         _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
         _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
+        _showAssistantTurnTrace = _appState.ShowAssistantTurnTrace;
+        _appState.ShowAssistantTurnTrace = _showAssistantTurnTrace;
+        _showAssistantDraftBubbles = _appState.ShowAssistantDraftBubbles;
+        _appState.ShowAssistantDraftBubbles = _showAssistantDraftBubbles;
         _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
         ResetMemoryDiagnosticsState();
 

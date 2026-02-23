@@ -40,7 +40,13 @@ internal static class TranscriptHtmlFormatter {
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(messages);
-        return Format(ProjectLegacyMessages(messages), timestampFormat, markdownOptions, messageDecorations: null);
+        return Format(
+            ProjectLegacyMessages(messages),
+            timestampFormat,
+            markdownOptions,
+            messageDecorations: null,
+            showAssistantTurnTrace: true,
+            showAssistantDraftBubbles: true);
     }
 
     /// <summary>
@@ -50,12 +56,16 @@ internal static class TranscriptHtmlFormatter {
     /// <param name="timestampFormat">Timestamp format.</param>
     /// <param name="markdownOptions">Markdown renderer options.</param>
     /// <param name="messageDecorations">Optional per-message decorations keyed by transcript index.</param>
+    /// <param name="showAssistantTurnTrace">When true, renders assistant turn trace details under assistant bubbles.</param>
+    /// <param name="showAssistantDraftBubbles">When false, hides provisional assistant draft bubbles from the transcript.</param>
     /// <returns>HTML fragment.</returns>
     public static string Format(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
         MarkdownRendererOptions markdownOptions,
-        IReadOnlyDictionary<int, TranscriptMessageDecoration>? messageDecorations = null) {
+        IReadOnlyDictionary<int, TranscriptMessageDecoration>? messageDecorations = null,
+        bool showAssistantTurnTrace = true,
+        bool showAssistantDraftBubbles = true) {
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
@@ -84,13 +94,18 @@ internal static class TranscriptHtmlFormatter {
                 : RenderBodyHtml(actionExtraction.CleanedText, markdownOptions);
             TranscriptMessageDecoration? decoration = null;
             messageDecorations?.TryGetValue(messageIndex, out decoration);
+            var isAssistantDraft = decoration is not null
+                                   && decoration.IsProvisional
+                                   && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase);
+            if (!showAssistantDraftBubbles && isAssistantDraft) {
+                messageIndex++;
+                continue;
+            }
             if (actionExtraction.Actions.Count > 0) {
                 bodyHtml = AppendPendingActionChips(bodyHtml, actionExtraction.Actions);
             }
             var bubbleClass = "bubble";
-            if (decoration is not null
-                && decoration.IsProvisional
-                && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+            if (isAssistantDraft) {
                 bubbleClass += " bubble-provisional";
             }
             if (TryRenderOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
@@ -102,6 +117,9 @@ internal static class TranscriptHtmlFormatter {
             var showModelBadge = modelLabel.Length > 0;
 
             html.Append("<div class='msg-row ").Append(role.RoleClass);
+            if (isAssistantDraft) {
+                html.Append(" assistant-draft");
+            }
             if (isContinuation) {
                 html.Append(" cont");
             }
@@ -112,14 +130,18 @@ internal static class TranscriptHtmlFormatter {
             if (isContinuation) {
                 html.Append(" hidden");
             }
-            html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time)).Append("</div>")
+            html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time));
+            if (isAssistantDraft) {
+                html.Append(" <span class='assistant-draft-meta-pill'>Draft</span>");
+            }
+            html.Append("</div>")
                 .Append("<div class='").Append(bubbleClass).Append("'>").Append(bodyHtml).Append("</div>");
             if (showModelBadge) {
                 html.Append("<div class='bubble-meta'><span class='bubble-model-chip' title='Model used for this response'>")
                     .Append(encoder.Encode(modelLabel))
                     .Append("</span></div>");
             }
-            if (TryBuildAssistantTurnTraceHtml(message.Role, decoration, out var traceHtml)) {
+            if (showAssistantTurnTrace && TryBuildAssistantTurnTraceHtml(message.Role, decoration, out var traceHtml)) {
                 html.Append(traceHtml);
             }
             html

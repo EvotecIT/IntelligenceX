@@ -339,6 +339,19 @@
             </select>
           </div>
         </section>
+
+        <section class="options-group">
+          <div class="options-label">Transcript Visibility</div>
+          <div class="options-row options-row-inline">
+            <label class="options-label-inline" for="optShowTurnTrace">Show turn trace in transcript</label>
+            <input id="optShowTurnTrace" class="options-toggle" type="checkbox" />
+          </div>
+          <div class="options-row options-row-inline">
+            <label class="options-label-inline" for="optShowDraftBubbles">Show draft/thinking bubbles</label>
+            <input id="optShowDraftBubbles" class="options-toggle" type="checkbox" />
+          </div>
+          <div class="options-note">Profile-scoped visibility controls for testing and day-to-day chat readability.</div>
+        </section>
       </div>
 
       <div class="options-tab-content" data-tab="export">
@@ -504,7 +517,7 @@
             <input id="optEnableDebugTools" class="options-toggle" type="checkbox" />
           </div>
           <div class="options-note">Profile scope: <span id="optDebugProfileBadge" class="options-pill options-pill-category"></span></div>
-          <div class="options-note">When disabled, debug actions are hidden from the top menu.</div>
+          <div class="options-note">When debug tools are disabled, debug actions are hidden from the top menu.</div>
         </section>
 
         <section class="options-group">

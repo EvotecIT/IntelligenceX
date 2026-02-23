@@ -51,6 +51,9 @@ public sealed class MainWindowNoTextWarningHandlingTests {
         Assert.False(preserve);
     }
 
+    /// <summary>
+    /// Ensures equivalent interim/final text does not duplicate the final assistant bubble.
+    /// </summary>
     [Fact]
     public void ShouldAppendFinalAssistantAfterInterim_DoesNotAppendWhenFinalMatchesInterim() {
         var append = MainWindow.ShouldAppendFinalAssistantAfterInterim(
@@ -60,6 +63,9 @@ public sealed class MainWindowNoTextWarningHandlingTests {
         Assert.False(append);
     }
 
+    /// <summary>
+    /// Ensures meaningfully different final text is appended after interim output.
+    /// </summary>
     [Fact]
     public void ShouldAppendFinalAssistantAfterInterim_AppendsWhenFinalDiffersFromInterim() {
         var append = MainWindow.ShouldAppendFinalAssistantAfterInterim(
@@ -69,6 +75,9 @@ public sealed class MainWindowNoTextWarningHandlingTests {
         Assert.True(append);
     }
 
+    /// <summary>
+    /// Ensures whitespace/case/punctuation-only differences are treated as duplicates.
+    /// </summary>
     [Fact]
     public void ShouldAppendFinalAssistantAfterInterim_DoesNotAppendForWhitespaceAndPunctuationOnlyDiffs() {
         var append = MainWindow.ShouldAppendFinalAssistantAfterInterim(
@@ -78,6 +87,9 @@ public sealed class MainWindowNoTextWarningHandlingTests {
         Assert.False(append);
     }
 
+    /// <summary>
+    /// Ensures interim results are suppressed when a streaming draft already exists in the turn.
+    /// </summary>
     [Fact]
     public void ShouldAppendInterimAssistantResult_DoesNotAppendWhenStreamingDraftExists() {
         var append = MainWindow.ShouldAppendInterimAssistantResult(
@@ -87,6 +99,9 @@ public sealed class MainWindowNoTextWarningHandlingTests {
         Assert.False(append);
     }
 
+    /// <summary>
+    /// Ensures interim assistant output can be appended when no streaming draft exists.
+    /// </summary>
     [Fact]
     public void ShouldAppendInterimAssistantResult_AppendsWhenNoStreamingDraftExists() {
         var append = MainWindow.ShouldAppendInterimAssistantResult(

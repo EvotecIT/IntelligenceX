@@ -271,6 +271,20 @@
     state.options.autonomy = nextOptions.autonomy || state.options.autonomy;
     state.options.memory = nextOptions.memory || state.options.memory;
     state.options.memoryDebug = nextOptions.memoryDebug || null;
+    var previousDebug = state.options.debug && typeof state.options.debug === "object"
+      ? state.options.debug
+      : { showTurnTrace: false, showDraftBubbles: true };
+    var incomingDebug = nextOptions.debug && typeof nextOptions.debug === "object"
+      ? nextOptions.debug
+      : {};
+    state.options.debug = {
+      showTurnTrace: typeof incomingDebug.showTurnTrace === "boolean"
+        ? incomingDebug.showTurnTrace
+        : normalizeBool(previousDebug.showTurnTrace),
+      showDraftBubbles: typeof incomingDebug.showDraftBubbles === "boolean"
+        ? incomingDebug.showDraftBubbles
+        : (typeof previousDebug.showDraftBubbles === "boolean" ? previousDebug.showDraftBubbles : true)
+    };
     state.options.activeProfileName = nextOptions.activeProfileName || state.options.activeProfileName;
     state.options.profileNames = nextOptions.profileNames || state.options.profileNames;
     state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;

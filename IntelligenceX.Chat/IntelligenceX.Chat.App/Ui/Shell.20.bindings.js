@@ -562,6 +562,13 @@
     renderDebugPanel();
   });
 
+  byId("optShowTurnTrace").addEventListener("change", function(e) {
+    post("set_show_turn_trace", { enabled: e.target.checked === true });
+  });
+  byId("optShowDraftBubbles").addEventListener("change", function(e) {
+    post("set_show_draft_bubbles", { enabled: e.target.checked === true });
+  });
+
   byId("btnDebugToggleEngine").addEventListener("click", function() {
     if (!normalizeBool(state.options.debugToolsEnabled)) {
       return;
