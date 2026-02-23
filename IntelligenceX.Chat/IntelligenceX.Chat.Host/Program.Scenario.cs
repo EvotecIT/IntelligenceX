@@ -63,8 +63,7 @@ internal static partial class Program {
                 WriteTurnFailure(ex);
             }
 
-            var assistantText = metricsResult?.Result.Text ?? string.Empty;
-            var assertionFailures = EvaluateScenarioAssertions(turn, assistantText);
+            var assertionFailures = EvaluateScenarioAssertions(turn, metricsResult);
             if (assertionFailures.Count > 0) {
                 foreach (var assertionFailure in assertionFailures) {
                     Console.WriteLine("Assertion failed: " + assertionFailure);
@@ -179,7 +178,13 @@ internal static partial class Program {
                 if (userText.Length == 0) {
                     continue;
                 }
-                turns.Add(new ChatScenarioTurn(name: null, user: userText, assertContains: Array.Empty<string>()));
+                turns.Add(new ChatScenarioTurn(
+                    name: null,
+                    user: userText,
+                    assertContains: Array.Empty<string>(),
+                    assertNotContains: Array.Empty<string>(),
+                    minToolCalls: null,
+                    minToolRounds: null));
                 continue;
             }
 
@@ -195,8 +200,17 @@ internal static partial class Program {
             var name = element.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
                 ? nameElement.GetString()
                 : null;
-            var assertions = ReadScenarioAssertContains(element);
-            turns.Add(new ChatScenarioTurn(name, user.Trim(), assertions));
+            var assertContains = ReadScenarioAssertContains(element);
+            var assertNotContains = ReadScenarioAssertNotContains(element);
+            var minToolCalls = ReadScenarioOptionalNonNegativeInt(element, "min_tool_calls");
+            var minToolRounds = ReadScenarioOptionalNonNegativeInt(element, "min_tool_rounds");
+            turns.Add(new ChatScenarioTurn(
+                name,
+                user.Trim(),
+                assertContains,
+                assertNotContains,
+                minToolCalls,
+                minToolRounds));
         }
 
         return turns;
@@ -219,7 +233,13 @@ internal static partial class Program {
             if (candidate.Length == 0) {
                 continue;
             }
-            turns.Add(new ChatScenarioTurn(name: $"Turn {turns.Count + 1}", user: candidate, assertContains: Array.Empty<string>()));
+            turns.Add(new ChatScenarioTurn(
+                name: $"Turn {turns.Count + 1}",
+                user: candidate,
+                assertContains: Array.Empty<string>(),
+                assertNotContains: Array.Empty<string>(),
+                minToolCalls: null,
+                minToolRounds: null));
         }
         return turns;
     }
@@ -265,18 +285,84 @@ internal static partial class Program {
         return assertions;
     }
 
-    private static List<string> EvaluateScenarioAssertions(ChatScenarioTurn turn, string assistantText) {
-        var failures = new List<string>();
-        if (turn.AssertContains.Count == 0) {
-            return failures;
+    private static IReadOnlyList<string> ReadScenarioAssertNotContains(JsonElement element) {
+        if (!element.TryGetProperty("assert_not_contains", out var assertElement)) {
+            return Array.Empty<string>();
         }
 
-        var haystack = assistantText ?? string.Empty;
+        if (assertElement.ValueKind == JsonValueKind.String) {
+            var single = (assertElement.GetString() ?? string.Empty).Trim();
+            return single.Length == 0 ? Array.Empty<string>() : new[] { single };
+        }
+
+        if (assertElement.ValueKind != JsonValueKind.Array) {
+            throw new InvalidOperationException("'assert_not_contains' must be a string or array of strings.");
+        }
+
+        var assertions = new List<string>();
+        foreach (var item in assertElement.EnumerateArray()) {
+            if (item.ValueKind != JsonValueKind.String) {
+                throw new InvalidOperationException("'assert_not_contains' array must contain only strings.");
+            }
+
+            var value = (item.GetString() ?? string.Empty).Trim();
+            if (value.Length > 0) {
+                assertions.Add(value);
+            }
+        }
+        return assertions;
+    }
+
+    private static int? ReadScenarioOptionalNonNegativeInt(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var intElement)) {
+            return null;
+        }
+
+        if (intElement.ValueKind == JsonValueKind.Number && intElement.TryGetInt32(out var numberValue)) {
+            if (numberValue < 0) {
+                throw new InvalidOperationException($"'{propertyName}' must be >= 0.");
+            }
+            return numberValue;
+        }
+
+        if (intElement.ValueKind == JsonValueKind.String
+            && int.TryParse(intElement.GetString(), out var stringValue)) {
+            if (stringValue < 0) {
+                throw new InvalidOperationException($"'{propertyName}' must be >= 0.");
+            }
+            return stringValue;
+        }
+
+        throw new InvalidOperationException($"'{propertyName}' must be an integer >= 0.");
+    }
+
+    private static List<string> EvaluateScenarioAssertions(ChatScenarioTurn turn, ReplTurnMetricsResult? turnResult) {
+        var failures = new List<string>();
+        var assistantText = turnResult?.Result.Text ?? string.Empty;
+
         foreach (var expected in turn.AssertContains) {
-            if (haystack.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0) {
+            if (assistantText.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0) {
                 continue;
             }
             failures.Add($"Expected assistant output to contain '{expected}'.");
+        }
+
+        foreach (var disallowed in turn.AssertNotContains) {
+            if (assistantText.IndexOf(disallowed, StringComparison.OrdinalIgnoreCase) < 0) {
+                continue;
+            }
+
+            failures.Add($"Expected assistant output to not contain '{disallowed}'.");
+        }
+
+        var toolCallsCount = turnResult?.Metrics.ToolCallsCount ?? 0;
+        if (turn.MinToolCalls.HasValue && toolCallsCount < turn.MinToolCalls.Value) {
+            failures.Add($"Expected at least {turn.MinToolCalls.Value} tool call(s); observed {toolCallsCount}.");
+        }
+
+        var toolRounds = turnResult?.Metrics.ToolRounds ?? 0;
+        if (turn.MinToolRounds.HasValue && toolRounds < turn.MinToolRounds.Value) {
+            failures.Add($"Expected at least {turn.MinToolRounds.Value} tool round(s); observed {toolRounds}.");
         }
 
         return failures;
@@ -422,15 +508,27 @@ internal static partial class Program {
     }
 
     private sealed class ChatScenarioTurn {
-        public ChatScenarioTurn(string? name, string user, IReadOnlyList<string> assertContains) {
+        public ChatScenarioTurn(
+            string? name,
+            string user,
+            IReadOnlyList<string> assertContains,
+            IReadOnlyList<string> assertNotContains,
+            int? minToolCalls,
+            int? minToolRounds) {
             Name = name;
             User = user ?? string.Empty;
             AssertContains = assertContains ?? Array.Empty<string>();
+            AssertNotContains = assertNotContains ?? Array.Empty<string>();
+            MinToolCalls = minToolCalls;
+            MinToolRounds = minToolRounds;
         }
 
         public string? Name { get; }
         public string User { get; }
         public IReadOnlyList<string> AssertContains { get; }
+        public IReadOnlyList<string> AssertNotContains { get; }
+        public int? MinToolCalls { get; }
+        public int? MinToolRounds { get; }
     }
 
     private sealed class ScenarioTurnRun {

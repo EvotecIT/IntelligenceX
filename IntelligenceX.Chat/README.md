@@ -39,10 +39,31 @@ pwsh .\Build\Run-Chat.ps1 `
 ```
 
 Scenario file formats:
-- JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional `assert_contains`).
+- JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional quality gates):
+  - `assert_contains` (string or array)
+  - `assert_not_contains` (string or array)
+  - `min_tool_calls` (integer >= 0)
+  - `min_tool_rounds` (integer >= 0)
 - Plain text where each non-empty line is a user turn (`#` and `//` lines are ignored).
 
 The host writes a markdown run report under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path).
+
+Included AD scenario seeds:
+- `IntelligenceX.Chat/scenarios/ad-reboot-local-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-replication-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-user-last-logon-przemyslaw-10-turn.json`
+
+Batch run all built-in AD scenarios locally:
+
+```powershell
+$scenarioDir = ".\IntelligenceX.Chat\scenarios"
+$outDir = ".\artifacts\chat-scenarios"
+Get-ChildItem $scenarioDir -Filter "ad-*-10-turn.json" | Sort-Object Name | ForEach-Object {
+  pwsh .\Build\Run-Chat.ps1 -ScenarioFile $_.FullName -ScenarioOutput $outDir
+}
+```
 
 Startup profiling (phase timing from `StartupLog`):
 

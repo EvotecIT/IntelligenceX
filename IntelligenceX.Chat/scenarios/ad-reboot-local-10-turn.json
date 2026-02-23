@@ -3,11 +3,14 @@
   "turns": [
     {
       "name": "Target reboot on AD0",
-      "user": "Can you find out why AD0 rebooted recently and when exactly?"
+      "user": "Can you find out why AD0 rebooted recently and when exactly?",
+      "min_tool_calls": 1
     },
     {
       "name": "Confirm evidence IDs",
-      "user": "Please confirm with reboot/shutdown evidence IDs (1074, 6008, 41, 6005, 6006) and give UTC timestamps."
+      "user": "Please confirm with reboot/shutdown evidence IDs (1074, 6008, 41, 6005, 6006) and give UTC timestamps.",
+      "min_tool_calls": 1,
+      "assert_contains": ["UTC"]
     },
     {
       "name": "Classify reboot type",
@@ -15,11 +18,13 @@
     },
     {
       "name": "Expand lookback",
-      "user": "If the recent slice is truncated, query a broader System log window and restate the exact reboot marker."
+      "user": "If the recent slice is truncated, query a broader System log window and restate the exact reboot marker.",
+      "min_tool_calls": 1
     },
     {
       "name": "Discover peer DCs",
-      "user": "Discover other DCs in this domain and list their hostnames."
+      "user": "Discover other DCs in this domain and list their hostnames.",
+      "min_tool_calls": 1
     },
     {
       "name": "Cross-check peer DCs",

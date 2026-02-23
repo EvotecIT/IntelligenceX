@@ -1,0 +1,51 @@
+{
+  "name": "ad-ldap-adws-health-10-turn",
+  "turns": [
+    {
+      "name": "Discover DC targets",
+      "user": "Discover DCs in scope and list the hostnames you can check in this session.",
+      "min_tool_calls": 1,
+      "assert_not_contains": ["I can do that, but"]
+    },
+    {
+      "name": "Core port posture",
+      "user": "Check core AD connectivity posture for each DC: LDAP 389, LDAPS 636, GC 3268/3269, Kerberos 88, DNS 53.",
+      "min_tool_calls": 1
+    },
+    {
+      "name": "ADWS verification",
+      "user": "Check ADWS service health and responsiveness for AD0 and other discovered DCs, including whether the endpoint is reachable.",
+      "min_tool_calls": 1
+    },
+    {
+      "name": "Service-state evidence",
+      "user": "For failed ADWS/LDAP checks, include service state and relevant system evidence if available."
+    },
+    {
+      "name": "Matrix output",
+      "user": "Return a side-by-side matrix per DC with pass/fail per port/service and brief evidence.",
+      "assert_not_contains": ["I can do that, but"]
+    },
+    {
+      "name": "Blast radius",
+      "user": "Classify if failures are host-local, subnet/site-local, or shared infrastructure."
+    },
+    {
+      "name": "Likely causes",
+      "user": "Provide top likely cause categories (service down, firewall, DNS resolution, trust/auth path, transport issue) with confidence."
+    },
+    {
+      "name": "Fast remediation",
+      "user": "Give a prioritized 30-minute remediation checklist for restoring ADWS and directory connectivity."
+    },
+    {
+      "name": "Validation loop",
+      "user": "Provide a minimal re-test loop to confirm the fix without creating duplicate or noisy checks."
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final ADWS/LDAP health findings in 6 bullets with UTC timestamps and key evidence.",
+      "assert_contains": ["UTC"]
+    }
+  ]
+}

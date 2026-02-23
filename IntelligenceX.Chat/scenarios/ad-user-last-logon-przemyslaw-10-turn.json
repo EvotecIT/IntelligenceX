@@ -1,0 +1,51 @@
+{
+  "name": "ad-user-last-logon-przemyslaw-10-turn",
+  "turns": [
+    {
+      "name": "Resolve account",
+      "user": "Resolve the AD user przemyslaw.klys and return canonical identity fields (samAccountName, UPN, SID, DN).",
+      "min_tool_calls": 1
+    },
+    {
+      "name": "Authoritative last logon",
+      "user": "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.",
+      "min_tool_calls": 1,
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Timestamp semantics",
+      "user": "Compare lastLogon vs lastLogonTimestamp for this user and explain replication/currency caveats.",
+      "min_tool_calls": 1
+    },
+    {
+      "name": "Eventlog correlation",
+      "user": "Correlate with recent security log evidence (4624/4625/4768/4769/4771) around the latest sign-in window.",
+      "min_tool_calls": 1
+    },
+    {
+      "name": "Session characteristics",
+      "user": "If available, include client host/IP, logon type, and whether logons were interactive/network/service."
+    },
+    {
+      "name": "Failure signal",
+      "user": "Highlight any failed logon bursts or suspicious Kerberos failures for this identity in the last 7 days."
+    },
+    {
+      "name": "Confidence rating",
+      "user": "Rate confidence in the final last-logon answer and state exact blockers if confidence is reduced."
+    },
+    {
+      "name": "Follow-up checks",
+      "user": "Provide top next checks to validate account hygiene (stale sessions, risky paths, unusual auth patterns)."
+    },
+    {
+      "name": "Responder-ready note",
+      "user": "Produce a compact handoff note for another engineer with the final answer and key evidence."
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final user-logon findings in 6 bullets with exact UTC timestamps and key evidence IDs.",
+      "assert_contains": ["UTC"]
+    }
+  ]
+}

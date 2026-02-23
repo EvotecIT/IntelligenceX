@@ -19,7 +19,10 @@ public sealed class HostScenarioParsingTests {
     {
       "name": "Turn One",
       "user": "Check AD0 reboot",
-      "assert_contains": ["6008", "unexpected reboot"]
+      "assert_contains": ["6008", "unexpected reboot"],
+      "assert_not_contains": ["I can do that, but"],
+      "min_tool_calls": 1,
+      "min_tool_rounds": 1
     },
     "Check peer DCs"
   ]
@@ -33,7 +36,14 @@ public sealed class HostScenarioParsingTests {
         Assert.Equal("Turn One", ReadStringProperty(turns[0], "Name"));
         Assert.Equal("Check AD0 reboot", ReadStringProperty(turns[0], "User"));
         Assert.Equal(2, ReadStringListProperty(turns[0], "AssertContains").Count);
+        Assert.Single(ReadStringListProperty(turns[0], "AssertNotContains"));
+        Assert.Equal(1, ReadNullableIntProperty(turns[0], "MinToolCalls"));
+        Assert.Equal(1, ReadNullableIntProperty(turns[0], "MinToolRounds"));
         Assert.Equal("Check peer DCs", ReadStringProperty(turns[1], "User"));
+        Assert.Empty(ReadStringListProperty(turns[1], "AssertContains"));
+        Assert.Empty(ReadStringListProperty(turns[1], "AssertNotContains"));
+        Assert.Null(ReadNullableIntProperty(turns[1], "MinToolCalls"));
+        Assert.Null(ReadNullableIntProperty(turns[1], "MinToolRounds"));
     }
 
     [Fact]
@@ -90,5 +100,16 @@ Check AD0 reboot
         return enumerable.Cast<object>()
             .Select(value => value?.ToString() ?? string.Empty)
             .ToList();
+    }
+
+    private static int? ReadNullableIntProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var value = property!.GetValue(instance);
+        if (value is null) {
+            return null;
+        }
+
+        return Convert.ToInt32(value);
     }
 }
