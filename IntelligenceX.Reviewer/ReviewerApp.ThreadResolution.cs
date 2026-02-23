@@ -570,7 +570,9 @@ public static partial class ReviewerApp {
         if (normalizedEvidence.Length == 0) {
             return false;
         }
+        string? preferredPath = null;
         if (TryGetThreadLocation(thread, out var path, out var line)) {
+            preferredPath = path;
             var context = BuildThreadDiffContext(patchIndex, patchLookup, path, line, maxPatchChars);
             if (!IsUnavailableDiffContext(context)) {
                 return HasEvidenceInContext(context, normalizedEvidence);
@@ -581,16 +583,26 @@ public static partial class ReviewerApp {
         } else if (!thread.IsOutdated) {
             return false;
         }
-        return HasEvidenceInAnyDiffContext(patchIndex, patchLookup, normalizedEvidence);
+        return HasEvidenceInAnyDiffContext(patchIndex, patchLookup, normalizedEvidence, preferredPath);
     }
 
     private static string NormalizeResolveEvidence(string evidence) {
-        var normalized = evidence.Trim().Trim('"').Trim();
-        normalized = normalized.Trim('`').Trim();
-        if (normalized.Length >= 2 && normalized[0] == '\'' && normalized[^1] == '\'') {
-            normalized = normalized.Substring(1, normalized.Length - 2).Trim();
+        var normalized = evidence.Trim();
+        if (normalized.Length < 2) {
+            return normalized;
         }
+        normalized = TryTrimSingleWrapper(normalized, '"')
+                     ?? TryTrimSingleWrapper(normalized, '\'')
+                     ?? TryTrimSingleWrapper(normalized, '`')
+                     ?? normalized;
         return normalized;
+    }
+
+    private static string? TryTrimSingleWrapper(string value, char wrapper) {
+        if (value.Length < 2 || value[0] != wrapper || value[^1] != wrapper) {
+            return null;
+        }
+        return value.Substring(1, value.Length - 2).Trim();
     }
 
     private static bool IsUnavailableDiffContext(string? context) {
@@ -598,9 +610,21 @@ public static partial class ReviewerApp {
     }
 
     private static bool HasEvidenceInAnyDiffContext(Dictionary<string, List<PatchLine>> patchIndex,
-        IReadOnlyDictionary<string, string> patchLookup, string evidence) {
-        foreach (var lines in patchIndex.Values) {
-            if (lines.Count == 0) {
+        IReadOnlyDictionary<string, string> patchLookup, string evidence, string? preferredPath = null) {
+        var preferred = string.IsNullOrWhiteSpace(preferredPath) ? string.Empty : NormalizePath(preferredPath);
+        if (!string.IsNullOrWhiteSpace(preferred) &&
+            TryGetPatchContextForPath(preferred, patchIndex, patchLookup, out var preferredContext) &&
+            HasEvidenceInContext(preferredContext, evidence)) {
+            return true;
+        }
+
+        var visitedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(preferred)) {
+            visitedPaths.Add(preferred);
+        }
+
+        foreach (var (path, lines) in patchIndex) {
+            if (!visitedPaths.Add(path) || lines.Count == 0) {
                 continue;
             }
             var context = string.Join("\n", lines.Select(static line => $"{line.LineNumber}: {line.Text}"));
@@ -608,8 +632,9 @@ public static partial class ReviewerApp {
                 return true;
             }
         }
-        foreach (var patch in patchLookup.Values) {
-            if (string.IsNullOrWhiteSpace(patch)) {
+
+        foreach (var (path, patch) in patchLookup) {
+            if (!visitedPaths.Add(path) || string.IsNullOrWhiteSpace(patch)) {
                 continue;
             }
             var context = $"<file patch>\n{patch}";
@@ -617,6 +642,20 @@ public static partial class ReviewerApp {
                 return true;
             }
         }
+        return false;
+    }
+
+    private static bool TryGetPatchContextForPath(string normalizedPath, Dictionary<string, List<PatchLine>> patchIndex,
+        IReadOnlyDictionary<string, string> patchLookup, out string context) {
+        if (patchIndex.TryGetValue(normalizedPath, out var lines) && lines.Count > 0) {
+            context = string.Join("\n", lines.Select(static line => $"{line.LineNumber}: {line.Text}"));
+            return true;
+        }
+        if (patchLookup.TryGetValue(normalizedPath, out var patch) && !string.IsNullOrWhiteSpace(patch)) {
+            context = $"<file patch>\n{patch}";
+            return true;
+        }
+        context = string.Empty;
         return false;
     }
 
