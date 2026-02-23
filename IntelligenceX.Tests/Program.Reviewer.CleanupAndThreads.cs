@@ -282,6 +282,18 @@ internal static partial class Program {
         AssertEqual(false, hasEvidence, "thread-local evidence required when context is available");
     }
 
+    private static void TestThreadResolveEvidenceCrossFileFallbackOnlyForStaleThreads() {
+        var threadComment = new PullRequestReviewThreadComment(null, null, "Looks fixed.", "intelligencex-review",
+            "src/Foo.cs", 80);
+        var thread = new PullRequestReviewThread("thread-3", false, false, 1, new[] { threadComment });
+        var files = new[] {
+            new PullRequestFile("src/Bar.cs", "modified", "@@ -10,1 +10,2 @@\n- return oldValue;\n+ if (featureFlag) return newValue;\n+ return oldValue;")
+        };
+
+        var hasEvidence = CallHasValidResolveEvidence("10: if (featureFlag) return newValue;", thread, files, 4000);
+        AssertEqual(false, hasEvidence, "cross-file fallback is limited to stale threads");
+    }
+
     private static void TestThreadTriageEmbedPlacement() {
         var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {

@@ -575,6 +575,11 @@ public static partial class ReviewerApp {
             if (!IsUnavailableDiffContext(context)) {
                 return HasEvidenceInContext(context, normalizedEvidence);
             }
+            if (!thread.IsOutdated) {
+                return false;
+            }
+        } else if (!thread.IsOutdated) {
+            return false;
         }
         return HasEvidenceInAnyDiffContext(patchIndex, patchLookup, normalizedEvidence);
     }
