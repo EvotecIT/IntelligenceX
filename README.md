@@ -7,7 +7,7 @@ Your credentials, your GitHub App, your control.
 [![license](https://img.shields.io/github/license/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
 [![build](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml/badge.svg)](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml)
 
-## Platform Areas
+## Platform Areas 🧭
 
 - GitHub Actions Reviewer
 - IX Chat (Windows desktop tray app)
@@ -17,11 +17,11 @@ Your credentials, your GitHub App, your control.
 - PowerShell module
 - Issue Ops + Project Control
 
-## Product Walkthrough
+## Product Walkthrough 🖼️
 
 Screenshots below are sourced from current blog/gallery assets and mirrored under `Assets/README/` for stable GitHub rendering.
 
-### GitHub Actions Reviewer
+### GitHub Actions Reviewer 🤖
 
 AI PR reviewer for actionable findings, merge-blocking triage, and cleaner review loops.
 
@@ -36,11 +36,15 @@ Picture 2:
 
 <img src="Assets/README/reviewer-2.jpg" alt="Inline reviewer follow-up thread with implementation evidence checks" width="760" />
 
-### IX Chat
+### IX Chat 💬
 
 Windows tray chat app with provider/runtime selection and tool-calling support for diagnostics and investigation workflows.
 
-Warning: IX Chat is experimental and not intended for production operations. Use in dev/test environments only with human review in the loop.
+> [!WARNING]
+> **IX Chat is experimental.**
+> - Use in dev/test environments only.
+> - Do not use for unattended production operations.
+> - Keep human review in the loop.
 
 - Docs: [https://intelligencex.dev/docs/chat/overview/](https://intelligencex.dev/docs/chat/overview/)
 - Blog: [https://intelligencex.dev/blog/chat-flow-and-options/](https://intelligencex.dev/blog/chat-flow-and-options/)
@@ -54,7 +58,7 @@ Picture 2:
 
 <img src="Assets/README/chat-2.png" alt="IX Chat remediation-focused follow-up response" width="760" />
 
-### IX Tools
+### IX Tools 🧰
 
 Tool packs for event/AD/system workflows used by IX Chat and custom integrations.
 
@@ -70,7 +74,7 @@ Picture 2:
 
 <img src="Assets/README/tools-2.png" alt="Expanded TestimoX tool pack view with specific tools" width="760" />
 
-### Issue Ops + Project Control
+### Issue Ops + Project Control 📋
 
 Project board and issue triage workflows for handling blockers, confidence signals, and follow-up actions.
 
@@ -86,7 +90,7 @@ Picture 2:
 
 <img src="Assets/README/issue-ops-2.svg" alt="Issue review columns and confidence signals" width="760" />
 
-### CLI + .NET + PowerShell
+### CLI + .NET + PowerShell 🛠️
 
 Developer-facing interfaces for setup automation, embedding IntelligenceX in .NET apps, and scripting in PowerShell.
 
@@ -103,7 +107,7 @@ Picture 2:
 
 <img src="Assets/README/library.svg" alt=".NET library product visual" width="760" />
 
-## Quick Start
+## Quick Start 🚀
 
 Recommended onboarding:
 
@@ -123,14 +127,14 @@ From source:
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup wizard
 ```
 
-## Trust Model
+## Trust Model 🔐
 
 - No backend service: IntelligenceX runs locally and/or in your GitHub Actions.
 - Secrets stay under your control: stored in the environments you own.
 - Bring your own GitHub App for identity, permissions, and auditability.
 - Workflow changes happen via PRs so setup changes stay reviewable.
 
-## Documentation
+## Documentation 📚
 
 - Start here: [https://intelligencex.dev/docs/getting-started/](https://intelligencex.dev/docs/getting-started/)
 - Reviewer: [https://intelligencex.dev/docs/reviewer/overview/](https://intelligencex.dev/docs/reviewer/overview/)
@@ -142,7 +146,7 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- se
 - Project Ops: [https://intelligencex.dev/docs/project-ops/overview/](https://intelligencex.dev/docs/project-ops/overview/)
 - Security: [https://intelligencex.dev/docs/security/](https://intelligencex.dev/docs/security/)
 
-## Repository Layout
+## Repository Layout 🗂️
 
 - `IntelligenceX/`: core library
 - `IntelligenceX.Reviewer/`: review pipeline executable
@@ -151,7 +155,7 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- se
 - `IntelligenceX.Tools/`: in-repo tool packs and contracts
 - `Docs/`: source docs (published to the website)
 
-## Build
+## Build 🧪
 
 Core CI-equivalent build check:
 
