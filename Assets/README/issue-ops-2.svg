@@ -1,0 +1,58 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Issue review action and confidence columns">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#040B1A"/>
+      <stop offset="1" stop-color="#11284B"/>
+    </linearGradient>
+    <linearGradient id="card2" x1="120" y1="110" x2="1480" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D1B30"/>
+      <stop offset="1" stop-color="#0A1628"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg2)"/>
+  <rect x="84" y="62" width="1432" height="776" rx="22" fill="url(#card2)" stroke="#1B3A61"/>
+
+  <text x="120" y="124" fill="#CFE6FF" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Issue Ops Signals in Project Fields</text>
+  <text x="120" y="154" fill="#8EB5DE" font-family="Segoe UI, Arial, sans-serif" font-size="15">Use action + confidence + linked PR context to keep backlog hygiene high without unattended decisions.</text>
+
+  <rect x="120" y="190" width="1360" height="84" rx="12" fill="#0A1A31" stroke="#1B3A61"/>
+  <text x="154" y="239" fill="#A7CBF1" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700">Issue Review Action</text>
+  <text x="484" y="239" fill="#A7CBF1" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700">Issue Review Action Confidence</text>
+  <text x="890" y="239" fill="#A7CBF1" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700">Matched Pull Request</text>
+  <text x="1210" y="239" fill="#A7CBF1" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700">Signal Quality</text>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <rect x="120" y="292" width="1360" height="96" rx="12" fill="#0A1628" stroke="#1B3152"/>
+    <rect x="154" y="322" width="104" height="36" rx="18" fill="#123D2D" stroke="#2F8A63"/>
+    <text x="186" y="345" fill="#A7F4D2" font-size="15" font-weight="700">close</text>
+    <text x="488" y="346" fill="#9DEFD3" font-size="15" font-weight="700">91 / high</text>
+    <text x="894" y="346" fill="#DDEBFF" font-size="15">#359</text>
+    <rect x="1214" y="322" width="84" height="34" rx="17" fill="#123D2D" stroke="#2F8A63"/>
+    <text x="1238" y="343" fill="#A7F4D2" font-size="14" font-weight="700">high</text>
+    <text x="154" y="373" fill="#82ADD8" font-size="13">stale bucket: very old | linked PR closed long ago | no reopen</text>
+
+    <rect x="120" y="408" width="1360" height="96" rx="12" fill="#0A1628" stroke="#1B3152"/>
+    <rect x="154" y="438" width="196" height="36" rx="18" fill="#3A2E14" stroke="#B88A30"/>
+    <text x="178" y="461" fill="#FCE3A7" font-size="15" font-weight="700">needs-human-review</text>
+    <text x="488" y="462" fill="#F8DFA2" font-size="15" font-weight="700">63 / medium</text>
+    <text x="894" y="462" fill="#DDEBFF" font-size="15">#438</text>
+    <rect x="1214" y="438" width="102" height="34" rx="17" fill="#3A2E14" stroke="#B88A30"/>
+    <text x="1244" y="459" fill="#FCE3A7" font-size="14" font-weight="700">medium</text>
+    <text x="154" y="489" fill="#82ADD8" font-size="13">recent updates detected | reopen history present | confidence reduced</text>
+
+    <rect x="120" y="524" width="1360" height="96" rx="12" fill="#0A1628" stroke="#1B3152"/>
+    <rect x="154" y="554" width="130" height="36" rx="18" fill="#133252" stroke="#347AB3"/>
+    <text x="184" y="577" fill="#ACD9FF" font-size="15" font-weight="700">keep-open</text>
+    <text x="488" y="578" fill="#ACD9FF" font-size="15" font-weight="700">86 / high</text>
+    <text x="894" y="578" fill="#DDEBFF" font-size="15">#355</text>
+    <rect x="1214" y="554" width="84" height="34" rx="17" fill="#123D2D" stroke="#2F8A63"/>
+    <text x="1238" y="575" fill="#A7F4D2" font-size="14" font-weight="700">high</text>
+    <text x="154" y="605" fill="#82ADD8" font-size="13">active linked PR context | recent activity | not eligible for close</text>
+  </g>
+
+  <rect x="120" y="662" width="1360" height="146" rx="14" fill="#0A1A31" stroke="#1B3A61"/>
+  <text x="154" y="700" fill="#A7CBF1" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700">Maintainer decision rule</text>
+  <text x="154" y="730" fill="#DCEBFF" font-family="Segoe UI, Arial, sans-serif" font-size="15">Use these fields as decision support, not autonomous execution.</text>
+  <text x="154" y="756" fill="#88B2DE" font-family="Segoe UI, Arial, sans-serif" font-size="14">Recommended: proposal-only + dry-run sync + explicit maintainer approval for any close action.</text>
+</svg>
