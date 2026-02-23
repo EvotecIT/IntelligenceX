@@ -33,7 +33,7 @@ jobs:
       - run: echo pre
   __IX_BEGIN__
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@fb72170966841eb32cfcb00c46461bbf8f46233f
     with:
       provider: openai
       model: gpt-5.3-codex
