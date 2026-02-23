@@ -17,6 +17,8 @@ on:
 jobs:
   # INTELLIGENCEX:BEGIN
   review:
+    # Do not run secret-dependent review on forked PRs in public repos.
+    if: ${{ github.event_name != 'pull_request' || github.event.repository.private || !github.event.pull_request.head.repo.fork }}
     permissions:
       contents: read
       pull-requests: write
