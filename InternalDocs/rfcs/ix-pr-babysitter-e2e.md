@@ -26,6 +26,13 @@ Define an end-to-end PR babysitting design that:
 - autonomous wide-scope refactors to satisfy vague review comments,
 - replacing existing IntelligenceX reviewer output formats.
 
+### Scope-Drift Guardrails (All Phases)
+
+- no autonomous merge execution in any mode,
+- no autonomous mutation of repository policy or governance files (for example branch protection, required checks, or `AGENTS.md` policy semantics),
+- no autonomous mutation of workflow permissions/secrets policy,
+- no destructive git operations (force-push, history rewrite, or hard reset) as part of babysitter flows.
+
 ## Existing IX Strengths To Reuse
 
 IntelligenceX already provides the foundations needed for this:
@@ -210,6 +217,37 @@ Roll out in three modes:
 3. `repair` (future, guarded)
 - agent may patch+push narrow, verifiable fixes under strict policy gates.
 
+## Failure and Rollback Protocol (Assist/Repair)
+
+When running outside pure `observe` mode, babysitter must degrade safely.
+
+### Immediate rollback triggers
+
+- repeated CI mutation failures with no state improvement across 2 babysitter cycles,
+- flaky rerun budget exhausted for the same SHA,
+- detection of infra-blocked state for required checks,
+- permissions/auth failures for required actions,
+- conflicting or ambiguous review instructions that cannot be resolved safely.
+
+### Rollback behavior
+
+1. Switch affected PR back to `observe` behavior (no further mutations).
+2. Emit a status summary with:
+- what was attempted,
+- what failed,
+- the exact rollback trigger.
+3. Record a tracking item:
+- preferred: sync into `TODO.md` backlog entry with run/check links,
+- fallback: create/attach a GitHub issue.
+4. Require explicit maintainer acknowledgment before re-entering `assist` or `repair`.
+
+### Exit criteria to re-enable mutating mode
+
+- infra blocker resolved and verified,
+- permissions/auth path verified,
+- maintainer confirms re-enable decision in PR/issue thread,
+- retry counters reset on new SHA or explicit maintainer override.
+
 ## Integration Plan With Existing IX Components
 
 1. `IntelligenceX.Cli/Todo`
@@ -243,10 +281,13 @@ Roll out in three modes:
 
 ## Success Metrics
 
-- time-to-green reduced for active PRs,
-- reduced time in "blocked but unattended" state,
-- lower repeat-churn from reworded/non-actionable bot feedback,
-- higher merge-throughput of mergeable PRs without safety regressions.
+- median time-to-unblock (`first failing required check` -> `all required checks passing`) reduced by at least 20% from baseline,
+- count of stale open PRs in blocked state (`>= 7 days`) reduced by at least 25%,
+- percentage of babysitter stop events with explicit classified reason (`ready`, `closed`, `infra-blocked`, `user-help-required`) at 100%,
+- reduction in repeat bot-churn loops (same underlying blocker resurfacing) by at least 30%,
+- no increase in safety regressions:
+  - zero autonomous merge executions,
+  - zero policy/workflow-permission mutations by babysitter runtime.
 
 ## Risks
 
@@ -262,7 +303,9 @@ Mitigations:
 
 ## Open Decisions For Consolidation
 
-1. Default schedule: every 30 minutes vs hourly.
-2. Whether flaky rerun automation is enabled by default in repository workflows.
-3. Exact schema name/version for snapshot/action payloads.
-4. Whether to store watcher state only in artifacts or also emit project field snapshots.
+| Decision | Owner | Target Decision Date |
+| --- | --- | --- |
+| Default schedule: every 30 minutes vs hourly | IX Reviewer Maintainers | March 6, 2026 |
+| Enable flaky-rerun automation by default vs opt-in | IX Reviewer Maintainers + Repo Maintainers | March 6, 2026 |
+| Snapshot/action schema name and versioning strategy | IntelligenceX.Cli Maintainers | March 6, 2026 |
+| Watcher-state persistence scope (artifacts only vs artifacts + project fields) | IntelligenceX.Cli Maintainers + Project Ops Maintainers | March 6, 2026 |
