@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
   var mermaidLoadPromise = null;
   var mermaidThemeObserver = null;
+  var prismLoadPromise = null;
 
   function loadScript(src) {
     return new Promise(function (resolve) {
@@ -388,6 +389,49 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  function findScriptSource(fragment) {
+    if (!fragment) return null;
+    var scripts = Array.from(document.querySelectorAll('script[src]'));
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].getAttribute('src') || '';
+      if (src.indexOf(fragment) >= 0) {
+        return src;
+      }
+    }
+    return null;
+  }
+
+  function ensurePrismLoaded() {
+    if (window.Prism && (typeof window.Prism.highlightAllUnder === 'function' || typeof window.Prism.highlightAll === 'function')) {
+      return Promise.resolve(true);
+    }
+
+    if (prismLoadPromise) {
+      return prismLoadPromise;
+    }
+
+    var coreSrc = findScriptSource('/assets/prism/prism-core.min');
+    var autoloaderSrc = findScriptSource('/assets/prism/prism-autoloader.min');
+    if (!coreSrc || !autoloaderSrc) {
+      prismLoadPromise = Promise.resolve(false);
+      return prismLoadPromise;
+    }
+
+    prismLoadPromise = loadScript(coreSrc)
+      .then(function (coreOk) {
+        if (!coreOk) return false;
+        return loadScript(autoloaderSrc);
+      })
+      .then(function (autoloaderOk) {
+        return !!(autoloaderOk && window.Prism);
+      })
+      .catch(function () {
+        return false;
+      });
+
+    return prismLoadPromise;
+  }
+
   function highlightCodeBlocksWhenReady(scope, attemptsLeft) {
     if (window.Prism) {
       highlightCodeBlocks(scope);
@@ -395,6 +439,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if ((attemptsLeft || 0) <= 0) {
+      ensurePrismLoaded().then(function (loaded) {
+        if (loaded) {
+          highlightCodeBlocks(scope);
+        }
+      });
       return;
     }
 
@@ -403,7 +452,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 60);
   }
 
+  highlightCodeBlocksWhenReady(document, 20);
+
   window.addEventListener('load', function () {
+    highlightCodeBlocksWhenReady(document, 20);
+  });
+
+  window.addEventListener('pageshow', function () {
     highlightCodeBlocksWhenReady(document, 20);
   });
 
