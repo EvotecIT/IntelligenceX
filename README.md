@@ -66,6 +66,20 @@ Tool packs for event/AD/system workflows used by IX Chat and custom integrations
 - Docs: [https://intelligencex.dev/docs/library/tool-packs/](https://intelligencex.dev/docs/library/tool-packs/)
 - Blog: [https://intelligencex.dev/blog/event-viewer-in-action/](https://intelligencex.dev/blog/event-viewer-in-action/)
 
+Current packs and representative tools:
+
+| Pack | Representative tools | License | Usage |
+|---|---|---|---|
+| Event Log (EventViewerX) | `eventlog_pack_info`, `eventlog_channels_list`, `eventlog_live_query`, `eventlog_evtx_query` | MIT | Open-source pack; usable in IX Chat and custom integrations. |
+| File System | `fs_pack_info`, `fs_list`, `fs_read`, `fs_search` | MIT | Open-source pack; usable in IX Chat and custom integrations. |
+| Reviewer Setup | `reviewer_setup_pack_info`, `reviewer_setup_contract_verify` | MIT | Open-source pack; usable in IX Chat and custom integrations. |
+| Email (Mailozaurr) | `email_pack_info`, `email_imap_search`, `email_imap_get`, `email_smtp_send` | MIT | Open-source pack; runtime dependency gated. |
+| Office Documents (OfficeIMO) | `officeimo_pack_info`, `officeimo_read` | MIT | Open-source pack; runtime dependency gated. |
+| PowerShell Runtime | `powershell_pack_info`, `powershell_environment_discover`, `powershell_hosts`, `powershell_run` | MIT | Open-source pack; opt-in by policy due execution risk. |
+| ADPlayground | `ad_pack_info`, `ad_domain_info`, `ad_group_members`, `ad_search` | Private/commercial | Usable inside IntelligenceX (licensed/private builds) only; not for external/custom-host reuse. |
+| TestimoX | `testimox_pack_info`, `testimox_rules_list`, `testimox_rules_run` | Private/commercial | Usable inside IntelligenceX (licensed/private builds) only; not for external/custom-host reuse. |
+| ComputerX | `system_pack_info`, `system_info`, `system_process_list`, `system_service_list` | Private/commercial | Usable inside IntelligenceX (licensed/private builds) only; not for external/custom-host reuse. |
+
 Picture 1:
 
 <img src="Assets/README/tools.png" alt="Tools pack availability and toggle controls" width="760" />
@@ -84,9 +98,13 @@ Project board and issue triage workflows for handling blockers, confidence signa
 
 Picture 1:
 
+_Placeholder (generated visual; to be replaced with real product capture)._
+
 <img src="Assets/README/issue-ops.svg" alt="Issue Ops board overview" width="760" />
 
 Picture 2:
+
+_Placeholder (generated visual; to be replaced with real product capture)._
 
 <img src="Assets/README/issue-ops-2.svg" alt="Issue review columns and confidence signals" width="760" />
 
@@ -101,9 +119,13 @@ Developer-facing interfaces for setup automation, embedding IntelligenceX in .NE
 
 Picture 1:
 
+_Placeholder (generated visual; to be replaced with real product capture)._
+
 <img src="Assets/README/cli.svg" alt="CLI product visual" width="760" />
 
 Picture 2:
+
+_Placeholder (generated visual; to be replaced with real product capture)._
 
 <img src="Assets/README/library.svg" alt=".NET library product visual" width="760" />
 
