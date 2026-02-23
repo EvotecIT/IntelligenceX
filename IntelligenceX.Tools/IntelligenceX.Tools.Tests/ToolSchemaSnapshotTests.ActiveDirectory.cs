@@ -103,7 +103,7 @@ public partial class ToolSchemaSnapshotTests {
 
         yield return new object[] {
             "ad_environment_discover",
-            new[] { "domain_controller", "search_base_dn", "include_domain_controllers", "max_domain_controllers" },
+            new[] { "domain_controller", "search_base_dn", "include_domain_controllers", "max_domain_controllers", "include_forest_domains", "include_trusts" },
             Array.Empty<string>()
         };
 

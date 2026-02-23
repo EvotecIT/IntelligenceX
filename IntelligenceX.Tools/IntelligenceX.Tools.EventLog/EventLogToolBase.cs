@@ -330,6 +330,105 @@ public abstract class EventLogToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Adds language-neutral chaining/discovery metadata for read-only event-log triage tools.
+    /// </summary>
+    protected static void AddReadOnlyTriageChainingMeta(
+        JsonObject meta,
+        string currentTool,
+        string logName,
+        string? machineName,
+        int suggestedMaxEvents,
+        int scanned,
+        bool truncated,
+        string queryMode) {
+        if (meta is null) {
+            throw new ArgumentNullException(nameof(meta));
+        }
+
+        var normalizedTool = string.IsNullOrWhiteSpace(currentTool) ? "eventlog_live_query" : currentTool.Trim();
+        var normalizedLogName = string.IsNullOrWhiteSpace(logName) ? "System" : logName.Trim();
+        var normalizedMachine = NormalizeOptionalMachineName(machineName);
+        var scope = normalizedMachine is null ? "local" : "remote";
+        var normalizedQueryMode = string.IsNullOrWhiteSpace(queryMode) ? "default" : queryMode.Trim();
+        var boundedMaxEvents = Math.Clamp(suggestedMaxEvents <= 0 ? 100 : suggestedMaxEvents, 1, 5000);
+
+        var nextActions = new List<ToolNextActionModel>();
+        if (!string.Equals(normalizedTool, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase)) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "eventlog_live_stats",
+                reason: "Summarize dominant Event IDs/providers before drilling deeper.",
+                suggestedArguments: BuildEventLogSuggestedArguments(
+                    logName: normalizedLogName,
+                    machineName: normalizedMachine,
+                    additional: ("max_events_scanned", Math.Clamp(boundedMaxEvents * 4, 200, 5000))),
+                mutating: false));
+        }
+
+        if (!string.Equals(normalizedTool, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "eventlog_live_query",
+                reason: "Expand into structured event rows for timeline and root-cause evidence.",
+                suggestedArguments: BuildEventLogSuggestedArguments(
+                    logName: normalizedLogName,
+                    machineName: normalizedMachine,
+                    additional: ("max_events", Math.Clamp(boundedMaxEvents, 50, 500))),
+                mutating: false));
+        }
+
+        if (!string.Equals(normalizedTool, "eventlog_top_events", StringComparison.OrdinalIgnoreCase)) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "eventlog_top_events",
+                reason: "Quickly verify latest startup/error signals before broader sweeps.",
+                suggestedArguments: BuildEventLogSuggestedArguments(
+                    logName: normalizedLogName,
+                    machineName: normalizedMachine,
+                    additional: ("max_events", Math.Clamp(boundedMaxEvents, 5, 20))),
+                mutating: false));
+        }
+
+        var chain = ToolChainingHints.Create(
+            nextActions: nextActions,
+            confidence: truncated ? 0.68d : 0.86d,
+            checkpoint: ToolChainingHints.Map(
+                ("current_tool", normalizedTool),
+                ("scope", scope),
+                ("log_name", normalizedLogName),
+                ("query_mode", normalizedQueryMode),
+                ("rows", scanned),
+                ("truncated", truncated)));
+
+        var nextActionsJson = new JsonArray();
+        for (var i = 0; i < chain.NextActions.Count; i++) {
+            nextActionsJson.Add(ToolJson.ToJsonObjectSnakeCase(chain.NextActions[i]));
+        }
+        meta.Add("next_actions", nextActionsJson);
+        meta.Add("discovery_status", ToolJson.ToJsonObjectSnakeCase(new {
+            scope,
+            log_name = normalizedLogName,
+            machine_name = normalizedMachine ?? string.Empty,
+            query_mode = normalizedQueryMode,
+            rows = scanned,
+            truncated
+        }));
+        meta.Add("chain_confidence", chain.Confidence);
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildEventLogSuggestedArguments(
+        string logName,
+        string? machineName,
+        (string Key, object? Value) additional) {
+        var entries = new List<(string Key, object? Value)> {
+            ("log_name", logName),
+            additional
+        };
+        if (!string.IsNullOrWhiteSpace(machineName)) {
+            entries.Add(("machine_name", machineName));
+        }
+
+        return ToolChainingHints.Map(entries.ToArray());
+    }
+
+    /// <summary>
     /// Shared catalog listing flow for channel/provider list tools.
     /// </summary>
     protected string RunCatalogNameList(

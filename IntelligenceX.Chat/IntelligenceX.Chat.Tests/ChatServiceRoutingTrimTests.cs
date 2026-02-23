@@ -32,12 +32,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo EvaluateToolExecutionNudgeDecisionMethod =
+        typeof(ChatServiceSession).GetMethod("EvaluateToolExecutionNudgeDecision", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("EvaluateToolExecutionNudgeDecision not found.");
     private static readonly MethodInfo ShouldEnforceExecuteOrExplainContractMethod =
         typeof(ChatServiceSession).GetMethod("ShouldEnforceExecuteOrExplainContract", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldEnforceExecuteOrExplainContract not found.");
     private static readonly MethodInfo ShouldAttemptNoToolExecutionWatchdogMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptNoToolExecutionWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptNoToolExecutionWatchdog not found.");
+    private static readonly MethodInfo ShouldSuppressLocalToolRecoveryRetriesMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldSuppressLocalToolRecoveryRetries", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldSuppressLocalToolRecoveryRetries not found.");
+    private static readonly MethodInfo ShouldForceExecutionContractBlockerAtFinalizeMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldForceExecutionContractBlockerAtFinalize", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldForceExecutionContractBlockerAtFinalize not found.");
     private static readonly MethodInfo ShouldAttemptContinuationSubsetEscapeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptContinuationSubsetEscape", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptContinuationSubsetEscape not found.");
@@ -59,6 +68,33 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildContinuationSubsetEscapePromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildContinuationSubsetEscapePrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildContinuationSubsetEscapePrompt not found.");
+    private static readonly MethodInfo TryBuildStructuredNextActionRetryPromptMethod =
+        typeof(ChatServiceSession).GetMethod("TryBuildStructuredNextActionRetryPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryBuildStructuredNextActionRetryPrompt not found.");
+    private static readonly MethodInfo TryBuildHostStructuredNextActionToolCallMethod =
+        typeof(ChatServiceSession).GetMethod("TryBuildHostStructuredNextActionToolCall", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryBuildHostStructuredNextActionToolCall not found.");
+    private static readonly MethodInfo ShouldAttemptToolProgressRecoveryMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAttemptToolProgressRecovery", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAttemptToolProgressRecovery not found.");
+    private static readonly MethodInfo ShouldAllowHostStructuredNextActionReplayMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAllowHostStructuredNextActionReplay", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAllowHostStructuredNextActionReplay not found.");
+    private static readonly MethodInfo ShouldTriggerNoResultPhaseLoopWatchdogMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldTriggerNoResultPhaseLoopWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldTriggerNoResultPhaseLoopWatchdog not found.");
+    private static readonly MethodInfo ShouldEmitInterimResultSnapshotMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldEmitInterimResultSnapshot", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldEmitInterimResultSnapshot not found.");
+    private static readonly MethodInfo RebuildPackCapabilityFallbackContractsMethod =
+        typeof(ChatServiceSession).GetMethod("RebuildPackCapabilityFallbackContracts", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RebuildPackCapabilityFallbackContracts not found.");
+    private static readonly MethodInfo TryBuildPackCapabilityFallbackToolCallMethod =
+        typeof(ChatServiceSession).GetMethod("TryBuildPackCapabilityFallbackToolCall", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("TryBuildPackCapabilityFallbackToolCall not found.");
+    private static readonly MethodInfo BuildToolProgressRecoveryPromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolProgressRecoveryPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolProgressRecoveryPrompt not found.");
     private static readonly MethodInfo BuildToolReceiptCorrectionPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolReceiptCorrectionPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolReceiptCorrectionPrompt not found.");
@@ -140,6 +176,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo RememberPendingActionsMethod =
         typeof(ChatServiceSession).GetMethod("RememberPendingActions", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("RememberPendingActions not found.");
+    private static readonly MethodInfo RememberStructuredNextActionCarryoverMethod =
+        typeof(ChatServiceSession).GetMethod("RememberStructuredNextActionCarryover", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RememberStructuredNextActionCarryover not found.");
+    private static readonly MethodInfo TryBuildCarryoverStructuredNextActionToolCallMethod =
+        typeof(ChatServiceSession).GetMethod("TryBuildCarryoverStructuredNextActionToolCall", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("TryBuildCarryoverStructuredNextActionToolCall not found.");
     private static readonly MethodInfo ExpandContinuationUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExpandContinuationUserRequest", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ExpandContinuationUserRequest not found.");
@@ -173,6 +215,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly FieldInfo LastUserIntentSeenUtcTicksField =
         typeof(ChatServiceSession).GetField("_lastUserIntentSeenUtcTicks", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_lastUserIntentSeenUtcTicks not found.");
+    private static readonly FieldInfo ToolPackIdsByToolNameField =
+        typeof(ChatServiceSession).GetField("_toolPackIdsByToolName", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolPackIdsByToolName not found.");
 
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {

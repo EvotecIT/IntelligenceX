@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using IntelligenceX.Tools.Common;
 using Xunit;
 
@@ -54,6 +55,14 @@ public sealed class ToolChainingHintsTests {
 
         var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(map);
         Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
+    [Fact]
+    public void MapObject_ShouldReturnReadOnlyDictionary() {
+        var map = ToolChainingHints.MapObject(("count", 3), ("enabled", true));
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, object?>>(map);
+        Assert.Throws<NotSupportedException>(() => dictionary.Add("x", 1));
     }
 
     [Fact]
@@ -144,6 +153,43 @@ public sealed class ToolChainingHintsTests {
 
         var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(action.SuggestedArguments);
         Assert.Throws<NotSupportedException>(() => dictionary.Add("x", "1"));
+    }
+
+    [Fact]
+    public void ToolNextActionModel_MutabilityHint_ShouldRoundTripThroughFactoryAndContract() {
+        var action = ToolChainingHints.NextAction(
+            tool: "ad_scope_discovery",
+            reason: "expand discovery",
+            mutating: false);
+
+        Assert.False(action.Mutating);
+
+        var chain = ToolChainingHints.Create(nextActions: new[] { action });
+        Assert.Single(chain.NextActions);
+        Assert.False(chain.NextActions[0].Mutating);
+    }
+
+    [Fact]
+    public void ToolNextActionModel_TypedArguments_ShouldRoundTripThroughFactoryAndContract() {
+        var action = ToolChainingHints.NextAction(
+            tool: "ad_monitoring_probe_run",
+            reason: "replication",
+            arguments: ToolChainingHints.MapObject(
+                ("probe_kind", "replication"),
+                ("include_domain_controllers", new[] { "AD0", "AD1" }),
+                ("limits", new Dictionary<string, object?> { ["max"] = 10 })));
+
+        Assert.NotNull(action.Arguments);
+        Assert.True(action.Arguments!.ContainsKey("include_domain_controllers"));
+        Assert.IsType<List<object?>>(action.Arguments["include_domain_controllers"]);
+
+        var chain = ToolChainingHints.Create(nextActions: new[] { action });
+        Assert.Single(chain.NextActions);
+        var roundTrippedArguments = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(chain.NextActions[0].Arguments);
+        var roundTripped = Assert.IsType<List<object?>>(roundTrippedArguments["include_domain_controllers"]);
+        Assert.Equal(new[] { "AD0", "AD1" }, roundTripped.Cast<string>());
+        var limits = Assert.IsType<Dictionary<string, object?>>(roundTrippedArguments["limits"]);
+        Assert.Equal(10, limits["max"]);
     }
 
     [Fact]

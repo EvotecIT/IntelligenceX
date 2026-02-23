@@ -49,15 +49,22 @@ public sealed class SystemInfoTool : SystemToolBase, ITool {
             ("OS", runtime.OsDescription),
             ("Framework", runtime.FrameworkDescription)
         };
+        var meta = BuildFactsMeta(count: 1, truncated: false, target: runtime.MachineName);
+        AddReadOnlyPostureChainingMeta(
+            meta: meta,
+            currentTool: "system_info",
+            targetComputer: runtime.MachineName,
+            isRemoteScope: false,
+            scanned: 1,
+            truncated: false);
         return Task.FromResult(ToolResponse.OkFactsModel(
             model: result,
             title: "System Info",
             facts: facts,
-            meta: null,
+            meta: meta,
             keyHeader: "Field",
             valueHeader: "Value",
             truncated: false,
             render: null));
     }
 }
-

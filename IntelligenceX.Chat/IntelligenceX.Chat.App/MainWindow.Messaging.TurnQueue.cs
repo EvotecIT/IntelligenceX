@@ -127,6 +127,7 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
+            ResetActiveTurnAssistantVisuals(turn.ConversationId);
             _turnStartupInProgress = false;
             var requestId = turn.RequestId;
             _isSending = true;
@@ -177,7 +178,7 @@ public sealed partial class MainWindow : Window {
                         }
                     }
                 }
-                _activeTurnReceivedDelta = false;
+                _assistantStreamingState.ClearReceivedDelta();
                 _activeTurnQueueWaitMs = null;
                 try {
                     await PublishSessionStateAsync().ConfigureAwait(false);

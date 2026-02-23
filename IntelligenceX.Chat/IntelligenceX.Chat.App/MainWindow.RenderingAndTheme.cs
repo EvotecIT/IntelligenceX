@@ -91,8 +91,9 @@ public sealed partial class MainWindow : Window {
     private static string BuildMessagesHtml(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
-        MarkdownRendererOptions markdownOptions) {
-        return TranscriptHtmlFormatter.Format(messages, timestampFormat, markdownOptions);
+        MarkdownRendererOptions markdownOptions,
+        IReadOnlyDictionary<int, TranscriptMessageDecoration>? messageDecorations = null) {
+        return TranscriptHtmlFormatter.Format(messages, timestampFormat, markdownOptions, messageDecorations);
     }
 
     private async Task<string?> ShowTranscriptSavePickerAsync(string? title, string preferredFormat) {
