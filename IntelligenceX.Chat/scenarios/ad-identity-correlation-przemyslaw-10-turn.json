@@ -5,18 +5,23 @@
       "name": "Resolve identity",
       "user": "Resolve user identity for przemyslaw.klys using AD fields (samAccountName, userPrincipalName, SID, DN) and return canonical object details.",
       "min_tool_calls": 1,
+      "require_any_tools": ["ad_search", "ad_ldap_query*", "ad_object_*"],
       "assert_not_contains": ["I can do that, but"]
     },
     {
       "name": "Scope relevant DCs",
       "user": "Identify which DCs are relevant for this identity and which are reachable for log correlation in this run.",
       "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"],
       "assert_not_contains": ["I can do that, but"]
     },
     {
       "name": "Security event correlation",
       "user": "Correlate this identity with recent auth events (4624, 4625, 4768, 4769, 4771) for the last 24 hours.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_named_events_*", "eventlog_*query*", "eventlog_*stats*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
     },
     {
       "name": "Fallback handling",
@@ -35,7 +40,8 @@
     {
       "name": "Privilege context",
       "user": "Call out whether this identity appears in privileged groups or sensitive admin paths that increase risk.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*admin*", "ad_group_*", "ad_search", "ad_object_*"]
     },
     {
       "name": "Investigation next steps",

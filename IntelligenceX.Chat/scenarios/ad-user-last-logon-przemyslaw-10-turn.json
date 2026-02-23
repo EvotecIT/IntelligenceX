@@ -4,23 +4,29 @@
     {
       "name": "Resolve account",
       "user": "Resolve the AD user przemyslaw.klys and return canonical identity fields (samAccountName, UPN, SID, DN).",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_search", "ad_ldap_query*", "ad_object_*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
     },
     {
       "name": "Authoritative last logon",
       "user": "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.",
       "min_tool_calls": 1,
+      "require_any_tools": ["ad_search", "ad_ldap_query*", "ad_*scope*", "ad_*discover*"],
       "assert_contains": ["UTC"]
     },
     {
       "name": "Timestamp semantics",
       "user": "Compare lastLogon vs lastLogonTimestamp for this user and explain replication/currency caveats.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_search", "ad_ldap_query*"]
     },
     {
       "name": "Eventlog correlation",
       "user": "Correlate with recent security log evidence (4624/4625/4768/4769/4771) around the latest sign-in window.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_named_events_*", "eventlog_*query*", "eventlog_*stats*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
     },
     {
       "name": "Session characteristics",

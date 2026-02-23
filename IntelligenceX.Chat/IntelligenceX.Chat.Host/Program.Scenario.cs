@@ -4,8 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Host;
 
@@ -184,7 +188,14 @@ internal static partial class Program {
                     assertContains: Array.Empty<string>(),
                     assertNotContains: Array.Empty<string>(),
                     minToolCalls: null,
-                    minToolRounds: null));
+                    minToolRounds: null,
+                    requireTools: Array.Empty<string>(),
+                    requireAnyTools: Array.Empty<string>(),
+                    forbidTools: Array.Empty<string>(),
+                    assertToolOutputContains: Array.Empty<string>(),
+                    assertToolOutputNotContains: Array.Empty<string>(),
+                    assertNoToolErrors: false,
+                    forbidToolErrorCodes: Array.Empty<string>()));
                 continue;
             }
 
@@ -204,13 +215,27 @@ internal static partial class Program {
             var assertNotContains = ReadScenarioAssertNotContains(element);
             var minToolCalls = ReadScenarioOptionalNonNegativeInt(element, "min_tool_calls");
             var minToolRounds = ReadScenarioOptionalNonNegativeInt(element, "min_tool_rounds");
+            var requireTools = ReadScenarioStringList(element, "require_tools");
+            var requireAnyTools = ReadScenarioStringList(element, "require_any_tools");
+            var forbidTools = ReadScenarioStringList(element, "forbid_tools");
+            var assertToolOutputContains = ReadScenarioStringList(element, "assert_tool_output_contains");
+            var assertToolOutputNotContains = ReadScenarioStringList(element, "assert_tool_output_not_contains");
+            var assertNoToolErrors = ReadScenarioOptionalBoolean(element, "assert_no_tool_errors", defaultValue: false);
+            var forbidToolErrorCodes = ReadScenarioStringList(element, "forbid_tool_error_codes");
             turns.Add(new ChatScenarioTurn(
                 name,
                 user.Trim(),
                 assertContains,
                 assertNotContains,
                 minToolCalls,
-                minToolRounds));
+                minToolRounds,
+                requireTools,
+                requireAnyTools,
+                forbidTools,
+                assertToolOutputContains,
+                assertToolOutputNotContains,
+                assertNoToolErrors,
+                forbidToolErrorCodes));
         }
 
         return turns;
@@ -239,7 +264,14 @@ internal static partial class Program {
                 assertContains: Array.Empty<string>(),
                 assertNotContains: Array.Empty<string>(),
                 minToolCalls: null,
-                minToolRounds: null));
+                minToolRounds: null,
+                requireTools: Array.Empty<string>(),
+                requireAnyTools: Array.Empty<string>(),
+                forbidTools: Array.Empty<string>(),
+                assertToolOutputContains: Array.Empty<string>(),
+                assertToolOutputNotContains: Array.Empty<string>(),
+                assertNoToolErrors: false,
+                forbidToolErrorCodes: Array.Empty<string>()));
         }
         return turns;
     }
@@ -258,51 +290,31 @@ internal static partial class Program {
     }
 
     private static IReadOnlyList<string> ReadScenarioAssertContains(JsonElement element) {
-        if (!element.TryGetProperty("assert_contains", out var assertElement)) {
-            return Array.Empty<string>();
-        }
-
-        if (assertElement.ValueKind == JsonValueKind.String) {
-            var single = (assertElement.GetString() ?? string.Empty).Trim();
-            return single.Length == 0 ? Array.Empty<string>() : new[] { single };
-        }
-
-        if (assertElement.ValueKind != JsonValueKind.Array) {
-            throw new InvalidOperationException("'assert_contains' must be a string or array of strings.");
-        }
-
-        var assertions = new List<string>();
-        foreach (var item in assertElement.EnumerateArray()) {
-            if (item.ValueKind != JsonValueKind.String) {
-                throw new InvalidOperationException("'assert_contains' array must contain only strings.");
-            }
-
-            var value = (item.GetString() ?? string.Empty).Trim();
-            if (value.Length > 0) {
-                assertions.Add(value);
-            }
-        }
-        return assertions;
+        return ReadScenarioStringList(element, "assert_contains");
     }
 
     private static IReadOnlyList<string> ReadScenarioAssertNotContains(JsonElement element) {
-        if (!element.TryGetProperty("assert_not_contains", out var assertElement)) {
+        return ReadScenarioStringList(element, "assert_not_contains");
+    }
+
+    private static IReadOnlyList<string> ReadScenarioStringList(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var valueElement)) {
             return Array.Empty<string>();
         }
 
-        if (assertElement.ValueKind == JsonValueKind.String) {
-            var single = (assertElement.GetString() ?? string.Empty).Trim();
+        if (valueElement.ValueKind == JsonValueKind.String) {
+            var single = (valueElement.GetString() ?? string.Empty).Trim();
             return single.Length == 0 ? Array.Empty<string>() : new[] { single };
         }
 
-        if (assertElement.ValueKind != JsonValueKind.Array) {
-            throw new InvalidOperationException("'assert_not_contains' must be a string or array of strings.");
+        if (valueElement.ValueKind != JsonValueKind.Array) {
+            throw new InvalidOperationException($"'{propertyName}' must be a string or array of strings.");
         }
 
         var assertions = new List<string>();
-        foreach (var item in assertElement.EnumerateArray()) {
+        foreach (var item in valueElement.EnumerateArray()) {
             if (item.ValueKind != JsonValueKind.String) {
-                throw new InvalidOperationException("'assert_not_contains' array must contain only strings.");
+                throw new InvalidOperationException($"'{propertyName}' array must contain only strings.");
             }
 
             var value = (item.GetString() ?? string.Empty).Trim();
@@ -336,9 +348,34 @@ internal static partial class Program {
         throw new InvalidOperationException($"'{propertyName}' must be an integer >= 0.");
     }
 
+    private static bool ReadScenarioOptionalBoolean(JsonElement element, string propertyName, bool defaultValue) {
+        if (!element.TryGetProperty(propertyName, out var boolElement) || boolElement.ValueKind == JsonValueKind.Null) {
+            return defaultValue;
+        }
+
+        if (boolElement.ValueKind == JsonValueKind.True) {
+            return true;
+        }
+        if (boolElement.ValueKind == JsonValueKind.False) {
+            return false;
+        }
+
+        throw new InvalidOperationException($"'{propertyName}' must be a boolean.");
+    }
+
     private static List<string> EvaluateScenarioAssertions(ChatScenarioTurn turn, ReplTurnMetricsResult? turnResult) {
         var failures = new List<string>();
         var assistantText = turnResult?.Result.Text ?? string.Empty;
+        var toolCalls = turnResult?.Result.ToolCalls ?? Array.Empty<ToolCall>();
+        var toolOutputs = turnResult?.Result.ToolOutputs ?? Array.Empty<ToolOutput>();
+        var toolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < toolCalls.Count; i++) {
+            var toolName = (toolCalls[i].Name ?? string.Empty).Trim();
+            if (toolName.Length > 0) {
+                toolNames.Add(toolName);
+            }
+        }
+        var (toolErrorCount, toolErrorCodes) = SummarizeToolOutputErrors(toolOutputs);
 
         foreach (var expected in turn.AssertContains) {
             if (assistantText.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -365,7 +402,179 @@ internal static partial class Program {
             failures.Add($"Expected at least {turn.MinToolRounds.Value} tool round(s); observed {toolRounds}.");
         }
 
+        foreach (var requiredTool in turn.RequireTools) {
+            if (ToolNameSetContains(toolNames, requiredTool)) {
+                continue;
+            }
+
+            failures.Add($"Expected tool call '{requiredTool}' (exact or wildcard), but it was not executed.");
+        }
+
+        if (turn.RequireAnyTools.Count > 0) {
+            var matchedAnyRequiredTool = false;
+            foreach (var requiredTool in turn.RequireAnyTools) {
+                if (!ToolNameSetContains(toolNames, requiredTool)) {
+                    continue;
+                }
+
+                matchedAnyRequiredTool = true;
+                break;
+            }
+
+            if (!matchedAnyRequiredTool) {
+                failures.Add("Expected at least one of these tool calls: " + string.Join(", ", turn.RequireAnyTools) + ".");
+            }
+        }
+
+        foreach (var forbiddenTool in turn.ForbidTools) {
+            if (!ToolNameSetContains(toolNames, forbiddenTool)) {
+                continue;
+            }
+
+            failures.Add($"Expected tool call '{forbiddenTool}' (exact or wildcard) to be absent, but it executed.");
+        }
+
+        foreach (var expected in turn.AssertToolOutputContains) {
+            if (AnyToolOutputContains(toolOutputs, expected)) {
+                continue;
+            }
+
+            failures.Add($"Expected tool output to contain '{expected}'.");
+        }
+
+        foreach (var disallowed in turn.AssertToolOutputNotContains) {
+            if (!AnyToolOutputContains(toolOutputs, disallowed)) {
+                continue;
+            }
+
+            failures.Add($"Expected tool output to not contain '{disallowed}'.");
+        }
+
+        if (turn.AssertNoToolErrors && toolErrorCount > 0) {
+            var codeList = toolErrorCodes.Count == 0
+                ? "-"
+                : string.Join(", ", toolErrorCodes.OrderBy(static c => c, StringComparer.OrdinalIgnoreCase));
+            failures.Add($"Expected no tool output errors, but observed {toolErrorCount} error output(s). Codes: {codeList}.");
+        }
+
+        foreach (var forbiddenErrorCode in turn.ForbidToolErrorCodes) {
+            if (!ToolNameSetContains(toolErrorCodes, forbiddenErrorCode)) {
+                continue;
+            }
+
+            failures.Add($"Expected tool error code '{forbiddenErrorCode}' (exact or wildcard) to be absent, but it was observed.");
+        }
+
         return failures;
+    }
+
+    private static bool ToolNameSetContains(IReadOnlyCollection<string> toolNames, string expectedNameOrPattern) {
+        if (toolNames.Count == 0) {
+            return false;
+        }
+
+        var expected = (expectedNameOrPattern ?? string.Empty).Trim();
+        if (expected.Length == 0) {
+            return false;
+        }
+
+        foreach (var toolName in toolNames) {
+            if (ToolNameMatches(toolName, expected)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ToolNameMatches(string actualToolName, string expectedNameOrPattern) {
+        var actual = (actualToolName ?? string.Empty).Trim();
+        var expected = (expectedNameOrPattern ?? string.Empty).Trim();
+        if (actual.Length == 0 || expected.Length == 0) {
+            return false;
+        }
+
+        if (!ContainsWildcard(expected)) {
+            return string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return WildcardMatches(actual, expected);
+    }
+
+    private static bool ContainsWildcard(string value) {
+        return value.IndexOf('*') >= 0 || value.IndexOf('?') >= 0;
+    }
+
+    private static bool WildcardMatches(string value, string wildcardPattern) {
+        var regexPattern = "^"
+            + Regex.Escape(wildcardPattern)
+                .Replace("\\*", ".*", StringComparison.Ordinal)
+                .Replace("\\?", ".", StringComparison.Ordinal)
+            + "$";
+        return Regex.IsMatch(value, regexPattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static bool AnyToolOutputContains(IReadOnlyList<ToolOutput> toolOutputs, string expected) {
+        if (toolOutputs.Count == 0 || string.IsNullOrWhiteSpace(expected)) {
+            return false;
+        }
+
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            var output = toolOutputs[i].Output ?? string.Empty;
+            if (output.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static (int ErrorCount, HashSet<string> ErrorCodes) SummarizeToolOutputErrors(IReadOnlyList<ToolOutput> toolOutputs) {
+        var errorCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var errorCount = 0;
+        if (toolOutputs.Count == 0) {
+            return (errorCount, errorCodes);
+        }
+
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            if (!TryReadToolOutputErrorCode(toolOutputs[i].Output, out var errorCode)) {
+                continue;
+            }
+
+            errorCount++;
+            if (errorCode.Length > 0) {
+                errorCodes.Add(errorCode);
+            }
+        }
+
+        return (errorCount, errorCodes);
+    }
+
+    private static bool TryReadToolOutputErrorCode(string output, out string errorCode) {
+        errorCode = string.Empty;
+        if (string.IsNullOrWhiteSpace(output)) {
+            return false;
+        }
+
+        try {
+            using var document = JsonDocument.Parse(output);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!root.TryGetProperty("ok", out var okElement) || okElement.ValueKind != JsonValueKind.False) {
+                return false;
+            }
+
+            if (root.TryGetProperty("error_code", out var errorCodeElement) && errorCodeElement.ValueKind == JsonValueKind.String) {
+                errorCode = (errorCodeElement.GetString() ?? string.Empty).Trim();
+            }
+
+            return true;
+        } catch (JsonException) {
+            return false;
+        }
     }
 
     private static string ResolveScenarioReportPath(ReplOptions options, string scenarioPath, string scenarioName, DateTime startedAtUtc) {
@@ -451,6 +660,18 @@ internal static partial class Program {
                 sb.AppendLine($"- TTFT ms: {(turn.Result.Metrics.TtftMs.HasValue ? turn.Result.Metrics.TtftMs.Value.ToString() : "-")}");
                 sb.AppendLine($"- Tool calls: {turn.Result.Metrics.ToolCallsCount}");
                 sb.AppendLine($"- Tool rounds: {turn.Result.Metrics.ToolRounds}");
+                var toolNames = turn.Result.Result.ToolCalls
+                    .Select(static c => (c.Name ?? string.Empty).Trim())
+                    .Where(static n => n.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                sb.AppendLine($"- Tool names: {(toolNames.Length == 0 ? "-" : string.Join(", ", toolNames))}");
+                var (toolErrorCount, toolErrorCodes) = SummarizeToolOutputErrors(turn.Result.Result.ToolOutputs);
+                var errorCodesText = toolErrorCodes.Count == 0
+                    ? "-"
+                    : string.Join(", ", toolErrorCodes.OrderBy(static c => c, StringComparer.OrdinalIgnoreCase));
+                sb.AppendLine($"- Tool error outputs: {toolErrorCount} (codes: {errorCodesText})");
                 if (turn.Result.Result.Usage is not null) {
                     sb.AppendLine($"- Tokens (in/out/total): {FormatToken(turn.Result.Result.Usage.InputTokens)}/{FormatToken(turn.Result.Result.Usage.OutputTokens)}/{FormatToken(turn.Result.Result.Usage.TotalTokens)}");
                 }
@@ -514,13 +735,27 @@ internal static partial class Program {
             IReadOnlyList<string> assertContains,
             IReadOnlyList<string> assertNotContains,
             int? minToolCalls,
-            int? minToolRounds) {
+            int? minToolRounds,
+            IReadOnlyList<string> requireTools,
+            IReadOnlyList<string> requireAnyTools,
+            IReadOnlyList<string> forbidTools,
+            IReadOnlyList<string> assertToolOutputContains,
+            IReadOnlyList<string> assertToolOutputNotContains,
+            bool assertNoToolErrors,
+            IReadOnlyList<string> forbidToolErrorCodes) {
             Name = name;
             User = user ?? string.Empty;
             AssertContains = assertContains ?? Array.Empty<string>();
             AssertNotContains = assertNotContains ?? Array.Empty<string>();
             MinToolCalls = minToolCalls;
             MinToolRounds = minToolRounds;
+            RequireTools = requireTools ?? Array.Empty<string>();
+            RequireAnyTools = requireAnyTools ?? Array.Empty<string>();
+            ForbidTools = forbidTools ?? Array.Empty<string>();
+            AssertToolOutputContains = assertToolOutputContains ?? Array.Empty<string>();
+            AssertToolOutputNotContains = assertToolOutputNotContains ?? Array.Empty<string>();
+            AssertNoToolErrors = assertNoToolErrors;
+            ForbidToolErrorCodes = forbidToolErrorCodes ?? Array.Empty<string>();
         }
 
         public string? Name { get; }
@@ -529,6 +764,13 @@ internal static partial class Program {
         public IReadOnlyList<string> AssertNotContains { get; }
         public int? MinToolCalls { get; }
         public int? MinToolRounds { get; }
+        public IReadOnlyList<string> RequireTools { get; }
+        public IReadOnlyList<string> RequireAnyTools { get; }
+        public IReadOnlyList<string> ForbidTools { get; }
+        public IReadOnlyList<string> AssertToolOutputContains { get; }
+        public IReadOnlyList<string> AssertToolOutputNotContains { get; }
+        public bool AssertNoToolErrors { get; }
+        public IReadOnlyList<string> ForbidToolErrorCodes { get; }
     }
 
     private sealed class ScenarioTurnRun {

@@ -5,17 +5,21 @@
       "name": "Discover DC targets",
       "user": "Discover DCs in scope and list the hostnames you can check in this session.",
       "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
       "assert_not_contains": ["I can do that, but"]
     },
     {
       "name": "Core port posture",
       "user": "Check core AD connectivity posture for each DC: LDAP 389, LDAPS 636, GC 3268/3269, Kerberos 88, DNS 53.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_monitoring_probe_*", "ad_*diagnostics*", "powershell_run", "eventlog_*query*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
     },
     {
       "name": "ADWS verification",
       "user": "Check ADWS service health and responsiveness for AD0 and other discovered DCs, including whether the endpoint is reachable.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_monitoring_probe_*", "ad_*diagnostics*", "powershell_run", "eventlog_*query*"]
     },
     {
       "name": "Service-state evidence",

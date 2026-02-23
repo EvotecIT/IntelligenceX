@@ -44,6 +44,13 @@ Scenario file formats:
   - `assert_not_contains` (string or array)
   - `min_tool_calls` (integer >= 0)
   - `min_tool_rounds` (integer >= 0)
+  - `require_tools` (string or array; all listed tool names must be called; supports `*` and `?` wildcards)
+  - `require_any_tools` (string or array; at least one listed tool name must be called; supports `*` and `?` wildcards)
+  - `forbid_tools` (string or array; listed tool names must not be called; supports `*` and `?` wildcards)
+  - `assert_tool_output_contains` (string or array; expected evidence in tool output payloads)
+  - `assert_tool_output_not_contains` (string or array; disallowed content in tool output payloads)
+  - `assert_no_tool_errors` (boolean; when true, fails turn if any tool output envelope has `ok=false`)
+  - `forbid_tool_error_codes` (string or array; disallow specific tool `error_code` values; supports `*` and `?` wildcards)
 - Plain text where each non-empty line is a user turn (`#` and `//` lines are ignored).
 
 The host writes a markdown run report under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path).

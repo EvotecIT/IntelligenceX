@@ -4,13 +4,16 @@
     {
       "name": "Target reboot on AD0",
       "user": "Can you find out why AD0 rebooted recently and when exactly?",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*", "eventlog_top_events"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
     },
     {
       "name": "Confirm evidence IDs",
       "user": "Please confirm with reboot/shutdown evidence IDs (1074, 6008, 41, 6005, 6006) and give UTC timestamps.",
       "min_tool_calls": 1,
-      "assert_contains": ["UTC"]
+      "assert_contains": ["UTC"],
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*", "eventlog_top_events"]
     },
     {
       "name": "Classify reboot type",
@@ -19,16 +22,19 @@
     {
       "name": "Expand lookback",
       "user": "If the recent slice is truncated, query a broader System log window and restate the exact reboot marker.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*", "eventlog_top_events"]
     },
     {
       "name": "Discover peer DCs",
       "user": "Discover other DCs in this domain and list their hostnames.",
-      "min_tool_calls": 1
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
     },
     {
       "name": "Cross-check peer DCs",
-      "user": "Check those DCs for the same reboot signature around AD0's window and return a side-by-side matrix."
+      "user": "Check those DCs for the same reboot signature around AD0's window and return a side-by-side matrix.",
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*"]
     },
     {
       "name": "Pattern signal",

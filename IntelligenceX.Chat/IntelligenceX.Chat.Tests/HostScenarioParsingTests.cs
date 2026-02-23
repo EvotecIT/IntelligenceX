@@ -22,7 +22,14 @@ public sealed class HostScenarioParsingTests {
       "assert_contains": ["6008", "unexpected reboot"],
       "assert_not_contains": ["I can do that, but"],
       "min_tool_calls": 1,
-      "min_tool_rounds": 1
+      "min_tool_rounds": 1,
+      "require_tools": ["eventlog_live_query"],
+      "require_any_tools": ["eventlog_live_query", "eventlog_live_stats"],
+      "forbid_tools": ["eventlog_evtx_query"],
+      "assert_tool_output_contains": ["6008", "Kernel-Power"],
+      "assert_tool_output_not_contains": ["schema_validation_failed"],
+      "assert_no_tool_errors": true,
+      "forbid_tool_error_codes": ["invalid_argument", "query_*"]
     },
     "Check peer DCs"
   ]
@@ -39,11 +46,25 @@ public sealed class HostScenarioParsingTests {
         Assert.Single(ReadStringListProperty(turns[0], "AssertNotContains"));
         Assert.Equal(1, ReadNullableIntProperty(turns[0], "MinToolCalls"));
         Assert.Equal(1, ReadNullableIntProperty(turns[0], "MinToolRounds"));
+        Assert.Single(ReadStringListProperty(turns[0], "RequireTools"));
+        Assert.Equal(2, ReadStringListProperty(turns[0], "RequireAnyTools").Count);
+        Assert.Single(ReadStringListProperty(turns[0], "ForbidTools"));
+        Assert.Equal(2, ReadStringListProperty(turns[0], "AssertToolOutputContains").Count);
+        Assert.Single(ReadStringListProperty(turns[0], "AssertToolOutputNotContains"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertNoToolErrors"));
+        Assert.Equal(2, ReadStringListProperty(turns[0], "ForbidToolErrorCodes").Count);
         Assert.Equal("Check peer DCs", ReadStringProperty(turns[1], "User"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertContains"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertNotContains"));
         Assert.Null(ReadNullableIntProperty(turns[1], "MinToolCalls"));
         Assert.Null(ReadNullableIntProperty(turns[1], "MinToolRounds"));
+        Assert.Empty(ReadStringListProperty(turns[1], "RequireTools"));
+        Assert.Empty(ReadStringListProperty(turns[1], "RequireAnyTools"));
+        Assert.Empty(ReadStringListProperty(turns[1], "ForbidTools"));
+        Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputContains"));
+        Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputNotContains"));
+        Assert.False(ReadBooleanProperty(turns[1], "AssertNoToolErrors"));
+        Assert.Empty(ReadStringListProperty(turns[1], "ForbidToolErrorCodes"));
     }
 
     [Fact]
@@ -111,5 +132,12 @@ Check AD0 reboot
         }
 
         return Convert.ToInt32(value);
+    }
+
+    private static bool ReadBooleanProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var value = property!.GetValue(instance);
+        return value is bool b && b;
     }
 }
