@@ -27,7 +27,9 @@ internal sealed class AssistantStreamingState {
 
     public string AppendDeltaAndNormalizePreview(string delta, bool fromProvisionalEvent = false) {
         if (string.IsNullOrEmpty(delta)) {
-            return string.Empty;
+            lock (_sync) {
+                return GetNormalizedPreviewLocked();
+            }
         }
 
         lock (_sync) {

@@ -83,4 +83,15 @@ public sealed class AssistantStreamingStateTests {
         Assert.False(string.IsNullOrEmpty(preview));
         Assert.True(state.HasBufferedContent());
     }
+
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_EmptyDeltaReturnsCurrentPreview() {
+        var state = new AssistantStreamingState();
+        state.AppendDeltaAndNormalizePreview("hello");
+
+        var preview = state.AppendDeltaAndNormalizePreview(string.Empty);
+
+        Assert.Contains("hello", preview, StringComparison.Ordinal);
+        Assert.True(state.HasReceivedDelta());
+    }
 }
