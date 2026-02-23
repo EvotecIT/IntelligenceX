@@ -1249,8 +1249,31 @@ internal sealed partial class ChatServiceSession {
             }
 
             var next = new ChatInput();
+            var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
+            foreach (var call in extracted) {
+                var normalizedCallId = (call.CallId ?? string.Empty).Trim();
+                if (normalizedCallId.Length == 0) {
+                    continue;
+                }
+
+                executedCallsById[normalizedCallId] = call;
+            }
+
             foreach (var output in executed) {
-                next.AddToolOutput(output.CallId, output.Output);
+                var normalizedOutputCallId = (output.CallId ?? string.Empty).Trim();
+                if (normalizedOutputCallId.Length == 0) {
+                    continue;
+                }
+
+                if (normalizedOutputCallId.Length > 0
+                    && executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)) {
+                    next.AddToolCall(
+                        executedCall.CallId,
+                        executedCall.Name,
+                        executedCall.Input);
+                }
+
+                next.AddToolOutput(normalizedOutputCallId, output.Output);
             }
             turn = await RunModelPhaseWithProgressAsync(
                     client,

@@ -371,7 +371,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
                     }
                 case "custom_tool_call": {
                         FlushUserText();
-                        var callId = item.GetString("call_id");
+                        var callId = item.GetString("call_id") ?? item.GetString("tool_call_id") ?? item.GetString("id");
                         if (string.IsNullOrWhiteSpace(callId)) {
                             throw new InvalidOperationException("Tool call item is missing call_id.");
                         }
@@ -401,7 +401,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
                     }
                 case "custom_tool_call_output": {
                         FlushUserText();
-                        var callId = item.GetString("call_id");
+                        var callId = item.GetString("call_id") ?? item.GetString("tool_call_id") ?? item.GetString("id");
                         if (string.IsNullOrWhiteSpace(callId)) {
                             throw new InvalidOperationException("Tool output item is missing call_id.");
                         }

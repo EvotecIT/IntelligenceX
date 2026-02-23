@@ -66,12 +66,19 @@ public sealed class ChatInput {
             throw new ArgumentException("Tool name cannot be empty.", nameof(name));
         }
 
+        var normalizedCallId = callId.Trim();
+        var normalizedName = name.Trim();
         var normalizedInput = string.IsNullOrWhiteSpace(input) ? "{}" : input!.Trim();
         _items.Add(new JsonObject()
             .Add("type", "custom_tool_call")
-            .Add("call_id", callId)
-            .Add("name", name)
-            .Add("input", normalizedInput));
+            .Add("id", normalizedCallId)
+            .Add("call_id", normalizedCallId)
+            .Add("name", normalizedName)
+            .Add("input", normalizedInput)
+            .Add("arguments", normalizedInput)
+            .Add("function", new JsonObject()
+                .Add("name", normalizedName)
+                .Add("arguments", normalizedInput)));
         return this;
     }
 
@@ -84,9 +91,10 @@ public sealed class ChatInput {
         if (string.IsNullOrWhiteSpace(callId)) {
             throw new ArgumentException("Call id cannot be empty.", nameof(callId));
         }
+        var normalizedCallId = callId.Trim();
         _items.Add(new JsonObject()
             .Add("type", "custom_tool_call_output")
-            .Add("call_id", callId)
+            .Add("call_id", normalizedCallId)
             .Add("output", output ?? string.Empty));
         return this;
     }
