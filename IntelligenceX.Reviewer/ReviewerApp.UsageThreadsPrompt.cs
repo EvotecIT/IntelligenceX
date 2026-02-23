@@ -65,6 +65,9 @@ public static partial class ReviewerApp {
         var resolved = new List<ThreadAssessment>();
         var kept = new List<ThreadAssessment>();
         var failed = new List<ThreadAssessment>();
+        var evidenceRejected = 0;
+        var resolveAttempts = 0;
+        var sweepResolved = 0;
         foreach (var assessment in assessments) {
             switch (assessment.Action) {
                 case "comment":
@@ -89,12 +92,14 @@ public static partial class ReviewerApp {
             }
             if (settings.ReviewThreadsAutoResolveRequireEvidence &&
                 !HasValidResolveEvidence(assessment.Evidence, thread, patchIndex, patchLookup, settings.MaxPatchChars)) {
+                evidenceRejected++;
                 var missingEvidence = new ThreadAssessment(assessment.Id, "keep",
                     $"{assessment.Reason} (missing diff evidence)", assessment.Evidence);
                 kept.Add(missingEvidence);
                 replyMap[normalizedThreadId] = missingEvidence;
                 continue;
             }
+            resolveAttempts++;
             var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
             if (result.Resolved) {
                 resolvedCount++;
@@ -117,6 +122,7 @@ public static partial class ReviewerApp {
             var extraResolved = await TryResolveKeptBotThreadsAfterNoBlockersAsync(github, fallbackGithub, candidates, resolved, kept,
                     settings, cancellationToken)
                 .ConfigureAwait(false);
+            sweepResolved = extraResolved;
             resolvedCount += extraResolved;
         }
 
@@ -143,7 +149,11 @@ public static partial class ReviewerApp {
         if (resolvedCount == 0 && kept.Count == 0) {
             return ThreadTriageResult.Empty;
         }
-        var summary = $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
+        var summary =
+            $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept " +
+            $"(candidates {candidates.Count}, assessments {assessments.Count}, attempts {resolveAttempts}, " +
+            $"evidence_rejected {evidenceRejected}, resolve_failed {failed.Count}, sweep_resolved {sweepResolved}, " +
+            $"missing_ids {missingIdCount}, duplicate_ids {duplicateIdCount}).";
         if (commentPosted) {
             summary += " Triage comment posted.";
         }
@@ -570,3 +580,8 @@ public static partial class ReviewerApp {
     }
 
 }
+
+
+
+
+

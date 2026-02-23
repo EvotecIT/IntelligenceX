@@ -20,6 +20,16 @@ public static partial class ReviewerApp {
         return true;
     }
 
+    private static bool TryGetInlineThreadMatchKeys(PullRequestReviewThread thread, ReviewSettings settings,
+        out HashSet<string> keys) {
+        keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!TryGetInlineThreadKey(thread, settings, out var key)) {
+            return false;
+        }
+        keys.Add(key);
+        return true;
+    }
+
     private static string BuildRelatedPrsSection(PullRequestContext context, IReadOnlyList<RelatedPullRequest> related) {
         if (related.Count == 0) {
             return string.Empty;
@@ -579,3 +589,4 @@ public static partial class ReviewerApp {
     }
 
 }
+
