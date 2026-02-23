@@ -30,7 +30,10 @@ internal sealed partial class ChatServiceSession {
         bool watchdogAlreadyUsed,
         bool shouldRetry,
         string reason) {
-        if (!executionContractApplies && !continuationFollowUpTurn && !compactFollowUpTurn) {
+        if (!ShouldTraceNoToolExecutionWatchdogDecision(
+                executionContractApplies,
+                continuationFollowUpTurn,
+                compactFollowUpTurn)) {
             return;
         }
 
@@ -41,11 +44,19 @@ internal sealed partial class ChatServiceSession {
             executionContractApplies,
             continuationFollowUpTurn,
             compactFollowUpTurn);
+        var contractState = executionContractApplies ? "true" : "false";
         var watchdogState = watchdogAlreadyUsed ? "used" : "unused";
         var nudgeState = executionNudgeUsed ? "used" : "unused";
         var receiptState = toolReceiptCorrectionUsed ? "used" : "unused";
         Console.Error.WriteLine(
-            $"[tool-watchdog] outcome={outcome} reason={reason} mode={mode} watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
+            $"[tool-watchdog] outcome={outcome} reason={reason} mode={mode} contract={contractState} watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
+    }
+
+    internal static bool ShouldTraceNoToolExecutionWatchdogDecision(
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn) {
+        return executionContractApplies || continuationFollowUpTurn || compactFollowUpTurn;
     }
 
     internal static string ResolveNoToolExecutionWatchdogMode(

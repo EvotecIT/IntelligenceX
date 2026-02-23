@@ -5,6 +5,26 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
+    public void ShouldTraceNoToolExecutionWatchdogDecision_TracksContractTurns() {
+        var shouldTrace = ChatServiceSession.ShouldTraceNoToolExecutionWatchdogDecision(
+            executionContractApplies: true,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false);
+
+        Assert.True(shouldTrace);
+    }
+
+    [Fact]
+    public void ShouldTraceNoToolExecutionWatchdogDecision_SkipsWhenNoContractAndNoFollowUpSignals() {
+        var shouldTrace = ChatServiceSession.ShouldTraceNoToolExecutionWatchdogDecision(
+            executionContractApplies: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false);
+
+        Assert.False(shouldTrace);
+    }
+
+    [Fact]
     public void ResolveNoToolExecutionWatchdogMode_PrefersContractWhenExecutionContractApplies() {
         var mode = ChatServiceSession.ResolveNoToolExecutionWatchdogMode(
             executionContractApplies: true,
