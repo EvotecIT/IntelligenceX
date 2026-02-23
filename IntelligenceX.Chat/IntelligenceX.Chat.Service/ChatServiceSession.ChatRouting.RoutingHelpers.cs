@@ -37,14 +37,34 @@ internal sealed partial class ChatServiceSession {
         var normalized = (userRequest ?? string.Empty).Trim();
         var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
         var outcome = shouldRetry ? "retry" : "skip";
-        var mode = executionContractApplies
-            ? "contract"
-            : (continuationFollowUpTurn ? "follow_up" : "compact_follow_up");
+        var mode = ResolveNoToolExecutionWatchdogMode(
+            executionContractApplies,
+            continuationFollowUpTurn,
+            compactFollowUpTurn);
         var watchdogState = watchdogAlreadyUsed ? "used" : "unused";
         var nudgeState = executionNudgeUsed ? "used" : "unused";
         var receiptState = toolReceiptCorrectionUsed ? "used" : "unused";
         Console.Error.WriteLine(
             $"[tool-watchdog] outcome={outcome} reason={reason} mode={mode} watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
+    }
+
+    internal static string ResolveNoToolExecutionWatchdogMode(
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn) {
+        if (executionContractApplies) {
+            return "contract";
+        }
+
+        if (compactFollowUpTurn) {
+            return "compact_follow_up";
+        }
+
+        if (continuationFollowUpTurn) {
+            return "follow_up";
+        }
+
+        return "standard";
     }
 
     private static void TraceToolExecutionNudgeDecision(
