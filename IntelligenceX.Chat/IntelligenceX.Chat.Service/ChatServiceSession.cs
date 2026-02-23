@@ -28,9 +28,11 @@ internal sealed partial class ChatServiceSession {
     private const int MaxTrackedWeightedRoutingContexts = 256;
     private const int MaxTrackedUserIntentContexts = 256;
     private const int MaxTrackedPendingActionContexts = 256;
+    private const int MaxTrackedStructuredNextActionContexts = 256;
     private const int MaxTrackedPlannerThreadContexts = 128;
     private static readonly TimeSpan UserIntentContextMaxAge = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan StructuredNextActionContextMaxAge = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan PlannerThreadContextMaxAge = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan StartupToolHealthPrimeBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan StartupToolHealthHelloWaitBudget = TimeSpan.FromMilliseconds(250);
@@ -57,6 +59,7 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, PendingAction[]> _pendingActionsByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _pendingActionsSeenUtcTicks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string[]> _pendingActionsCallToActionTokensByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, StructuredNextActionSnapshot> _structuredNextActionByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _plannerThreadIdByActiveThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _plannerThreadSeenUtcTicksByActiveThreadId = new(StringComparer.Ordinal);
 

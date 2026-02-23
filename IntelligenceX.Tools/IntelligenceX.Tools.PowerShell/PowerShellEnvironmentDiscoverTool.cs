@@ -59,10 +59,17 @@ public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, IToo
                 ("RequireExplicitWrite", Options.RequireExplicitWriteFlag ? "true" : "false"),
                 ("AvailableHosts", hosts.Count.ToString())
             });
+        var meta = ToolOutputHints.Meta(count: hosts.Count, truncated: false);
+        AddReadOnlyRuntimeChainingMeta(
+            meta: meta,
+            currentTool: "powershell_environment_discover",
+            availableHosts: hosts,
+            enabled: Options.Enabled,
+            allowWrite: Options.AllowWrite);
 
         return Task.FromResult(ToolResponse.OkModel(
             model: model,
-            meta: ToolOutputHints.Meta(count: hosts.Count, truncated: false),
+            meta: meta,
             summaryMarkdown: summary));
     }
 }

@@ -312,6 +312,9 @@ public sealed partial class MainWindow : Window {
         } else {
             ReplaceLastAssistantText(conversation, assistantText);
         }
+        BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
+        ApplyFinalAssistantTurnTimeline(conversation, result.TurnTimelineEvents);
         _activeTurnReceivedDelta = false;
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
             conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now, turn.AssistantModelLabel));
@@ -354,6 +357,8 @@ public sealed partial class MainWindow : Window {
         } else {
             ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
         }
+        BindActiveTurnAssistantMessage(turn.Conversation);
+        SetActiveTurnAssistantProvisional(turn.Conversation, provisional: false, preferProvisionalEvents: false);
 
         turn.Conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(turn.Conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {

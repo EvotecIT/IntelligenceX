@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.App.Rendering;
 using OfficeIMO.MarkdownRenderer;
@@ -120,6 +121,58 @@ public sealed class TranscriptHtmlFormatterTests {
 
         Assert.Contains("bubble-model-chip", html, StringComparison.Ordinal);
         Assert.Contains(">openai/gpt-oss-20b</span>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures assistant streaming decorations render provisional styling and timeline trace details.
+    /// </summary>
+    [Fact]
+    public void Format_RendersAssistantTurnTraceAndProvisionalStateWhenDecorationsProvided() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(
+            new[] {
+                ("Assistant", "Running checks...", now, "gpt-5.3-codex")
+            },
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "plan", "execute", "review" }
+                }
+            });
+
+        Assert.Contains("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.Contains("assistant-turn-live-pill", html, StringComparison.Ordinal);
+        Assert.Contains("assistant-turn-trace-list", html, StringComparison.Ordinal);
+        Assert.Contains(">plan</li>", html, StringComparison.Ordinal);
+        Assert.Contains(">execute</li>", html, StringComparison.Ordinal);
+        Assert.Contains(">review</li>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures non-assistant rows ignore assistant-only transcript decorations.
+    /// </summary>
+    [Fact]
+    public void Format_IgnoresAssistantDecorationsForNonAssistantMessages() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 22, 20, 20, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(
+            new[] {
+                ("User", "hello", now, null)
+            },
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "ignored" }
+                }
+            });
+
+        Assert.DoesNotContain("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant-turn-trace", html, StringComparison.Ordinal);
     }
 
     /// <summary>

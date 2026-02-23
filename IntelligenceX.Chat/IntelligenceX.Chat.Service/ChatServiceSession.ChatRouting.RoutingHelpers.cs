@@ -23,23 +23,28 @@ internal sealed partial class ChatServiceSession {
         int priorToolCalls,
         int priorToolOutputs,
         int assistantDraftToolCalls,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
         bool executionNudgeUsed,
         bool toolReceiptCorrectionUsed,
         bool watchdogAlreadyUsed,
         bool shouldRetry,
         string reason) {
-        if (!executionContractApplies) {
+        if (!executionContractApplies && !continuationFollowUpTurn && !compactFollowUpTurn) {
             return;
         }
 
         var normalized = (userRequest ?? string.Empty).Trim();
         var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
         var outcome = shouldRetry ? "retry" : "skip";
+        var mode = executionContractApplies
+            ? "contract"
+            : (continuationFollowUpTurn ? "follow_up" : "compact_follow_up");
         var watchdogState = watchdogAlreadyUsed ? "used" : "unused";
         var nudgeState = executionNudgeUsed ? "used" : "unused";
         var receiptState = toolReceiptCorrectionUsed ? "used" : "unused";
         Console.Error.WriteLine(
-            $"[tool-watchdog] outcome={outcome} reason={reason} contract=true watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
+            $"[tool-watchdog] outcome={outcome} reason={reason} mode={mode} watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
     }
 
     private static void TraceToolExecutionNudgeDecision(

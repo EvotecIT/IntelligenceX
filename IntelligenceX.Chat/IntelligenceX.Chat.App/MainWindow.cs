@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window {
     private const int MaxQueuedTurns = 8;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
+    private const int MaxAssistantTurnTimelineEntries = 8;
     private const string SystemConversationId = "chat-system";
     private const string SystemConversationTitle = "System";
     private const string DefaultConversationTitle = "New Chat";
@@ -358,6 +359,13 @@ public sealed partial class MainWindow : Window {
     private readonly object _activeTurnLifecycleSync = new();
     private readonly object _turnDiagnosticsSync = new();
     private readonly List<string> _activityTimeline = new();
+    private readonly Dictionary<string, Dictionary<int, AssistantTurnVisualState>> _assistantTurnVisualStateByConversationId =
+        new(StringComparer.OrdinalIgnoreCase);
+    private string? _activeTurnAssistantConversationId;
+    private int _activeTurnAssistantMessageIndex = -1;
+    private readonly List<string> _activeTurnAssistantPendingTimeline = new();
+    private bool _activeTurnAssistantProvisional;
+    private bool _activeTurnUsesProvisionalEvents;
     private TurnMetricsSnapshot? _lastTurnMetrics;
     private readonly Dictionary<string, AccountUsageSnapshot> _accountUsageByKey = new(StringComparer.OrdinalIgnoreCase);
     private long? _activeTurnQueueWaitMs;
@@ -457,6 +465,11 @@ public sealed partial class MainWindow : Window {
         public string? ModelOverride { get; set; }
         public List<(string Role, string Text, DateTime Time, string? Model)> Messages { get; } = new();
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    private sealed class AssistantTurnVisualState {
+        public bool IsProvisional { get; set; }
+        public List<string> Timeline { get; } = new();
     }
 
     private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc, bool SkipUserBubbleOnDispatch = false);

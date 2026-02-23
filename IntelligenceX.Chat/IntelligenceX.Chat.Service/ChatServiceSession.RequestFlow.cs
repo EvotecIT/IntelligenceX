@@ -26,9 +26,25 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int MaxTurnTimelineEvents = 64;
+    private readonly object _turnTimelineSync = new();
+    private string? _capturedTurnTimelineRequestId;
+    private List<TurnTimelineEventDto>? _capturedTurnTimelineEvents;
+
     private async Task TryWriteDeltaAsync(StreamWriter writer, string requestId, string threadId, string delta) {
         try {
             await WriteAsync(writer, new ChatDeltaMessage {
+                Kind = ChatServiceMessageKind.Event,
+                RequestId = requestId,
+                ThreadId = threadId,
+                Text = delta
+            }, CancellationToken.None).ConfigureAwait(false);
+        } catch {
+            // Best-effort streaming; ignore pipe failures.
+        }
+
+        try {
+            await WriteAsync(writer, new ChatAssistantProvisionalMessage {
                 Kind = ChatServiceMessageKind.Event,
                 RequestId = requestId,
                 ThreadId = threadId,
@@ -41,6 +57,7 @@ internal sealed partial class ChatServiceSession {
 
     private async Task TryWriteStatusAsync(StreamWriter writer, string requestId, string threadId, string status, string? toolName = null,
         string? toolCallId = null, long? durationMs = null, string? message = null) {
+        CaptureTurnTimelineEvent(requestId, status, toolName, toolCallId, durationMs, message);
         try {
             await WriteAsync(writer, new ChatStatusMessage {
                 Kind = ChatServiceMessageKind.Event,
@@ -55,6 +72,113 @@ internal sealed partial class ChatServiceSession {
         } catch {
             // Best-effort; ignore pipe failures.
         }
+    }
+
+    private void BeginTurnTimelineCapture(string requestId) {
+        if (string.IsNullOrWhiteSpace(requestId)) {
+            return;
+        }
+
+        lock (_turnTimelineSync) {
+            _capturedTurnTimelineRequestId = requestId.Trim();
+            _capturedTurnTimelineEvents = new List<TurnTimelineEventDto>(capacity: 24);
+        }
+    }
+
+    private void EndTurnTimelineCapture(string requestId) {
+        if (string.IsNullOrWhiteSpace(requestId)) {
+            return;
+        }
+
+        var normalized = requestId.Trim();
+        lock (_turnTimelineSync) {
+            if (!string.Equals(_capturedTurnTimelineRequestId, normalized, StringComparison.Ordinal)) {
+                return;
+            }
+
+            _capturedTurnTimelineRequestId = null;
+            _capturedTurnTimelineEvents = null;
+        }
+    }
+
+    private TurnTimelineEventDto[]? SnapshotTurnTimelineEvents(string requestId) {
+        if (string.IsNullOrWhiteSpace(requestId)) {
+            return null;
+        }
+
+        var normalized = requestId.Trim();
+        lock (_turnTimelineSync) {
+            if (!string.Equals(_capturedTurnTimelineRequestId, normalized, StringComparison.Ordinal)
+                || _capturedTurnTimelineEvents is null
+                || _capturedTurnTimelineEvents.Count == 0) {
+                return null;
+            }
+
+            return _capturedTurnTimelineEvents.ToArray();
+        }
+    }
+
+    private void CaptureTurnTimelineEvent(string requestId, string status, string? toolName, string? toolCallId, long? durationMs, string? message) {
+        if (string.IsNullOrWhiteSpace(requestId) || string.IsNullOrWhiteSpace(status)) {
+            return;
+        }
+
+        var normalizedRequestId = requestId.Trim();
+        var normalizedStatus = status.Trim();
+        if (normalizedStatus.Length == 0) {
+            return;
+        }
+
+        var normalizedToolName = NormalizeTimelineValue(toolName);
+        var normalizedToolCallId = NormalizeTimelineValue(toolCallId);
+        var normalizedMessage = NormalizeTimelineMessage(message);
+        lock (_turnTimelineSync) {
+            if (!string.Equals(_capturedTurnTimelineRequestId, normalizedRequestId, StringComparison.Ordinal)
+                || _capturedTurnTimelineEvents is null) {
+                return;
+            }
+
+            if (_capturedTurnTimelineEvents.Count > 0) {
+                var previous = _capturedTurnTimelineEvents[^1];
+                if (string.Equals(previous.Status, normalizedStatus, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(previous.ToolName ?? string.Empty, normalizedToolName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(previous.ToolCallId ?? string.Empty, normalizedToolCallId ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(previous.Message ?? string.Empty, normalizedMessage ?? string.Empty, StringComparison.OrdinalIgnoreCase)) {
+                    return;
+                }
+            }
+
+            _capturedTurnTimelineEvents.Add(new TurnTimelineEventDto {
+                Status = normalizedStatus,
+                ToolName = normalizedToolName,
+                ToolCallId = normalizedToolCallId,
+                DurationMs = durationMs,
+                Message = normalizedMessage,
+                AtUtc = DateTime.UtcNow
+            });
+            while (_capturedTurnTimelineEvents.Count > MaxTurnTimelineEvents) {
+                _capturedTurnTimelineEvents.RemoveAt(0);
+            }
+        }
+    }
+
+    private static string? NormalizeTimelineMessage(string? value) {
+        var normalized = NormalizeTimelineValue(value);
+        if (normalized is null) {
+            return null;
+        }
+
+        const int maxTimelineMessageChars = 280;
+        if (normalized.Length > maxTimelineMessageChars) {
+            normalized = normalized[..maxTimelineMessageChars].TrimEnd() + "...";
+        }
+
+        return normalized;
+    }
+
+    private static string? NormalizeTimelineValue(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private async Task HandleListToolsAsync(StreamWriter writer, string requestId, CancellationToken cancellationToken) {
@@ -256,6 +380,7 @@ internal sealed partial class ChatServiceSession {
                 requestedModel,
                 runtimeDefaultModel);
             var bufferDraftDeltasForSmartReview = ShouldBufferDraftDeltasForSmartReview(request);
+            BeginTurnTimelineCapture(request.RequestId);
             try {
                 if (bufferDraftDeltasForSmartReview) {
                     await TryWriteStatusAsync(
@@ -361,6 +486,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 deltaSubscription?.Dispose();
+                EndTurnTimelineCapture(request.RequestId);
                 run.MarkCompleted();
                 lock (_chatRunLock) {
                     if (ReferenceEquals(_activeChat, run)) {

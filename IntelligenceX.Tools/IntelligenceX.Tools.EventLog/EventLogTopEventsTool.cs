@@ -196,7 +196,16 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             title: $"Top {maxEvents} recent events (preview)",
             baseTruncated: root!.Truncated,
             scanned: root.Events.Count,
-            maxTop: MaxViewTop);
+            maxTop: MaxViewTop,
+            metaMutate: meta => AddReadOnlyTriageChainingMeta(
+                meta: meta,
+                currentTool: "eventlog_top_events",
+                logName: logName,
+                machineName: machineName,
+                suggestedMaxEvents: maxEvents,
+                scanned: root.Events.Count,
+                truncated: root.Truncated,
+                queryMode: "top_events"));
         return response;
     }
 }

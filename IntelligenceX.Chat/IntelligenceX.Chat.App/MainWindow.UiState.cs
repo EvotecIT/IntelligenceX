@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
         conversation.Messages.Clear();
+        ClearConversationAssistantVisualState(conversation.Id);
         conversation.Title = DefaultConversationTitle;
         conversation.ThreadId = null;
         conversation.UpdatedUtc = DateTime.UtcNow;
@@ -132,10 +133,12 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            var messagesSnapshot = SnapshotMessagesForRender(_messages);
+            var conversation = GetActiveConversation();
+            var messagesSnapshot = SnapshotMessagesForRender(conversation.Messages);
+            var messageDecorations = SnapshotTranscriptMessageDecorations(conversation);
             var timestampFormat = _timestampFormat;
             var markdownOptions = _markdownOptions;
-            var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat, markdownOptions)).ConfigureAwait(false);
+            var html = await Task.Run(() => BuildMessagesHtml(messagesSnapshot, timestampFormat, markdownOptions, messageDecorations)).ConfigureAwait(false);
             latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
             if (requestedGeneration < latestGeneration) {
                 return;

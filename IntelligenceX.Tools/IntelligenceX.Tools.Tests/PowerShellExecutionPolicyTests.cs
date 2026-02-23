@@ -136,5 +136,12 @@ public class PowerShellExecutionPolicyTests {
         Assert.True(policy.GetProperty("allow_write").GetBoolean());
         Assert.True(policy.GetProperty("require_explicit_write_flag").GetBoolean());
         Assert.True(root.TryGetProperty("runtime", out _));
+        Assert.True(root.TryGetProperty("meta", out var meta));
+        Assert.True(meta.TryGetProperty("next_actions", out var nextActions));
+        Assert.Equal(global::System.Text.Json.JsonValueKind.Array, nextActions.ValueKind);
+        Assert.True(meta.TryGetProperty("discovery_status", out var discoveryStatus));
+        Assert.Equal(global::System.Text.Json.JsonValueKind.Object, discoveryStatus.ValueKind);
+        Assert.True(meta.TryGetProperty("chain_confidence", out var chainConfidence));
+        Assert.Equal(global::System.Text.Json.JsonValueKind.Number, chainConfidence.ValueKind);
     }
 }

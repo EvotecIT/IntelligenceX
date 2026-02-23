@@ -24,6 +24,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(InvokeToolResultMessage), "invoke_tool_result")]
 [JsonDerivedType(typeof(ChatStatusMessage), "chat_status")]
 [JsonDerivedType(typeof(ChatDeltaMessage), "chat_delta")]
+[JsonDerivedType(typeof(ChatAssistantProvisionalMessage), "assistant_provisional")]
 [JsonDerivedType(typeof(ChatMetricsMessage), "chat_metrics")]
 [JsonDerivedType(typeof(ChatResultMessage), "chat_result")]
 public abstract record ChatServiceMessage {
@@ -347,6 +348,50 @@ public sealed record ChatDeltaMessage : ChatServiceMessage {
 }
 
 /// <summary>
+/// Streaming provisional assistant event for a chat request.
+/// </summary>
+public sealed record ChatAssistantProvisionalMessage : ChatServiceMessage {
+    /// <summary>
+    /// Active thread id for the streamed provisional fragment.
+    /// </summary>
+    public required string ThreadId { get; init; }
+    /// <summary>
+    /// Provisional text fragment.
+    /// </summary>
+    public required string Text { get; init; }
+}
+
+/// <summary>
+/// Structured timeline event captured for a turn.
+/// </summary>
+public sealed record TurnTimelineEventDto {
+    /// <summary>
+    /// Status code emitted for this timeline event.
+    /// </summary>
+    public required string Status { get; init; }
+    /// <summary>
+    /// Optional tool name associated with this event.
+    /// </summary>
+    public string? ToolName { get; init; }
+    /// <summary>
+    /// Optional tool call id associated with this event.
+    /// </summary>
+    public string? ToolCallId { get; init; }
+    /// <summary>
+    /// Optional duration in milliseconds for this event.
+    /// </summary>
+    public long? DurationMs { get; init; }
+    /// <summary>
+    /// Optional event message for UI display.
+    /// </summary>
+    public string? Message { get; init; }
+    /// <summary>
+    /// UTC timestamp when the event was captured.
+    /// </summary>
+    public DateTime AtUtc { get; init; }
+}
+
+/// <summary>
 /// Final response message for a chat request.
 /// </summary>
 public sealed record ChatResultMessage : ChatServiceMessage {
@@ -362,4 +407,8 @@ public sealed record ChatResultMessage : ChatServiceMessage {
     /// Optional tool calls and outputs.
     /// </summary>
     public ToolRunDto? Tools { get; init; }
+    /// <summary>
+    /// Optional structured timeline captured for this completed turn.
+    /// </summary>
+    public TurnTimelineEventDto[]? TurnTimelineEvents { get; init; }
 }

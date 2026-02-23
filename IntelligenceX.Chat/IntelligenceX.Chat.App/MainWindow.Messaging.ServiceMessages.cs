@@ -41,17 +41,38 @@ public sealed partial class MainWindow : Window {
                         // Kickoff/background deltas must not overwrite an existing assistant bubble.
                         break;
                     }
+                    if (ShouldUseProvisionalEventsForActiveTurn(requestConversation)) {
+                        // Provisional events are preferred when available to avoid double-appending
+                        // the same streamed fragment from both chat_delta and assistant_provisional.
+                        break;
+                    }
 
                     MarkTurnDeltaStage(delta);
-                    _assistantStreaming.Append(delta.Text);
-                    _activeTurnReceivedDelta = true;
-                    ReplaceLastAssistantText(
+                    ApplyAssistantStreamingFragment(
                         requestConversation,
-                        TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(_assistantStreaming.ToString()));
-                    requestConversation.UpdatedUtc = DateTime.UtcNow;
-                    if (string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-                        QueueTranscriptRender("chat_delta");
+                        delta.Text,
+                        preferProvisionalEvents: false,
+                        renderReason: "chat_delta");
+                    break;
+                case ChatAssistantProvisionalMessage provisional:
+                    if (!ShouldProcessLiveRequestMessage(provisional.RequestId)) {
+                        break;
                     }
+                    if (!IsActiveTurnRequest(provisional.RequestId)) {
+                        break;
+                    }
+
+                    MarkTurnDeltaStage(new ChatDeltaMessage {
+                        Kind = provisional.Kind,
+                        RequestId = provisional.RequestId,
+                        ThreadId = provisional.ThreadId,
+                        Text = provisional.Text
+                    });
+                    ApplyAssistantStreamingFragment(
+                        requestConversation,
+                        provisional.Text,
+                        preferProvisionalEvents: true,
+                        renderReason: "assistant_provisional");
                     break;
                 case ChatStatusMessage status:
                     if (!ShouldProcessLiveRequestMessage(status.RequestId)) {
@@ -65,11 +86,19 @@ public sealed partial class MainWindow : Window {
                     var normalizedActivityText = activityText ?? string.Empty;
                     var activityChanged = !string.Equals(_latestServiceActivityText, normalizedActivityText, StringComparison.Ordinal);
                     _latestServiceActivityText = normalizedActivityText;
+                    var timelineLabelSource = activityText ?? FormatActivityText(status);
+                    var assistantTimelineChanged = AppendActiveTurnAssistantTimelineLabel(
+                        requestConversation,
+                        BuildActivityTimelineLabel(status, timelineLabelSource));
                     if (activityChanged || timelineChanged) {
                         _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
                     }
                     if (timelineChanged) {
                         RequestServiceDrivenSessionPublish();
+                    }
+                    if (assistantTimelineChanged
+                        && string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+                        QueueTranscriptRender("chat_status_timeline");
                     }
                     if (routingInsightUpdated) {
                         _ = PublishOptionsStateSafeAsync();
@@ -149,6 +178,25 @@ public sealed partial class MainWindow : Window {
                     break;
             }
         });
+    }
+
+    private void ApplyAssistantStreamingFragment(ConversationRuntime conversation, string? fragment, bool preferProvisionalEvents, string renderReason) {
+        var delta = fragment ?? string.Empty;
+        if (delta.Length == 0) {
+            return;
+        }
+
+        _assistantStreaming.Append(delta);
+        _activeTurnReceivedDelta = true;
+        ReplaceLastAssistantText(
+            conversation,
+            TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(_assistantStreaming.ToString()));
+        conversation.UpdatedUtc = DateTime.UtcNow;
+        BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents);
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            QueueTranscriptRender(renderReason);
+        }
     }
 
     private void QueuePostLoginCompletion() {

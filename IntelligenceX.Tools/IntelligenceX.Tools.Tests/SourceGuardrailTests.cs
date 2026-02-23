@@ -57,6 +57,28 @@ public class SourceGuardrailTests {
         }
     }
 
+    [Theory]
+    [InlineData("IntelligenceX.Tools.ADPlayground", "AdEnvironmentDiscoverTool.cs", "AddReadOnlyEnvironmentChainingMeta(")]
+    [InlineData("IntelligenceX.Tools.EventLog", "EventLogLiveStatsTool.cs", "AddReadOnlyTriageChainingMeta(")]
+    [InlineData("IntelligenceX.Tools.EventLog", "EventLogLiveQueryTool.cs", "AddReadOnlyTriageChainingMeta(")]
+    [InlineData("IntelligenceX.Tools.EventLog", "EventLogTopEventsTool.cs", "AddReadOnlyTriageChainingMeta(")]
+    [InlineData("IntelligenceX.Tools.PowerShell", "PowerShellEnvironmentDiscoverTool.cs", "AddReadOnlyRuntimeChainingMeta(")]
+    [InlineData("IntelligenceX.Tools.System", "SystemInfoTool.cs", "AddReadOnlyPostureChainingMeta(")]
+    [InlineData("IntelligenceX.Tools.System", "SystemUpdatesInstalledTool.cs", "AddReadOnlyPostureChainingMeta(")]
+    public void BaselineTriageTools_ShouldEmitChainingMetadata(
+        string projectFolder,
+        string fileName,
+        string requiredSnippet) {
+        var repoRoot = FindRepoRoot();
+        var filePath = Path.Combine(repoRoot, projectFolder, fileName);
+        var source = File.ReadAllText(filePath);
+
+        Assert.Contains(
+            requiredSnippet,
+            source,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SystemTools_ShouldDependOnComputerXExecutors() {
         var repoRoot = FindRepoRoot();

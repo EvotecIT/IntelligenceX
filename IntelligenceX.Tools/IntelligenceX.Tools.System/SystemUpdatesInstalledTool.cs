@@ -129,6 +129,13 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
                 if (installedAfterUtc.HasValue) {
                     meta.Add("installed_after_utc", installedAfterUtc.Value.ToString("O"));
                 }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_updates_installed",
+                    targetComputer: target,
+                    isRemoteScope: !IsLocalTarget(computerName, target),
+                    scanned: scanned,
+                    truncated: truncated);
             });
         return Task.FromResult(response);
     }

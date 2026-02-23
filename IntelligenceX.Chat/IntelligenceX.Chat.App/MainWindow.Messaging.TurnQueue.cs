@@ -127,6 +127,7 @@ public sealed partial class MainWindow : Window {
                 return;
             }
 
+            ResetActiveTurnAssistantVisuals(turn.ConversationId);
             _turnStartupInProgress = false;
             var requestId = turn.RequestId;
             _isSending = true;

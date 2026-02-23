@@ -70,6 +70,8 @@ internal sealed partial class ChatServiceSession {
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
         var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
+        var continuationFollowUpTurn = compactFollowUpTurn
+                                       && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!executionContractApplies) {
@@ -244,6 +246,9 @@ internal sealed partial class ChatServiceSession {
         var autoPendingActionReplayUsed = false;
         var proactiveFollowUpUsed = false;
         var localNoTextDirectRetryUsed = false;
+        var structuredNextActionRetryUsed = false;
+        var toolProgressRecoveryUsed = false;
+        var hostStructuredNextActionReplayUsed = false;
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
 
@@ -282,14 +287,140 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                if (!hostStructuredNextActionReplayUsed
+                    && continuationFollowUpTurn
+                    && toolCalls.Count == 0
+                    && toolOutputs.Count == 0
+                    && TryBuildCarryoverStructuredNextActionToolCall(
+                        threadId: threadId,
+                        toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
+                        mutatingToolHintsByName: mutatingToolHints,
+                        out var carryoverStructuredNextActionCall,
+                        out var carryoverStructuredNextActionReason)) {
+                    hostStructuredNextActionReplayUsed = true;
+                    RemoveStructuredNextActionCarryover(threadId);
+                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+
+                    Trace.WriteLine(
+                        $"[host-structured-next-action] outcome=execute reason={carryoverStructuredNextActionReason} continuation={continuationFollowUpTurn} tool={carryoverStructuredNextActionCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+
+                    toolRounds++;
+                    var carryoverHostRoundNumber = round + 1;
+                    await WriteToolRoundStartedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            carryoverHostRoundNumber,
+                            maxRounds,
+                            1,
+                            parallelTools,
+                            allowMutatingParallel)
+                        .ConfigureAwait(false);
+                    if (planExecuteReviewLoop) {
+                        await TryWriteStatusAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                status: ChatStatusCodes.PhaseExecute,
+                                message: $"Executing queued read-only follow-up action ({carryoverStructuredNextActionCall.Name})...")
+                            .ConfigureAwait(false);
+                    }
+
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.ToolCall,
+                            toolName: carryoverStructuredNextActionCall.Name,
+                            toolCallId: carryoverStructuredNextActionCall.CallId)
+                        .ConfigureAwait(false);
+                    toolCalls.Add(new ToolCallDto {
+                        CallId = carryoverStructuredNextActionCall.CallId,
+                        Name = carryoverStructuredNextActionCall.Name,
+                        ArgumentsJson = carryoverStructuredNextActionCall.Arguments is null
+                            ? "{}"
+                            : JsonLite.Serialize(carryoverStructuredNextActionCall.Arguments)
+                    });
+
+                    var carryoverHostCalls = new[] { carryoverStructuredNextActionCall };
+                    var carryoverHostOutputs = await ExecuteToolsAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            carryoverHostCalls,
+                            parallel: false,
+                            allowMutatingParallel: allowMutatingParallel,
+                            mutatingToolHintsByName: mutatingToolHints,
+                            toolTimeoutSeconds: toolTimeoutSeconds,
+                            cancellationToken: turnToken)
+                        .ConfigureAwait(false);
+                    var carryoverHostFailedCalls = CountFailedToolOutputs(carryoverHostOutputs);
+                    await WriteToolRoundCompletedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            carryoverHostRoundNumber,
+                            maxRounds,
+                            carryoverHostOutputs.Count,
+                            carryoverHostFailedCalls)
+                        .ConfigureAwait(false);
+                    UpdateToolRoutingStats(carryoverHostCalls, carryoverHostOutputs);
+                    foreach (var output in carryoverHostOutputs) {
+                        if (WasProjectionFallbackApplied(output)) {
+                            projectionFallbackCount++;
+                        }
+
+                        toolOutputs.Add(new ToolOutputDto {
+                            CallId = output.CallId,
+                            Output = output.Output,
+                            Ok = output.Ok,
+                            ErrorCode = output.ErrorCode,
+                            Error = output.Error,
+                            Hints = output.Hints,
+                            IsTransient = output.IsTransient,
+                            SummaryMarkdown = output.SummaryMarkdown,
+                            MetaJson = output.MetaJson,
+                            RenderJson = output.RenderJson,
+                            FailureJson = output.FailureJson
+                        });
+                    }
+
+                    var carryoverHostNextInput = new ChatInput();
+                    foreach (var output in carryoverHostOutputs) {
+                        carryoverHostNextInput.AddToolOutput(output.CallId, output.Output);
+                    }
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            carryoverHostNextInput,
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                            phaseMessage: "Reviewing queued follow-up action results...",
+                            heartbeatLabel: "Reviewing queued action",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 var shouldAttemptExecutionNudge = false;
                 var executionNudgeReason = executionNudgeUsed
                     ? "execution_nudge_already_used"
                     : "execution_nudge_not_evaluated";
-                var suppressLocalToolRecoveryRetries = isLocalCompatibleLoopback
-                                                       && !executionContractApplies
-                                                       && toolCalls.Count == 0
-                                                       && toolOutputs.Count == 0;
+                var suppressLocalToolRecoveryRetries = ShouldSuppressLocalToolRecoveryRetries(
+                    isLocalCompatibleLoopback: isLocalCompatibleLoopback,
+                    executionContractApplies: executionContractApplies,
+                    compactFollowUpTurn: compactFollowUpTurn,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count);
                 if (suppressLocalToolRecoveryRetries) {
                     executionNudgeReason = "local_runtime_recovery_disabled";
                 } else if (!executionNudgeUsed) {
@@ -300,6 +431,7 @@ internal sealed partial class ChatServiceSession {
                         priorToolCalls: toolCalls.Count,
                         assistantDraftToolCalls: extracted.Count,
                         usedContinuationSubset: usedContinuationSubset,
+                        compactFollowUpHint: compactFollowUpTurn,
                         out executionNudgeReason);
                 }
 
@@ -380,6 +512,8 @@ internal sealed partial class ChatServiceSession {
                         priorToolCalls: toolCalls.Count,
                         priorToolOutputs: toolOutputs.Count,
                         assistantDraftToolCalls: extracted.Count,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
                         executionNudgeUsed: executionNudgeUsed,
                         toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
                         watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
@@ -392,6 +526,8 @@ internal sealed partial class ChatServiceSession {
                     priorToolCalls: toolCalls.Count,
                     priorToolOutputs: toolOutputs.Count,
                     assistantDraftToolCalls: extracted.Count,
+                    continuationFollowUpTurn: continuationFollowUpTurn,
+                    compactFollowUpTurn: compactFollowUpTurn,
                     executionNudgeUsed: executionNudgeUsed,
                     toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
                     watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
@@ -478,6 +614,221 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var structuredNextActionToolDefs = fullToolDefs.Length > 0 ? fullToolDefs : toolDefs;
+                var hasStructuredNextAction = TryExtractStructuredNextAction(
+                    toolDefinitions: structuredNextActionToolDefs,
+                    toolCalls: toolCalls,
+                    toolOutputs: toolOutputs,
+                    out _,
+                    out var structuredNextToolName,
+                    out _,
+                    out _,
+                    out _);
+                if (!hostStructuredNextActionReplayUsed
+                    && continuationFollowUpTurn
+                    && toolCalls.Count > 0
+                    && toolOutputs.Count > 0
+                    && TryBuildHostStructuredNextActionToolCall(
+                        toolDefinitions: structuredNextActionToolDefs,
+                        toolCalls: toolCalls,
+                        toolOutputs: toolOutputs,
+                        mutatingToolHintsByName: mutatingToolHints,
+                        out var hostStructuredNextActionCall,
+                        out var hostStructuredNextActionReason)) {
+                    hostStructuredNextActionReplayUsed = true;
+                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+
+                    Trace.WriteLine(
+                        $"[host-structured-next-action] outcome=execute reason={hostStructuredNextActionReason} continuation={continuationFollowUpTurn} tool={hostStructuredNextActionCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+
+                    toolRounds++;
+                    var hostRoundNumber = round + 1;
+                    await WriteToolRoundStartedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostRoundNumber,
+                            maxRounds,
+                            1,
+                            parallelTools,
+                            allowMutatingParallel)
+                        .ConfigureAwait(false);
+                    if (planExecuteReviewLoop) {
+                        await TryWriteStatusAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                status: ChatStatusCodes.PhaseExecute,
+                                message: $"Executing tool-recommended next action ({hostStructuredNextActionCall.Name})...")
+                            .ConfigureAwait(false);
+                    }
+
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.ToolCall,
+                            toolName: hostStructuredNextActionCall.Name,
+                            toolCallId: hostStructuredNextActionCall.CallId)
+                        .ConfigureAwait(false);
+                    toolCalls.Add(new ToolCallDto {
+                        CallId = hostStructuredNextActionCall.CallId,
+                        Name = hostStructuredNextActionCall.Name,
+                        ArgumentsJson = hostStructuredNextActionCall.Arguments is null
+                            ? "{}"
+                            : JsonLite.Serialize(hostStructuredNextActionCall.Arguments)
+                    });
+
+                    var hostStructuredCalls = new[] { hostStructuredNextActionCall };
+                    var hostStructuredOutputs = await ExecuteToolsAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostStructuredCalls,
+                            parallel: false,
+                            allowMutatingParallel: allowMutatingParallel,
+                            mutatingToolHintsByName: mutatingToolHints,
+                            toolTimeoutSeconds: toolTimeoutSeconds,
+                            cancellationToken: turnToken)
+                        .ConfigureAwait(false);
+                    var hostStructuredFailedCalls = CountFailedToolOutputs(hostStructuredOutputs);
+                    await WriteToolRoundCompletedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostRoundNumber,
+                            maxRounds,
+                            hostStructuredOutputs.Count,
+                            hostStructuredFailedCalls)
+                        .ConfigureAwait(false);
+                    UpdateToolRoutingStats(hostStructuredCalls, hostStructuredOutputs);
+                    foreach (var output in hostStructuredOutputs) {
+                        if (WasProjectionFallbackApplied(output)) {
+                            projectionFallbackCount++;
+                        }
+
+                        toolOutputs.Add(new ToolOutputDto {
+                            CallId = output.CallId,
+                            Output = output.Output,
+                            Ok = output.Ok,
+                            ErrorCode = output.ErrorCode,
+                            Error = output.Error,
+                            Hints = output.Hints,
+                            IsTransient = output.IsTransient,
+                            SummaryMarkdown = output.SummaryMarkdown,
+                            MetaJson = output.MetaJson,
+                            RenderJson = output.RenderJson,
+                            FailureJson = output.FailureJson
+                        });
+                    }
+
+                    var hostStructuredNextInput = new ChatInput();
+                    foreach (var output in hostStructuredOutputs) {
+                        hostStructuredNextInput.AddToolOutput(output.CallId, output.Output);
+                    }
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostStructuredNextInput,
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                            phaseMessage: "Reviewing tool-recommended next action results...",
+                            heartbeatLabel: "Reviewing next action",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!structuredNextActionRetryUsed
+                    && TryBuildStructuredNextActionRetryPrompt(
+                        toolDefinitions: structuredNextActionToolDefs,
+                        toolCalls: toolCalls,
+                        toolOutputs: toolOutputs,
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        out var structuredNextActionPrompt,
+                        out var structuredNextActionReason)) {
+                    structuredNextActionRetryUsed = true;
+                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+                    Trace.WriteLine(
+                        $"[structured-next-action] outcome=retry reason={structuredNextActionReason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    var structuredRetryOptions = CopyChatOptions(options, newThreadOverride: false);
+                    if (hasStructuredNextAction
+                        && !string.IsNullOrWhiteSpace(structuredNextToolName)
+                        && toolDefs.Any(def => string.Equals(def.Name, structuredNextToolName, StringComparison.OrdinalIgnoreCase))) {
+                        structuredRetryOptions.ToolChoice = ToolChoice.Custom(structuredNextToolName);
+                    }
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            ChatInput.FromText(structuredNextActionPrompt),
+                            structuredRetryOptions,
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
+                            phaseMessage: "Continuing with tool-recommended next action.",
+                            heartbeatLabel: "Executing next action",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                var shouldAttemptToolProgressRecovery = ShouldAttemptToolProgressRecovery(
+                    continuationFollowUpTurn: continuationFollowUpTurn,
+                    assistantDraft: text,
+                    toolsAvailable: fullToolDefs.Length > 0 || toolDefs.Count > 0,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count,
+                    assistantDraftToolCalls: extracted.Count,
+                    progressRecoveryAlreadyUsed: toolProgressRecoveryUsed,
+                    out var toolProgressRecoveryReason);
+                if (shouldAttemptToolProgressRecovery) {
+                    toolProgressRecoveryUsed = true;
+                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+                    Trace.WriteLine(
+                        $"[tool-progress-recovery] outcome=retry reason={toolProgressRecoveryReason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    var progressRecoveryPrompt = BuildToolProgressRecoveryPrompt(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        toolCalls: toolCalls);
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            ChatInput.FromText(progressRecoveryPrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
+                            phaseMessage: "Continuing execution after blocker-style draft.",
+                            heartbeatLabel: "Recovering execution progress",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 if (executionContractApplies && !hasToolActivity) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
@@ -542,7 +893,33 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                if (ShouldForceExecutionContractBlockerAtFinalize(
+                        executionContractApplies: executionContractApplies,
+                        autoPendingActionReplayUsed: autoPendingActionReplayUsed,
+                        executionNudgeUsed: executionNudgeUsed,
+                        noToolExecutionWatchdogUsed: noToolExecutionWatchdogUsed,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
+                        toolActivityDetected: hasToolActivity,
+                        assistantDraft: text)) {
+                    var blockerReason = noToolExecutionWatchdogUsed
+                        ? "no_tool_calls_after_watchdog_retry"
+                        : "no_tool_evidence_at_finalize";
+                    text = BuildExecutionContractBlockerText(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        reason: blockerReason);
+                }
+
                 text = AppendTurnCompletionNotice(text, turn);
+
+                var finalizedStructuredNextActionToolDefs = fullToolDefs.Length > 0 ? fullToolDefs : toolDefs;
+                RememberStructuredNextActionCarryover(
+                    threadId,
+                    finalizedStructuredNextActionToolDefs,
+                    toolCalls,
+                    toolOutputs,
+                    mutatingToolHints);
 
                 // Capture pending actions from the finalized assistant text so confirmation routing stays aligned
                 // with what the user actually sees (including contract fallback substitutions).
@@ -592,7 +969,8 @@ internal sealed partial class ChatServiceSession {
                     Text = text,
                     Tools = toolCalls.Count == 0 && toolOutputs.Count == 0
                         ? null
-                        : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() }
+                        : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() },
+                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
                 };
                 return new ChatTurnRunResult(
                     Result: result,

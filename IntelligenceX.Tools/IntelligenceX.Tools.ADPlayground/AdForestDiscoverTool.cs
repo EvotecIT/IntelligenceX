@@ -504,14 +504,21 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                 suggestedArguments: ToolChainingHints.Map(
                     ("forest_name", effectiveForest ?? string.Empty),
                     ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName))),
+                    ("discovery_fallback", fallbackName)),
+                mutating: false),
             ToolChainingHints.NextAction(
                 tool: "ad_monitoring_probe_run",
                 reason: "Run replication health probes across discovered scope.",
                 suggestedArguments: ToolChainingHints.Map(
                     ("probe_kind", "replication"),
                     ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName)))
+                    ("discovery_fallback", fallbackName)),
+                arguments: ToolChainingHints.MapObject(
+                    ("probe_kind", "replication"),
+                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("discovery_fallback", fallbackName),
+                    ("include_domain_controllers", domainControllers.Where(static dc => !string.IsNullOrWhiteSpace(dc)).Take(50).ToArray())),
+                mutating: false)
         };
 
         var firstDomain = domains.FirstOrDefault();
@@ -519,7 +526,54 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
             nextActions.Add(ToolChainingHints.NextAction(
                 tool: "ad_replication_connections",
                 reason: "Inspect replication-connection details for one discovered domain.",
-                suggestedArguments: ToolChainingHints.Map(("domain_name", firstDomain))));
+                suggestedArguments: ToolChainingHints.Map(("domain_name", firstDomain)),
+                mutating: false));
+        }
+
+        if (domainControllers.Count <= 1) {
+            if (discoveryFallback != DirectoryDiscoveryFallback.CurrentForest) {
+                nextActions.Add(ToolChainingHints.NextAction(
+                    tool: "ad_forest_discover",
+                    reason: "expand_scope_via_current_forest_when_domain_controller_inventory_sparse",
+                    suggestedArguments: ToolChainingHints.Map(
+                        ("forest_name", effectiveForest ?? string.Empty),
+                        ("domain_name", effectiveDomain ?? string.Empty),
+                        ("discovery_fallback", "current_forest"),
+                        ("include_trusts", true),
+                        ("max_domains", 500),
+                        ("max_domain_controllers_total", 5000),
+                        ("max_domain_controllers_per_domain", 500)),
+                    arguments: ToolChainingHints.MapObject(
+                        ("forest_name", effectiveForest ?? string.Empty),
+                        ("domain_name", effectiveDomain ?? string.Empty),
+                        ("discovery_fallback", "current_forest"),
+                        ("include_trusts", true),
+                        ("max_domains", 500),
+                        ("max_domain_controllers_total", 5000),
+                        ("max_domain_controllers_per_domain", 500)),
+                    mutating: false));
+            }
+
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "ad_domain_controllers",
+                reason: "recover_domain_controller_inventory_via_domain_object_query",
+                suggestedArguments: ToolChainingHints.Map(("max_results", 500)),
+                mutating: false));
+
+            var diagnosticsArgs = new List<(string Key, object? Value)> {
+                ("max_issues", 2000),
+                ("include_dns_srv_comparison", true),
+                ("include_host_resolution", true),
+                ("include_directory_topology", true)
+            };
+            if (!string.IsNullOrWhiteSpace(effectiveForest)) {
+                diagnosticsArgs.Add(("forest_name", effectiveForest));
+            }
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "ad_directory_discovery_diagnostics",
+                reason: "compare_ad_dns_topology_receipts_to_explain_missing_domain_controllers",
+                suggestedArguments: ToolChainingHints.Map(diagnosticsArgs.ToArray()),
+                mutating: false));
         }
 
         var failedSteps = 0;

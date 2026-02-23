@@ -107,9 +107,20 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.ScannedEvents,
             maxTop: MaxViewTop,
-            metaMutate: meta => meta
-                .Add("matched_events", result.MatchedEvents)
-                .Add("max_events_scanned", result.MaxEventsScanned));
+            metaMutate: meta => {
+                meta
+                    .Add("matched_events", result.MatchedEvents)
+                    .Add("max_events_scanned", result.MaxEventsScanned);
+                AddReadOnlyTriageChainingMeta(
+                    meta: meta,
+                    currentTool: "eventlog_live_stats",
+                    logName: logName,
+                    machineName: machineName,
+                    suggestedMaxEvents: maxScan,
+                    scanned: result.ScannedEvents,
+                    truncated: result.Truncated,
+                    queryMode: "stats");
+            });
         return Task.FromResult(response);
     }
 }

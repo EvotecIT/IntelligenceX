@@ -610,6 +610,8 @@ internal sealed partial class ChatServiceSession {
         _lastUserIntentSeenUtcTicks.Clear();
         _pendingActionsByThreadId.Clear();
         _pendingActionsSeenUtcTicks.Clear();
+        _pendingActionsCallToActionTokensByThreadId.Clear();
+        _structuredNextActionByThreadId.Clear();
     }
 
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(

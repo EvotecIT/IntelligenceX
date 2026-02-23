@@ -83,6 +83,44 @@ public class SystemToolBaseHelperTests {
     }
 
     [Fact]
+    public void AddReadOnlyPostureChainingMeta_ShouldEmitNextActionsAndDiscoveryStatus() {
+        var meta = new JsonObject();
+
+        HarnessTool.AddReadOnlyChaining(
+            meta: meta,
+            currentTool: "system_updates_installed",
+            targetComputer: "server01",
+            isRemoteScope: true,
+            scanned: 25,
+            truncated: false);
+
+        var nextActions = meta.GetArray("next_actions");
+        Assert.NotNull(nextActions);
+        Assert.True(nextActions!.Count >= 2);
+
+        var hasPatchCompliance = false;
+        var hasSecurityOptions = false;
+        foreach (var value in nextActions) {
+            var action = value.AsObject();
+            var tool = action?.GetString("tool");
+            if (string.Equals(tool, "system_patch_compliance", StringComparison.OrdinalIgnoreCase)) {
+                hasPatchCompliance = true;
+            } else if (string.Equals(tool, "system_security_options", StringComparison.OrdinalIgnoreCase)) {
+                hasSecurityOptions = true;
+            }
+        }
+
+        Assert.True(hasPatchCompliance);
+        Assert.True(hasSecurityOptions);
+
+        var discovery = meta.GetObject("discovery_status");
+        Assert.NotNull(discovery);
+        Assert.Equal("remote", discovery!.GetString("scope"));
+        Assert.Equal("server01", discovery.GetString("computer_name"));
+        Assert.Equal("system_updates_installed", discovery.GetString("current_tool"));
+    }
+
+    [Fact]
     public void ValidateWindowsSupport_ShouldMatchCurrentHostPlatform() {
         var response = HarnessTool.ValidateWindows("system_test_tool");
         if (OperatingSystem.IsWindows()) {
@@ -146,6 +184,22 @@ public class SystemToolBaseHelperTests {
 
         public static JsonObject BuildMeta(int count, bool truncated, string target, Action<JsonObject>? mutate = null) {
             return BuildFactsMeta(count, truncated, target, mutate);
+        }
+
+        public static void AddReadOnlyChaining(
+            JsonObject meta,
+            string currentTool,
+            string targetComputer,
+            bool isRemoteScope,
+            int scanned,
+            bool truncated) {
+            AddReadOnlyPostureChainingMeta(
+                meta: meta,
+                currentTool: currentTool,
+                targetComputer: targetComputer,
+                isRemoteScope: isRemoteScope,
+                scanned: scanned,
+                truncated: truncated);
         }
 
         public static string? ValidateWindows(string toolName) {
