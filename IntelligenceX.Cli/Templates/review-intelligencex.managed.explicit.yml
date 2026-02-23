@@ -5,7 +5,7 @@ review:
     pull-requests: write
     issues: write
     id-token: write
-  uses: {{ActionsRepo}}/.github/workflows/review-intelligencex.yml@{{ActionsRef}}
+  uses: {{ActionsRepo}}/.github/workflows/review-intelligencex-reusable.yml@{{ActionsRef}}
   with:
     runs_on: {{RunsOn}}
     reviewer_source: {{ReviewerSource}}
