@@ -92,7 +92,25 @@ internal static partial class Program {
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup args include OpenAI account routing with primary only",
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);
+        failed += Run("Setup args include review loop policy and strictness",
+            TestSetupArgsIncludeReviewLoopPolicyAndStrictness);
+        failed += Run("Setup args reject review vision path without vision policy",
+            TestSetupArgsRejectsReviewVisionPathWithoutVisionPolicy);
+        failed += Run("Setup review option context rejects without with-config",
+            TestSetupReviewOptionContextRejectsWithoutWithConfig);
+        failed += Run("Setup review option context rejects config override",
+            TestSetupReviewOptionContextRejectsConfigOverride);
+        failed += Run("Setup review option context rejects vision path without vision policy",
+            TestSetupReviewOptionContextRejectsVisionPathWithoutVisionPolicy);
         failed += Run("Setup config rejects invalid OpenAI account rotation", TestSetupConfigRejectsInvalidOpenAiAccountRotation);
+        failed += Run("Setup config rejects invalid review loop policy", TestSetupConfigRejectsInvalidReviewLoopPolicy);
+        failed += Run("Setup config rejects review options with config override",
+            TestSetupConfigRejectsReviewOptionsWithConfigOverride);
+        failed += Run("Setup config rejects empty merge blocker sections", TestSetupConfigRejectsEmptyMergeBlockerSections);
+        failed += Run("Setup config rejects review vision path without vision policy",
+            TestSetupConfigRejectsReviewVisionPathWithoutVisionPolicy);
+        failed += Run("Setup config rejects missing review vision path",
+            TestSetupConfigRejectsMissingReviewVisionPath);
         failed += Run("Setup config rejects analysis strict without analysis enabled",
             TestSetupConfigRejectsAnalysisStrictWithoutAnalysisEnabled);
         failed += Run("Setup config rejects analysis options with config override",
@@ -126,6 +144,14 @@ internal static partial class Program {
             TestSetupBuildConfigJsonMergeClearsOpenAiIdsButKeepsRoutingWithPrimary);
         failed += Run("Setup config merge clears OpenAI ids when snapshot has primary",
             TestSetupBuildConfigJsonMergeClearsOpenAiIdsWhenSnapshotHasPrimary);
+        failed += Run("Setup config build includes vision loop policy defaults",
+            TestSetupBuildConfigJsonIncludesVisionLoopPolicyDefaults);
+        failed += Run("Setup config build normalizes todo-only loop policy alias",
+            TestSetupBuildConfigJsonNormalizesTodoOnlyLoopPolicyAlias);
+        failed += Run("Setup config build includes vision inference from file",
+            TestSetupBuildConfigJsonIncludesVisionInferenceFromFile);
+        failed += Run("Setup config merge preserves review loop settings",
+            TestSetupBuildConfigJsonMergePreservesReviewLoopSettings);
         failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
@@ -201,6 +227,10 @@ internal static partial class Program {
         failed += Run("Web setup args propagate OpenAI account routing with primary only",
             TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRoutingWithPrimaryOnly);
         failed += Run("Web setup args propagate analysis run strict", TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict);
+        failed += Run("Web setup args propagate review config tweaks",
+            TestWebSetupBuildSetupArgsPropagatesReviewConfigTweaks);
+        failed += Run("Web setup args omit merge blocker booleans when unset",
+            TestWebSetupBuildSetupArgsOmitsMergeBlockerBooleansWhenUnset);
         failed += Run("Web setup args propagate triage bootstrap", TestWebSetupBuildSetupArgsPropagatesTriageBootstrap);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup OpenAI routing validation rejects config override",
@@ -213,6 +243,16 @@ internal static partial class Program {
             TestWebSetupAnalysisValidationRejectsRunStrictWithoutAnalysisEnabled);
         failed += Run("Web setup analysis validation rejects run strict outside preset generation",
             TestWebSetupAnalysisValidationRejectsRunStrictOutsidePresetGeneration);
+        failed += Run("Web setup review config validation normalizes loop policy",
+            TestWebSetupReviewConfigValidationNormalizesLoopPolicy);
+        failed += Run("Web setup review config validation normalizes todo-only loop policy",
+            TestWebSetupReviewConfigValidationNormalizesTodoOnlyLoopPolicy);
+        failed += Run("Web setup review config validation rejects outside preset generation",
+            TestWebSetupReviewConfigValidationRejectsOutsidePresetGeneration);
+        failed += Run("Web setup review config validation rejects invalid loop policy",
+            TestWebSetupReviewConfigValidationRejectsInvalidLoopPolicy);
+        failed += Run("Web setup review config validation rejects vision path without vision policy",
+            TestWebSetupReviewConfigValidationRejectsVisionPathWithoutVisionPolicy);
         failed += Run("Web setup post-apply verify skips callback on failed apply",
             TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);

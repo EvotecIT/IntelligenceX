@@ -120,6 +120,51 @@ internal sealed partial class ReviewSettings {
         };
     }
 
+    internal static IReadOnlyList<string> NormalizeMergeBlockerSections(IEnumerable<string>? values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+            var normalized = NormalizeWhitespace(value.Trim());
+            if (normalized.Length == 0) {
+                continue;
+            }
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+        return list;
+    }
+
+    private static string NormalizeWhitespace(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        var chars = new List<char>(value.Length);
+        var previousWasWhitespace = false;
+        foreach (var ch in value) {
+            if (char.IsWhiteSpace(ch)) {
+                if (previousWasWhitespace) {
+                    continue;
+                }
+                chars.Add(' ');
+                previousWasWhitespace = true;
+                continue;
+            }
+
+            chars.Add(ch);
+            previousWasWhitespace = false;
+        }
+
+        return new string(chars.ToArray()).Trim();
+    }
+
     internal static ReviewNarrativeMode NormalizeNarrativeMode(string? value, ReviewNarrativeMode fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;

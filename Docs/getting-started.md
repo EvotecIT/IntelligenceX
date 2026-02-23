@@ -77,7 +77,7 @@ Create `.intelligencex/reviewer.json` in your repo:
     "model": "gpt-5.3-codex",
     "mode": "hybrid",
     "length": "long",
-    "outputStyle": "claude"
+    "outputStyle": "compact"
   }
 }
 ```

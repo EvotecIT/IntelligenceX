@@ -386,6 +386,61 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewMergeBlockerPolicyConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path,
+                "{ \"review\": { \"mergeBlockerSections\": [\"Todo List\", \"Release Risk\"], " +
+                "\"mergeBlockerRequireAllSections\": false, \"mergeBlockerRequireSectionMatch\": false } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+
+            AssertSequenceEqual(new[] { "Todo List", "Release Risk" }, settings.MergeBlockerSections,
+                "merge blocker sections config");
+            AssertEqual(false, settings.MergeBlockerRequireAllSections, "merge blocker require all config");
+            AssertEqual(false, settings.MergeBlockerRequireSectionMatch, "merge blocker require section match config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewMergeBlockerPolicyEnv() {
+        var previousSections = Environment.GetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS");
+        var previousRequireAll = Environment.GetEnvironmentVariable("REVIEW_MERGE_BLOCKER_REQUIRE_ALL_SECTIONS");
+        var previousRequireMatch = Environment.GetEnvironmentVariable("REVIEW_MERGE_BLOCKER_REQUIRE_SECTION_MATCH");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS", "Todo List,Release Risk");
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_REQUIRE_ALL_SECTIONS", "false");
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_REQUIRE_SECTION_MATCH", "false");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertSequenceEqual(new[] { "Todo List", "Release Risk" }, settings.MergeBlockerSections,
+                "merge blocker sections env");
+            AssertEqual(false, settings.MergeBlockerRequireAllSections, "merge blocker require all env");
+            AssertEqual(false, settings.MergeBlockerRequireSectionMatch, "merge blocker require section match env");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS", previousSections);
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_REQUIRE_ALL_SECTIONS", previousRequireAll);
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_REQUIRE_SECTION_MATCH", previousRequireMatch);
+        }
+    }
+
+    private static void TestReviewMergeBlockerPolicyEnvNormalizesWhitespace() {
+        var previousSections = Environment.GetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS", "Todo   List,Release\tRisk, Todo List ");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertSequenceEqual(new[] { "Todo List", "Release Risk" }, settings.MergeBlockerSections,
+                "merge blocker sections env whitespace normalization");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS", previousSections);
+        }
+    }
+
     private static void TestCopilotEnvAllowlistConfig() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace IntelligenceX.Reviewer;
@@ -39,52 +40,70 @@ internal static class ReviewSummaryParser {
         return false;
     }
 
-    internal static bool HasMergeBlockers(string? body) {
+    internal static bool HasMergeBlockers(string? body, ReviewSettings? settings = null) {
         if (string.IsNullOrWhiteSpace(body)) {
             return true;
         }
 
-        var todo = string.Empty;
-        var critical = string.Empty;
-        var currentHeader = string.Empty;
-        var sawTodoSection = false;
-        var sawCriticalSection = false;
+        var configuredSections = settings?.ResolveMergeBlockerSections()
+                                 ?? new[] { "todo list", "critical issues" };
+        var mergeBlockerSections = ReviewSettings.NormalizeMergeBlockerSections(configuredSections);
+        if (mergeBlockerSections.Count == 0) {
+            mergeBlockerSections = new[] { "todo list", "critical issues" };
+        }
+
+        var sectionText = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var seenSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var currentSection = string.Empty;
         using var reader = new StringReader(body);
         string? line;
         while ((line = reader.ReadLine()) is not null) {
             var trimmed = line.Trim();
             if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
-                currentHeader = NormalizeHeader(trimmed);
-                if (currentHeader.Contains("todo list", StringComparison.Ordinal)) {
-                    sawTodoSection = true;
-                }
-                if (currentHeader.Contains("critical issues", StringComparison.Ordinal)) {
-                    sawCriticalSection = true;
+                currentSection = MatchConfiguredSection(trimmed, mergeBlockerSections);
+                if (currentSection.Length > 0) {
+                    seenSections.Add(currentSection);
                 }
                 continue;
             }
 
-            if (currentHeader.Contains("todo list", StringComparison.Ordinal)) {
-                todo += "\n" + trimmed;
-                continue;
-            }
-
-            if (currentHeader.Contains("critical issues", StringComparison.Ordinal)) {
-                critical += "\n" + trimmed;
+            if (currentSection.Length > 0) {
+                sectionText.TryGetValue(currentSection, out var existing);
+                sectionText[currentSection] = $"{existing}\n{trimmed}";
             }
         }
 
-        if (!sawTodoSection || !sawCriticalSection) {
+        var requireSectionMatch = settings?.MergeBlockerRequireSectionMatch ?? true;
+        if (seenSections.Count == 0) {
+            return requireSectionMatch;
+        }
+        if ((settings?.MergeBlockerRequireAllSections ?? true) &&
+            seenSections.Count < mergeBlockerSections.Count) {
             return true;
         }
 
-        var hasTodo = SectionHasMergeBlockerItems(todo);
-        var hasCritical = SectionHasMergeBlockerItems(critical);
-        return hasTodo || hasCritical;
+        foreach (var section in seenSections) {
+            sectionText.TryGetValue(section, out var content);
+            if (SectionHasMergeBlockerItems(content ?? string.Empty)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeHeader(string header) {
         return header.Trim().ToLowerInvariant();
+    }
+
+    private static string MatchConfiguredSection(string header, IReadOnlyList<string> configuredSections) {
+        var normalizedHeader = NormalizeHeader(header);
+        foreach (var section in configuredSections) {
+            if (normalizedHeader.Contains(section, StringComparison.OrdinalIgnoreCase)) {
+                return section;
+            }
+        }
+        return string.Empty;
     }
 
     private static bool SectionHasMergeBlockerItems(string section) {
