@@ -1,41 +1,25 @@
 # IntelligenceX
 
-IntelligenceX is a .NET toolkit for the Codex app-server protocol and a GitHub Actions reviewer.
-It manages the app-server process, speaks JSON-RPC over JSONL, and ships a CLI/web wizard to onboard
-review automation quickly and safely.
-
-Status: Active development | APIs in flux | Actions in beta
-
-## Project Information
+Zero-trust AI platform with code reviews, desktop chat, tool packs, and developer libraries.  
+Your credentials, your GitHub App, your control.
 
 [![top language](https://img.shields.io/github/languages/top/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
 [![license](https://img.shields.io/github/license/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
 [![build](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml/badge.svg)](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml)
 
-## What it is
+## Platform Areas
 
-- GitHub Actions reviewer (ChatGPT or Copilot provider)
-- CLI + local web wizard for onboarding and auth
-- .NET library for Codex app-server + Copilot JSON-RPC
-- PowerShell module (binary cmdlets)
-- Optional tool contract + tool calling, with tool packs now mirrored in-repo under `IntelligenceX.Tools`
+- GitHub Actions Reviewer
+- IX Chat (Windows desktop tray app)
+- IX Tools (tool packs for chat and integrations)
+- CLI tools (setup/auth/ops workflows)
+- .NET library
+- PowerShell module
+- Issue Ops + Project Control
 
-## Repo layout
+Note: some tool packs are private/licensed by default depending on deployment and usage.
 
-- `EvotecIT/IntelligenceX` (this monorepo): core library + reviewer + CLI + tool packs + chat projects
-- `IntelligenceX.Tools/`: in-repo tool packs
-- `IntelligenceX.Chat/`: in-repo chat host/service/app
-
-## Choose your path
-
-- Reviewer (GitHub Actions): `Docs/reviewer/overview.md`
-- CLI tools: `Docs/cli/overview.md`
-- .NET library: `Docs/library/overview.md`
-- PowerShell module: `Docs/powershell/overview.md`
-- Tool packs: `Docs/library/tool-packs.md`
-- Chat with local providers (Ollama/LM Studio): `Docs/apps/chat-local-providers.md`
-
-## Quick start (Reviewer)
+## Quick Start
 
 Recommended onboarding:
 
@@ -43,48 +27,62 @@ Recommended onboarding:
 intelligencex setup wizard
 ```
 
-Local web UI (preview):
+Local web setup flow:
 
 ```powershell
 intelligencex setup web
 ```
 
-Docs:
-- `Docs/reviewer/onboarding-wizard.md`
-- `Docs/reviewer/setup-web.md`
-- `Docs/reviewer/security-trust.md`
-- `Docs/reviewer/configuration.md`
+From source:
 
-## Docs index
+```powershell
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- setup wizard
+```
 
-Start here: `Docs/index.md`
+## Trust Model
 
-## Roadmaps
+- No backend service: IntelligenceX runs locally and/or in your GitHub Actions.
+- Secrets stay under your control: stored in the environments you own.
+- Bring your own GitHub App for identity, permissions, and auditability.
+- Workflow changes happen via PRs so setup changes stay reviewable.
 
-- Project roadmap: `TODO.md`
+## Documentation
 
-## Trust model (short version)
+- Start here: `Docs/getting-started.md`
+- Reviewer: `Docs/reviewer/overview.md`
+- IX Chat: `Docs/chat/overview.md`
+- Tools: `Docs/tools/overview.md`
+- CLI: `Docs/cli/overview.md`
+- .NET library: `Docs/library/overview.md`
+- PowerShell: `Docs/powershell/overview.md`
+- Project Ops: `Docs/project-ops/overview.md`
+- Security: `Docs/security.md`
 
-- BYO GitHub App is supported for branded bot identity.
-- Secrets are stored in GitHub Actions (you control access).
-- Web UI binds to localhost only; tokens never leave your machine.
+## Repository Layout
+
+- `IntelligenceX/`: core library
+- `IntelligenceX.Reviewer/`: review pipeline executable
+- `IntelligenceX.Cli/`: setup/auth/ops commands
+- `IntelligenceX.Chat/`: desktop chat app, host, service, client
+- `IntelligenceX.Tools/`: in-repo tool packs and contracts
+- `Docs/`: source docs (published to the website)
 
 ## Build
 
-Core CI-equivalent build check (temporary migration baseline):
+Core CI-equivalent build check:
 
 ```powershell
 dotnet build IntelligenceX.CI.slnf -c Release
 dotnet test IntelligenceX.CI.slnf -c Release
 
-# CI also runs the executable test harness (recommended locally before pushing):
+# CI also runs the executable test harness:
 dotnet ./IntelligenceX.Tests/bin/Release/net8.0/IntelligenceX.Tests.dll
 dotnet ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
 ```
 
-`IntelligenceX.sln` now includes Chat/Tools projects for local integration work. CI intentionally uses `IntelligenceX.CI.slnf` while engine-backed tool projects are being migrated.
+`IntelligenceX.sln` includes Chat/Tools projects for local integration work.
 
-Publish the CLI (self-contained single-file):
+Publish CLI (self-contained single-file):
 
 ```powershell
 pwsh ./Build/Publish-Cli.ps1 -Runtime win-x64 -Configuration Release -Framework net8.0
