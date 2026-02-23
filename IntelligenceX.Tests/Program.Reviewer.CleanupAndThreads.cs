@@ -294,6 +294,16 @@ internal static partial class Program {
         AssertEqual(false, hasEvidence, "cross-file fallback is limited to stale threads");
     }
 
+    private static void TestThreadResolveEvidenceNormalizeSingleWrapperOnly() {
+        var normalized = CallNormalizeResolveEvidence("\"`42: fixed null check`\"");
+        AssertEqual("`42: fixed null check`", normalized, "single wrapper unwrap");
+    }
+
+    private static void TestThreadResolveEvidenceNormalizePreservesUnbalancedDelimiters() {
+        var normalized = CallNormalizeResolveEvidence("\"42: fixed null check`");
+        AssertEqual("\"42: fixed null check`", normalized, "unbalanced delimiters preserved");
+    }
+
     private static void TestThreadTriageEmbedPlacement() {
         var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {

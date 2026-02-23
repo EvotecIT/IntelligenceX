@@ -254,6 +254,16 @@ internal static partial class Program {
         throw new InvalidOperationException("HasValidResolveEvidence returned unexpected result.");
     }
 
+    private static string CallNormalizeResolveEvidence(string evidence) {
+        var method = typeof(ReviewerApp).GetMethod("NormalizeResolveEvidence",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("NormalizeResolveEvidence method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { evidence }) as string;
+        return result ?? string.Empty;
+    }
+
     private static (IReadOnlyList<PullRequestFile> Files, string Note) CallResolveDiffRangeFiles(GitHubClient github,
         PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles, ReviewSettings settings) {
         var method = typeof(ReviewerApp).GetMethod("ResolveDiffRangeFilesAsync",

@@ -23,6 +23,8 @@ internal static partial class Program {
         failed += Run("Thread resolve evidence cross-file fallback", TestThreadResolveEvidenceCrossFileFallback);
         failed += Run("Thread resolve evidence prefers thread context", TestThreadResolveEvidenceUsesThreadContextWhenAvailable);
         failed += Run("Thread resolve evidence cross-file fallback stale-only", TestThreadResolveEvidenceCrossFileFallbackOnlyForStaleThreads);
+        failed += Run("Thread resolve evidence normalize single wrapper", TestThreadResolveEvidenceNormalizeSingleWrapperOnly);
+        failed += Run("Thread resolve evidence normalize preserves unbalanced delimiters", TestThreadResolveEvidenceNormalizePreservesUnbalancedDelimiters);
         failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
         failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
         failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);
