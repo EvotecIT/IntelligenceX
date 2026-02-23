@@ -71,4 +71,16 @@ public sealed class AssistantStreamingStateTests {
         Assert.True(state.HasBufferedContent());
         Assert.Contains("tail", state.SnapshotNormalizedPreview(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_TrimsBufferWhenStreamGrowsTooLarge() {
+        var state = new AssistantStreamingState();
+        var oversizedChunk = new string('a', 80 * 1024);
+
+        var preview = state.AppendDeltaAndNormalizePreview(oversizedChunk);
+
+        Assert.InRange(state.BufferedLengthForTesting(), 1, 64 * 1024);
+        Assert.False(string.IsNullOrEmpty(preview));
+        Assert.True(state.HasBufferedContent());
+    }
 }
