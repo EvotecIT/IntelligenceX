@@ -1350,6 +1350,62 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_ResolvesHostHintAgainstPriorDiscoveryOutputs() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_scope_discovery"] = "active_directory";
+        packMap["eventlog_evtx_find"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("ad_scope_discovery", "scope", schema),
+            new("eventlog_evtx_find", "find evtx", schema),
+            new("eventlog_live_query", "live query", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-ad", Name = "ad_scope_discovery" },
+            new() { CallId = "call-evtx", Name = "eventlog_evtx_find" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ad",
+                Output = """
+                         {"ok":true,"domain_controllers":[{"machine_name":"AD0.contoso.local"},{"machine_name":"AD1.contoso.local"}]}
+                         """,
+                Ok = true
+            },
+            new() {
+                CallId = "call-evtx",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Can you find out why and when AD0 was rebooted?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+        Assert.Contains("\"machine_name\":\"AD0.contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildEventlogFallbackWithoutHostHint() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
