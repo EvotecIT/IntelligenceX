@@ -84,9 +84,13 @@ Project board and issue triage workflows for handling blockers, confidence signa
 
 Picture 1:
 
+_Placeholder (generated visual; to be replaced with real product capture)._
+
 <img src="Assets/README/issue-ops.svg" alt="Issue Ops board overview" width="760" />
 
 Picture 2:
+
+_Placeholder (generated visual; to be replaced with real product capture)._
 
 <img src="Assets/README/issue-ops-2.svg" alt="Issue review columns and confidence signals" width="760" />
 
@@ -101,9 +105,13 @@ Developer-facing interfaces for setup automation, embedding IntelligenceX in .NE
 
 Picture 1:
 
+_Placeholder (generated visual; to be replaced with real product capture)._
+
 <img src="Assets/README/cli.svg" alt="CLI product visual" width="760" />
 
 Picture 2:
+
+_Placeholder (generated visual; to be replaced with real product capture)._
 
 <img src="Assets/README/library.svg" alt=".NET library product visual" width="760" />
 
