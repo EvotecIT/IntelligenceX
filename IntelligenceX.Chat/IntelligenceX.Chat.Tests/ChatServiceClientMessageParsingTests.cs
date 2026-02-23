@@ -38,6 +38,34 @@ public sealed class ChatServiceClientMessageParsingTests {
     }
 
     /// <summary>
+    /// Ensures fallback recovery remains resilient when timeline property casing differs.
+    /// </summary>
+    [Fact]
+    public void TryDeserializeMessageLine_RecoversChatResultWhenTimelinePropertyUsesAlternateCasing() {
+        const string line = """
+            {
+              "type":"chat_result",
+              "kind":"response",
+              "requestId":"req_parse_compat_case",
+              "threadId":"thread_parse_compat_case",
+              "text":"Recovered response text",
+              "TurnTimelineEvents":[
+                {
+                  "status":"phase_plan",
+                  "atUtc":"2026-02-23T11:12:13"
+                }
+              ]
+            }
+            """;
+
+        var parsed = ChatServiceClient.TryDeserializeMessageLine(line);
+
+        var result = Assert.IsType<ChatResultMessage>(parsed);
+        Assert.Equal("Recovered response text", result.Text);
+        Assert.Null(result.TurnTimelineEvents);
+    }
+
+    /// <summary>
     /// Ensures valid timeline payloads continue parsing normally.
     /// </summary>
     [Fact]

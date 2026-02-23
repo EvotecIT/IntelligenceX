@@ -199,7 +199,7 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             return false;
         }
 
-        if (!document.RootElement.TryGetProperty("turnTimelineEvents", out _)) {
+        if (!ContainsPropertyCaseInsensitive(document.RootElement, "turnTimelineEvents")) {
             return false;
         }
 
@@ -207,7 +207,7 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         using var writer = new Utf8JsonWriter(buffer);
         writer.WriteStartObject();
         foreach (var property in document.RootElement.EnumerateObject()) {
-            if (property.NameEquals("turnTimelineEvents")) {
+            if (string.Equals(property.Name, "turnTimelineEvents", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
@@ -233,6 +233,16 @@ public sealed class ChatServiceClient : IAsyncDisposable {
 
             value = property.Value.GetString() ?? string.Empty;
             return value.Length > 0;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsPropertyCaseInsensitive(JsonElement element, string propertyName) {
+        foreach (var property in element.EnumerateObject()) {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
         }
 
         return false;
