@@ -66,6 +66,18 @@ Tool packs for event/AD/system workflows used by IX Chat and custom integrations
 - Docs: [https://intelligencex.dev/docs/library/tool-packs/](https://intelligencex.dev/docs/library/tool-packs/)
 - Blog: [https://intelligencex.dev/blog/event-viewer-in-action/](https://intelligencex.dev/blog/event-viewer-in-action/)
 
+Current packs and representative tools:
+
+- Event Log (EventViewerX): `eventlog_pack_info`, `eventlog_channels_list`, `eventlog_live_query`, `eventlog_evtx_query`
+- File System: `fs_pack_info`, `fs_list`, `fs_read`, `fs_search`
+- Reviewer Setup: `reviewer_setup_pack_info`, `reviewer_setup_contract_verify`
+- Email (Mailozaurr): `email_pack_info`, `email_imap_search`, `email_imap_get`, `email_smtp_send`
+- Office Documents (OfficeIMO): `officeimo_pack_info`, `officeimo_read`
+- PowerShell Runtime: `powershell_pack_info`, `powershell_environment_discover`, `powershell_hosts`, `powershell_run`
+- ADPlayground (private/licensed): `ad_pack_info`, `ad_domain_info`, `ad_group_members`, `ad_search`
+- TestimoX (private/licensed): `testimox_pack_info`, `testimox_rules_list`, `testimox_rules_run`
+- ComputerX (private/licensed): `system_pack_info`, `system_info`, `system_process_list`, `system_service_list`
+
 Picture 1:
 
 <img src="Assets/README/tools.png" alt="Tools pack availability and toggle controls" width="760" />
