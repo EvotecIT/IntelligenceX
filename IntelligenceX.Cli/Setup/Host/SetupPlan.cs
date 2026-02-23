@@ -24,7 +24,14 @@ internal sealed class SetupPlan {
     public string? OpenAIAccountIds { get; init; }
     public string? OpenAIAccountRotation { get; init; }
     public bool? OpenAIAccountFailover { get; init; }
+    public string? ReviewIntent { get; init; }
+    public string? ReviewStrictness { get; init; }
     public string? ReviewProfile { get; init; }
+    public string? ReviewLoopPolicy { get; init; }
+    public string? ReviewVisionPath { get; init; }
+    public string? MergeBlockerSections { get; init; }
+    public bool? MergeBlockerRequireAllSections { get; init; }
+    public bool? MergeBlockerRequireSectionMatch { get; init; }
     public string? ReviewMode { get; init; }
     public string? ReviewCommentMode { get; init; }
     public bool SkipSecret { get; init; }

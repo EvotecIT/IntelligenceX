@@ -95,9 +95,16 @@ internal sealed partial class WebApi {
         public string? OpenAIAccountIds { get; set; }
         public string? OpenAIAccountRotation { get; set; }
         public bool? OpenAIAccountFailover { get; set; }
+        public string? ReviewIntent { get; set; }
+        public string? ReviewStrictness { get; set; }
         public string? ConfigJson { get; set; }
         public string? ConfigPath { get; set; }
         public string? ReviewProfile { get; set; }
+        public string? ReviewLoopPolicy { get; set; }
+        public string? ReviewVisionPath { get; set; }
+        public string? MergeBlockerSections { get; set; }
+        public bool? MergeBlockerRequireAllSections { get; set; }
+        public bool? MergeBlockerRequireSectionMatch { get; set; }
         public string? ReviewMode { get; set; }
         public string? ReviewCommentMode { get; set; }
         public bool? AnalysisEnabled { get; set; }

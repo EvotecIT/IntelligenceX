@@ -15,6 +15,7 @@ internal sealed partial class WebApi {
                          !string.IsNullOrWhiteSpace(request.ConfigPath);
         var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
         var isSetup = !request.Cleanup && !request.UpdateSecret;
+        var reviewerPresetApplies = isSetup && withConfig && !hasConfigOverride;
         var analysisApplies = isSetup && withConfig && !hasConfigOverride;
         var plan = new SetupPlan(repo) {
             GitHubToken = request.GitHubToken,
@@ -30,7 +31,14 @@ internal sealed partial class WebApi {
             OpenAIAccountIds = request.OpenAIAccountIds,
             OpenAIAccountRotation = request.OpenAIAccountRotation,
             OpenAIAccountFailover = request.OpenAIAccountFailover,
+            ReviewIntent = reviewerPresetApplies ? request.ReviewIntent : null,
+            ReviewStrictness = reviewerPresetApplies ? request.ReviewStrictness : null,
             ReviewProfile = request.ReviewProfile,
+            ReviewLoopPolicy = reviewerPresetApplies ? request.ReviewLoopPolicy : null,
+            ReviewVisionPath = reviewerPresetApplies ? request.ReviewVisionPath : null,
+            MergeBlockerSections = reviewerPresetApplies ? request.MergeBlockerSections : null,
+            MergeBlockerRequireAllSections = reviewerPresetApplies ? request.MergeBlockerRequireAllSections : null,
+            MergeBlockerRequireSectionMatch = reviewerPresetApplies ? request.MergeBlockerRequireSectionMatch : null,
             ReviewMode = request.ReviewMode,
             ReviewCommentMode = request.ReviewCommentMode,
             AnalysisEnabled = analysisApplies ? request.AnalysisEnabled : null,

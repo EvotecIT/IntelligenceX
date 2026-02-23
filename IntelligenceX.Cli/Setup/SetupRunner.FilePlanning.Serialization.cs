@@ -44,6 +44,28 @@ internal static partial class SetupRunner {
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
+        if (!string.IsNullOrWhiteSpace(settings.Intent)) {
+            review["intent"] = settings.Intent;
+        }
+        if (!string.IsNullOrWhiteSpace(settings.Strictness)) {
+            review["strictness"] = settings.Strictness;
+        }
+        if (!string.IsNullOrWhiteSpace(settings.VisionPath)) {
+            review["visionPath"] = settings.VisionPath;
+        }
+        if (settings.MergeBlockerSectionsSet && settings.MergeBlockerSections.Length > 0) {
+            var sections = new JsonArray();
+            foreach (var section in settings.MergeBlockerSections) {
+                sections.Add(section);
+            }
+            review["mergeBlockerSections"] = sections;
+        }
+        if (settings.MergeBlockerRequireAllSectionsSet) {
+            review["mergeBlockerRequireAllSections"] = settings.MergeBlockerRequireAllSections;
+        }
+        if (settings.MergeBlockerRequireSectionMatchSet) {
+            review["mergeBlockerRequireSectionMatch"] = settings.MergeBlockerRequireSectionMatch;
+        }
         review["profile"] = settings.Profile;
         review["mode"] = settings.Mode;
         review["commentMode"] = settings.CommentMode;
@@ -301,7 +323,13 @@ internal static partial class SetupRunner {
                 snapshot.OpenAIAccountFailover =
                     ReadJsonBool(review, "openaiAccountFailover") ??
                     ReadJsonBool(review, "openAiAccountFailover");
+                snapshot.Intent = ReadJsonString(review, "intent");
+                snapshot.Strictness = ReadJsonString(review, "strictness");
+                snapshot.VisionPath = ReadJsonString(review, "visionPath");
                 snapshot.Profile = ReadJsonString(review, "profile");
+                snapshot.MergeBlockerSections = ReadJsonStringArray(review, "mergeBlockerSections");
+                snapshot.MergeBlockerRequireAllSections = ReadJsonBool(review, "mergeBlockerRequireAllSections");
+                snapshot.MergeBlockerRequireSectionMatch = ReadJsonBool(review, "mergeBlockerRequireSectionMatch");
                 snapshot.Mode = ReadJsonString(review, "mode");
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
                 snapshot.IncludeIssueComments = ReadJsonBool(review, "includeIssueComments");

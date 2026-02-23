@@ -113,6 +113,31 @@ Compatibility note: by default, Authorization is kept on same-host redirects. To
 }
 ```
 
+## Merge-blocker loop policy (section contract)
+
+Use this when your repo wants different merge-blocker sections than the default `Todo List` + `Critical Issues`
+contract, or when you want to relax the section-presence gate used by no-blockers thread sweep.
+
+```json
+{
+  "review": {
+    "outputStyle": "claude",
+    "mergeBlockerSections": ["Todo List"],
+    "mergeBlockerRequireAllSections": true,
+    "mergeBlockerRequireSectionMatch": true
+  }
+}
+```
+
+- `mergeBlockerSections`: headings treated as merge-blocking sections (case-insensitive contains match).
+- `mergeBlockerRequireAllSections`: `true` (default) requires every configured section to be present; `false` allows any matching configured section.
+- `mergeBlockerRequireSectionMatch`: `true` (default) treats no-match output as blocked; `false` allows no-match output to be non-blocking.
+
+Setup shortcuts:
+- Vision-aligned baseline: `intelligencex setup --with-config --review-loop-policy vision`
+- Vision file override: `intelligencex setup --with-config --review-loop-policy vision --review-vision-path VISION.md`
+- Custom strictness + contract: `intelligencex setup --with-config --review-intent maintainability --review-strictness strict --merge-blocker-sections "Todo List,Critical Issues" --merge-blocker-require-all-sections false`
+
 ## Fast (cost-aware) example
 
 ```json
@@ -367,6 +392,11 @@ Setup analysis option constraints:
 - `--analysis-*` options are supported only for `setup` when generating config from presets (`--with-config` and no `--config-json/--config-path` override).
 - `--analysis-gate`, `--analysis-run-strict`, `--analysis-packs`, and `--analysis-export-path` require `--analysis-enabled true`.
 
+Setup review-policy option constraints:
+- `--review-intent`, `--review-strictness`, `--review-loop-policy`, `--review-vision-path`, and `--merge-blocker-*` options are setup-time config-generation options.
+- They are intended for `setup` with generated config (`--with-config` and no `--config-json/--config-path` override).
+- `--review-vision-path` is only supported with `--review-loop-policy vision`.
+
 ## Summary stability (avoid noisy reruns)
 
 ```json
@@ -517,6 +547,10 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
 - `intent`: `security|performance|perf|maintainability` (sets focus areas and default strictness/notes when not set)
+- `visionPath`: optional repository-local vision markdown path used by setup-time vision policy inference
+- `mergeBlockerSections`: custom heading names that represent merge-blocking sections in the review output
+- `mergeBlockerRequireAllSections`: require every configured blocker section to be present before treating review as unblocked
+- `mergeBlockerRequireSectionMatch`: require at least one configured blocker section to appear before treating review as unblocked
 - `codeHost`: `github` or `azure`
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset

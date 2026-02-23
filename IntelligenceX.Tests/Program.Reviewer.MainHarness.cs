@@ -498,6 +498,8 @@ internal static partial class Program {
             TestReviewThreadsAutoResolveSweepNoBlockersConfig);
         failed += Run("Review threads auto-resolve sweep no-blockers env",
             TestReviewThreadsAutoResolveSweepNoBlockersEnv);
+        failed += Run("Review merge-blocker policy config", TestReviewMergeBlockerPolicyConfig);
+        failed += Run("Review merge-blocker policy env", TestReviewMergeBlockerPolicyEnv);
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
@@ -544,6 +546,8 @@ internal static partial class Program {
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
         failed += Run("Prompt narrative mode structured default", TestPromptBuilderNarrativeModeStructuredDefault);
         failed += Run("Prompt narrative mode freedom", TestPromptBuilderNarrativeModeFreedom);
+        failed += Run("Prompt merge blocker sections default", TestPromptBuilderMergeBlockerSectionsDefault);
+        failed += Run("Prompt merge blocker sections claude default", TestPromptBuilderMergeBlockerSectionsClaudeDefault);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
@@ -564,6 +568,12 @@ internal static partial class Program {
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
         failed += Run("Review summary parser merge blocker detection", TestReviewSummaryParserMergeBlockerDetection);
+        failed += Run("Review summary parser merge blocker detection claude defaults",
+            TestReviewSummaryParserMergeBlockerDetectionClaudeDefaults);
+        failed += Run("Review summary parser merge blocker detection custom sections",
+            TestReviewSummaryParserMergeBlockerDetectionCustomSections);
+        failed += Run("Review summary parser merge blocker detection allow missing section match",
+            TestReviewSummaryParserMergeBlockerDetectionAllowNoSectionMatch);
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
         failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
         failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);

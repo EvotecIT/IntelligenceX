@@ -96,6 +96,44 @@ internal static partial class Program {
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(plainProseOnly), "merge blockers plain prose");
     }
 
+    private static void TestReviewSummaryParserMergeBlockerDetectionClaudeDefaults() {
+        var settings = new ReviewSettings {
+            OutputStyle = "claude"
+        };
+        var todoOnlyNone = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "None."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(todoOnlyNone, settings),
+            "merge blockers claude todo-only defaults");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionCustomSections() {
+        var settings = new ReviewSettings {
+            MergeBlockerSections = new[] { "Blocking Items", "Release Risk" },
+            MergeBlockerRequireAllSections = false
+        };
+        var body = string.Join("\n", new[] {
+            "## Blocking Items",
+            "None."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body, settings),
+            "merge blockers custom sections no blockers");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionAllowNoSectionMatch() {
+        var settings = new ReviewSettings {
+            MergeBlockerSections = new[] { "Blocking Items" },
+            MergeBlockerRequireSectionMatch = false
+        };
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body, settings),
+            "merge blockers allow missing section match");
+    }
+
     private static void TestReviewFormatterModelUsageSection() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
             "base", Array.Empty<string>(), "owner/repo", false, null);

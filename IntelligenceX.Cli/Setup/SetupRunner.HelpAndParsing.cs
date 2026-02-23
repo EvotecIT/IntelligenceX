@@ -32,7 +32,14 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
         Console.WriteLine("  --progress-updates <true|false>");
+        Console.WriteLine("  --review-intent <security|performance|maintainability>");
+        Console.WriteLine("  --review-strictness <label>");
         Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
+        Console.WriteLine("  --review-loop-policy <strict|balanced|lenient|claude|vision>");
+        Console.WriteLine("  --review-vision-path <path> (used by --review-loop-policy vision to infer intent/strictness)");
+        Console.WriteLine("  --merge-blocker-sections <section1,section2>");
+        Console.WriteLine("  --merge-blocker-require-all-sections <true|false>");
+        Console.WriteLine("  --merge-blocker-require-section-match <true|false>");
         Console.WriteLine("  --review-mode <hybrid|summary|inline>");
         Console.WriteLine("  --review-comment-mode <sticky|fresh>");
         Console.WriteLine("  --analysis-enabled <true|false> (write analysis section into reviewer.json)");

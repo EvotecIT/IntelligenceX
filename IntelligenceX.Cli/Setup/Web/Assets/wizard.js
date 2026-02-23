@@ -115,6 +115,13 @@ const repoList = $('repoList');
 const repoFilter = $('repoFilter');
 const reviewMode = $('reviewMode');
 const reviewCommentMode = $('reviewCommentMode');
+const reviewIntentInput = $('reviewIntent');
+const reviewStrictnessInput = $('reviewStrictness');
+const reviewLoopPolicy = $('reviewLoopPolicy');
+const reviewVisionPathInput = $('reviewVisionPath');
+const mergeBlockerSectionsInput = $('mergeBlockerSections');
+const mergeBlockerRequireAllSectionsInput = $('mergeBlockerRequireAllSections');
+const mergeBlockerRequireSectionMatchInput = $('mergeBlockerRequireSectionMatch');
 const branchName = $('branchName');
 const withConfig = $('withConfig');
 const force = $('force');
@@ -402,6 +409,7 @@ function selectOperation(op) {
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
   updateAnalysisControls();
+  updateReviewConfigControls();
   updateOpenAiAccountControls();
 
   selectedOnboardingPath = getOnboardingPathForOperation(op);
@@ -464,6 +472,7 @@ function applyOnboardingPath(path) {
 
 function refreshPathStateAfterOnboardingSelection() {
   updateAnalysisControls();
+  updateReviewConfigControls();
   if (currentStep === 4) {
     buildReviewTable();
   }
@@ -872,6 +881,18 @@ function buildReviewTable() {
     ? analysisExportPath.value.trim()
     : '';
   const analysisRunStrictValue = analysisState === 'enabled' && analysisRunStrict && analysisRunStrict.checked;
+  const reviewTweaksApply = selectedOperation === 'setup' && withConfigEffective && !hasConfigOverride;
+  const reviewIntentValue = reviewIntentInput ? reviewIntentInput.value.trim() : '';
+  const reviewStrictnessValue = reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '';
+  const reviewLoopPolicyValue = reviewLoopPolicy ? reviewLoopPolicy.value : '';
+  const reviewVisionPathValue = reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '';
+  const mergeBlockerSectionsValue = mergeBlockerSectionsInput ? mergeBlockerSectionsInput.value.trim() : '';
+  const mergeBlockerRequireAllSectionsValue = mergeBlockerRequireAllSectionsInput
+    ? !!mergeBlockerRequireAllSectionsInput.checked
+    : true;
+  const mergeBlockerRequireSectionMatchValue = mergeBlockerRequireSectionMatchInput
+    ? !!mergeBlockerRequireSectionMatchInput.checked
+    : true;
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -889,6 +910,13 @@ function buildReviewTable() {
   const safeAnalysisState = escapeHtml(analysisState);
   const safeAnalysisExportPath = escapeHtml(analysisExportPathValue);
   const safeAnalysisRunStrict = analysisRunStrictValue ? 'enabled' : 'disabled';
+  const safeReviewIntent = escapeHtml(reviewIntentValue || '(default)');
+  const safeReviewStrictness = escapeHtml(reviewStrictnessValue || '(default)');
+  const safeReviewLoopPolicy = escapeHtml(reviewLoopPolicyValue || '(default)');
+  const safeReviewVisionPath = escapeHtml(reviewVisionPathValue || '(auto: VISION.md|vision.md)');
+  const safeMergeBlockerSections = escapeHtml(mergeBlockerSectionsValue || '(default)');
+  const safeMergeBlockerRequireAllSections = mergeBlockerRequireAllSectionsValue ? 'true' : 'false';
+  const safeMergeBlockerRequireSectionMatch = mergeBlockerRequireSectionMatchValue ? 'true' : 'false';
   const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
   const openAiAccountIdsValue = openAiAccountIdsInput
     ? normalizeOpenAiAccountIdsCsv(openAiAccountIdsInput.value).join(',')
@@ -958,6 +986,35 @@ function buildReviewTable() {
       <div class="review-item">
         <span class="review-label">Analysis export path</span>
         <span class="review-value"><code>${safeAnalysisExportPath}</code></span>
+      </div>` : ''}
+      ${reviewTweaksApply ? `
+      <div class="review-item">
+        <span class="review-label">Review intent</span>
+        <span class="review-value">${safeReviewIntent}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Review strictness</span>
+        <span class="review-value">${safeReviewStrictness}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Loop policy</span>
+        <span class="review-value">${safeReviewLoopPolicy}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Vision file path</span>
+        <span class="review-value">${safeReviewVisionPath}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Merge blocker sections</span>
+        <span class="review-value">${safeMergeBlockerSections}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Require all sections</span>
+        <span class="review-value">${safeMergeBlockerRequireAllSections}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Require section match</span>
+        <span class="review-value">${safeMergeBlockerRequireSectionMatch}</span>
       </div>` : ''}
       ${accountRoutingApplies ? `
       <div class="review-item">
@@ -1049,6 +1106,7 @@ function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
   const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
   const wantAnalysis = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
+  const wantReviewTweaks = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
   const wantOpenAiAccountRouting = selectedOperation === 'setup' &&
     selectedProvider === 'openai' &&
     withConfig.checked &&
@@ -1058,6 +1116,17 @@ function buildRequestBody(dryRun) {
   const analysisRunStrictValue = analysisOn && analysisRunStrict && analysisRunStrict.checked;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
   const exportPathRaw = analysisExportPath ? analysisExportPath.value.trim() : '';
+  const reviewIntentValue = reviewIntentInput ? reviewIntentInput.value.trim() : '';
+  const reviewStrictnessValue = reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '';
+  const reviewLoopPolicyValue = reviewLoopPolicy ? reviewLoopPolicy.value.trim() : '';
+  const reviewVisionPathValue = reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '';
+  const mergeBlockerSectionsValue = mergeBlockerSectionsInput ? mergeBlockerSectionsInput.value.trim() : '';
+  const mergeBlockerRequireAllSectionsValue = mergeBlockerRequireAllSectionsInput
+    ? !!mergeBlockerRequireAllSectionsInput.checked
+    : true;
+  const mergeBlockerRequireSectionMatchValue = mergeBlockerRequireSectionMatchInput
+    ? !!mergeBlockerRequireSectionMatchInput.checked
+    : true;
   const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
   const openAiAccountIdsValue = openAiAccountIdsInput
     ? normalizeOpenAiAccountIdsCsv(openAiAccountIdsInput.value).join(',')
@@ -1095,6 +1164,22 @@ function buildRequestBody(dryRun) {
     if (openAiAccountIdValue.length > 0 || openAiAccountIdsValue.length > 0) {
       body.openAIAccountRotation = openAiAccountRotationValue;
       body.openAIAccountFailover = openAiAccountFailoverValue;
+    }
+  }
+  if (wantReviewTweaks) {
+    if (reviewIntentValue.length > 0) body.reviewIntent = reviewIntentValue;
+    if (reviewStrictnessValue.length > 0) body.reviewStrictness = reviewStrictnessValue;
+    if (reviewLoopPolicyValue.length > 0) body.reviewLoopPolicy = reviewLoopPolicyValue;
+    if (reviewVisionPathValue.length > 0) body.reviewVisionPath = reviewVisionPathValue;
+    if (mergeBlockerSectionsValue.length > 0) body.mergeBlockerSections = mergeBlockerSectionsValue;
+    const includeMergeBlockerBooleans =
+      reviewLoopPolicyValue.length > 0 ||
+      mergeBlockerSectionsValue.length > 0 ||
+      !mergeBlockerRequireAllSectionsValue ||
+      !mergeBlockerRequireSectionMatchValue;
+    if (includeMergeBlockerBooleans) {
+      body.mergeBlockerRequireAllSections = mergeBlockerRequireAllSectionsValue;
+      body.mergeBlockerRequireSectionMatch = mergeBlockerRequireSectionMatchValue;
     }
   }
   if (wantAnalysis) {
@@ -1636,15 +1721,18 @@ if (repo) repo.addEventListener('input', updateRepoCount);
 configJson.addEventListener('input', () => {
   if (configJson.value.trim()) withConfig.checked = true;
   updateAnalysisControls();
+  updateReviewConfigControls();
   updateOpenAiAccountControls();
 });
 configPath.addEventListener('input', () => {
   if (configPath.value.trim()) withConfig.checked = true;
   updateAnalysisControls();
+  updateReviewConfigControls();
   updateOpenAiAccountControls();
 });
 withConfig.addEventListener('change', () => {
   updateAnalysisControls();
+  updateReviewConfigControls();
   updateOpenAiAccountControls();
 });
 
@@ -1669,6 +1757,31 @@ function updateAnalysisControls() {
 }
 if (analysisEnabled) analysisEnabled.addEventListener('change', updateAnalysisControls);
 updateAnalysisControls();
+
+function updateReviewConfigControls() {
+  const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
+  const applicable = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
+  const visionPolicySelected = reviewLoopPolicy && reviewLoopPolicy.value === 'vision';
+
+  if (reviewIntentInput) reviewIntentInput.disabled = !applicable;
+  if (reviewStrictnessInput) reviewStrictnessInput.disabled = !applicable;
+  if (reviewLoopPolicy) reviewLoopPolicy.disabled = !applicable;
+  if (reviewVisionPathInput) reviewVisionPathInput.disabled = !applicable || !visionPolicySelected;
+  if (mergeBlockerSectionsInput) mergeBlockerSectionsInput.disabled = !applicable;
+  if (mergeBlockerRequireAllSectionsInput) mergeBlockerRequireAllSectionsInput.disabled = !applicable;
+  if (mergeBlockerRequireSectionMatchInput) mergeBlockerRequireSectionMatchInput.disabled = !applicable;
+
+  const hint = $('mergeBlockerHint');
+  if (hint) {
+    hint.textContent = applicable
+      ? (visionPolicySelected
+        ? 'Use this to match your repo review contract and no-blockers thread sweep behavior. Vision path is used for intent/strictness inference.'
+        : 'Use this to match your repo review contract and no-blockers thread sweep behavior. Vision path is available when loop policy is vision.')
+      : 'Review strictness, vision, and merge-blocker loop settings apply only when generating reviewer config (no Config JSON/path override).';
+  }
+}
+updateReviewConfigControls();
+if (reviewLoopPolicy) reviewLoopPolicy.addEventListener('change', updateReviewConfigControls);
 
 function updateOpenAiAccountControls() {
   const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);

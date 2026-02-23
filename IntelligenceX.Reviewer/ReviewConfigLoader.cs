@@ -154,6 +154,11 @@ internal static class ReviewConfigLoader {
             settings.Focus = focus;
         }
 
+        var mergeBlockerSections = ReadStringList(obj, "mergeBlockerSections");
+        if (mergeBlockerSections is not null) {
+            settings.MergeBlockerSections = ReviewSettings.NormalizeMergeBlockerSections(mergeBlockerSections);
+        }
+
         var skipTitles = ReadStringList(obj, "skipTitles");
         if (skipTitles is not null) {
             settings.SkipTitles = skipTitles;
@@ -223,6 +228,10 @@ internal static class ReviewConfigLoader {
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {
         settings.IncludeNextSteps = ReadBool(obj, "includeNextSteps", settings.IncludeNextSteps);
+        settings.MergeBlockerRequireAllSections =
+            ReadBool(obj, "mergeBlockerRequireAllSections", settings.MergeBlockerRequireAllSections);
+        settings.MergeBlockerRequireSectionMatch =
+            ReadBool(obj, "mergeBlockerRequireSectionMatch", settings.MergeBlockerRequireSectionMatch);
         settings.IncludeLanguageHints = ReadBool(obj, "languageHints", settings.IncludeLanguageHints);
         settings.ReviewBudgetSummary = ReadBool(obj, "reviewBudgetSummary", settings.ReviewBudgetSummary);
         settings.OverwriteSummary = ReadBool(obj, "overwriteSummary", settings.OverwriteSummary);

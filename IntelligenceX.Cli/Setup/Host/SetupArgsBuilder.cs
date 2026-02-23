@@ -98,9 +98,44 @@ internal static class SetupArgsBuilder {
             args.Add(plan.OpenAIAccountFailover.Value ? "true" : "false");
         }
 
+        if (!string.IsNullOrWhiteSpace(plan.ReviewIntent)) {
+            args.Add("--review-intent");
+            args.Add(plan.ReviewIntent);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.ReviewStrictness)) {
+            args.Add("--review-strictness");
+            args.Add(plan.ReviewStrictness);
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.ReviewProfile)) {
             args.Add("--review-profile");
             args.Add(plan.ReviewProfile);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.ReviewLoopPolicy)) {
+            args.Add("--review-loop-policy");
+            args.Add(plan.ReviewLoopPolicy);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.ReviewVisionPath)) {
+            args.Add("--review-vision-path");
+            args.Add(plan.ReviewVisionPath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.MergeBlockerSections)) {
+            args.Add("--merge-blocker-sections");
+            args.Add(plan.MergeBlockerSections);
+        }
+
+        if (plan.MergeBlockerRequireAllSections.HasValue) {
+            args.Add("--merge-blocker-require-all-sections");
+            args.Add(plan.MergeBlockerRequireAllSections.Value ? "true" : "false");
+        }
+
+        if (plan.MergeBlockerRequireSectionMatch.HasValue) {
+            args.Add("--merge-blocker-require-section-match");
+            args.Add(plan.MergeBlockerRequireSectionMatch.Value ? "true" : "false");
         }
 
         if (!string.IsNullOrWhiteSpace(plan.ReviewMode)) {

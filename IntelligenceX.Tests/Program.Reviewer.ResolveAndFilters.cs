@@ -357,6 +357,25 @@ internal static partial class Program {
         }
     }
 
+    private static void TestPromptBuilderMergeBlockerSectionsDefault() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings();
+        var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+        AssertContainsText(prompt, "Merge-blocker sections: todo list, critical issues.",
+            "prompt merge blocker default sections");
+    }
+
+    private static void TestPromptBuilderMergeBlockerSectionsClaudeDefault() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings {
+            OutputStyle = "claude"
+        };
+        var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+        AssertContainsText(prompt, "Merge-blocker sections: todo list.", "prompt merge blocker claude sections");
+    }
+
     private static void TestRedactionDefaults() {
         var settings = new ReviewSettings { RedactPii = true };
         var input = "Authorization: Bearer abc123";

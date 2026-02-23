@@ -189,6 +189,50 @@ internal static partial class Program {
             "web setup args analysis run strict omitted for config override");
     }
 
+    private static void TestWebSetupBuildSetupArgsPropagatesReviewConfigTweaks() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForReviewConfigTweaksTests(
+            reviewIntent: "maintainability",
+            reviewStrictness: "strict",
+            reviewLoopPolicy: "vision",
+            reviewVisionPath: "VISION.md",
+            mergeBlockerSections: "Todo List,Critical Issues",
+            mergeBlockerRequireAllSections: false,
+            mergeBlockerRequireSectionMatch: false);
+
+        AssertEqual(true, Array.IndexOf(args, "--review-intent") >= 0,
+            "web setup args review intent flag");
+        AssertEqual(true, Array.IndexOf(args, "--review-strictness") >= 0,
+            "web setup args review strictness flag");
+        AssertEqual(true, Array.IndexOf(args, "--review-loop-policy") >= 0,
+            "web setup args review loop policy flag");
+        AssertEqual(true, Array.IndexOf(args, "--review-vision-path") >= 0,
+            "web setup args review vision path flag");
+        AssertEqual(true, Array.IndexOf(args, "--merge-blocker-sections") >= 0,
+            "web setup args merge blocker sections flag");
+        AssertEqual(true, Array.IndexOf(args, "--merge-blocker-require-all-sections") >= 0,
+            "web setup args merge blocker require all sections flag");
+        AssertEqual(true, Array.IndexOf(args, "--merge-blocker-require-section-match") >= 0,
+            "web setup args merge blocker require section match flag");
+
+        var intentIndex = Array.IndexOf(args, "--review-intent");
+        var strictnessIndex = Array.IndexOf(args, "--review-strictness");
+        var policyIndex = Array.IndexOf(args, "--review-loop-policy");
+        var visionPathIndex = Array.IndexOf(args, "--review-vision-path");
+        var sectionsIndex = Array.IndexOf(args, "--merge-blocker-sections");
+        var requireAllIndex = Array.IndexOf(args, "--merge-blocker-require-all-sections");
+        var requireMatchIndex = Array.IndexOf(args, "--merge-blocker-require-section-match");
+        AssertEqual("maintainability", args[intentIndex + 1], "web setup args review intent value");
+        AssertEqual("strict", args[strictnessIndex + 1], "web setup args review strictness value");
+        AssertEqual("vision", args[policyIndex + 1], "web setup args review loop policy value");
+        AssertEqual("VISION.md", args[visionPathIndex + 1], "web setup args review vision path value");
+        AssertEqual("Todo List,Critical Issues", args[sectionsIndex + 1],
+            "web setup args merge blocker sections value");
+        AssertEqual("false", args[requireAllIndex + 1],
+            "web setup args merge blocker require all sections value");
+        AssertEqual("false", args[requireMatchIndex + 1],
+            "web setup args merge blocker require section match value");
+    }
+
     private static void TestWebSetupBuildSetupArgsPropagatesTriageBootstrap() {
         var enabled = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForTriageBootstrapTests(triageBootstrap: true);
         AssertEqual(true, Array.IndexOf(enabled, "--triage-bootstrap") >= 0,
@@ -305,6 +349,90 @@ internal static partial class Program {
         AssertContainsText(result.Error ?? string.Empty,
             "only supported for setup when generating config from presets",
             "web setup analysis validation run strict config override error");
+    }
+
+    private static void TestWebSetupReviewConfigValidationNormalizesLoopPolicy() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateReviewConfigForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            reviewIntent: " maintainability ",
+            reviewStrictness: " strict ",
+            reviewLoopPolicy: "Vision",
+            reviewVisionPath: " VISION.md ",
+            mergeBlockerSections: "Todo List, Critical Issues,Todo List",
+            mergeBlockerRequireAllSections: false,
+            mergeBlockerRequireSectionMatch: true);
+        AssertEqual(true, result.Success, "web setup review config validation success");
+        AssertEqual("maintainability", result.NormalizedReviewIntent,
+            "web setup review config validation normalized intent");
+        AssertEqual("strict", result.NormalizedReviewStrictness,
+            "web setup review config validation normalized strictness");
+        AssertEqual("vision", result.NormalizedReviewLoopPolicy,
+            "web setup review config validation normalized loop policy");
+        AssertEqual("VISION.md", result.NormalizedReviewVisionPath,
+            "web setup review config validation normalized vision path");
+        AssertEqual("Todo List,Critical Issues", result.NormalizedMergeBlockerSections,
+            "web setup review config validation normalized sections");
+        AssertEqual(false, result.NormalizedMergeBlockerRequireAllSections,
+            "web setup review config validation normalized require all");
+        AssertEqual(true, result.NormalizedMergeBlockerRequireSectionMatch,
+            "web setup review config validation normalized require match");
+    }
+
+    private static void TestWebSetupReviewConfigValidationRejectsOutsidePresetGeneration() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateReviewConfigForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: true,
+            reviewIntent: null,
+            reviewStrictness: null,
+            reviewLoopPolicy: "vision",
+            reviewVisionPath: null,
+            mergeBlockerSections: null,
+            mergeBlockerRequireAllSections: null,
+            mergeBlockerRequireSectionMatch: null);
+        AssertEqual(false, result.Success,
+            "web setup review config validation rejects config override");
+        AssertContainsText(result.Error ?? string.Empty,
+            "only supported for setup when generating config from presets",
+            "web setup review config validation outside preset generation error");
+    }
+
+    private static void TestWebSetupReviewConfigValidationRejectsInvalidLoopPolicy() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateReviewConfigForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            reviewIntent: null,
+            reviewStrictness: null,
+            reviewLoopPolicy: "invalid",
+            reviewVisionPath: null,
+            mergeBlockerSections: null,
+            mergeBlockerRequireAllSections: null,
+            mergeBlockerRequireSectionMatch: null);
+        AssertEqual(false, result.Success, "web setup review config validation invalid loop policy rejected");
+        AssertContainsText(result.Error ?? string.Empty,
+            "must be one of",
+            "web setup review config validation invalid loop policy error");
+    }
+
+    private static void TestWebSetupReviewConfigValidationRejectsVisionPathWithoutVisionPolicy() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateReviewConfigForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            reviewIntent: null,
+            reviewStrictness: null,
+            reviewLoopPolicy: "balanced",
+            reviewVisionPath: "VISION.md",
+            mergeBlockerSections: null,
+            mergeBlockerRequireAllSections: null,
+            mergeBlockerRequireSectionMatch: null);
+        AssertEqual(false, result.Success, "web setup review config validation vision path requires vision policy");
+        AssertContainsText(result.Error ?? string.Empty,
+            "requires reviewLoopPolicy=vision",
+            "web setup review config validation vision path policy error");
     }
 
     private static void TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails() {
