@@ -185,6 +185,8 @@ public sealed class ChatServiceClient : IAsyncDisposable {
 
             return JsonSerializer.Deserialize(sanitizedJson, ChatServiceJsonContext.Default.ChatServiceMessage);
         } catch {
+            // Intentional fail-open behavior: if salvage parsing fails, drop only this frame
+            // and let the read loop continue rather than faulting the entire client session.
             return null;
         }
     }

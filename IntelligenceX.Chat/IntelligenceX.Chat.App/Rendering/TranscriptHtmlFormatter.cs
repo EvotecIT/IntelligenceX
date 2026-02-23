@@ -182,11 +182,8 @@ internal static class TranscriptHtmlFormatter {
             return Array.Empty<string>();
         }
 
-        var startIndex = timeline.Count > MaxAssistantTurnTraceEntries
-            ? timeline.Count - MaxAssistantTurnTraceEntries
-            : 0;
         var normalized = new List<string>(Math.Min(timeline.Count, MaxAssistantTurnTraceEntries));
-        for (var i = startIndex; i < timeline.Count; i++) {
+        for (var i = timeline.Count - 1; i >= 0 && normalized.Count < MaxAssistantTurnTraceEntries; i--) {
             var item = (timeline[i] ?? string.Empty).Trim();
             if (item.Length == 0) {
                 continue;
@@ -195,6 +192,7 @@ internal static class TranscriptHtmlFormatter {
             normalized.Add(item);
         }
 
+        normalized.Reverse();
         return normalized.Count == 0 ? Array.Empty<string>() : normalized;
     }
 
