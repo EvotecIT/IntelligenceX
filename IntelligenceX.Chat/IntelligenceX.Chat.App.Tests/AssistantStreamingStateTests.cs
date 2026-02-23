@@ -17,6 +17,7 @@ public sealed class AssistantStreamingStateTests {
         var preview = state.AppendDeltaAndNormalizePreview("hello");
 
         Assert.True(state.HasReceivedDelta());
+        Assert.False(state.HasReceivedProvisionalDelta());
         Assert.True(state.HasBufferedContent());
         Assert.Contains("hello", preview, StringComparison.Ordinal);
     }
@@ -24,13 +25,27 @@ public sealed class AssistantStreamingStateTests {
     [Fact]
     public void Reset_ClearsBufferedContentAndDeltaFlag() {
         var state = new AssistantStreamingState();
-        state.AppendDeltaAndNormalizePreview("partial");
+        state.AppendDeltaAndNormalizePreview("partial", fromProvisionalEvent: true);
 
         state.Reset();
 
         Assert.False(state.HasReceivedDelta());
+        Assert.False(state.HasReceivedProvisionalDelta());
         Assert.False(state.HasBufferedContent());
         Assert.Equal(string.Empty, state.SnapshotNormalizedPreview());
+    }
+
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_TracksProvisionalFragmentsSeparately() {
+        var state = new AssistantStreamingState();
+        state.AppendDeltaAndNormalizePreview("delta-1");
+
+        Assert.False(state.HasReceivedProvisionalDelta());
+
+        state.AppendDeltaAndNormalizePreview("prov-1", fromProvisionalEvent: true);
+
+        Assert.True(state.HasReceivedDelta());
+        Assert.True(state.HasReceivedProvisionalDelta());
     }
 
     [Fact]

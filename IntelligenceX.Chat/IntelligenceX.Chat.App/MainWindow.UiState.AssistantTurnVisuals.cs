@@ -144,8 +144,16 @@ public sealed partial class MainWindow : Window {
                 return false;
             }
 
-            return _activeTurnUsesProvisionalEvents;
+            return ShouldSuppressChatDeltaWhenProvisionalPreferred(
+                _activeTurnUsesProvisionalEvents,
+                _assistantStreamingState.HasReceivedProvisionalDelta());
         }
+    }
+
+    internal static bool ShouldSuppressChatDeltaWhenProvisionalPreferred(
+        bool provisionalModePreferredForTurn,
+        bool hasReceivedProvisionalFragment) {
+        return provisionalModePreferredForTurn && hasReceivedProvisionalFragment;
     }
 
     private bool ApplyFinalAssistantTurnTimeline(ConversationRuntime conversation, IReadOnlyList<TurnTimelineEventDto>? timelineEvents) {

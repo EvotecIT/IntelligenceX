@@ -41,8 +41,8 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
                     if (ShouldUseProvisionalEventsForActiveTurn(requestConversation)) {
-                        // Provisional events are preferred when available to avoid double-appending
-                        // the same streamed fragment from both chat_delta and assistant_provisional.
+                        // Once at least one provisional fragment has been observed for this turn,
+                        // prefer provisional events to avoid double-appending duplicate content.
                         break;
                     }
 
@@ -185,7 +185,9 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var normalizedPreview = _assistantStreamingState.AppendDeltaAndNormalizePreview(delta);
+        var normalizedPreview = _assistantStreamingState.AppendDeltaAndNormalizePreview(
+            delta,
+            fromProvisionalEvent: preferProvisionalEvents);
         ReplaceLastAssistantText(
             conversation,
             normalizedPreview);
