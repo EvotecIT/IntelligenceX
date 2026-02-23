@@ -25,8 +25,8 @@ Screenshots below are sourced from current blog/gallery assets and mirrored unde
 
 AI PR reviewer for actionable findings, merge-blocking triage, and cleaner review loops.
 
-- Docs: `Docs/reviewer/overview.md`
-- Blog: `Website/content/blog/ix-reviewer-in-action.md`
+- Docs: [https://intelligencex.dev/docs/reviewer/overview/](https://intelligencex.dev/docs/reviewer/overview/)
+- Blog: [https://intelligencex.dev/blog/ix-reviewer-in-action/](https://intelligencex.dev/blog/ix-reviewer-in-action/)
 
 Picture 1:
 
@@ -42,9 +42,9 @@ Windows tray chat app with provider/runtime selection and tool-calling support f
 
 Warning: IX Chat is experimental and not intended for production operations. Use in dev/test environments only with human review in the loop.
 
-- Docs: `Docs/chat/overview.md`
-- Blog: `Website/content/blog/chat-flow-and-options.md`
-- Blog: `Website/content/blog/multilanguage-support-in-action.md`
+- Docs: [https://intelligencex.dev/docs/chat/overview/](https://intelligencex.dev/docs/chat/overview/)
+- Blog: [https://intelligencex.dev/blog/chat-flow-and-options/](https://intelligencex.dev/blog/chat-flow-and-options/)
+- Blog: [https://intelligencex.dev/blog/multilanguage-support-in-action/](https://intelligencex.dev/blog/multilanguage-support-in-action/)
 
 Picture 1:
 
@@ -58,9 +58,9 @@ Picture 2:
 
 Tool packs for event/AD/system workflows used by IX Chat and custom integrations.
 
-- Docs: `Docs/tools/overview.md`
-- Docs: `Docs/library/tool-packs.md`
-- Blog: `Website/content/blog/event-viewer-in-action.md`
+- Docs: [https://intelligencex.dev/docs/tools/overview/](https://intelligencex.dev/docs/tools/overview/)
+- Docs: [https://intelligencex.dev/docs/library/tool-packs/](https://intelligencex.dev/docs/library/tool-packs/)
+- Blog: [https://intelligencex.dev/blog/event-viewer-in-action/](https://intelligencex.dev/blog/event-viewer-in-action/)
 
 Picture 1:
 
@@ -74,9 +74,9 @@ Picture 2:
 
 Project board and issue triage workflows for handling blockers, confidence signals, and follow-up actions.
 
-- Docs: `Docs/project-ops/overview.md`
-- Docs: `Docs/reviewer/projects-pr-monitoring.md`
-- Blog: `Website/content/blog/ix-issue-ops-in-action.md`
+- Docs: [https://intelligencex.dev/docs/project-ops/overview/](https://intelligencex.dev/docs/project-ops/overview/)
+- Docs: [https://intelligencex.dev/docs/reviewer/projects-pr-monitoring/](https://intelligencex.dev/docs/reviewer/projects-pr-monitoring/)
+- Blog: [https://intelligencex.dev/blog/ix-issue-ops-in-action/](https://intelligencex.dev/blog/ix-issue-ops-in-action/)
 
 Picture 1:
 
@@ -90,10 +90,10 @@ Picture 2:
 
 Developer-facing interfaces for setup automation, embedding IntelligenceX in .NET apps, and scripting in PowerShell.
 
-- Docs: `Docs/cli/overview.md`
-- Docs: `Docs/library/overview.md`
-- Docs: `Docs/powershell/overview.md`
-- Blog: `Website/content/blog/setup-best-practices-for-teams.md`
+- Docs: [https://intelligencex.dev/docs/cli/overview/](https://intelligencex.dev/docs/cli/overview/)
+- Docs: [https://intelligencex.dev/docs/library/overview/](https://intelligencex.dev/docs/library/overview/)
+- Docs: [https://intelligencex.dev/docs/powershell/overview/](https://intelligencex.dev/docs/powershell/overview/)
+- Blog: [https://intelligencex.dev/blog/setup-best-practices-for-teams/](https://intelligencex.dev/blog/setup-best-practices-for-teams/)
 
 Picture 1:
 
@@ -132,15 +132,15 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- se
 
 ## Documentation
 
-- Start here: `Docs/getting-started.md`
-- Reviewer: `Docs/reviewer/overview.md`
-- IX Chat: `Docs/chat/overview.md`
-- Tools: `Docs/tools/overview.md`
-- CLI: `Docs/cli/overview.md`
-- .NET library: `Docs/library/overview.md`
-- PowerShell: `Docs/powershell/overview.md`
-- Project Ops: `Docs/project-ops/overview.md`
-- Security: `Docs/security.md`
+- Start here: [https://intelligencex.dev/docs/getting-started/](https://intelligencex.dev/docs/getting-started/)
+- Reviewer: [https://intelligencex.dev/docs/reviewer/overview/](https://intelligencex.dev/docs/reviewer/overview/)
+- IX Chat: [https://intelligencex.dev/docs/chat/overview/](https://intelligencex.dev/docs/chat/overview/)
+- Tools: [https://intelligencex.dev/docs/tools/overview/](https://intelligencex.dev/docs/tools/overview/)
+- CLI: [https://intelligencex.dev/docs/cli/overview/](https://intelligencex.dev/docs/cli/overview/)
+- .NET library: [https://intelligencex.dev/docs/library/overview/](https://intelligencex.dev/docs/library/overview/)
+- PowerShell: [https://intelligencex.dev/docs/powershell/overview/](https://intelligencex.dev/docs/powershell/overview/)
+- Project Ops: [https://intelligencex.dev/docs/project-ops/overview/](https://intelligencex.dev/docs/project-ops/overview/)
+- Security: [https://intelligencex.dev/docs/security/](https://intelligencex.dev/docs/security/)
 
 ## Repository Layout
 
