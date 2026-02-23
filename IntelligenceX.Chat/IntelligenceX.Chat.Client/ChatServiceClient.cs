@@ -161,16 +161,17 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         SignalDisconnected();
     }
 
-    internal static ChatServiceMessage? TryDeserializeMessageLine(string line) {
+    internal static ChatServiceMessage? TryDeserializeMessageLine(string line, Func<string, ChatServiceMessage?>? primaryDeserializer = null) {
         if (string.IsNullOrWhiteSpace(line)) {
             return null;
         }
 
         try {
-            return JsonSerializer.Deserialize(line, ChatServiceJsonContext.Default.ChatServiceMessage);
-        } catch (JsonException) {
-            return TryDeserializeChatResultWithoutTimeline(line);
-        } catch (ArgumentException) {
+            var deserialize = primaryDeserializer ?? (static input =>
+                JsonSerializer.Deserialize(input, ChatServiceJsonContext.Default.ChatServiceMessage));
+            return deserialize(line);
+        } catch (Exception) {
+            // Resilience path: preserve chat_result text when optional timeline metadata is malformed.
             return TryDeserializeChatResultWithoutTimeline(line);
         }
     }

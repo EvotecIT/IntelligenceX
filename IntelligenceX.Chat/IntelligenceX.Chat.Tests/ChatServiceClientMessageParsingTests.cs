@@ -113,4 +113,34 @@ public sealed class ChatServiceClientMessageParsingTests {
 
         Assert.Null(parsed);
     }
+
+    /// <summary>
+    /// Ensures fallback still runs when primary deserializer throws a non-JSON exception type.
+    /// </summary>
+    [Fact]
+    public void TryDeserializeMessageLine_RecoversWhenPrimaryDeserializerThrowsInvalidOperationException() {
+        const string line = """
+            {
+              "type":"chat_result",
+              "kind":"response",
+              "requestId":"req_parse_invalid_operation",
+              "threadId":"thread_parse_invalid_operation",
+              "text":"Recovered via fallback",
+              "turnTimelineEvents":[
+                {
+                  "status":"phase_plan",
+                  "atUtc":"2026-02-23T11:12:13"
+                }
+              ]
+            }
+            """;
+
+        var parsed = ChatServiceClient.TryDeserializeMessageLine(
+            line,
+            _ => throw new InvalidOperationException("Injected parser failure for fallback test."));
+
+        var result = Assert.IsType<ChatResultMessage>(parsed);
+        Assert.Equal("Recovered via fallback", result.Text);
+        Assert.Null(result.TurnTimelineEvents);
+    }
 }
