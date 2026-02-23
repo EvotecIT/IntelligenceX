@@ -365,6 +365,8 @@ public sealed record ChatAssistantProvisionalMessage : ChatServiceMessage {
 /// Structured timeline event captured for a turn.
 /// </summary>
 public sealed record TurnTimelineEventDto {
+    private readonly DateTime _atUtc;
+
     /// <summary>
     /// Status code emitted for this timeline event.
     /// </summary>
@@ -388,7 +390,18 @@ public sealed record TurnTimelineEventDto {
     /// <summary>
     /// UTC timestamp when the event was captured.
     /// </summary>
-    public DateTime AtUtc { get; init; }
+    public DateTime AtUtc {
+        get => _atUtc;
+        init => _atUtc = NormalizeUtc(value);
+    }
+
+    private static DateTime NormalizeUtc(DateTime value) {
+        return value.Kind switch {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
+    }
 }
 
 /// <summary>
