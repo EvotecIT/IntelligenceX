@@ -23,6 +23,9 @@
     [switch] $OpenAINoStream,
     [switch] $OpenAIAllowInsecureHttp,
     [switch] $OpenAIAllowInsecureHttpNonLoopback,
+    [string] $ScenarioFile,
+    [string] $ScenarioOutput,
+    [switch] $ScenarioContinueOnError,
     [string[]] $ExtraArgs
 )
 
@@ -119,6 +122,15 @@ if ($OpenAIAllowInsecureHttp) {
 }
 if ($OpenAIAllowInsecureHttpNonLoopback) {
     $runArgs += '--openai-allow-insecure-http-non-loopback'
+}
+if (-not [string]::IsNullOrWhiteSpace($ScenarioFile)) {
+    $runArgs += @('--scenario-file', $ScenarioFile)
+}
+if (-not [string]::IsNullOrWhiteSpace($ScenarioOutput)) {
+    $runArgs += @('--scenario-output', $ScenarioOutput)
+}
+if ($ScenarioContinueOnError) {
+    $runArgs += '--scenario-continue-on-error'
 }
 if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
     $runArgs += $ExtraArgs

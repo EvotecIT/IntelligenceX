@@ -86,8 +86,7 @@ internal static partial class Program {
         };
 
         try {
-            await RunAsync(options, packs, cts.Token).ConfigureAwait(false);
-            return 0;
+            return await RunAsync(options, packs, cts.Token).ConfigureAwait(false);
         } catch (OpenAIUserCanceledLoginException) {
             Console.WriteLine();
             Console.WriteLine("Login canceled.");
@@ -99,7 +98,7 @@ internal static partial class Program {
         }
     }
 
-    private static async Task RunAsync(ReplOptions options, IReadOnlyList<IToolPack> packs, CancellationToken cancellationToken) {
+    private static async Task<int> RunAsync(ReplOptions options, IReadOnlyList<IToolPack> packs, CancellationToken cancellationToken) {
         IntelligenceXClient? client = null;
         ToolRegistry? registry = null;
         ReplSession? session = null;
@@ -209,6 +208,10 @@ internal static partial class Program {
         try {
             await BuildRuntimeAsync().ConfigureAwait(false);
 
+            if (!string.IsNullOrWhiteSpace(options.ScenarioFile)) {
+                return await RunScenarioFileAsync(session!, options, cancellationToken).ConfigureAwait(false);
+            }
+
             while (true) {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -231,7 +234,7 @@ internal static partial class Program {
                     switch (cmd) {
                         case "/exit":
                         case "/quit":
-                            return;
+                            return 0;
                         case "/help":
                             WriteHelp();
                             continue;
@@ -415,6 +418,8 @@ internal static partial class Program {
                     Console.WriteLine();
                 }
             }
+
+            return 0;
         } finally {
             if (client is not null) {
                 try {
@@ -507,6 +512,9 @@ internal static partial class Program {
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --auth-path <PATH>      Override auth store path (default: %USERPROFILE%\\.intelligencex\\auth.json).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
+        Console.WriteLine("  --scenario-file <PATH>  Run a non-interactive multi-turn scenario (JSON or line-based text) and exit.");
+        Console.WriteLine("  --scenario-output <PATH>  Write scenario run report markdown (default: artifacts/chat-scenarios).");
+        Console.WriteLine("  --scenario-continue-on-error  Continue remaining scenario turns after a failed turn/assertion.");
         Console.WriteLine("  --ad-domain-controller  Active Directory domain controller host/FQDN (optional).");
         Console.WriteLine("  --ad-search-base        Active Directory base DN (optional; defaultNamingContext used otherwise).");
         Console.WriteLine("  --ad-max-results <N>    Max results returned by AD tools (default: 1000).");

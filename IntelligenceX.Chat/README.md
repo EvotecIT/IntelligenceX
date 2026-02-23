@@ -30,6 +30,20 @@ WinUI app:
 pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
 ```
 
+Local repeatable scenario run (non-interactive, same real host/tools runtime):
+
+```powershell
+pwsh .\Build\Run-Chat.ps1 `
+  -ScenarioFile .\IntelligenceX.Chat\scenarios\ad-reboot-local-10-turn.json `
+  -ScenarioOutput .\artifacts\chat-scenarios
+```
+
+Scenario file formats:
+- JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional `assert_contains`).
+- Plain text where each non-empty line is a user turn (`#` and `//` lines are ignored).
+
+The host writes a markdown run report under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path).
+
 Startup profiling (phase timing from `StartupLog`):
 
 ```powershell

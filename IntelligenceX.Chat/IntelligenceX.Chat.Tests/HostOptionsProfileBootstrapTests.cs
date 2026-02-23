@@ -145,6 +145,27 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.True(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
     }
 
+    [Fact]
+    public void Parse_ScenarioFileAndOutput_AreApplied() {
+        var options = ParseHostOptions(
+            new[] { "--scenario-file", "scenario.json", "--scenario-output", "artifacts\\scenario-report.md" },
+            out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.Equal("scenario.json", ReadStringProperty(options!, "ScenarioFile"));
+        Assert.Equal("artifacts\\scenario-report.md", ReadStringProperty(options!, "ScenarioOutputFile"));
+    }
+
+    [Fact]
+    public void Parse_ScenarioContinueOnError_SetsFlag() {
+        var options = ParseHostOptions(new[] { "--scenario-continue-on-error" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.True(ReadBoolProperty(options!, "ScenarioContinueOnError"));
+    }
+
     private static object? ParseHostOptions(string[] args, out string? error) {
         var replOptionsType = ResolveHostOptionsType();
         var parse = replOptionsType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static);
@@ -182,6 +203,13 @@ public sealed class HostOptionsProfileBootstrapTests {
         var value = property!.GetValue(instance);
         Assert.IsType<int>(value);
         return (int)value!;
+    }
+
+    private static string? ReadStringProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var value = property!.GetValue(instance);
+        return value as string;
     }
 
     private static string CreateTempProfileDbPath() {
