@@ -154,6 +154,7 @@ public sealed partial class MainWindow : Window {
             ChatStatusCodes.PhaseExecute => "Executing plan...",
             ChatStatusCodes.PhaseReview => "Reviewing...",
             ChatStatusCodes.PhaseHeartbeat => "Still working...",
+            ChatStatusCodes.NoResultWatchdogTriggered => "No-result watchdog triggered",
             _ => string.IsNullOrWhiteSpace(status.Status)
                 ? "Working..."
                 : char.ToUpperInvariant(status.Status[0]) + status.Status[1..]
@@ -266,6 +267,7 @@ public sealed partial class MainWindow : Window {
             ChatStatusCodes.PhaseExecute => "execute",
             ChatStatusCodes.PhaseReview => "review",
             ChatStatusCodes.PhaseHeartbeat => "phase wait",
+            ChatStatusCodes.NoResultWatchdogTriggered => "watchdog no-result",
             "completed" => "completed",
             "finished" => "finished",
             "done" => "done",

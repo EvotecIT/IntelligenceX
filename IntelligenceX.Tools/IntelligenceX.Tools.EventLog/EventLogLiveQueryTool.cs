@@ -195,7 +195,23 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
             title: "Live events (preview)",
             baseTruncated: root.Truncated,
             scanned: root.Events.Count,
-            maxTop: MaxViewTop);
+            maxTop: MaxViewTop,
+            metaMutate: meta => {
+                var queryMode = hasStructuredFilters
+                    ? "structured_filters"
+                    : string.IsNullOrWhiteSpace(xpathRaw) || string.Equals(xpathRaw, "*", StringComparison.Ordinal)
+                        ? "wildcard"
+                        : "xpath";
+                AddReadOnlyTriageChainingMeta(
+                    meta: meta,
+                    currentTool: "eventlog_live_query",
+                    logName: logName,
+                    machineName: machineName,
+                    suggestedMaxEvents: maxEvents,
+                    scanned: root.Events.Count,
+                    truncated: root.Truncated,
+                    queryMode: queryMode);
+            });
         return Task.FromResult(response);
     }
 }

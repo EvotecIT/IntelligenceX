@@ -324,7 +324,7 @@ public sealed partial class MainWindow : Window {
         _conversations.Add(conversation);
         ActivateConversation(conversation.Id);
         _threadId = null;
-        _assistantStreaming.Clear();
+        _assistantStreamingState.Reset();
         _activeRequestConversationId = null;
         ClearPendingTurns();
         ClearQueuedPromptsAfterLogin();

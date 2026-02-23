@@ -13,6 +13,7 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// Renders transcript messages into chat-shell HTML.
 /// </summary>
 internal static class TranscriptHtmlFormatter {
+    private const int MaxAssistantTurnTraceEntries = 8;
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
@@ -39,7 +40,7 @@ internal static class TranscriptHtmlFormatter {
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(messages);
-        return Format(ProjectLegacyMessages(messages), timestampFormat, markdownOptions);
+        return Format(ProjectLegacyMessages(messages), timestampFormat, markdownOptions, messageDecorations: null);
     }
 
     /// <summary>
@@ -48,11 +49,13 @@ internal static class TranscriptHtmlFormatter {
     /// <param name="messages">Role/text/time transcript entries.</param>
     /// <param name="timestampFormat">Timestamp format.</param>
     /// <param name="markdownOptions">Markdown renderer options.</param>
+    /// <param name="messageDecorations">Optional per-message decorations keyed by transcript index.</param>
     /// <returns>HTML fragment.</returns>
     public static string Format(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
-        MarkdownRendererOptions markdownOptions) {
+        MarkdownRendererOptions markdownOptions,
+        IReadOnlyDictionary<int, TranscriptMessageDecoration>? messageDecorations = null) {
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
@@ -79,10 +82,17 @@ internal static class TranscriptHtmlFormatter {
             var bodyHtml = string.IsNullOrWhiteSpace(actionExtraction.CleanedText)
                 ? string.Empty
                 : RenderBodyHtml(actionExtraction.CleanedText, markdownOptions);
+            TranscriptMessageDecoration? decoration = null;
+            messageDecorations?.TryGetValue(messageIndex, out decoration);
             if (actionExtraction.Actions.Count > 0) {
                 bodyHtml = AppendPendingActionChips(bodyHtml, actionExtraction.Actions);
             }
             var bubbleClass = "bubble";
+            if (decoration is not null
+                && decoration.IsProvisional
+                && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+                bubbleClass += " bubble-provisional";
+            }
             if (TryRenderOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
                 bodyHtml = calloutHtml;
                 bubbleClass = "bubble bubble-callout";
@@ -109,6 +119,9 @@ internal static class TranscriptHtmlFormatter {
                     .Append(encoder.Encode(modelLabel))
                     .Append("</span></div>");
             }
+            if (TryBuildAssistantTurnTraceHtml(message.Role, decoration, out var traceHtml)) {
+                html.Append(traceHtml);
+            }
             html
                 .Append("<div class='msg-actions'><button class='msg-copy-btn' data-msg-index='").Append(messageIndex).Append("' title='Copy message'>")
                 .Append(CopyButtonIconSvg)
@@ -121,6 +134,66 @@ internal static class TranscriptHtmlFormatter {
         }
 
         return html.ToString();
+    }
+
+    private static bool TryBuildAssistantTurnTraceHtml(string role, TranscriptMessageDecoration? decoration, out string html) {
+        html = string.Empty;
+        if (!string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase) || decoration is null) {
+            return false;
+        }
+
+        var timeline = BuildAssistantTraceTimelineForRendering(decoration.Timeline);
+        var hasTimeline = timeline.Count > 0;
+        if (!decoration.IsProvisional && !hasTimeline) {
+            return false;
+        }
+
+        var encoder = HtmlEncoder.Default;
+        var summaryLabel = hasTimeline ? "Turn trace" : "Live stream";
+        var countLabel = hasTimeline ? timeline.Count.ToString(CultureInfo.InvariantCulture) : string.Empty;
+        var detailsOpen = decoration.IsProvisional ? " open" : string.Empty;
+        var sb = new StringBuilder();
+        sb.Append("<details class='assistant-turn-trace'").Append(detailsOpen).Append(">")
+            .Append("<summary class='assistant-turn-trace-summary'>");
+        if (decoration.IsProvisional) {
+            sb.Append("<span class='assistant-turn-live-pill'>Live</span>");
+        }
+        sb.Append("<span class='assistant-turn-trace-title'>").Append(encoder.Encode(summaryLabel)).Append("</span>");
+        if (countLabel.Length > 0) {
+            sb.Append("<span class='assistant-turn-trace-count'>").Append(encoder.Encode(countLabel)).Append("</span>");
+        }
+        sb.Append("</summary>");
+
+        if (hasTimeline) {
+            sb.Append("<ol class='assistant-turn-trace-list'>");
+            for (var i = 0; i < timeline.Count; i++) {
+                sb.Append("<li>").Append(encoder.Encode(timeline[i])).Append("</li>");
+            }
+            sb.Append("</ol>");
+        }
+
+        sb.Append("</details>");
+        html = sb.ToString();
+        return true;
+    }
+
+    private static IReadOnlyList<string> BuildAssistantTraceTimelineForRendering(IReadOnlyList<string>? timeline) {
+        if (timeline is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(Math.Min(timeline.Count, MaxAssistantTurnTraceEntries));
+        for (var i = timeline.Count - 1; i >= 0 && normalized.Count < MaxAssistantTurnTraceEntries; i--) {
+            var item = (timeline[i] ?? string.Empty).Trim();
+            if (item.Length == 0) {
+                continue;
+            }
+
+            normalized.Add(item);
+        }
+
+        normalized.Reverse();
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized;
     }
 
     private static IEnumerable<(string Role, string Text, DateTime Time, string? Model)> ProjectLegacyMessages(IEnumerable<(string Role, string Text, DateTime Time)> messages) {

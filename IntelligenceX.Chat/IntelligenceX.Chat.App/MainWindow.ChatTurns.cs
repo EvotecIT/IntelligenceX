@@ -69,8 +69,7 @@ public sealed partial class MainWindow : Window {
             return null;
         }
 
-        _assistantStreaming.Clear();
-        _activeTurnReceivedDelta = false;
+        _assistantStreamingState.Reset();
         var transport = NormalizeLocalProviderTransport(_localProviderTransport);
         var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
         var preset = DetectCompatibleProviderPreset(baseUrl);
@@ -303,16 +302,26 @@ public sealed partial class MainWindow : Window {
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
+        _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
+        var appendFinalAfterInterim = HasActiveTurnInterimResult()
+                                      && ShouldAppendFinalAssistantAfterInterim(assistantText, latestAssistantText);
         if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
-                _activeTurnReceivedDelta,
+                _assistantStreamingState.HasReceivedDelta(),
                 assistantText,
-                TryGetLastAssistantText(conversation, out var streamedAssistantText) ? streamedAssistantText : string.Empty,
+                latestAssistantText,
                 out var runtimeWarningNotice)) {
             conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
+        } else if (appendFinalAfterInterim) {
+            // Keep interim and final as separate assistant bubbles only when the final synthesis
+            // materially differs from the interim snapshot. This avoids duplicate bubble inflation.
+            AppendAssistantText(conversation, assistantText);
         } else {
             ReplaceLastAssistantText(conversation, assistantText);
         }
-        _activeTurnReceivedDelta = false;
+        BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
+        ApplyFinalAssistantTurnTimeline(conversation, result.TurnTimelineEvents);
+        _assistantStreamingState.ClearReceivedDelta();
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
             conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now, turn.AssistantModelLabel));
         }
@@ -354,6 +363,8 @@ public sealed partial class MainWindow : Window {
         } else {
             ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
         }
+        BindActiveTurnAssistantMessage(turn.Conversation);
+        SetActiveTurnAssistantProvisional(turn.Conversation, provisional: false, preferProvisionalEvents: false);
 
         turn.Conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(turn.Conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
@@ -365,7 +376,7 @@ public sealed partial class MainWindow : Window {
 
     private bool TryGetPartialTurnFailureNotice(ConversationRuntime conversation, AssistantTurnOutcome outcome, out string notice) {
         notice = string.Empty;
-        if (!_activeTurnReceivedDelta) {
+        if (!_assistantStreamingState.HasReceivedDelta()) {
             return false;
         }
 
@@ -392,7 +403,7 @@ public sealed partial class MainWindow : Window {
             _ =>
                 "Partial response shown above. The turn ended before completion."
         };
-        _activeTurnReceivedDelta = false;
+        _assistantStreamingState.ClearReceivedDelta();
         return true;
     }
 
@@ -442,6 +453,20 @@ public sealed partial class MainWindow : Window {
         }
 
         return normalized.StartsWith("[warning] No response text was produced", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool ShouldAppendFinalAssistantAfterInterim(string? finalAssistantText, string? interimAssistantText) {
+        var finalText = (finalAssistantText ?? string.Empty).Trim();
+        if (finalText.Length == 0) {
+            return false;
+        }
+
+        var interimText = (interimAssistantText ?? string.Empty).Trim();
+        if (interimText.Length == 0) {
+            return true;
+        }
+
+        return !string.Equals(finalText, interimText, StringComparison.Ordinal);
     }
 
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {

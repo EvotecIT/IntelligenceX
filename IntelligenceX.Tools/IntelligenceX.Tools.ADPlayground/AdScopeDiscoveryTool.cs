@@ -502,20 +502,83 @@ public sealed class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
                 suggestedArguments: ToolChainingHints.Map(
                     ("forest_name", effectiveForest ?? string.Empty),
                     ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName))),
+                    ("discovery_fallback", fallbackName)),
+                mutating: false),
             ToolChainingHints.NextAction(
                 tool: "ad_monitoring_probe_catalog",
-                reason: "Pick the best probe_kind before running deeper health checks.")
+                reason: "Pick the best probe_kind before running deeper health checks.",
+                mutating: false)
         };
 
         if (!string.IsNullOrWhiteSpace(effectiveDomain) || domainControllers.Count > 0) {
+            var probeIncludeDcs = domainControllers
+                .Where(static dc => !string.IsNullOrWhiteSpace(dc))
+                .Take(50)
+                .ToArray();
             nextActions.Add(ToolChainingHints.NextAction(
                 tool: "ad_monitoring_probe_run",
                 reason: "Run a replication probe against discovered scope to validate operational health.",
                 suggestedArguments: ToolChainingHints.Map(
                     ("probe_kind", "replication"),
                     ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName))));
+                    ("discovery_fallback", fallbackName)),
+                arguments: ToolChainingHints.MapObject(
+                    ("probe_kind", "replication"),
+                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("discovery_fallback", fallbackName),
+                    ("include_domain_controllers", probeIncludeDcs)),
+                mutating: false));
+        }
+
+        if (domainControllers.Count <= 1) {
+            if (request.DiscoveryFallback != DirectoryDiscoveryFallback.CurrentForest || !request.IncludeTrusts) {
+                nextActions.Add(ToolChainingHints.NextAction(
+                    tool: "ad_scope_discovery",
+                    reason: "expand_scope_via_current_forest_and_trusts_when_domain_controller_inventory_sparse",
+                    suggestedArguments: ToolChainingHints.Map(
+                        ("forest_name", effectiveForest ?? string.Empty),
+                        ("domain_name", effectiveDomain ?? string.Empty),
+                        ("discovery_fallback", "current_forest"),
+                        ("include_trusts", true),
+                        ("max_domains", Math.Max(request.MaxDomains, 500)),
+                        ("max_domain_controllers_total", Math.Max(request.MaxDomainControllersTotal, 5000)),
+                        ("max_domain_controllers_per_domain", Math.Max(request.MaxDomainControllersPerDomain, 500))),
+                    arguments: ToolChainingHints.MapObject(
+                        ("forest_name", effectiveForest ?? string.Empty),
+                        ("domain_name", effectiveDomain ?? string.Empty),
+                        ("discovery_fallback", "current_forest"),
+                        ("include_trusts", true),
+                        ("include_domains", request.IncludeDomains.ToArray()),
+                        ("exclude_domains", request.ExcludeDomains.ToArray()),
+                        ("include_domain_controllers", request.IncludeDomainControllers.ToArray()),
+                        ("exclude_domain_controllers", request.ExcludeDomainControllers.ToArray()),
+                        ("skip_rodc", request.SkipRodc),
+                        ("max_domains", Math.Max(request.MaxDomains, 500)),
+                        ("max_domain_controllers_total", Math.Max(request.MaxDomainControllersTotal, 5000)),
+                        ("max_domain_controllers_per_domain", Math.Max(request.MaxDomainControllersPerDomain, 500))),
+                    mutating: false));
+            }
+
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "ad_domain_controllers",
+                reason: "recover_domain_controller_inventory_via_domain_object_query",
+                suggestedArguments: ToolChainingHints.Map(("max_results", request.MaxDomainControllersPerDomain)),
+                mutating: false));
+
+            var diagnosticsArgs = new List<(string Key, object? Value)> {
+                ("max_issues", 2000),
+                ("include_dns_srv_comparison", true),
+                ("include_host_resolution", true),
+                ("include_directory_topology", true)
+            };
+            if (!string.IsNullOrWhiteSpace(effectiveForest)) {
+                diagnosticsArgs.Add(("forest_name", effectiveForest));
+            }
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "ad_directory_discovery_diagnostics",
+                reason: "compare_ad_dns_topology_receipts_to_explain_missing_domain_controllers",
+                suggestedArguments: ToolChainingHints.Map(diagnosticsArgs.ToArray()),
+                mutating: false));
         }
 
         var failedSteps = steps.Count(static step => !step.Ok);

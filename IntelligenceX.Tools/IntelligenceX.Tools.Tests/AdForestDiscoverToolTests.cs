@@ -40,4 +40,64 @@ public sealed class AdForestDiscoverToolTests {
         Assert.True(checkpoint.TryGetProperty("domains", out _));
         Assert.InRange(confidence.GetDouble(), 0d, 1d);
     }
+
+    [Fact]
+    public async Task InvokeAsync_WhenFallbackCurrentDomain_EmitsTypedArgumentsForProbeRunNextAction() {
+        var tool = new AdForestDiscoverTool(new ActiveDirectoryToolOptions());
+
+        var json = await tool.InvokeAsync(
+            arguments: new JsonObject()
+                .Add("discovery_fallback", "current_domain"),
+            cancellationToken: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        var nextActions = root.GetProperty("next_actions");
+        JsonElement? probeRunAction = null;
+        foreach (var action in nextActions.EnumerateArray()) {
+            if (string.Equals(action.GetProperty("tool").GetString(), "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase)) {
+                probeRunAction = action;
+                break;
+            }
+        }
+
+        Assert.True(probeRunAction.HasValue);
+        var arguments = probeRunAction.Value.GetProperty("arguments");
+        Assert.Equal(global::System.Text.Json.JsonValueKind.Object, arguments.ValueKind);
+        Assert.True(arguments.TryGetProperty("include_domain_controllers", out var includeDomainControllers));
+        Assert.Equal(global::System.Text.Json.JsonValueKind.Array, includeDomainControllers.ValueKind);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenDomainControllerInventorySparse_EmitsForestFallbackExpansionNextAction() {
+        var tool = new AdForestDiscoverTool(new ActiveDirectoryToolOptions());
+
+        var json = await tool.InvokeAsync(
+            arguments: new JsonObject()
+                .Add("discovery_fallback", "current_domain")
+                .Add("include_domain_controllers", new JsonArray().Add("___unlikely_dc_name___")),
+            cancellationToken: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        var nextActions = root.GetProperty("next_actions");
+        JsonElement? expansionAction = null;
+        foreach (var action in nextActions.EnumerateArray()) {
+            if (string.Equals(action.GetProperty("tool").GetString(), "ad_forest_discover", StringComparison.OrdinalIgnoreCase)) {
+                if (action.TryGetProperty("arguments", out var arguments)
+                    && arguments.TryGetProperty("discovery_fallback", out var fallback)
+                    && string.Equals(fallback.GetString(), "current_forest", StringComparison.OrdinalIgnoreCase)) {
+                    expansionAction = action;
+                    break;
+                }
+            }
+        }
+
+        Assert.True(expansionAction.HasValue);
+        var typedArguments = expansionAction.Value.GetProperty("arguments");
+        Assert.True(typedArguments.TryGetProperty("include_trusts", out var includeTrusts));
+        Assert.True(includeTrusts.GetBoolean());
+    }
 }

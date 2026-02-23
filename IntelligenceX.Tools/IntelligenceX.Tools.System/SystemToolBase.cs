@@ -317,6 +317,89 @@ public abstract class SystemToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Adds language-neutral chaining/discovery metadata for read-only system posture tools.
+    /// </summary>
+    protected static void AddReadOnlyPostureChainingMeta(
+        JsonObject meta,
+        string currentTool,
+        string targetComputer,
+        bool isRemoteScope,
+        int scanned,
+        bool truncated) {
+        if (meta is null) {
+            throw new ArgumentNullException(nameof(meta));
+        }
+
+        var normalizedTool = string.IsNullOrWhiteSpace(currentTool) ? "system_info" : currentTool.Trim();
+        var normalizedTarget = ResolveTargetComputerName(targetComputer);
+        var scope = isRemoteScope ? "remote" : "local";
+
+        var nextActions = new List<ToolNextActionModel>();
+        if (string.Equals(normalizedTool, "system_updates_installed", StringComparison.OrdinalIgnoreCase)) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "system_patch_compliance",
+                reason: "Correlate installed updates with monthly MSRC coverage and missing high-risk patches.",
+                suggestedArguments: BuildSystemTargetSuggestedArguments(normalizedTarget, isRemoteScope),
+                mutating: false));
+        } else {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "system_updates_installed",
+                reason: "Baseline installed updates before deeper security posture checks.",
+                suggestedArguments: BuildSystemTargetSuggestedArguments(
+                    normalizedTarget,
+                    isRemoteScope,
+                    ("include_pending_local", false)),
+                mutating: false));
+        }
+
+        nextActions.Add(ToolChainingHints.NextAction(
+            tool: "system_security_options",
+            reason: "Capture registry-backed security-option posture for hardening review.",
+            suggestedArguments: BuildSystemTargetSuggestedArguments(normalizedTarget, isRemoteScope),
+            mutating: false));
+
+        var chain = ToolChainingHints.Create(
+            nextActions: nextActions,
+            confidence: truncated ? 0.70d : 0.88d,
+            checkpoint: ToolChainingHints.Map(
+                ("current_tool", normalizedTool),
+                ("scope", scope),
+                ("computer_name", normalizedTarget),
+                ("rows", scanned),
+                ("truncated", truncated)));
+
+        var nextActionsJson = new JsonArray();
+        for (var i = 0; i < chain.NextActions.Count; i++) {
+            nextActionsJson.Add(ToolJson.ToJsonObjectSnakeCase(chain.NextActions[i]));
+        }
+        meta.Add("next_actions", nextActionsJson);
+        meta.Add("discovery_status", ToolJson.ToJsonObjectSnakeCase(new {
+            scope,
+            computer_name = normalizedTarget,
+            current_tool = normalizedTool,
+            rows = scanned,
+            truncated
+        }));
+        meta.Add("chain_confidence", chain.Confidence);
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildSystemTargetSuggestedArguments(
+        string targetComputer,
+        bool isRemoteScope,
+        params (string Key, object? Value)[] extras) {
+        var entries = new List<(string Key, object? Value)>();
+        if (isRemoteScope) {
+            entries.Add(("computer_name", targetComputer));
+        }
+
+        for (var i = 0; i < extras.Length; i++) {
+            entries.Add(extras[i]);
+        }
+
+        return ToolChainingHints.Map(entries.ToArray());
+    }
+
+    /// <summary>
     /// Builds common facts-view metadata with computer_name and optional extra fields.
     /// </summary>
     protected static JsonObject BuildFactsMeta(

@@ -53,6 +53,46 @@ public class EventLogToolBaseHelperTests {
     }
 
     [Fact]
+    public void AddReadOnlyTriageChainingMeta_ShouldEmitNextActionsAndDiscoveryStatus() {
+        var meta = new JsonObject();
+
+        HarnessTool.AddReadOnlyChaining(
+            meta: meta,
+            currentTool: "eventlog_top_events",
+            logName: "System",
+            machineName: "dc01.contoso.local",
+            suggestedMaxEvents: 10,
+            scanned: 10,
+            truncated: false,
+            queryMode: "top_events");
+
+        var nextActions = meta.GetArray("next_actions");
+        Assert.NotNull(nextActions);
+        Assert.True(nextActions!.Count >= 2);
+
+        var hasLiveQuery = false;
+        var hasLiveStats = false;
+        foreach (var value in nextActions) {
+            var action = value.AsObject();
+            var tool = action?.GetString("tool");
+            if (string.Equals(tool, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)) {
+                hasLiveQuery = true;
+            } else if (string.Equals(tool, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase)) {
+                hasLiveStats = true;
+            }
+        }
+
+        Assert.True(hasLiveQuery);
+        Assert.True(hasLiveStats);
+
+        var discovery = meta.GetObject("discovery_status");
+        Assert.NotNull(discovery);
+        Assert.Equal("remote", discovery!.GetString("scope"));
+        Assert.Equal("System", discovery.GetString("log_name"));
+        Assert.Equal("top_events", discovery.GetString("query_mode"));
+    }
+
+    [Fact]
     public void ResolveSessionTimeoutMs_FromArguments_ShouldClampToBounds() {
         Assert.Null(HarnessTool.ResolveTimeoutFromArguments(arguments: null));
         Assert.Null(HarnessTool.ResolveTimeoutFromArguments(new JsonObject().Add("session_timeout_ms", 0)));
@@ -230,6 +270,26 @@ public class EventLogToolBaseHelperTests {
 
         public static string ResolveXPath(JsonObject? arguments, string argumentName = "xpath", string defaultXPath = "*") {
             return ResolveXPathOrDefault(arguments, argumentName, defaultXPath);
+        }
+
+        public static void AddReadOnlyChaining(
+            JsonObject meta,
+            string currentTool,
+            string logName,
+            string? machineName,
+            int suggestedMaxEvents,
+            int scanned,
+            bool truncated,
+            string queryMode) {
+            AddReadOnlyTriageChainingMeta(
+                meta: meta,
+                currentTool: currentTool,
+                logName: logName,
+                machineName: machineName,
+                suggestedMaxEvents: suggestedMaxEvents,
+                scanned: scanned,
+                truncated: truncated,
+                queryMode: queryMode);
         }
 
         public static string BuildAutoResponse(JsonObject? arguments, AutoModel model, IReadOnlyList<AutoRow> rows) {

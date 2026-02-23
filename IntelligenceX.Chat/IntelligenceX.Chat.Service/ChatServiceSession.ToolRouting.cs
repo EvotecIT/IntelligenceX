@@ -405,15 +405,16 @@ internal sealed partial class ChatServiceSession {
     private void TrimWeightedRoutingContextsNoLock() {
         Debug.Assert(Monitor.IsEntered(_toolRoutingContextLock));
 
-        // Weighted-tool-subset, user-intent, pending-action, and planner-thread contexts share the same
+        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, and planner-thread contexts share the same
         // key space (active thread id), so trim all when any grows beyond its cap.
         var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
         var intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
         var pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
+        var structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
         var plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
         var removeCount = Math.Max(
-            Math.Max(weightedRemoveCount, intentRemoveCount),
-            Math.Max(pendingRemoveCount, plannerRemoveCount));
+            Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
+            plannerRemoveCount);
         if (removeCount <= 0) {
             return;
         }
@@ -442,6 +443,25 @@ internal sealed partial class ChatServiceSession {
                 removedInvalid = true;
             }
         }
+        foreach (var threadId in _structuredNextActionByThreadId.Keys.ToArray()) {
+            if (!_structuredNextActionByThreadId.TryGetValue(threadId, out var snapshot) || snapshot.SeenUtcTicks <= 0) {
+                _structuredNextActionByThreadId.Remove(threadId);
+                removedInvalid = true;
+                continue;
+            }
+
+            if (!TryGetUtcDateTimeFromTicks(snapshot.SeenUtcTicks, out var seenUtc)) {
+                _structuredNextActionByThreadId.Remove(threadId);
+                removedInvalid = true;
+                continue;
+            }
+
+            var age = DateTime.UtcNow - seenUtc;
+            if (age > StructuredNextActionContextMaxAge) {
+                _structuredNextActionByThreadId.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
         foreach (var threadId in _plannerThreadIdByActiveThreadId.Keys.ToArray()) {
             if (!_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(threadId, out var ticks) || ticks <= 0) {
                 _plannerThreadIdByActiveThreadId.Remove(threadId);
@@ -461,10 +481,11 @@ internal sealed partial class ChatServiceSession {
             weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
             intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
             pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
+            structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
             plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
             removeCount = Math.Max(
-                Math.Max(weightedRemoveCount, intentRemoveCount),
-                Math.Max(pendingRemoveCount, plannerRemoveCount));
+                Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
+                plannerRemoveCount);
             if (removeCount <= 0) {
                 return;
             }
@@ -475,6 +496,9 @@ internal sealed partial class ChatServiceSession {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _pendingActionsByThreadId.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+        foreach (var threadId in _structuredNextActionByThreadId.Keys) {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _plannerThreadIdByActiveThreadId.Keys) {
@@ -492,6 +516,10 @@ internal sealed partial class ChatServiceSession {
                 }
                 if (_pendingActionsSeenUtcTicks.TryGetValue(threadId, out var actionTicks) && actionTicks > ticks) {
                     ticks = actionTicks;
+                }
+                if (_structuredNextActionByThreadId.TryGetValue(threadId, out var structuredNextAction)
+                    && structuredNextAction.SeenUtcTicks > ticks) {
+                    ticks = structuredNextAction.SeenUtcTicks;
                 }
                 if (_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(threadId, out var plannerTicks) && plannerTicks > ticks) {
                     ticks = plannerTicks;
@@ -512,6 +540,7 @@ internal sealed partial class ChatServiceSession {
             _pendingActionsByThreadId.Remove(threadId);
             _pendingActionsSeenUtcTicks.Remove(threadId);
             _pendingActionsCallToActionTokensByThreadId.Remove(threadId);
+            _structuredNextActionByThreadId.Remove(threadId);
             _plannerThreadIdByActiveThreadId.Remove(threadId);
             _plannerThreadSeenUtcTicksByActiveThreadId.Remove(threadId);
         }

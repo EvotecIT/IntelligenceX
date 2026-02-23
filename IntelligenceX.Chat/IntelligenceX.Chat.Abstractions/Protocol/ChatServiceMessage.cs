@@ -24,6 +24,8 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(InvokeToolResultMessage), "invoke_tool_result")]
 [JsonDerivedType(typeof(ChatStatusMessage), "chat_status")]
 [JsonDerivedType(typeof(ChatDeltaMessage), "chat_delta")]
+[JsonDerivedType(typeof(ChatAssistantProvisionalMessage), "assistant_provisional")]
+[JsonDerivedType(typeof(ChatInterimResultMessage), "chat_interim_result")]
 [JsonDerivedType(typeof(ChatMetricsMessage), "chat_metrics")]
 [JsonDerivedType(typeof(ChatResultMessage), "chat_result")]
 public abstract record ChatServiceMessage {
@@ -347,6 +349,92 @@ public sealed record ChatDeltaMessage : ChatServiceMessage {
 }
 
 /// <summary>
+/// Streaming provisional assistant event for a chat request.
+/// </summary>
+public sealed record ChatAssistantProvisionalMessage : ChatServiceMessage {
+    /// <summary>
+    /// Active thread id for the streamed provisional fragment.
+    /// </summary>
+    public required string ThreadId { get; init; }
+    /// <summary>
+    /// Provisional text fragment.
+    /// </summary>
+    public required string Text { get; init; }
+}
+
+/// <summary>
+/// Interim assistant result snapshot emitted before final synthesis.
+/// </summary>
+public sealed record ChatInterimResultMessage : ChatServiceMessage {
+    /// <summary>
+    /// Active thread id for the interim snapshot.
+    /// </summary>
+    public required string ThreadId { get; init; }
+    /// <summary>
+    /// Interim assistant text.
+    /// </summary>
+    public required string Text { get; init; }
+    /// <summary>
+    /// Optional stage marker (for example review_draft/final_draft).
+    /// </summary>
+    public string? Stage { get; init; }
+    /// <summary>
+    /// Optional tool-call count at interim capture.
+    /// </summary>
+    public int? ToolCallsCount { get; init; }
+    /// <summary>
+    /// Optional tool-output count at interim capture.
+    /// </summary>
+    public int? ToolOutputsCount { get; init; }
+}
+
+/// <summary>
+/// Structured timeline event captured for a turn.
+/// </summary>
+public sealed record TurnTimelineEventDto {
+    private readonly DateTime _atUtc;
+
+    /// <summary>
+    /// Status code emitted for this timeline event.
+    /// </summary>
+    public required string Status { get; init; }
+    /// <summary>
+    /// Optional tool name associated with this event.
+    /// </summary>
+    public string? ToolName { get; init; }
+    /// <summary>
+    /// Optional tool call id associated with this event.
+    /// </summary>
+    public string? ToolCallId { get; init; }
+    /// <summary>
+    /// Optional duration in milliseconds for this event.
+    /// </summary>
+    public long? DurationMs { get; init; }
+    /// <summary>
+    /// Optional event message for UI display.
+    /// </summary>
+    public string? Message { get; init; }
+    /// <summary>
+    /// UTC timestamp when the event was captured.
+    /// Local values are converted to UTC; unspecified <see cref="DateTimeKind"/> is rejected.
+    /// </summary>
+    public DateTime AtUtc {
+        get => _atUtc;
+        init => _atUtc = NormalizeUtc(value);
+    }
+
+    private static DateTime NormalizeUtc(DateTime value) {
+        return value.Kind switch {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => throw new ArgumentException(
+                "Turn timeline timestamps must include an explicit UTC or local DateTimeKind.",
+                nameof(value))
+        };
+    }
+}
+
+/// <summary>
 /// Final response message for a chat request.
 /// </summary>
 public sealed record ChatResultMessage : ChatServiceMessage {
@@ -362,4 +450,8 @@ public sealed record ChatResultMessage : ChatServiceMessage {
     /// Optional tool calls and outputs.
     /// </summary>
     public ToolRunDto? Tools { get; init; }
+    /// <summary>
+    /// Optional structured timeline captured for this completed turn.
+    /// </summary>
+    public TurnTimelineEventDto[]? TurnTimelineEvents { get; init; }
 }

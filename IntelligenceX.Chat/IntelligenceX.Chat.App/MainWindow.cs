@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window {
     private const int MaxQueuedTurns = 8;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
+    private const int MaxAssistantTurnTimelineEntries = 8;
     private const string SystemConversationId = "chat-system";
     private const string SystemConversationTitle = "System";
     private const string DefaultConversationTitle = "New Chat";
@@ -358,6 +359,16 @@ public sealed partial class MainWindow : Window {
     private readonly object _activeTurnLifecycleSync = new();
     private readonly object _turnDiagnosticsSync = new();
     private readonly List<string> _activityTimeline = new();
+    // Guarded by _turnDiagnosticsSync. Nested dictionaries/lists are mutable and must not be touched outside that lock.
+    private readonly Dictionary<string, Dictionary<int, AssistantTurnVisualState>> _assistantTurnVisualStateByConversationId =
+        new(StringComparer.OrdinalIgnoreCase);
+    private string? _activeTurnAssistantConversationId;
+    private int _activeTurnAssistantMessageIndex = -1;
+    private readonly List<string> _activeTurnAssistantPendingTimeline = new();
+    private bool _activeTurnAssistantProvisional;
+    private bool _activeTurnUsesProvisionalEvents;
+    private bool _activeTurnInterimResultSeen;
+    private string? _activeTurnInterimFingerprint;
     private TurnMetricsSnapshot? _lastTurnMetrics;
     private readonly Dictionary<string, AccountUsageSnapshot> _accountUsageByKey = new(StringComparer.OrdinalIgnoreCase);
     private long? _activeTurnQueueWaitMs;
@@ -365,7 +376,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _turnWatchdogSync = new();
     private CancellationTokenSource? _turnWatchdogCts;
     private string _latestServiceActivityText = string.Empty;
-    private bool _activeTurnReceivedDelta;
+    private readonly AssistantStreamingState _assistantStreamingState = new();
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;
     private bool _autoSignInAttempted;
@@ -386,7 +397,6 @@ public sealed partial class MainWindow : Window {
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
     private List<(string Role, string Text, DateTime Time, string? Model)> _messages = new();
-    private readonly StringBuilder _assistantStreaming = new();
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
     private long _transcriptRenderGeneration;
     private long _transcriptLastRenderUtcTicks;
@@ -457,6 +467,12 @@ public sealed partial class MainWindow : Window {
         public string? ModelOverride { get; set; }
         public List<(string Role, string Text, DateTime Time, string? Model)> Messages { get; } = new();
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    private sealed class AssistantTurnVisualState {
+        // Mutable state; always access under _turnDiagnosticsSync.
+        public bool IsProvisional { get; set; }
+        public List<string> Timeline { get; } = new();
     }
 
     private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc, bool SkipUserBubbleOnDispatch = false);

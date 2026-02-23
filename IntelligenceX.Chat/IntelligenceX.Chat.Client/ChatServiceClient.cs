@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
@@ -137,11 +138,7 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             }
 
             ChatServiceMessage? msg;
-            try {
-                msg = JsonSerializer.Deserialize(line, ChatServiceJsonContext.Default.ChatServiceMessage);
-            } catch {
-                continue;
-            }
+            msg = TryDeserializeMessageLine(line);
             if (msg is null) {
                 continue;
             }
@@ -162,6 +159,96 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         }
         _pending.Clear();
         SignalDisconnected();
+    }
+
+    internal static ChatServiceMessage? TryDeserializeMessageLine(string line, Func<string, ChatServiceMessage?>? primaryDeserializer = null) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return null;
+        }
+
+        try {
+            var deserialize = primaryDeserializer ?? (static input =>
+                JsonSerializer.Deserialize(input, ChatServiceJsonContext.Default.ChatServiceMessage));
+            return deserialize(line);
+        } catch (Exception) {
+            // Resilience path: preserve chat_result text when optional timeline metadata is malformed.
+            return TryDeserializeChatResultWithoutTimeline(line);
+        }
+    }
+
+    private static ChatServiceMessage? TryDeserializeChatResultWithoutTimeline(string line) {
+        try {
+            using var document = JsonDocument.Parse(line);
+            if (!TryBuildChatResultWithoutTimelineJson(document, out var sanitizedJson)) {
+                return null;
+            }
+
+            return JsonSerializer.Deserialize(sanitizedJson, ChatServiceJsonContext.Default.ChatServiceMessage);
+        } catch {
+            // Intentional fail-open behavior: if salvage parsing fails, drop only this frame
+            // and let the read loop continue rather than faulting the entire client session.
+            return null;
+        }
+    }
+
+    private static bool TryBuildChatResultWithoutTimelineJson(JsonDocument document, out string sanitizedJson) {
+        sanitizedJson = string.Empty;
+        if (document.RootElement.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        if (!TryGetStringProperty(document.RootElement, "type", out var type)
+            || !string.Equals(type, "chat_result", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!ContainsPropertyCaseInsensitive(document.RootElement, "turnTimelineEvents")) {
+            return false;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(buffer);
+        writer.WriteStartObject();
+        foreach (var property in document.RootElement.EnumerateObject()) {
+            if (string.Equals(property.Name, "turnTimelineEvents", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            property.WriteTo(writer);
+        }
+        writer.WriteEndObject();
+        writer.Flush();
+
+        sanitizedJson = System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan);
+        return sanitizedJson.Length > 0;
+    }
+
+    private static bool TryGetStringProperty(JsonElement element, string propertyName, out string value) {
+        value = string.Empty;
+        foreach (var property in element.EnumerateObject()) {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (property.Value.ValueKind != JsonValueKind.String) {
+                return false;
+            }
+
+            value = property.Value.GetString() ?? string.Empty;
+            return value.Length > 0;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsPropertyCaseInsensitive(JsonElement element, string propertyName) {
+        foreach (var property in element.EnumerateObject()) {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

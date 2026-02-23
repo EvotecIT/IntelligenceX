@@ -23,23 +23,59 @@ internal sealed partial class ChatServiceSession {
         int priorToolCalls,
         int priorToolOutputs,
         int assistantDraftToolCalls,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
         bool executionNudgeUsed,
         bool toolReceiptCorrectionUsed,
         bool watchdogAlreadyUsed,
         bool shouldRetry,
         string reason) {
-        if (!executionContractApplies) {
+        if (!ShouldTraceNoToolExecutionWatchdogDecision(
+                executionContractApplies,
+                continuationFollowUpTurn,
+                compactFollowUpTurn)) {
             return;
         }
 
         var normalized = (userRequest ?? string.Empty).Trim();
         var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
         var outcome = shouldRetry ? "retry" : "skip";
+        var mode = ResolveNoToolExecutionWatchdogMode(
+            executionContractApplies,
+            continuationFollowUpTurn,
+            compactFollowUpTurn);
+        var contractState = executionContractApplies ? "true" : "false";
         var watchdogState = watchdogAlreadyUsed ? "used" : "unused";
         var nudgeState = executionNudgeUsed ? "used" : "unused";
         var receiptState = toolReceiptCorrectionUsed ? "used" : "unused";
         Console.Error.WriteLine(
-            $"[tool-watchdog] outcome={outcome} reason={reason} contract=true watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
+            $"[tool-watchdog] outcome={outcome} reason={reason} mode={mode} contract={contractState} watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
+    }
+
+    internal static bool ShouldTraceNoToolExecutionWatchdogDecision(
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn) {
+        return executionContractApplies || continuationFollowUpTurn || compactFollowUpTurn;
+    }
+
+    internal static string ResolveNoToolExecutionWatchdogMode(
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn) {
+        if (executionContractApplies) {
+            return "contract";
+        }
+
+        if (compactFollowUpTurn) {
+            return "compact_follow_up";
+        }
+
+        if (continuationFollowUpTurn) {
+            return "follow_up";
+        }
+
+        return "standard";
     }
 
     private static void TraceToolExecutionNudgeDecision(
@@ -160,6 +196,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         return body + Environment.NewLine + Environment.NewLine + notice;
+    }
+
+    private static bool ShouldEmitInterimResultSnapshot(string assistantDraft) {
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length < 48 || draft.Length > 6_000) {
+            return false;
+        }
+
+        if (draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionWatchdogMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return true;
     }
 
     private static string ResolveTurnCompletionReason(TurnInfo turn) {

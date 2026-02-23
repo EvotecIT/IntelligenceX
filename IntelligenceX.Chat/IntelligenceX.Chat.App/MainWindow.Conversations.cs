@@ -35,6 +35,16 @@ public sealed partial class MainWindow : Window {
     private bool LoadConversationsFromState(ChatAppState state) {
         var repaired = false;
         _conversations.Clear();
+        lock (_turnDiagnosticsSync) {
+            _assistantTurnVisualStateByConversationId.Clear();
+            _activeTurnAssistantConversationId = null;
+            _activeTurnAssistantMessageIndex = -1;
+            _activeTurnAssistantPendingTimeline.Clear();
+            _activeTurnAssistantProvisional = false;
+            _activeTurnUsesProvisionalEvents = false;
+            _activeTurnInterimResultSeen = false;
+            _activeTurnInterimFingerprint = null;
+        }
         if (state.Conversations is { Count: > 0 }) {
             foreach (var stored in state.Conversations) {
                 if (string.IsNullOrWhiteSpace(stored.Id)) {
@@ -289,7 +299,7 @@ public sealed partial class MainWindow : Window {
         _conversations.Add(conversation);
         TrimConversationsToLimit();
         ActivateConversation(conversation.Id);
-        _assistantStreaming.Clear();
+        _assistantStreamingState.Reset();
         _activeRequestConversationId = null;
         _modelKickoffAttempted = false;
         _modelKickoffInProgress = false;
@@ -359,6 +369,7 @@ public sealed partial class MainWindow : Window {
         if (nonSystemConversationCount <= 1) {
             var isActiveConversation = string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase);
             conversation.Messages.Clear();
+            ClearConversationAssistantVisualState(conversation.Id);
             conversation.Title = DefaultConversationTitle;
             conversation.ThreadId = null;
             conversation.RuntimeLabel = null;
@@ -371,7 +382,7 @@ public sealed partial class MainWindow : Window {
 
             if (isActiveConversation) {
                 _messages = conversation.Messages;
-                _assistantStreaming.Clear();
+                _assistantStreamingState.Reset();
                 _threadId = null;
                 ClearToolRoutingInsights();
                 _modelKickoffAttempted = false;
@@ -386,6 +397,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _conversations.Remove(conversation);
+        ClearConversationAssistantVisualState(conversation.Id);
         if (string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
             _conversations.Sort(CompareConversationsForDisplay);
             var next = _conversations[0];
@@ -511,6 +523,7 @@ public sealed partial class MainWindow : Window {
             var toRemove = userConversations[removalIndex];
             userConversations.RemoveAt(removalIndex);
             _conversations.Remove(toRemove);
+            ClearConversationAssistantVisualState(toRemove.Id);
             protectedConversations.Remove(toRemove);
 
             if (ReferenceEquals(toRemove, activeRequestConversation)) {

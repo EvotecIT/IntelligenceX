@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -49,7 +50,9 @@ public static class ToolChainingHints {
         string tool,
         string reason,
         IReadOnlyDictionary<string, string>? suggestedArguments = null,
-        bool optional = true) {
+        bool optional = true,
+        bool? mutating = null,
+        IReadOnlyDictionary<string, object?>? arguments = null) {
         if (string.IsNullOrWhiteSpace(tool)) {
             throw new ArgumentException("Tool name is required.", nameof(tool));
         }
@@ -61,7 +64,9 @@ public static class ToolChainingHints {
             Tool = tool.Trim(),
             Reason = reason.Trim(),
             SuggestedArguments = NormalizeMapForContract(suggestedArguments),
-            Optional = optional
+            Arguments = NormalizeObjectMapForContract(arguments),
+            Optional = optional,
+            Mutating = mutating
         };
     }
 
@@ -86,6 +91,29 @@ public static class ToolChainingHints {
         return map.Count == 0
             ? EmptyStringMap
             : new ReadOnlyDictionary<string, string>(map);
+    }
+
+    /// <summary>
+    /// Builds a typed dictionary payload for structured next-action arguments.
+    /// </summary>
+    public static IReadOnlyDictionary<string, object?> MapObject(params (string Key, object? Value)[] entries) {
+        if (entries is null || entries.Length == 0) {
+            return EmptyObjectMap;
+        }
+
+        var map = new Dictionary<string, object?>(StringComparer.Ordinal);
+        for (var i = 0; i < entries.Length; i++) {
+            var key = entries[i].Key;
+            if (string.IsNullOrWhiteSpace(key)) {
+                continue;
+            }
+
+            map[key.Trim()] = NormalizeArgumentValue(entries[i].Value);
+        }
+
+        return map.Count == 0
+            ? EmptyObjectMap
+            : new ReadOnlyDictionary<string, object?>(map);
     }
 
     /// <summary>
@@ -129,7 +157,9 @@ public static class ToolChainingHints {
                 Tool = action.Tool.Trim(),
                 Reason = action.Reason.Trim(),
                 SuggestedArguments = NormalizeMapForContract(action.SuggestedArguments),
-                Optional = action.Optional
+                Arguments = NormalizeObjectMapForContract(action.Arguments),
+                Optional = action.Optional,
+                Mutating = NormalizeMutabilityHint(action.Mutating)
             });
         }
 
@@ -168,6 +198,26 @@ public static class ToolChainingHints {
             : new ReadOnlyDictionary<string, string>(map);
     }
 
+    private static readonly IReadOnlyDictionary<string, object?> EmptyObjectMap =
+        new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?>(StringComparer.Ordinal));
+
+    internal static IReadOnlyDictionary<string, object?>? NormalizeObjectMapForContract(IReadOnlyDictionary<string, object?>? source) {
+        if (source is null || source.Count == 0) {
+            return null;
+        }
+
+        var map = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var item in source) {
+            if (!string.IsNullOrWhiteSpace(item.Key)) {
+                map[item.Key.Trim()] = NormalizeArgumentValue(item.Value);
+            }
+        }
+
+        return map.Count == 0
+            ? null
+            : new ReadOnlyDictionary<string, object?>(map);
+    }
+
     internal static IReadOnlyList<ToolNextActionModel> NormalizeActionsForContract(IEnumerable<ToolNextActionModel>? actions) {
         return NormalizeActions(actions);
     }
@@ -182,6 +232,83 @@ public static class ToolChainingHints {
 
     internal static double NormalizeConfidenceForContract(double confidence) {
         return Math.Clamp(confidence, 0d, 1d);
+    }
+
+    internal static bool? NormalizeMutabilityHintForContract(bool? mutating) {
+        return NormalizeMutabilityHint(mutating);
+    }
+
+    private static bool? NormalizeMutabilityHint(bool? mutating) {
+        return mutating;
+    }
+
+    private static object? NormalizeArgumentValue(object? value) {
+        if (value is null) {
+            return null;
+        }
+
+        if (value is string
+            || value is bool
+            || value is byte
+            || value is sbyte
+            || value is short
+            || value is ushort
+            || value is int
+            || value is uint
+            || value is long
+            || value is ulong
+            || value is float
+            || value is double
+            || value is decimal) {
+            return value;
+        }
+
+        if (value is char ch) {
+            return ch.ToString();
+        }
+
+        if (value is DateTime dt) {
+            return dt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
+        }
+
+        if (value is DateTimeOffset dto) {
+            return dto.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
+        }
+
+        if (value is Enum enumValue) {
+            return enumValue.ToString();
+        }
+
+        if (value is IReadOnlyDictionary<string, object?> readOnlyObjectMap) {
+            var nested = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var pair in readOnlyObjectMap) {
+                if (!string.IsNullOrWhiteSpace(pair.Key)) {
+                    nested[pair.Key.Trim()] = NormalizeArgumentValue(pair.Value);
+                }
+            }
+            return nested;
+        }
+
+        if (value is IDictionary dictionary) {
+            var nested = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (DictionaryEntry pair in dictionary) {
+                var key = Convert.ToString(pair.Key, CultureInfo.InvariantCulture);
+                if (!string.IsNullOrWhiteSpace(key)) {
+                    nested[key.Trim()] = NormalizeArgumentValue(pair.Value);
+                }
+            }
+            return nested;
+        }
+
+        if (value is IEnumerable enumerable) {
+            var list = new List<object?>();
+            foreach (var item in enumerable) {
+                list.Add(NormalizeArgumentValue(item));
+            }
+            return list;
+        }
+
+        return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
     }
 }
 
@@ -270,6 +397,8 @@ public sealed class ToolNextActionModel {
     private string _tool = string.Empty;
     private string _reason = string.Empty;
     private IReadOnlyDictionary<string, string> _suggestedArguments = ToolChainingHints.EmptyMap;
+    private IReadOnlyDictionary<string, object?>? _arguments;
+    private bool? _mutating;
 
     /// <summary>
     /// Suggested tool name.
@@ -296,7 +425,24 @@ public sealed class ToolNextActionModel {
     }
 
     /// <summary>
+    /// Typed argument payload for follow-up execution (supports arrays/objects).
+    /// </summary>
+    public IReadOnlyDictionary<string, object?>? Arguments {
+        get => _arguments;
+        init => _arguments = ToolChainingHints.NormalizeObjectMapForContract(value);
+    }
+
+    /// <summary>
     /// Indicates this action is optional/advisory and should not block autonomous planning.
     /// </summary>
     public bool Optional { get; init; } = true;
+
+    /// <summary>
+    /// Optional mutability hint for host-side execution guards.
+    /// true = mutating/write-capable, false = read-only, null = unspecified.
+    /// </summary>
+    public bool? Mutating {
+        get => _mutating;
+        init => _mutating = ToolChainingHints.NormalizeMutabilityHintForContract(value);
+    }
 }

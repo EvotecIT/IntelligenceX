@@ -218,4 +218,9 @@ public static class ChatStatusCodes {
     /// Heartbeat emitted for long-running phases.
     /// </summary>
     public const string PhaseHeartbeat = "phase_heartbeat";
+
+    /// <summary>
+    /// Indicates repeated plan/review loops were cut off with deterministic blocker output.
+    /// </summary>
+    public const string NoResultWatchdogTriggered = "no_result_watchdog_triggered";
 }

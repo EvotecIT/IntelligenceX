@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using IntelligenceX.Engines.PowerShell;
+using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.PowerShell;
@@ -75,5 +76,65 @@ public abstract class PowerShellToolBase : ToolBase {
         } catch {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Adds language-neutral chaining/discovery metadata for read-only PowerShell runtime posture tools.
+    /// </summary>
+    protected static void AddReadOnlyRuntimeChainingMeta(
+        JsonObject meta,
+        string currentTool,
+        IReadOnlyList<string> availableHosts,
+        bool enabled,
+        bool allowWrite) {
+        if (meta is null) {
+            throw new ArgumentNullException(nameof(meta));
+        }
+
+        var normalizedTool = string.IsNullOrWhiteSpace(currentTool) ? "powershell_environment_discover" : currentTool.Trim();
+        var preferredHost = availableHosts.Count > 0 ? availableHosts[0] : "auto";
+
+        var nextActions = new List<ToolNextActionModel>();
+        if (!string.Equals(normalizedTool, "powershell_hosts", StringComparison.OrdinalIgnoreCase)) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "powershell_hosts",
+                reason: "enumerate_runtime_hosts_before_command_execution",
+                mutating: false));
+        }
+
+        if (enabled) {
+            nextActions.Add(ToolChainingHints.NextAction(
+                tool: "powershell_run",
+                reason: "execute_read_only_runtime_probe",
+                suggestedArguments: ToolChainingHints.Map(
+                    ("host", preferredHost),
+                    ("intent", "read_only")),
+                mutating: false));
+        }
+
+        var chain = ToolChainingHints.Create(
+            nextActions: nextActions,
+            confidence: availableHosts.Count > 0 ? 0.90d : 0.62d,
+            checkpoint: ToolChainingHints.Map(
+                ("current_tool", normalizedTool),
+                ("enabled", enabled),
+                ("allow_write", allowWrite),
+                ("available_hosts", availableHosts.Count),
+                ("preferred_host", preferredHost)));
+
+        var nextActionsJson = new JsonArray();
+        for (var i = 0; i < chain.NextActions.Count; i++) {
+            nextActionsJson.Add(ToolJson.ToJsonObjectSnakeCase(chain.NextActions[i]));
+        }
+
+        meta.Add("next_actions", nextActionsJson);
+        meta.Add("discovery_status", ToolJson.ToJsonObjectSnakeCase(new {
+            current_tool = normalizedTool,
+            enabled,
+            allow_write = allowWrite,
+            available_hosts = availableHosts.Count,
+            preferred_host = preferredHost
+        }));
+        meta.Add("chain_confidence", chain.Confidence);
     }
 }

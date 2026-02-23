@@ -43,6 +43,12 @@ public sealed partial class MainWindow : Window {
         ReplaceLastAssistantText(GetActiveConversation(), text);
     }
 
+    private static void AppendAssistantText(ConversationRuntime conversation, string text) {
+        var nowLocal = DateTime.Now;
+        var modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim();
+        conversation.Messages.Add(("Assistant", text, nowLocal, modelLabel));
+    }
+
     private static void ReplaceLastAssistantText(ConversationRuntime conversation, string text) {
         var nowLocal = DateTime.Now;
         if (conversation.Messages.Count > 0

@@ -122,6 +122,23 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_DoesNotTreatInventoryHostBulletsAsFallbackChoices() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            I can query these DCs now:
+            - AD0
+            - AD1
+            - AD2
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act choice_001" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("/act choice_001", expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesSingleNumberedFallbackChoiceWithPromptContext() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """

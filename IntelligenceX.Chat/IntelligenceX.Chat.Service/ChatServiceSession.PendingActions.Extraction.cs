@@ -406,6 +406,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Avoid treating plain inventory bullets (for example "AD0", "AD1") as actionable follow-up choices.
+        // Single-token choices remain allowed when an explicit action id is present.
+        if (tokenCount < 2 && string.IsNullOrWhiteSpace(actionId)) {
+            return false;
+        }
+
         var hasLetter = false;
         for (var i = 0; i < value.Length; i++) {
             if (char.IsLetter(value[i])) {

@@ -42,6 +42,7 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("phase_execute", ChatStatusCodes.PhaseExecute);
         Assert.Equal("phase_review", ChatStatusCodes.PhaseReview);
         Assert.Equal("phase_heartbeat", ChatStatusCodes.PhaseHeartbeat);
+        Assert.Equal("no_result_watchdog_triggered", ChatStatusCodes.NoResultWatchdogTriggered);
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public sealed class ChatContractsProtocolStabilityTests {
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Assert.Equal(30, values.Length);
+        Assert.Equal(31, values.Length);
         Assert.Equal(values.Length, values.Distinct(StringComparer.Ordinal).Count());
     }
 
