@@ -130,7 +130,7 @@ internal sealed partial class ReviewSettings {
             if (string.IsNullOrWhiteSpace(value)) {
                 continue;
             }
-            var normalized = value.Trim();
+            var normalized = NormalizeWhitespace(value.Trim());
             if (normalized.Length == 0) {
                 continue;
             }
@@ -139,6 +139,30 @@ internal sealed partial class ReviewSettings {
             }
         }
         return list;
+    }
+
+    private static string NormalizeWhitespace(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        var chars = new List<char>(value.Length);
+        var previousWasWhitespace = false;
+        foreach (var ch in value) {
+            if (char.IsWhiteSpace(ch)) {
+                if (previousWasWhitespace) {
+                    continue;
+                }
+                chars.Add(' ');
+                previousWasWhitespace = true;
+                continue;
+            }
+
+            chars.Add(ch);
+            previousWasWhitespace = false;
+        }
+
+        return new string(chars.ToArray()).Trim();
     }
 
     internal static ReviewNarrativeMode NormalizeNarrativeMode(string? value, ReviewNarrativeMode fallback) {

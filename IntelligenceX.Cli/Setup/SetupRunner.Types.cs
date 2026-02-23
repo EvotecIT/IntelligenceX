@@ -597,10 +597,11 @@ internal static partial class SetupRunner {
                 throw new InvalidOperationException(
                     "--review-vision-path requires --review-loop-policy vision.");
             }
-            var normalizedPolicy = string.IsNullOrWhiteSpace(options.ReviewLoopPolicy)
-                ? "strict"
-                : options.ReviewLoopPolicy.Trim().ToLowerInvariant();
-            if (!string.Equals(normalizedPolicy, "vision", StringComparison.Ordinal)) {
+            if (!SetupReviewLoopPolicy.TryNormalize(options.ReviewLoopPolicy, out var normalizedPolicy)) {
+                throw new InvalidOperationException(
+                    $"Invalid --review-loop-policy value. Use {SetupReviewLoopPolicy.AllowedValuesMessage()}.");
+            }
+            if (!string.Equals(normalizedPolicy, SetupReviewLoopPolicy.Vision, StringComparison.Ordinal)) {
                 throw new InvalidOperationException(
                     "--review-vision-path is only supported with --review-loop-policy vision.");
             }
@@ -626,36 +627,36 @@ internal static partial class SetupRunner {
             if (!policySet) {
                 return;
             }
-            var normalized = string.IsNullOrWhiteSpace(value)
-                ? "strict"
-                : value.Trim().ToLowerInvariant();
+            if (!SetupReviewLoopPolicy.TryNormalize(value, out var normalized)) {
+                throw new InvalidOperationException(
+                    $"Invalid --review-loop-policy value. Use {SetupReviewLoopPolicy.AllowedValuesMessage()}.");
+            }
             switch (normalized) {
-                case "strict":
-                case "default":
+                case SetupReviewLoopPolicy.Strict:
                     ApplyMergeBlockerPolicy(settings,
                         sections: new[] { "todo list", "critical issues" },
                         requireAllSections: true,
                         requireSectionMatch: true);
                     return;
-                case "balanced":
+                case SetupReviewLoopPolicy.Balanced:
                     ApplyMergeBlockerPolicy(settings,
                         sections: new[] { "todo list", "critical issues" },
                         requireAllSections: false,
                         requireSectionMatch: true);
                     return;
-                case "lenient":
+                case SetupReviewLoopPolicy.Lenient:
                     ApplyMergeBlockerPolicy(settings,
                         sections: new[] { "todo list", "critical issues" },
                         requireAllSections: false,
                         requireSectionMatch: false);
                     return;
-                case "claude":
+                case SetupReviewLoopPolicy.TodoOnly:
                     ApplyMergeBlockerPolicy(settings,
                         sections: new[] { "todo list" },
                         requireAllSections: true,
                         requireSectionMatch: true);
                     return;
-                case "vision":
+                case SetupReviewLoopPolicy.Vision:
                     ApplyMergeBlockerPolicy(settings,
                         sections: new[] { "todo list", "critical issues" },
                         requireAllSections: false,
@@ -674,9 +675,6 @@ internal static partial class SetupRunner {
                         settings.StrictnessSet = true;
                     }
                     return;
-                default:
-                    throw new InvalidOperationException(
-                        "Invalid --review-loop-policy value. Use strict, balanced, lenient, claude, or vision.");
             }
         }
 

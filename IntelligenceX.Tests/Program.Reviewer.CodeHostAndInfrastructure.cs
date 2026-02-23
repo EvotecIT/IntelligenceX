@@ -429,6 +429,18 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewMergeBlockerPolicyEnvNormalizesWhitespace() {
+        var previousSections = Environment.GetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS", "Todo   List,Release\tRisk, Todo List ");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertSequenceEqual(new[] { "Todo List", "Release Risk" }, settings.MergeBlockerSections,
+                "merge blocker sections env whitespace normalization");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_MERGE_BLOCKER_SECTIONS", previousSections);
+        }
+    }
+
     private static void TestCopilotEnvAllowlistConfig() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");

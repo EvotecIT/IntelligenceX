@@ -680,11 +680,66 @@ internal static partial class Program {
         }, args, "setup args review loop policy and strictness");
     }
 
+    private static void TestSetupArgsRejectsReviewVisionPathWithoutVisionPolicy() {
+        var plan = new SetupPlan("owner/repo") {
+            ReviewVisionPath = "VISION.md"
+        };
+        AssertThrows<InvalidOperationException>(() => SetupArgsBuilder.FromPlan(plan),
+            "setup args review vision path requires vision policy");
+    }
+
+    private static void TestSetupReviewOptionContextRejectsWithoutWithConfig() {
+        var result = SetupRunner.ValidateReviewOptionContextForTests(
+            new[] { "--review-intent", "maintainability" },
+            isSetup: true,
+            withConfig: false,
+            hasConfigOverride: false);
+        AssertEqual(false, result.Success, "setup review option context requires with-config");
+        AssertContainsText(result.Error ?? string.Empty,
+            "require --with-config",
+            "setup review option context requires with-config error");
+    }
+
+    private static void TestSetupReviewOptionContextRejectsConfigOverride() {
+        var result = SetupRunner.ValidateReviewOptionContextForTests(
+            new[] { "--review-intent", "maintainability" },
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: true);
+        AssertEqual(false, result.Success, "setup review option context rejects config override");
+        AssertContainsText(result.Error ?? string.Empty,
+            "not supported when --config-json/--config-path override is used",
+            "setup review option context rejects config override error");
+    }
+
+    private static void TestSetupReviewOptionContextRejectsVisionPathWithoutVisionPolicy() {
+        var result = SetupRunner.ValidateReviewOptionContextForTests(
+            new[] {
+                "--review-loop-policy", "balanced",
+                "--review-vision-path", "VISION.md"
+            },
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false);
+        AssertEqual(false, result.Success, "setup review option context vision path requires vision policy");
+        AssertContainsText(result.Error ?? string.Empty,
+            "--review-vision-path is only supported with --review-loop-policy vision",
+            "setup review option context vision path requires vision policy error");
+    }
+
     private static void TestSetupConfigRejectsInvalidReviewLoopPolicy() {
         AssertThrows<InvalidOperationException>(() =>
             SetupRunner.BuildReviewerConfigJson(new[] {
                 "--review-loop-policy", "not-a-policy"
             }), "setup invalid review loop policy");
+    }
+
+    private static void TestSetupConfigRejectsReviewOptionsWithConfigOverride() {
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--config-json", "{}",
+                "--review-intent", "maintainability"
+            }), "setup review options with config override");
     }
 
     private static void TestSetupConfigRejectsEmptyMergeBlockerSections() {
@@ -736,6 +791,24 @@ internal static partial class Program {
             "config json vision loop policy first section");
         AssertEqual("critical issues", sections[1]?.GetValue<string>(),
             "config json vision loop policy second section");
+    }
+
+    private static void TestSetupBuildConfigJsonNormalizesTodoOnlyLoopPolicyAlias() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--review-loop-policy", "single_section"
+        });
+        AssertNotNull(content, "config json todo-only loop policy alias content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json todo-only loop policy alias root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json todo-only loop policy alias review");
+
+        var sections = review!["mergeBlockerSections"] as System.Text.Json.Nodes.JsonArray;
+        AssertNotNull(sections, "config json todo-only loop policy alias sections");
+        AssertEqual(1, sections!.Count, "config json todo-only loop policy alias section count");
+        AssertEqual("todo list", sections[0]?.GetValue<string>(),
+            "config json todo-only loop policy alias first section");
     }
 
     private static void TestSetupBuildConfigJsonIncludesVisionInferenceFromFile() {

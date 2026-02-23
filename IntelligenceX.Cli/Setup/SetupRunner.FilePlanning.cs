@@ -62,6 +62,7 @@ internal static partial class SetupRunner {
     internal static string BuildReviewerConfigJson(string[] args) {
         var options = SetupOptions.Parse(args);
         ValidateAnalysisOptionContextOrThrow(options);
+        ValidateReviewOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
         return plan.Content ?? string.Empty;
     }
@@ -74,6 +75,7 @@ internal static partial class SetupRunner {
     internal static string BuildReviewerConfigJsonFromSeedForTests(string[] args, string seedContent) {
         var options = SetupOptions.Parse(args);
         ValidateAnalysisOptionContextOrThrow(options);
+        ValidateReviewOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: seedContent, seedContent: seedContent);
         return plan.Content ?? string.Empty;
     }
@@ -83,6 +85,20 @@ internal static partial class SetupRunner {
             return;
         }
         throw new InvalidOperationException(analysisOptionError ?? "Invalid analysis options.");
+    }
+
+    private static void ValidateReviewOptionContextOrThrow(SetupOptions options) {
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(options.ConfigJson) ||
+                                !string.IsNullOrWhiteSpace(options.ConfigPath);
+        if (TryValidateReviewOptionContext(
+                options,
+                isSetup: true,
+                withConfig: true,
+                hasConfigOverride: hasConfigOverride,
+                out var reviewOptionError)) {
+            return;
+        }
+        throw new InvalidOperationException(reviewOptionError ?? "Invalid review options.");
     }
 
     // Test helper for workflow upgrade coverage against existing workflow content.

@@ -68,11 +68,8 @@ internal static class PromptBuilder {
         if (!string.IsNullOrWhiteSpace(settings.PromptTemplatePath)) {
             return File.ReadAllText(settings.PromptTemplatePath!);
         }
-        if (!string.IsNullOrWhiteSpace(settings.OutputStyle)) {
-            var key = settings.OutputStyle.Trim().ToLowerInvariant();
-            if (key is "claude" or "claude-like" or "claude_style" or "claude-style") {
-                return TemplateLoader.Load("ReviewPrompt.Claude.md");
-            }
+        if (ReviewSettings.IsCompactOutputStyle(settings.OutputStyle)) {
+            return TemplateLoader.Load("ReviewPrompt.Compact.md");
         }
         var name = settings.Length switch {
             ReviewLength.Short => "ReviewPrompt.Short.md",

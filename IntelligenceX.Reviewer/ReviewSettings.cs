@@ -78,7 +78,7 @@ internal sealed partial class ReviewSettings {
         "todo list",
         "critical issues"
     };
-    private static readonly IReadOnlyList<string> ClaudeMergeBlockerSections = new[] {
+    private static readonly IReadOnlyList<string> CompactMergeBlockerSections = new[] {
         "todo list"
     };
 
@@ -423,16 +423,16 @@ internal sealed partial class ReviewSettings {
         if (MergeBlockerSections.Count > 0) {
             return MergeBlockerSections;
         }
-        return IsClaudeOutputStyle(OutputStyle)
-            ? ClaudeMergeBlockerSections
+        return IsCompactOutputStyle(OutputStyle)
+            ? CompactMergeBlockerSections
             : DefaultMergeBlockerSections;
     }
 
-    internal static bool IsClaudeOutputStyle(string? outputStyle) {
+    internal static bool IsCompactOutputStyle(string? outputStyle) {
         if (string.IsNullOrWhiteSpace(outputStyle)) {
             return false;
         }
         var key = outputStyle.Trim().ToLowerInvariant();
-        return key is "claude" or "claude-like" or "claude_style" or "claude-style";
+        return key is "compact" or "compact-like" or "compact_style" or "compact-style";
     }
 }

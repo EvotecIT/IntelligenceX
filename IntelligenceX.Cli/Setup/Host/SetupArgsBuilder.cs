@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Cli.Setup;
 
 namespace IntelligenceX.Cli.Setup.Host;
 
@@ -32,6 +33,19 @@ internal static class SetupArgsBuilder {
 
         if (!string.IsNullOrWhiteSpace(plan.AuthB64) && !string.IsNullOrWhiteSpace(plan.AuthB64Path)) {
             throw new InvalidOperationException("Choose only one of --auth-b64 or --auth-b64-path.");
+        }
+
+        string? normalizedReviewLoopPolicy = null;
+        if (!string.IsNullOrWhiteSpace(plan.ReviewLoopPolicy)) {
+            if (!SetupReviewLoopPolicy.TryNormalize(plan.ReviewLoopPolicy, out var normalizedPolicy)) {
+                throw new InvalidOperationException(
+                    $"Invalid --review-loop-policy value. Use {SetupReviewLoopPolicy.AllowedValuesMessage()}.");
+            }
+            normalizedReviewLoopPolicy = normalizedPolicy;
+        }
+        if (!string.IsNullOrWhiteSpace(plan.ReviewVisionPath) &&
+            !string.Equals(normalizedReviewLoopPolicy, SetupReviewLoopPolicy.Vision, StringComparison.Ordinal)) {
+            throw new InvalidOperationException("--review-vision-path requires --review-loop-policy vision.");
         }
 
         if (!string.IsNullOrWhiteSpace(plan.RepoFullName)) {
@@ -113,9 +127,9 @@ internal static class SetupArgsBuilder {
             args.Add(plan.ReviewProfile);
         }
 
-        if (!string.IsNullOrWhiteSpace(plan.ReviewLoopPolicy)) {
+        if (!string.IsNullOrWhiteSpace(normalizedReviewLoopPolicy)) {
             args.Add("--review-loop-policy");
-            args.Add(plan.ReviewLoopPolicy);
+            args.Add(normalizedReviewLoopPolicy);
         }
 
         if (!string.IsNullOrWhiteSpace(plan.ReviewVisionPath)) {

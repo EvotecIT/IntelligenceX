@@ -348,7 +348,7 @@ internal static partial class Program {
         var files = BuildFiles("src/app.cs");
         var settings = new ReviewSettings {
             NarrativeMode = ReviewNarrativeMode.Freedom,
-            OutputStyle = "claude"
+            OutputStyle = "compact"
         };
         var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
         AssertContainsText(prompt, "Use a natural reviewer voice.", "narrative mode freedom contract");
@@ -366,14 +366,14 @@ internal static partial class Program {
             "prompt merge blocker default sections");
     }
 
-    private static void TestPromptBuilderMergeBlockerSectionsClaudeDefault() {
+    private static void TestPromptBuilderMergeBlockerSectionsCompactDefault() {
         var context = BuildContext();
         var files = BuildFiles("src/app.cs");
         var settings = new ReviewSettings {
-            OutputStyle = "claude"
+            OutputStyle = "compact"
         };
         var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
-        AssertContainsText(prompt, "Merge-blocker sections: todo list.", "prompt merge blocker claude sections");
+        AssertContainsText(prompt, "Merge-blocker sections: todo list.", "prompt merge blocker compact sections");
     }
 
     private static void TestRedactionDefaults() {

@@ -35,7 +35,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --review-intent <security|performance|maintainability>");
         Console.WriteLine("  --review-strictness <label>");
         Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
-        Console.WriteLine("  --review-loop-policy <strict|balanced|lenient|claude|vision>");
+        Console.WriteLine("  --review-loop-policy <strict|balanced|lenient|todo-only|vision>");
         Console.WriteLine("  --review-vision-path <path> (used by --review-loop-policy vision to infer intent/strictness)");
         Console.WriteLine("  --merge-blocker-sections <section1,section2>");
         Console.WriteLine("  --merge-blocker-require-all-sections <true|false>");

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using IntelligenceX.Cli.Setup;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -56,9 +57,8 @@ internal static class WebSetupReviewConfigValidator {
         normalizedReviewLoopPolicy = NormalizeOptional(reviewLoopPolicy);
         normalizedReviewVisionPath = NormalizeOptional(reviewVisionPath);
         if (!string.IsNullOrWhiteSpace(normalizedReviewLoopPolicy)) {
-            var loopPolicy = normalizedReviewLoopPolicy.Trim().ToLowerInvariant();
-            if (loopPolicy is not ("strict" or "default" or "balanced" or "lenient" or "claude" or "vision")) {
-                error = "reviewLoopPolicy must be one of: strict, balanced, lenient, claude, vision.";
+            if (!SetupReviewLoopPolicy.TryNormalize(normalizedReviewLoopPolicy, out var loopPolicy)) {
+                error = $"reviewLoopPolicy must be one of: {SetupReviewLoopPolicy.AllowedValuesMessage()}.";
                 return false;
             }
             normalizedReviewLoopPolicy = loopPolicy;

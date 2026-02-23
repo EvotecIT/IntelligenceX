@@ -60,7 +60,7 @@ GitHub Actions input/env aliases:
     "model": "gpt-5.3-codex",
     "mode": "inline",
     "length": "long",
-    "outputStyle": "claude",
+    "outputStyle": "compact",
     "reviewUsageSummary": false
   }
 }
@@ -121,7 +121,7 @@ contract, or when you want to relax the section-presence gate used by no-blocker
 ```json
 {
   "review": {
-    "outputStyle": "claude",
+    "outputStyle": "compact",
     "mergeBlockerSections": ["Todo List"],
     "mergeBlockerRequireAllSections": true,
     "mergeBlockerRequireSectionMatch": true
@@ -481,7 +481,7 @@ Env: `REVIEW_SECRETS_AUDIT`
 ```json
 {
   "review": {
-    "outputStyle": "claude",
+    "outputStyle": "compact",
     "narrativeMode": "freedom",
     "style": "colorful",
     "tone": "friendly"
@@ -553,7 +553,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `mergeBlockerRequireSectionMatch`: require at least one configured blocker section to appear before treating review as unblocked
 - `codeHost`: `github` or `azure`
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
-- `outputStyle`: rendering style preset
+- `outputStyle`: rendering style preset (for the compact template, use `compact`)
 - `narrativeMode`: `structured` (default) or `freedom`
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
 - `openaiAccountId`: pin a preferred ChatGPT account id

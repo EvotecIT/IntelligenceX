@@ -380,6 +380,23 @@ internal static partial class Program {
             "web setup review config validation normalized require match");
     }
 
+    private static void TestWebSetupReviewConfigValidationNormalizesTodoOnlyLoopPolicy() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateReviewConfigForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            reviewIntent: null,
+            reviewStrictness: null,
+            reviewLoopPolicy: "single_section",
+            reviewVisionPath: null,
+            mergeBlockerSections: null,
+            mergeBlockerRequireAllSections: null,
+            mergeBlockerRequireSectionMatch: null);
+        AssertEqual(true, result.Success, "web setup review config validation todo-only loop policy success");
+        AssertEqual("todo-only", result.NormalizedReviewLoopPolicy,
+            "web setup review config validation normalized todo-only loop policy");
+    }
+
     private static void TestWebSetupReviewConfigValidationRejectsOutsidePresetGeneration() {
         var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateReviewConfigForTests(
             isSetup: true,

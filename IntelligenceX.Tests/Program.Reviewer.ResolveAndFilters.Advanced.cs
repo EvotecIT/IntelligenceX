@@ -96,16 +96,31 @@ internal static partial class Program {
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(plainProseOnly), "merge blockers plain prose");
     }
 
-    private static void TestReviewSummaryParserMergeBlockerDetectionClaudeDefaults() {
+    private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {
         var settings = new ReviewSettings {
-            OutputStyle = "claude"
+            OutputStyle = "compact"
         };
         var todoOnlyNone = string.Join("\n", new[] {
             "## Todo List ✅",
             "None."
         });
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(todoOnlyNone, settings),
-            "merge blockers claude todo-only defaults");
+            "merge blockers compact todo-only defaults");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionCompactAliases() {
+        var aliases = new[] { "compact", "compact-like", "compact_style", "compact-style" };
+        var todoOnlyNone = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "None."
+        });
+        foreach (var alias in aliases) {
+            var settings = new ReviewSettings {
+                OutputStyle = alias
+            };
+            AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(todoOnlyNone, settings),
+                $"merge blockers compact alias {alias}");
+        }
     }
 
     private static void TestReviewSummaryParserMergeBlockerDetectionCustomSections() {

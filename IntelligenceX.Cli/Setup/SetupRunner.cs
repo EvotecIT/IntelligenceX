@@ -58,6 +58,10 @@ internal static partial class SetupRunner {
                 Console.Error.WriteLine(analysisOptionError);
                 return 1;
             }
+            if (!TryValidateReviewOptionContextForCurrentOperation(options, withConfig, out var reviewOptionError)) {
+                Console.Error.WriteLine(reviewOptionError);
+                return 1;
+            }
 
             if (options.AnalysisExportPathSet) {
                 if (options.Cleanup || options.UpdateSecret) {

@@ -94,8 +94,18 @@ internal static partial class Program {
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);
         failed += Run("Setup args include review loop policy and strictness",
             TestSetupArgsIncludeReviewLoopPolicyAndStrictness);
+        failed += Run("Setup args reject review vision path without vision policy",
+            TestSetupArgsRejectsReviewVisionPathWithoutVisionPolicy);
+        failed += Run("Setup review option context rejects without with-config",
+            TestSetupReviewOptionContextRejectsWithoutWithConfig);
+        failed += Run("Setup review option context rejects config override",
+            TestSetupReviewOptionContextRejectsConfigOverride);
+        failed += Run("Setup review option context rejects vision path without vision policy",
+            TestSetupReviewOptionContextRejectsVisionPathWithoutVisionPolicy);
         failed += Run("Setup config rejects invalid OpenAI account rotation", TestSetupConfigRejectsInvalidOpenAiAccountRotation);
         failed += Run("Setup config rejects invalid review loop policy", TestSetupConfigRejectsInvalidReviewLoopPolicy);
+        failed += Run("Setup config rejects review options with config override",
+            TestSetupConfigRejectsReviewOptionsWithConfigOverride);
         failed += Run("Setup config rejects empty merge blocker sections", TestSetupConfigRejectsEmptyMergeBlockerSections);
         failed += Run("Setup config rejects review vision path without vision policy",
             TestSetupConfigRejectsReviewVisionPathWithoutVisionPolicy);
@@ -136,6 +146,8 @@ internal static partial class Program {
             TestSetupBuildConfigJsonMergeClearsOpenAiIdsWhenSnapshotHasPrimary);
         failed += Run("Setup config build includes vision loop policy defaults",
             TestSetupBuildConfigJsonIncludesVisionLoopPolicyDefaults);
+        failed += Run("Setup config build normalizes todo-only loop policy alias",
+            TestSetupBuildConfigJsonNormalizesTodoOnlyLoopPolicyAlias);
         failed += Run("Setup config build includes vision inference from file",
             TestSetupBuildConfigJsonIncludesVisionInferenceFromFile);
         failed += Run("Setup config merge preserves review loop settings",
@@ -231,6 +243,8 @@ internal static partial class Program {
             TestWebSetupAnalysisValidationRejectsRunStrictOutsidePresetGeneration);
         failed += Run("Web setup review config validation normalizes loop policy",
             TestWebSetupReviewConfigValidationNormalizesLoopPolicy);
+        failed += Run("Web setup review config validation normalizes todo-only loop policy",
+            TestWebSetupReviewConfigValidationNormalizesTodoOnlyLoopPolicy);
         failed += Run("Web setup review config validation rejects outside preset generation",
             TestWebSetupReviewConfigValidationRejectsOutsidePresetGeneration);
         failed += Run("Web setup review config validation rejects invalid loop policy",
