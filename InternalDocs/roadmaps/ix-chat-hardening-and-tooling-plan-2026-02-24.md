@@ -140,6 +140,9 @@ Progress:
 - Added host/service runtime CLI toggles to control these packs per run:
   - `--enable/--disable-dnsclientx-pack`
   - `--enable/--disable-domaindetective-pack`
+- Added runner-script pass-through switches for scenario/live/preflight harnesses:
+  - `-Enable/-DisableDnsClientXPack`
+  - `-Enable/-DisableDomainDetectivePack`
 - Added metadata regression test coverage for disabled-by-configuration behavior and source-kind classification.
 
 ### WS5: Tool Count, Context Budget, Compaction

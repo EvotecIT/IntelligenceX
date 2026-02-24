@@ -8,6 +8,10 @@
     [switch] $EchoToolOutputs = $true,
     [switch] $EnablePowerShellPack,
     [switch] $EnableTestimoXPack,
+    [switch] $EnableDnsClientXPack,
+    [switch] $DisableDnsClientXPack,
+    [switch] $EnableDomainDetectivePack,
+    [switch] $DisableDomainDetectivePack,
     [string[]] $PluginPath,
     [switch] $NoDefaultPluginPaths,
     [switch] $ShowToolIds,
@@ -81,6 +85,18 @@ if ($EnablePowerShellPack) {
 }
 if ($EnableTestimoXPack) {
     $runArgs += '--enable-testimox-pack'
+}
+if ($EnableDnsClientXPack) {
+    $runArgs += '--enable-dnsclientx-pack'
+}
+if ($DisableDnsClientXPack) {
+    $runArgs += '--disable-dnsclientx-pack'
+}
+if ($EnableDomainDetectivePack) {
+    $runArgs += '--enable-domaindetective-pack'
+}
+if ($DisableDomainDetectivePack) {
+    $runArgs += '--disable-domaindetective-pack'
 }
 if ($PluginPath -and $PluginPath.Count -gt 0) {
     foreach ($path in $PluginPath) {

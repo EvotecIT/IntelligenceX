@@ -38,8 +38,26 @@ pwsh .\Build\Run-Chat.ps1 `
   -ScenarioOutput .\artifacts\chat-scenarios
 ```
 
+Live 10-turn harness run (real auth/tools, transcript + tool ledger JSON):
+
+```powershell
+pwsh .\Build\Run-ChatLiveConversation.ps1 `
+  -ScenarioFile .\IntelligenceX.Chat\scenarios\ad-replication-health-10-turn.json `
+  -ExpectedTurns 10 `
+  -OutDir .\artifacts\chat-live
+```
+
 Scenario file formats:
-- JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional quality gates):
+- JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional quality gates).
+- Optional scenario-level `tags` array (for example `["ad","replication","strict"]`) for suite filtering.
+- Optional scenario-level `defaults` object can apply strict assertion defaults to every turn; turn-level values still override.
+  - `assert_clean_completion` (boolean)
+  - `assert_tool_call_output_pairing` (boolean)
+  - `assert_no_duplicate_tool_call_ids` (boolean)
+  - `assert_no_duplicate_tool_output_call_ids` (boolean)
+  - `max_no_tool_execution_retries` (integer >= 0)
+  - `max_duplicate_tool_call_signatures` (integer >= 0)
+- Turn-level quality gates:
   - `assert_contains` (string or array)
   - `assert_not_contains` (string or array)
   - `assert_matches_regex` (string or array; regex patterns that must match assistant output)
@@ -61,13 +79,17 @@ Scenario file formats:
   - `max_duplicate_tool_call_signatures` (integer >= 0; defaults to `1` for tool-contract turns)
 - Plain text where each non-empty line is a user turn (`#` and `//` lines are ignored).
 
-The host writes a markdown run report under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path).
+The host writes both markdown and JSON run artifacts under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path). JSON includes per-turn transcript + full tool call/output ledger.
 
 Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-reboot-local-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-replication-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-cross-dc-followthrough-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-eventlog-correlation-partial-failures-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-long-continuation-no-partials-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-transport-recovery-no-duplicate-replay-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-user-last-logon-przemyslaw-10-turn.json`
 
 Batch run all built-in AD scenarios locally:
@@ -83,6 +105,65 @@ Optional flags:
 - `-NoBuild` to skip restore/build in repeated local runs.
 - `-StopOnFailure` to stop on first failed scenario.
 - `-ContinueOnError:$false` to fail a scenario immediately when a turn fails.
+- `-Tags ad,strict` to run only scenarios that contain all listed tags.
+- `-DisableDnsClientXPack` / `-DisableDomainDetectivePack` to keep OSS DNS/domain packs out of a run when profiling tool-count/context behavior.
+
+One-command local quality preflight (strict scenario suite + optional live smoke run):
+
+```powershell
+pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+  -ScenarioFilter "ad-*-10-turn.json"
+```
+
+To include a live 10-turn smoke run in the same preflight:
+
+```powershell
+pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+  -ScenarioFilter "ad-*-10-turn.json" `
+  -RunLiveHarness
+```
+
+To run only strict AD continuation scenarios in preflight:
+
+```powershell
+pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+  -ScenarioFilter "ad-*-10-turn.json" `
+  -ScenarioTags ad,strict,continuation
+```
+
+To include recovery unit tests (tool-pairing/transport retry guards) in preflight:
+
+```powershell
+pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+  -ScenarioFilter "ad-*-10-turn.json" `
+  -RunRecoveryUnitTests
+```
+
+To add a dedicated strict transport-recovery gate run (tags: `ad,strict,transport-recovery`) in the same preflight:
+
+```powershell
+pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+  -ScenarioFilter "ad-*-10-turn.json" `
+  -RunTransportRecoveryProfile `
+  -RunRecoveryUnitTests
+```
+
+Compare two scenario JSON artifacts and optionally fail on regression:
+
+```powershell
+pwsh .\Build\Compare-ChatScenarioReports.ps1 `
+  -BaseReport .\artifacts\chat-scenarios\baseline.json `
+  -CurrentReport .\artifacts\chat-scenarios\candidate.json `
+  -FailOnRegression
+```
+
+Summarize scenario coverage and strictness (console + optional markdown):
+
+```powershell
+pwsh .\Build\Get-ChatScenarioCoverage.ps1 `
+  -Filter "ad-*-10-turn.json" `
+  -OutFile .\artifacts\chat-scenarios\coverage.md
+```
 
 Startup profiling (phase timing from `StartupLog`):
 
