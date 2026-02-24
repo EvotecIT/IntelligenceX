@@ -23,7 +23,10 @@ Last validated: 2026-02-24
   - `Build/Run-ChatLiveConversation.ps1`
   - `Build/Run-ChatQualityPreflight.ps1`
 - Existing AD scenarios were made strict by default and one new cross-DC continuation scenario was added.
+- Added catalog-level strictness test coverage for `ad-*-10-turn.json` to enforce strict defaults and 10-turn shape.
 - Scenario suite now supports scenario-tag filtering (`-Tags`) and preflight forwards tags via `-ScenarioTags`.
+- Added live-suite runner (`Build/Run-ChatLiveConversationSuite.ps1`) so local live validation can run tag-driven batches without hardcoded single-scenario defaults.
+- Preflight now supports `-RunLiveHarnessSuite` for the same tag-driven live validation path.
 - App already supports debug toggles for turn trace and draft bubbles with distinct rendering channels.
 
 ## Scenario Coverage (Current)
@@ -108,6 +111,7 @@ Progress:
 - Added coverage summary helper:
   - `Build/Get-ChatScenarioCoverage.ps1`
 - Added scenario tag taxonomy (`ad`, `strict`, `continuation`, `cross-dc`, `eventlog`, etc.) and suite tag filtering.
+- Added live harness suite runner (tag-driven, repeatable) for real auth/tool runs without hardcoded single-scenario selection.
 - Hardened scenario duplicate-call detection by canonicalizing tool argument JSON before signature comparison
   (so key-order-only differences still count as duplicate signatures).
 

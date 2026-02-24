@@ -375,6 +375,7 @@ build/*
 !Build/Run-ChatApp.ps1
 !Build/Run-ChatScenarioSuite.ps1
 !Build/Run-ChatLiveConversation.ps1
+!Build/Run-ChatLiveConversationSuite.ps1
 !Build/Run-ChatQualityPreflight.ps1
 !Build/Compare-ChatScenarioReports.ps1
 !Build/Get-ChatScenarioCoverage.ps1

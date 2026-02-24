@@ -47,6 +47,17 @@ pwsh .\Build\Run-ChatLiveConversation.ps1 `
   -OutDir .\artifacts\chat-live
 ```
 
+Live 10-turn harness suite run (tag-driven, no hardcoded single scenario):
+
+```powershell
+pwsh .\Build\Run-ChatLiveConversationSuite.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -Filter "ad-*-10-turn.json" `
+  -Tags ad,strict,live `
+  -ExpectedTurns 10 `
+  -OutDir .\artifacts\chat-live-suite
+```
+
 Scenario file formats:
 - JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional quality gates).
 - Optional scenario-level `tags` array (for example `["ad","replication","strict"]`) for suite filtering.
@@ -121,6 +132,15 @@ To include a live 10-turn smoke run in the same preflight:
 pwsh .\Build\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "ad-*-10-turn.json" `
   -RunLiveHarness
+```
+
+To include a tag-driven live harness suite run in the same preflight:
+
+```powershell
+pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+  -ScenarioFilter "ad-*-10-turn.json" `
+  -RunLiveHarnessSuite `
+  -LiveSuiteTags ad,strict,live
 ```
 
 To run only strict AD continuation scenarios in preflight:
