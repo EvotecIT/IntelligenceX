@@ -15,6 +15,7 @@ internal static class PrWatchRunner {
     private const string DefaultRepo = "EvotecIT/IntelligenceX";
     private const string SnapshotSchema = "intelligencex.pr-watch.snapshot.v1";
     private const string StateSchema = "intelligencex.pr-watch.state.v1";
+    private const string AuditSchema = "intelligencex.pr-watch.audit.v1";
     private const string ReviewSourceTrustedHuman = "trusted_human";
     private const string ReviewSourceApprovedBot = "approved_bot";
     private const string ReviewSourceOther = "other";
@@ -29,6 +30,9 @@ internal static class PrWatchRunner {
     private const string StopReasonReadyToMerge = "ready_to_merge";
     private const string StopReasonRetryBudgetExhausted = "retry_budget_exhausted";
     private const string ConfirmApplyRetryToken = "RETRY_CHECKS";
+    private const string DefaultAuditLogPath = "artifacts/pr-watch/ix-pr-watch-audit.jsonl";
+    private const string DefaultPhase = "observe";
+    private const string DefaultSource = "manual_cli";
     private const int DefaultPollSeconds = 60;
     private const int DefaultRetryCooldownMinutes = 15;
     private const int MaxRetryCooldownMinutes = 24 * 60;
@@ -62,6 +66,11 @@ internal static class PrWatchRunner {
         "DIRTY",
         "DRAFT",
         "UNKNOWN"
+    };
+    private static readonly HashSet<string> AllowedPhases = new(StringComparer.OrdinalIgnoreCase) {
+        "observe",
+        "assist",
+        "repair"
     };
     private static readonly JsonSerializerOptions JsonOptions = new() {
         WriteIndented = false
@@ -119,6 +128,21 @@ internal static class PrWatchRunner {
         int MaxFlakyRetries
     );
 
+    internal sealed record AuditRecord(
+        string Schema,
+        DateTimeOffset TimestampUtc,
+        int PrNumber,
+        string Repo,
+        string HeadSha,
+        string Phase,
+        string Action,
+        string? DedupeKey,
+        string Source,
+        string Reason,
+        string Result,
+        string? RunLink
+    );
+
     internal sealed record WatchSnapshot(
         string Schema,
         DateTimeOffset CapturedAtUtc,
@@ -128,7 +152,8 @@ internal static class PrWatchRunner {
         IReadOnlyList<ReviewItem> NewReviewItems,
         IReadOnlyList<RecommendedAction> Actions,
         string? StopReason,
-        RetryState RetryState
+        RetryState RetryState,
+        IReadOnlyList<AuditRecord> Audit
     );
 
     private sealed class RunnerState {
@@ -153,6 +178,10 @@ internal static class PrWatchRunner {
         public int RetryCooldownMinutes { get; set; } = DefaultRetryCooldownMinutes;
         public bool ApplyRetry { get; set; }
         public string ConfirmApplyRetry { get; set; } = string.Empty;
+        public string Phase { get; set; } = DefaultPhase;
+        public string Source { get; set; } = DefaultSource;
+        public string? RunLink { get; set; }
+        public string AuditLogPath { get; set; } = DefaultAuditLogPath;
         public string? StateFilePath { get; set; }
         public bool Once { get; set; } = true;
         public bool Watch { get; set; }
@@ -166,6 +195,14 @@ internal static class PrWatchRunner {
     }
 
     private sealed record WatchCollectionResult(WatchSnapshot Snapshot, string StateFilePath, RunnerState State);
+
+    private sealed record RetryApplyOutcome(
+        bool Applied,
+        string Result,
+        string Reason,
+        string? DedupeKey,
+        string? ErrorMessage = null
+    );
 
     public static async Task<int> RunAsync(string[] args) {
         var options = ParseOptions(args);
@@ -205,9 +242,60 @@ internal static class PrWatchRunner {
 
         try {
             var result = await CollectSnapshotAsync(options, authenticatedLogin).ConfigureAwait(false);
+            var plannedAudit = BuildPlannedAuditRecords(
+                result.Snapshot,
+                options.Phase,
+                options.Source,
+                options.RunLink);
+            AppendAuditRecords(options.AuditLogPath, plannedAudit);
+            result = result with {
+                Snapshot = result.Snapshot with { Audit = plannedAudit }
+            };
+
             if (options.ApplyRetry) {
-                var applied = await TryApplyRetryActionAsync(result).ConfigureAwait(false);
-                if (applied) {
+                RetryApplyOutcome retryOutcome;
+                try {
+                    retryOutcome = await TryApplyRetryActionAsync(result).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    var fallbackRetryAction = result.Snapshot.Actions
+                        .FirstOrDefault(action => action.Name.Equals(ActionRetryFailedChecks, StringComparison.OrdinalIgnoreCase));
+                    var failureAudit = BuildExecutionAuditRecord(
+                        result.Snapshot,
+                        options.Phase,
+                        options.Source,
+                        options.RunLink,
+                        ActionRetryFailedChecks,
+                        fallbackRetryAction?.DedupeKey,
+                        "failed",
+                        "retry_execution_exception");
+                    AppendAuditRecords(options.AuditLogPath, new[] { failureAudit });
+                    result = result with {
+                        Snapshot = result.Snapshot with { Audit = result.Snapshot.Audit.Concat(new[] { failureAudit }).ToList() }
+                    };
+                    Console.Error.WriteLine(ex.Message);
+                    return 1;
+                }
+
+                var retryAudit = BuildExecutionAuditRecord(
+                    result.Snapshot,
+                    options.Phase,
+                    options.Source,
+                    options.RunLink,
+                    ActionRetryFailedChecks,
+                    retryOutcome.DedupeKey,
+                    retryOutcome.Result,
+                    retryOutcome.Reason);
+                AppendAuditRecords(options.AuditLogPath, new[] { retryAudit });
+                result = result with {
+                    Snapshot = result.Snapshot with { Audit = result.Snapshot.Audit.Concat(new[] { retryAudit }).ToList() }
+                };
+
+                if (retryOutcome.Result.Equals("failed", StringComparison.OrdinalIgnoreCase)) {
+                    Console.Error.WriteLine(retryOutcome.ErrorMessage ?? "Retry rerun failed.");
+                    return 1;
+                }
+
+                if (retryOutcome.Applied) {
                     var refreshedRetryState = new RetryState(
                         CurrentShaRetriesUsed: GetRetriesUsed(result.State, result.Snapshot.Pr.HeadSha),
                         MaxFlakyRetries: options.MaxFlakyRetries
@@ -237,7 +325,8 @@ internal static class PrWatchRunner {
                             CapturedAtUtc = DateTimeOffset.UtcNow,
                             RetryState = refreshedRetryState,
                             Actions = refreshedActions,
-                            StopReason = refreshedStopReason
+                            StopReason = refreshedStopReason,
+                            Audit = result.Snapshot.Audit
                         }
                     };
                 }
@@ -352,6 +441,109 @@ internal static class PrWatchRunner {
         return false;
     }
 
+    internal static string NormalizePhase(string? phase) {
+        var value = (phase ?? string.Empty).Trim().ToLowerInvariant();
+        if (AllowedPhases.Contains(value)) {
+            return value;
+        }
+
+        return DefaultPhase;
+    }
+
+    internal static string NormalizeSource(string? source) {
+        var value = (source ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(value)) {
+            return DefaultSource;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value) {
+            if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.') {
+                sb.Append(ch);
+            } else {
+                sb.Append('-');
+            }
+        }
+
+        var normalized = sb.ToString().Trim('-');
+        return string.IsNullOrWhiteSpace(normalized) ? DefaultSource : normalized;
+    }
+
+    internal static IReadOnlyList<AuditRecord> BuildPlannedAuditRecords(WatchSnapshot snapshot, string phase, string source, string? runLink) {
+        var normalizedPhase = NormalizePhase(phase);
+        var normalizedSource = NormalizeSource(source);
+        var records = new List<AuditRecord>();
+        foreach (var action in snapshot.Actions) {
+            records.Add(BuildAuditRecord(
+                snapshot,
+                normalizedPhase,
+                normalizedSource,
+                runLink,
+                action.Name,
+                action.DedupeKey,
+                "planned",
+                ResolvePlannedActionReason(snapshot, action)));
+        }
+
+        return records;
+    }
+
+    internal static AuditRecord BuildExecutionAuditRecord(WatchSnapshot snapshot, string phase, string source, string? runLink,
+        string action, string? dedupeKey, string result, string reason) {
+        return BuildAuditRecord(
+            snapshot,
+            NormalizePhase(phase),
+            NormalizeSource(source),
+            runLink,
+            action,
+            dedupeKey,
+            result,
+            reason);
+    }
+
+    private static AuditRecord BuildAuditRecord(WatchSnapshot snapshot, string phase, string source, string? runLink,
+        string action, string? dedupeKey, string result, string reason) {
+        return new AuditRecord(
+            Schema: AuditSchema,
+            TimestampUtc: DateTimeOffset.UtcNow,
+            PrNumber: snapshot.Pr.Number,
+            Repo: snapshot.Pr.Repo,
+            HeadSha: snapshot.Pr.HeadSha,
+            Phase: phase,
+            Action: action,
+            DedupeKey: string.IsNullOrWhiteSpace(dedupeKey) ? null : dedupeKey,
+            Source: source,
+            Reason: reason,
+            Result: result,
+            RunLink: string.IsNullOrWhiteSpace(runLink) ? null : runLink);
+    }
+
+    private static string ResolvePlannedActionReason(WatchSnapshot snapshot, RecommendedAction action) {
+        if (action.Name.Equals(ActionRetryFailedChecks, StringComparison.OrdinalIgnoreCase)) {
+            return "retry_budget_available";
+        }
+
+        if (action.Name.Equals(ActionDiagnoseCiFailure, StringComparison.OrdinalIgnoreCase)) {
+            return "checks_failed";
+        }
+
+        if (action.Name.Equals(ActionProcessReviewComment, StringComparison.OrdinalIgnoreCase)) {
+            return "new_actionable_review_feedback";
+        }
+
+        if (action.Name.Equals(ActionIdleWait, StringComparison.OrdinalIgnoreCase)) {
+            return "no_actionable_changes";
+        }
+
+        if (action.Name.StartsWith("stop_", StringComparison.OrdinalIgnoreCase)) {
+            return string.IsNullOrWhiteSpace(snapshot.StopReason)
+                ? "terminal_state"
+                : $"stop:{snapshot.StopReason}";
+        }
+
+        return "planned_action";
+    }
+
     private static async Task<int> RunWatchAsync(Options options, string authenticatedLogin) {
         var pollSeconds = options.PollSeconds;
         string? lastChangeKey = null;
@@ -364,6 +556,16 @@ internal static class PrWatchRunner {
                 Console.Error.WriteLine(ex.Message);
                 return 1;
             }
+
+            var plannedAudit = BuildPlannedAuditRecords(
+                result.Snapshot,
+                options.Phase,
+                options.Source,
+                options.RunLink);
+            AppendAuditRecords(options.AuditLogPath, plannedAudit);
+            result = result with {
+                Snapshot = result.Snapshot with { Audit = plannedAudit }
+            };
 
             PrintJson(new {
                 @event = "snapshot",
@@ -456,7 +658,8 @@ internal static class PrWatchRunner {
             NewReviewItems: newReviewItems,
             Actions: actions,
             StopReason: stopReason,
-            RetryState: retryState
+            RetryState: retryState,
+            Audit: Array.Empty<AuditRecord>()
         );
         return new WatchCollectionResult(snapshot, statePath, state);
     }
@@ -508,6 +711,23 @@ internal static class PrWatchRunner {
         File.Delete(tempPath);
     }
 
+    private static void AppendAuditRecords(string path, IReadOnlyList<AuditRecord> records) {
+        if (string.IsNullOrWhiteSpace(path) || records.Count == 0) {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory)) {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        foreach (var record in records) {
+            writer.WriteLine(JsonSerializer.Serialize(record, JsonOptions));
+        }
+    }
+
     private static int GetRetriesUsed(RunnerState state, string headSha) {
         if (string.IsNullOrWhiteSpace(headSha)) {
             return 0;
@@ -540,12 +760,16 @@ internal static class PrWatchRunner {
             : null;
     }
 
-    private static async Task<bool> TryApplyRetryActionAsync(WatchCollectionResult result) {
+    private static async Task<RetryApplyOutcome> TryApplyRetryActionAsync(WatchCollectionResult result) {
         var retryAction = result.Snapshot.Actions
             .FirstOrDefault(action => action.Name.Equals(ActionRetryFailedChecks, StringComparison.OrdinalIgnoreCase));
         if (retryAction is null) {
             Console.Error.WriteLine("Assist retry requested, but no eligible retry action was planned.");
-            return false;
+            return new RetryApplyOutcome(
+                Applied: false,
+                Result: "skipped",
+                Reason: "no_eligible_retry_action",
+                DedupeKey: null);
         }
 
         var runIds = result.Snapshot.FailedRuns
@@ -556,7 +780,11 @@ internal static class PrWatchRunner {
             .ToList();
         if (runIds.Count == 0) {
             Console.Error.WriteLine("Assist retry requested, but no failed run IDs are available.");
-            return false;
+            return new RetryApplyOutcome(
+                Applied: false,
+                Result: "skipped",
+                Reason: "no_failed_run_ids",
+                DedupeKey: retryAction.DedupeKey);
         }
 
         var failedReruns = new List<string>();
@@ -582,7 +810,12 @@ internal static class PrWatchRunner {
         }
 
         if (!rerunSucceeded) {
-            throw new InvalidOperationException("Retry rerun failed for all targeted workflow runs.");
+            return new RetryApplyOutcome(
+                Applied: false,
+                Result: "failed",
+                Reason: "rerun_all_failed",
+                DedupeKey: retryAction.DedupeKey,
+                ErrorMessage: "Retry rerun failed for all targeted workflow runs.");
         }
 
         var headSha = result.Snapshot.Pr.HeadSha;
@@ -599,11 +832,20 @@ internal static class PrWatchRunner {
             $"Applied retry_failed_checks for PR #{result.Snapshot.Pr.Number.ToString(CultureInfo.InvariantCulture)} on SHA {headSha} (runs={runIds.Count.ToString(CultureInfo.InvariantCulture)}).");
 
         if (failedReruns.Count > 0) {
-            throw new InvalidOperationException(
+            return new RetryApplyOutcome(
+                Applied: false,
+                Result: "failed",
+                Reason: "rerun_partial_failure",
+                DedupeKey: retryAction.DedupeKey,
+                ErrorMessage:
                 $"Retry rerun partially failed for PR #{result.Snapshot.Pr.Number.ToString(CultureInfo.InvariantCulture)}: {string.Join("; ", failedReruns)}");
         }
 
-        return true;
+        return new RetryApplyOutcome(
+            Applied: true,
+            Result: "success",
+            Reason: "rerun_applied",
+            DedupeKey: retryAction.DedupeKey);
     }
 
     private static async Task<string> GetAuthenticatedLoginAsync() {
@@ -1032,6 +1274,44 @@ internal static class PrWatchRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--phase":
+                    if (i + 1 < args.Length) {
+                        var phase = args[++i] ?? string.Empty;
+                        if (AllowedPhases.Contains(phase.Trim())) {
+                            options.Phase = NormalizePhase(phase);
+                        } else {
+                            options.ParseFailed = true;
+                            options.ShowHelp = true;
+                        }
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--source":
+                    if (i + 1 < args.Length) {
+                        options.Source = NormalizeSource(args[++i]);
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--run-link":
+                    if (i + 1 < args.Length) {
+                        options.RunLink = args[++i];
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--audit-log-path":
+                    if (i + 1 < args.Length) {
+                        options.AuditLogPath = args[++i];
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 default:
                     Console.Error.WriteLine($"Unknown option: {arg}");
                     options.ParseFailed = true;
@@ -1060,6 +1340,12 @@ internal static class PrWatchRunner {
             options.ShowHelp = true;
         }
 
+        options.Phase = NormalizePhase(options.Phase);
+        options.Source = NormalizeSource(options.Source);
+        if (string.IsNullOrWhiteSpace(options.AuditLogPath)) {
+            options.AuditLogPath = DefaultAuditLogPath;
+        }
+
         return options;
     }
 
@@ -1079,6 +1365,10 @@ internal static class PrWatchRunner {
         Console.WriteLine("  --approved-bot <login>      Additional approved bot login (repeatable)");
         Console.WriteLine("  --apply-retry               Execute retry_failed_checks action if eligible (once mode only)");
         Console.WriteLine("  --confirm-apply-retry <v>   Required safety confirmation token (`RETRY_CHECKS`)");
+        Console.WriteLine("  --phase <observe|assist|repair> Audit phase marker (default: observe)");
+        Console.WriteLine("  --source <value>            Audit source marker (default: manual_cli)");
+        Console.WriteLine("  --run-link <url>            Optional workflow/job URL embedded in audit records");
+        Console.WriteLine("  --audit-log-path <path>     Audit JSONL output (default: artifacts/pr-watch/ix-pr-watch-audit.jsonl)");
     }
 
     private static void PrintJson(object value) {
