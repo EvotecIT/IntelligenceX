@@ -2,7 +2,7 @@
 
 [CmdletBinding()] param(
     [string] $ScenarioDir = '.\IntelligenceX.Chat\scenarios',
-    [string] $Filter = 'ad-*-10-turn.json',
+    [string] $Filter = '*-10-turn.json',
     [string] $OutFile
 )
 
@@ -88,6 +88,16 @@ function Contains-ToolPattern([object] $turn, [string] $token) {
     return $false
 }
 
+function Contains-ForbiddenToolPattern([object] $turn, [string] $token) {
+    $forbidTools = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'forbid_tools'))
+    foreach ($pattern in $forbidTools) {
+        if ($pattern.IndexOf($token, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Is-StrictDefaultSet([object] $defaults) {
     if ($null -eq $defaults) {
         return $false
@@ -120,6 +130,9 @@ foreach ($file in $files) {
     $toolContractTurns = 0
     $adTurns = 0
     $eventLogTurns = 0
+    $dnsTurns = 0
+    $domainDetectiveTurns = 0
+    $publicDnsGuardTurns = 0
     $crossDcTurns = 0
 
     foreach ($turn in $turns) {
@@ -131,6 +144,15 @@ foreach ($file in $files) {
         }
         if (Contains-ToolPattern -turn $turn -token "eventlog_") {
             $eventLogTurns++
+        }
+        if (Contains-ToolPattern -turn $turn -token "dnsclientx_") {
+            $dnsTurns++
+        }
+        if (Contains-ToolPattern -turn $turn -token "domaindetective_") {
+            $domainDetectiveTurns++
+        }
+        if ((Contains-ForbiddenToolPattern -turn $turn -token "ad_") -or (Contains-ForbiddenToolPattern -turn $turn -token "eventlog_")) {
+            $publicDnsGuardTurns++
         }
         $user = "$(Get-JsonPropertyValue -instance $turn -propertyName 'user')"
         if ($user -match '(?i)all other|all remaining|every remaining|cross-DC|cross DC|those DCs') {
@@ -147,6 +169,9 @@ foreach ($file in $files) {
         ToolContractTurns = $toolContractTurns
         AdTurns = $adTurns
         EventLogTurns = $eventLogTurns
+        DnsTurns = $dnsTurns
+        DomainDetectiveTurns = $domainDetectiveTurns
+        PublicDnsGuardTurns = $publicDnsGuardTurns
         CrossDcTurns = $crossDcTurns
         StrictDefaults = $strictDefaults
         Tags = ($tags -join ',')
@@ -154,7 +179,7 @@ foreach ($file in $files) {
 }
 
 Write-Host "`n=== Chat Scenario Coverage ===" -ForegroundColor Cyan
-$rows | Format-Table ScenarioName, Turns, ToolContractTurns, AdTurns, EventLogTurns, CrossDcTurns, StrictDefaults, Tags -AutoSize
+$rows | Format-Table ScenarioName, Turns, ToolContractTurns, AdTurns, EventLogTurns, DnsTurns, DomainDetectiveTurns, PublicDnsGuardTurns, CrossDcTurns, StrictDefaults, Tags -AutoSize
 
 if (-not [string]::IsNullOrWhiteSpace($OutFile)) {
     $resolvedOutFile = Resolve-RepoRelativePath -repoRoot $repoRoot -pathValue $OutFile
@@ -166,16 +191,19 @@ if (-not [string]::IsNullOrWhiteSpace($OutFile)) {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("# Chat Scenario Coverage") | Out-Null
     $lines.Add("") | Out-Null
-    $lines.Add("| Scenario | Turns | ToolContractTurns | AdTurns | EventLogTurns | CrossDcTurns | StrictDefaults | Tags |") | Out-Null
-    $lines.Add("|---|---:|---:|---:|---:|---:|:---:|---|") | Out-Null
+    $lines.Add("| Scenario | Turns | ToolContractTurns | AdTurns | EventLogTurns | DnsTurns | DomainDetectiveTurns | PublicDnsGuardTurns | CrossDcTurns | StrictDefaults | Tags |") | Out-Null
+    $lines.Add("|---|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---|") | Out-Null
     foreach ($row in $rows) {
         $lines.Add(
-            ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} |" -f
+            ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} | {10} |" -f
                 $row.ScenarioName,
                 $row.Turns,
                 $row.ToolContractTurns,
                 $row.AdTurns,
                 $row.EventLogTurns,
+                $row.DnsTurns,
+                $row.DomainDetectiveTurns,
+                $row.PublicDnsGuardTurns,
                 $row.CrossDcTurns,
                 $(if ($row.StrictDefaults) { "yes" } else { "no" }),
                 $row.Tags)) | Out-Null

@@ -1,0 +1,77 @@
+{
+  "name": "dns-resolver-fallback-recovery-10-turn",
+  "tags": ["dns", "continuation", "transport-recovery", "strict", "live", "open-source"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Public DNS intent",
+      "user": "Investigate public DNS reliability for fabrikam.com and keep this on DNS/domain tooling only.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "dnsclientx_pack_info"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Resolver matrix",
+      "user": "Query A and NS records across 1.1.1.1, 8.8.8.8, and 9.9.9.9 and keep per-resolver evidence.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Retry failed resolvers once",
+      "user": "Retry failed resolver queries once with bounded timeout, then continue without duplicating successful resolver results.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Ping authoritative hosts",
+      "user": "Ping all authoritative DNS hosts and return packet-loss/latency notes for each host.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["dnsclientx_ping"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Domain posture snapshot",
+      "user": "Run a Domain Detective summary and correlate DNS findings with email/security posture.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Continue remaining checks",
+      "user": "If any checks still failed, continue with unresolved resolvers/hosts only and preserve completed evidence.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "dnsclientx_ping", "domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Coverage matrix",
+      "user": "Return a resolver/host matrix showing success, failure class, and confidence for each evidence path."
+    },
+    {
+      "name": "Root causes",
+      "user": "Classify probable root causes and identify what is still unknown."
+    },
+    {
+      "name": "Action plan",
+      "user": "Provide a short execute-now plan to stabilize DNS reliability for this domain.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final summary",
+      "user": "Summarize in 6 bullets with resolver coverage count, host coverage count, and unresolved blockers.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
