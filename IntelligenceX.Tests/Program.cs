@@ -76,6 +76,7 @@ internal static partial class Program {
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
         failed += Run("Native request body normalizes tools/tool_choice", TestNativeRequestBodyNormalizesToolsAndToolChoice);
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
+        failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);

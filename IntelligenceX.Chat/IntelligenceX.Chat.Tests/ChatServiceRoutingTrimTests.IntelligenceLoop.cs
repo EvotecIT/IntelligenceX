@@ -262,23 +262,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData(true, true, false, "Findings summary without actions.", true)]
-    [InlineData(true, true, false, "Findings summary. Do you want me to continue?", false)]
-    [InlineData(false, true, false, "Findings summary without actions.", false)]
-    [InlineData(true, false, false, "Findings summary without actions.", false)]
-    [InlineData(true, true, true, "Findings summary without actions.", false)]
-    [InlineData(true, true, false, "[Action]\nix:action:v1\nid: act_001\nreply: /act act_001", false)]
-    [InlineData(true, true, false, "I can continue once I get one minimal input:\n- time window\n- target DC list\n- then I will execute immediately", false)]
+    [InlineData(true, true, false, false, false, "Findings summary without actions.", true)]
+    [InlineData(true, true, false, false, false, "Findings summary. Do you want me to continue?", false)]
+    [InlineData(false, true, false, false, false, "Findings summary without actions.", false)]
+    [InlineData(true, false, false, false, false, "Findings summary without actions.", false)]
+    [InlineData(true, true, true, false, false, "Findings summary without actions.", false)]
+    [InlineData(true, true, false, false, false, "[Action]\nix:action:v1\nid: act_001\nreply: /act act_001", false)]
+    [InlineData(true, true, false, false, false, "I can continue once I get one minimal input:\n- time window\n- target DC list\n- then I will execute immediately", false)]
+    [InlineData(true, true, false, true, false, "Findings summary without actions.", false)]
+    [InlineData(true, true, false, false, true, "Findings summary without actions.", false)]
     public void ShouldAttemptProactiveFollowUpReview_RespectsToolActivityAndActionBlocks(
         bool proactiveModeEnabled,
         bool hasToolActivity,
         bool proactiveFollowUpUsed,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
         string assistantDraft,
         bool expected) {
         var result = ChatServiceSession.ShouldAttemptProactiveFollowUpReview(
             proactiveModeEnabled,
             hasToolActivity,
             proactiveFollowUpUsed,
+            continuationFollowUpTurn,
+            compactFollowUpTurn,
             assistantDraft);
 
         Assert.Equal(expected, result);

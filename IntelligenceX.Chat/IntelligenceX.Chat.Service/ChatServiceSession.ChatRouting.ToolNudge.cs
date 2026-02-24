@@ -738,6 +738,24 @@ internal sealed partial class ChatServiceSession {
                || LooksLikeExecutionAcknowledgeDraft(draft);
     }
 
+    internal static bool ShouldAttemptCarryoverStructuredNextActionReplay(
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
+        string userRequest,
+        string assistantDraft) {
+        if (!continuationFollowUpTurn || !compactFollowUpTurn) {
+            return false;
+        }
+
+        // If this turn is already anchored to new contextual request content, avoid replaying stale carryover
+        // actions from previous turns and let normal tool planning proceed.
+        if (LooksLikeContextualFollowUpForExecutionNudge(userRequest, assistantDraft)) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool ShouldTriggerNoResultPhaseLoopWatchdog(
         int trailingPhaseLoopEvents,
         bool hasToolActivity,

@@ -41,6 +41,24 @@ public sealed class HostNoToolRetryHeuristicsTests {
     }
 
     [Fact]
+    public void ShouldRetryNoToolExecution_TriggersForBlockerPrefaceWithoutQuestion() {
+        var result = InvokeShouldRetryNoToolExecution(
+            userRequest: "Return a UTC timeline with event ID, DC hostname, source client/IP if available, and success/failure signal.",
+            assistantDraft: "I can do that, but I need to run payload-based multi-DC event queries first to produce the timeline.");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldRetryNoToolExecution_DoesNotTriggerForUnrelatedBlockerPrefaceWithoutContextAnchor() {
+        var result = InvokeShouldRetryNoToolExecution(
+            userRequest: "Show replication summary now.",
+            assistantDraft: "I can do that, but this account has no more credits today.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ShouldRetryNoToolExecution_TriggersForScenarioExecutionContractTurns() {
         var result = InvokeShouldRetryNoToolExecution(
             userRequest: "[Scenario execution contract]\nThis scenario turn requires tool execution before the final response.\nUser request:\nCompare lastLogon vs lastLogonTimestamp.",

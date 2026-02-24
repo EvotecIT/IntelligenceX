@@ -334,10 +334,10 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         var type = (GetStringIgnoreCase(message, "type") ?? string.Empty).Trim();
-        if (IsToolCallInputType(type)) {
+        if (IsToolCallInputType(type) || LooksLikeToolCallInputShape(message)) {
             return NormalizeToolCallInputItem(message);
         }
-        if (IsToolOutputInputType(type)) {
+        if (IsToolOutputInputType(type) || LooksLikeToolOutputInputShape(message)) {
             return NormalizeToolOutputInputItem(message);
         }
 
@@ -413,6 +413,44 @@ internal sealed partial class OpenAINativeTransport {
         return string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)
                || string.Equals(type, "tool_call_output", StringComparison.OrdinalIgnoreCase)
                || string.Equals(type, "function_call_output", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeToolCallInputShape(JsonObject message) {
+        if (message is null) {
+            return false;
+        }
+
+        var hasExplicitCallId = !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "call_id"))
+                                || !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "tool_call_id"));
+        var hasNameLikeField = !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "name"))
+                               || GetObjectIgnoreCase(message, "function") is not null
+                               || GetObjectIgnoreCase(message, "action") is not null;
+        var hasInputLikeField = !string.IsNullOrWhiteSpace(GetStringOrSerializedIgnoreCase(message, "arguments"))
+                                || !string.IsNullOrWhiteSpace(GetStringOrSerializedIgnoreCase(message, "input"));
+        var hasMessageEnvelopeShape = !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "role"))
+                                      || message.GetArray("content") is not null;
+        if (hasExplicitCallId && (hasNameLikeField || hasInputLikeField)) {
+            return true;
+        }
+
+        if (hasMessageEnvelopeShape) {
+            return false;
+        }
+
+        var hasId = !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "id"));
+        return hasId && hasNameLikeField && hasInputLikeField;
+    }
+
+    private static bool LooksLikeToolOutputInputShape(JsonObject message) {
+        if (message is null) {
+            return false;
+        }
+
+        var hasExplicitCallId = !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "call_id"))
+                                || !string.IsNullOrWhiteSpace(GetStringIgnoreCase(message, "tool_call_id"));
+        var hasOutputLikeField = !string.IsNullOrWhiteSpace(GetStringOrSerializedIgnoreCase(message, "output"))
+                                 || !string.IsNullOrWhiteSpace(GetStringOrSerializedIgnoreCase(message, "result"));
+        return hasExplicitCallId && hasOutputLikeField;
     }
 
     private static JsonObject NormalizeToolCallInputItem(JsonObject message) {

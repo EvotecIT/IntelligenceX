@@ -286,7 +286,52 @@ internal static partial class Program {
                 return true;
             }
 
+            if (LooksLikeBlockerPrefaceWithoutExecution(request, draft)) {
+                return true;
+            }
+
             return LooksLikeLinkedFollowUpQuestionWithoutExecution(request, draft);
+        }
+
+        private static bool LooksLikeBlockerPrefaceWithoutExecution(string userRequest, string assistantDraft) {
+            var request = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+            var draft = CollapseWhitespace((assistantDraft ?? string.Empty).Trim());
+            if (request.Length < 18 || draft.Length < 24 || draft.Length > 1800) {
+                return false;
+            }
+
+            if (ContainsQuestionSignal(draft)) {
+                return false;
+            }
+
+            // Keep this heuristic language-neutral for routing, but still guard a known blocker-preface
+            // phrase family that regressed in live host runs.
+            if (draft.IndexOf("i can do that, but", StringComparison.OrdinalIgnoreCase) < 0
+                && draft.IndexOf("i can do that but", StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+
+            var requestTokens = ExtractMeaningfulTokens(request, maxTokens: 32);
+            var draftTokens = ExtractMeaningfulTokens(draft, maxTokens: 64);
+            if (requestTokens.Count < 4 || draftTokens.Count < 4) {
+                return false;
+            }
+
+            var requestUnique = new HashSet<string>(requestTokens, StringComparer.OrdinalIgnoreCase);
+            var draftUnique = new HashSet<string>(draftTokens, StringComparer.OrdinalIgnoreCase);
+            var sharedCount = 0;
+            foreach (var token in requestUnique) {
+                if (draftUnique.Contains(token)) {
+                    sharedCount++;
+                }
+            }
+
+            if (sharedCount < 1) {
+                return false;
+            }
+
+            var overlapRatio = requestUnique.Count == 0 ? 0d : (double)sharedCount / requestUnique.Count;
+            return overlapRatio >= 0.1d;
         }
 
         private static bool ContainsQuestionSignal(string text) {

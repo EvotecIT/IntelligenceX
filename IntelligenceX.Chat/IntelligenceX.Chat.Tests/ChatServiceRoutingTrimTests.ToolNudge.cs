@@ -866,6 +866,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactContinuation() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: false,
+            userRequest: "continue",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenDraftAnchorsNewContext() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            userRequest: "i mean other dcs",
+            assistantDraft: "Perfect, understood: other DCs only. I will compare AD1 and AD2 now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ShouldAttemptToolProgressRecovery_TriggersForBlockerLikeDraftAfterToolActivity() {
         var draft = """
             I started, but I hit one blocker:

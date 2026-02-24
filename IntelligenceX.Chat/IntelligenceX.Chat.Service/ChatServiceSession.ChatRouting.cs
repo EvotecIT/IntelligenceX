@@ -292,7 +292,11 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (!hostStructuredNextActionReplayUsed
-                    && continuationFollowUpTurn
+                    && ShouldAttemptCarryoverStructuredNextActionReplay(
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
+                        userRequest: routedUserRequest,
+                        assistantDraft: text)
                     && toolCalls.Count == 0
                     && toolOutputs.Count == 0
                     && TryBuildCarryoverStructuredNextActionToolCall(
@@ -1064,6 +1068,8 @@ internal sealed partial class ChatServiceSession {
                         proactiveModeEnabled: proactiveModeEnabled,
                         hasToolActivity: hasToolActivity,
                         proactiveFollowUpUsed: proactiveFollowUpUsed,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
                         assistantDraft: text)) {
                     proactiveFollowUpUsed = true;
                     var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text);

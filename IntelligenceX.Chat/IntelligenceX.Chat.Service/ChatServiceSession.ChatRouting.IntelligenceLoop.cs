@@ -243,8 +243,16 @@ internal sealed partial class ChatServiceSession {
         bool proactiveModeEnabled,
         bool hasToolActivity,
         bool proactiveFollowUpUsed,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
         string assistantDraft) {
         if (!proactiveModeEnabled || !hasToolActivity || proactiveFollowUpUsed) {
+            return false;
+        }
+
+        // Follow-up turns should stay concise and conversational. Extra proactive rewrite passes
+        // on continuation nudges can cause repetitive draft churn and accidental scope drift.
+        if (continuationFollowUpTurn || compactFollowUpTurn) {
             return false;
         }
 
