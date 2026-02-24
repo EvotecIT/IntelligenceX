@@ -1,0 +1,227 @@
+# Validates chat scenario catalog quality contracts without requiring live model execution.
+
+[CmdletBinding()] param(
+    [string] $ScenarioDir = '.\IntelligenceX.Chat\scenarios',
+    [string] $Filter = '*-10-turn.json'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Resolve-RepoRelativePath([string] $repoRoot, [string] $pathValue) {
+    if ([string]::IsNullOrWhiteSpace($pathValue)) {
+        throw "Path value is required."
+    }
+
+    if ([System.IO.Path]::IsPathRooted($pathValue)) {
+        return [System.IO.Path]::GetFullPath($pathValue)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $pathValue))
+}
+
+function Get-NormalizedStringList([object] $rawValue) {
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($value in @($rawValue)) {
+        $candidate = "$value".Trim()
+        if ($candidate.Length -eq 0) {
+            continue
+        }
+        $result.Add($candidate) | Out-Null
+    }
+    return @($result.ToArray())
+}
+
+function Get-JsonPropertyValue([object] $instance, [string] $propertyName, [object] $defaultValue = $null) {
+    if ($null -eq $instance) {
+        return $defaultValue
+    }
+
+    $property = $instance.PSObject.Properties[$propertyName]
+    if ($null -eq $property) {
+        return $defaultValue
+    }
+
+    return $property.Value
+}
+
+function Get-TagSet([object] $scenario) {
+    return [System.Collections.Generic.HashSet[string]]::new(
+        [string[]](Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $scenario -propertyName 'tags')),
+        [System.StringComparer]::OrdinalIgnoreCase)
+}
+
+function Has-PatternToken([string[]] $patterns, [string] $token) {
+    foreach ($pattern in @($patterns)) {
+        if ($pattern.IndexOf($token, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Is-StrictDefaults([object] $defaults) {
+    if ($null -eq $defaults) {
+        return $false
+    }
+
+    return [bool](Get-JsonPropertyValue -instance $defaults -propertyName 'assert_clean_completion' -defaultValue $false) `
+        -and [bool](Get-JsonPropertyValue -instance $defaults -propertyName 'assert_tool_call_output_pairing' -defaultValue $false) `
+        -and [bool](Get-JsonPropertyValue -instance $defaults -propertyName 'assert_no_duplicate_tool_call_ids' -defaultValue $false) `
+        -and [bool](Get-JsonPropertyValue -instance $defaults -propertyName 'assert_no_duplicate_tool_output_call_ids' -defaultValue $false) `
+        -and ([int](Get-JsonPropertyValue -instance $defaults -propertyName 'max_no_tool_execution_retries' -defaultValue -1) -eq 0) `
+        -and ([int](Get-JsonPropertyValue -instance $defaults -propertyName 'max_duplicate_tool_call_signatures' -defaultValue -1) -eq 1)
+}
+
+function Turn-HasToolContract([object] $turn) {
+    $minToolCalls = [int](Get-JsonPropertyValue -instance $turn -propertyName 'min_tool_calls' -defaultValue 0)
+    $minToolRounds = [int](Get-JsonPropertyValue -instance $turn -propertyName 'min_tool_rounds' -defaultValue 0)
+    if ($minToolCalls -gt 0 -or $minToolRounds -gt 0) {
+        return $true
+    }
+
+    $requireTools = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_tools'))
+    $requireAnyTools = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_any_tools'))
+    $assertToolOutputContains = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'assert_tool_output_contains'))
+    $assertToolOutputNotContains = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'assert_tool_output_not_contains'))
+    $forbidToolErrorCodes = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'forbid_tool_error_codes'))
+    $assertNoToolErrors = [bool](Get-JsonPropertyValue -instance $turn -propertyName 'assert_no_tool_errors' -defaultValue $false)
+
+    return $requireTools.Count -gt 0 `
+        -or $requireAnyTools.Count -gt 0 `
+        -or $assertToolOutputContains.Count -gt 0 `
+        -or $assertToolOutputNotContains.Count -gt 0 `
+        -or $forbidToolErrorCodes.Count -gt 0 `
+        -or $assertNoToolErrors
+}
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoCursor = Get-Item $scriptDir
+while ($null -ne $repoCursor -and -not (Test-Path (Join-Path $repoCursor.FullName 'IntelligenceX.Chat'))) {
+    $repoCursor = $repoCursor.Parent
+}
+if ($null -eq $repoCursor) {
+    throw "Could not resolve repository root from script path '$scriptDir'."
+}
+
+$repoRoot = $repoCursor.FullName
+$resolvedScenarioDir = Resolve-RepoRelativePath -repoRoot $repoRoot -pathValue $ScenarioDir
+if (-not (Test-Path $resolvedScenarioDir)) {
+    throw "Scenario directory not found: $resolvedScenarioDir"
+}
+
+$files = @(Get-ChildItem -Path $resolvedScenarioDir -File -Filter $Filter | Sort-Object Name)
+if ($files.Count -eq 0) {
+    throw "No scenario files matched '$Filter' in '$resolvedScenarioDir'."
+}
+
+$failures = New-Object System.Collections.Generic.List[string]
+$summaries = New-Object System.Collections.Generic.List[string]
+
+foreach ($file in $files) {
+    try {
+        $scenario = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json -Depth 100
+    } catch {
+        $failures.Add("$($file.Name): invalid JSON ($($_.Exception.Message))") | Out-Null
+        continue
+    }
+
+    $scenarioName = "$(Get-JsonPropertyValue -instance $scenario -propertyName 'name')".Trim()
+    if ($scenarioName.Length -eq 0) {
+        $failures.Add("$($file.Name): missing non-empty scenario name.") | Out-Null
+    }
+
+    $tags = Get-TagSet -scenario $scenario
+    if (-not $tags.Contains("strict")) {
+        $failures.Add("$($file.Name): missing required 'strict' tag.") | Out-Null
+    }
+    if (-not $tags.Contains("live")) {
+        $failures.Add("$($file.Name): missing required 'live' tag.") | Out-Null
+    }
+
+    if (-not (Is-StrictDefaults -defaults (Get-JsonPropertyValue -instance $scenario -propertyName 'defaults'))) {
+        $failures.Add("$($file.Name): defaults do not enforce strict scenario guardrails.") | Out-Null
+    }
+
+    $turns = @(Get-JsonPropertyValue -instance $scenario -propertyName 'turns')
+    if ($turns.Count -ne 10) {
+        $failures.Add("$($file.Name): expected exactly 10 turns, found $($turns.Count).") | Out-Null
+        continue
+    }
+
+    $toolContractTurns = 0
+    $requiredPatterns = New-Object System.Collections.Generic.List[string]
+    $forbiddenPatterns = New-Object System.Collections.Generic.List[string]
+
+    for ($i = 0; $i -lt $turns.Count; $i++) {
+        $turn = $turns[$i]
+        $userText = "$(Get-JsonPropertyValue -instance $turn -propertyName 'user')".Trim()
+        if ($userText.Length -eq 0) {
+            $failures.Add("$($file.Name): turn $($i + 1) is missing user text.") | Out-Null
+        }
+        if (Turn-HasToolContract -turn $turn) {
+            $toolContractTurns++
+        }
+
+        foreach ($pattern in @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_tools'))) {
+            $requiredPatterns.Add($pattern) | Out-Null
+        }
+        foreach ($pattern in @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_any_tools'))) {
+            $requiredPatterns.Add($pattern) | Out-Null
+        }
+        foreach ($pattern in @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'forbid_tools'))) {
+            $forbiddenPatterns.Add($pattern) | Out-Null
+        }
+    }
+
+    if ($toolContractTurns -eq 0) {
+        $failures.Add("$($file.Name): expected at least one turn with a tool execution contract.") | Out-Null
+    }
+
+    $requiredPatternList = @($requiredPatterns.ToArray())
+    $forbiddenPatternList = @($forbiddenPatterns.ToArray())
+
+    if ($file.Name.StartsWith("ad-", [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $tags.Contains("ad")) {
+            $failures.Add("$($file.Name): AD scenario must include 'ad' tag.") | Out-Null
+        }
+        if (-not (Has-PatternToken -patterns $requiredPatternList -token "ad_")) {
+            $failures.Add("$($file.Name): AD scenario must include at least one ad_* required tool pattern.") | Out-Null
+        }
+    }
+
+    if ($file.Name.StartsWith("dns-", [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $tags.Contains("dns")) {
+            $failures.Add("$($file.Name): DNS scenario must include 'dns' tag.") | Out-Null
+        }
+        if (-not (Has-PatternToken -patterns $requiredPatternList -token "dnsclientx_")) {
+            $failures.Add("$($file.Name): DNS scenario must include at least one dnsclientx_* required tool pattern.") | Out-Null
+        }
+        if (-not (Has-PatternToken -patterns $requiredPatternList -token "domaindetective_")) {
+            $failures.Add("$($file.Name): DNS scenario must include at least one domaindetective_* required tool pattern.") | Out-Null
+        }
+        if (-not (Has-PatternToken -patterns $forbiddenPatternList -token "ad_")) {
+            $failures.Add("$($file.Name): DNS scenario must forbid ad_* tools in at least one turn.") | Out-Null
+        }
+        if (-not (Has-PatternToken -patterns $forbiddenPatternList -token "eventlog_")) {
+            $failures.Add("$($file.Name): DNS scenario must forbid eventlog_* tools in at least one turn.") | Out-Null
+        }
+    }
+
+    $summaries.Add(("{0}: turns={1}, tool_contract_turns={2}" -f $file.Name, $turns.Count, $toolContractTurns)) | Out-Null
+}
+
+if ($failures.Count -gt 0) {
+    Write-Host "`n=== Chat Scenario Catalog Quality Gate: FAILED ===" -ForegroundColor Red
+    foreach ($failure in $failures) {
+        Write-Host ("[x] {0}" -f $failure) -ForegroundColor Red
+    }
+    exit 1
+}
+
+Write-Host "`n=== Chat Scenario Catalog Quality Gate: PASSED ===" -ForegroundColor Green
+foreach ($line in $summaries) {
+    Write-Host ("[+] {0}" -f $line) -ForegroundColor Yellow
+}
+
+exit 0

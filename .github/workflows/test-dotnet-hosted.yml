@@ -51,6 +51,11 @@ jobs:
               shell: bash
               run: bash .github/scripts/run-write-tool-gate.sh
 
+            - name: Enforce chat scenario quality gate
+              if: matrix.os == 'ubuntu-latest'
+              shell: bash
+              run: bash .github/scripts/run-chat-scenario-quality-gate.sh
+
             - name: Run executable test harness (net8.0)
               run: dotnet ./IntelligenceX.Tests/bin/${{ env.BUILD_CONFIGURATION }}/net8.0/IntelligenceX.Tests.dll
               timeout-minutes: 10

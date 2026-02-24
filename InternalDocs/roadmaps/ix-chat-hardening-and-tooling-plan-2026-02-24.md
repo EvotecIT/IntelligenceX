@@ -217,6 +217,12 @@ Progress:
 - Added optional transport-recovery profile in preflight:
   - `-RunTransportRecoveryProfile` runs an additional strict tag-gated pass (`ad,strict,transport-recovery`).
 - Expanded preflight recovery-unit test filter to include replay helper coverage (`BuildToolRoundReplayInput_*`).
+- Added deterministic scenario quality gate script:
+  - `.github/scripts/test-chat-scenario-catalog-quality.ps1` validates strict defaults/tags/10-turn contracts and DNS open-source routing guards without live auth/model requirements.
+- Wired CI gate step in test workflows (Ubuntu jobs):
+  - `.github/scripts/run-chat-scenario-quality-gate.sh`
+  - `.github/workflows/test-dotnet.yml`
+  - `.github/workflows/test-dotnet-hosted.yml`
 
 ## Assignable Backlog (Parallel Branch Ready)
 - `A1` (WS1, `ix-chat-transport-recovery-<id>`, Effort M, Risk High): add transport-break E2E tests for drop-after-tool-call, delayed output, replay mismatch; assert one recovery path, no duplicate bubbles, no orphan outputs, clean final answer.
