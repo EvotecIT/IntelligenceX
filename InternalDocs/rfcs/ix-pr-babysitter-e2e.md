@@ -2,7 +2,13 @@
 
 ## Status
 
-Draft (planning PR only, no runtime changes in this RFC).
+In progress.
+
+Implementation status as of February 24, 2026:
+- Phase 1 delivered: observe-mode watcher command, state artifacts, and monitor workflow.
+- Phase 2 delivered: guarded assist retry, nightly/weekly consolidation, metrics, and tracker issue upsert.
+- Hybrid operation enabled: event-driven observe runs plus scheduled sweeps.
+- Phase 3 (`repair`) remains future and guarded.
 
 ## Problem
 
