@@ -4,10 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
@@ -187,6 +187,120 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolCallsCount"));
     }
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RetriesAfterTransportDropPostToolRound_WithoutReexecutingTool() {
+        using var server = new DeterministicCompatibleHttpServer(dropChatCompletionResponseOnRequestIndices: new[] { 2 });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+
+        var invokedSteps = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var invokedStepsSync = new object();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                lock (invokedStepsSync) {
+                    if (invokedSteps.TryGetValue(step, out var current)) {
+                        invokedSteps[step] = current + 1;
+                    } else {
+                        invokedSteps[step] = 1;
+                    }
+                }
+
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-e2e-transport-drop",
+            ThreadId = thread.Id,
+            Text = "Run the diagnostics workflow to completion.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+
+        Assert.Equal(4, server.ChatCompletionRequestCount);
+        Assert.Equal(1, server.DroppedChatCompletionRequestCount);
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(1), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(2), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(3), "call_round_2"));
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Final answer after two tool rounds.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(2, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(2, resultMessage.Tools.Outputs.Count);
+
+        var normalizedCallIds = resultMessage.Tools.Calls
+            .Select(static call => (call.CallId ?? string.Empty).Trim())
+            .Where(static callId => callId.Length > 0)
+            .ToArray();
+        Assert.Equal(
+            normalizedCallIds.Length,
+            normalizedCallIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+        var normalizedOutputIds = resultMessage.Tools.Outputs
+            .Select(static output => (output.CallId ?? string.Empty).Trim())
+            .Where(static callId => callId.Length > 0)
+            .ToArray();
+        Assert.Equal(
+            normalizedOutputIds.Length,
+            normalizedOutputIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+        var normalizedCallIdSet = new HashSet<string>(normalizedCallIds, StringComparer.OrdinalIgnoreCase);
+        Assert.All(normalizedOutputIds, outputCallId => Assert.Contains(outputCallId, normalizedCallIdSet));
+
+        lock (invokedStepsSync) {
+            Assert.Equal(2, invokedSteps.Values.Sum());
+            Assert.True(invokedSteps.TryGetValue("one", out var oneCount) && oneCount == 1);
+            Assert.True(invokedSteps.TryGetValue("two", out var twoCount) && twoCount == 1);
+        }
+    }
+
     private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
         ChatRequest request, string threadId, CancellationToken cancellationToken) {
         var taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
@@ -289,13 +403,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
         private readonly Task _acceptLoop;
         private readonly object _sync = new();
         private readonly List<string> _chatCompletionRequestBodies = new();
+        private readonly HashSet<int> _dropChatCompletionResponseOnRequestIndices;
+        private readonly List<int> _droppedChatCompletionRequests = new();
         private volatile bool _disposed;
+        private int _successfulChatCompletionResponses;
 
-        public DeterministicCompatibleHttpServer() {
+        public DeterministicCompatibleHttpServer(IEnumerable<int>? dropChatCompletionResponseOnRequestIndices = null) {
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
             var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
             BaseUrl = $"http://127.0.0.1:{port}/v1";
+            _dropChatCompletionResponseOnRequestIndices = dropChatCompletionResponseOnRequestIndices is null
+                ? new HashSet<int>()
+                : new HashSet<int>(dropChatCompletionResponseOnRequestIndices.Where(static index => index > 0));
             _acceptLoop = Task.Run(AcceptLoopAsync);
         }
 
@@ -305,6 +425,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
             get {
                 lock (_sync) {
                     return _chatCompletionRequestBodies.Count;
+                }
+            }
+        }
+
+        public int DroppedChatCompletionRequestCount {
+            get {
+                lock (_sync) {
+                    return _droppedChatCompletionRequests.Count;
                 }
             }
         }
@@ -406,7 +534,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 body = Encoding.UTF8.GetString(buffer, 0, total);
             }
 
-            var responseBody = HandleRequest(method, path, body, out var responseCode, out var responseStatus);
+            var responseBody = HandleRequest(method, path, body, out var responseCode, out var responseStatus, out var closeWithoutResponse);
+            if (closeWithoutResponse) {
+                return;
+            }
+
             var responsePayloadBytes = Encoding.UTF8.GetBytes(responseBody);
             var responseHeader = $"HTTP/1.1 {responseCode} {responseStatus}\r\n"
                                  + "Content-Type: application/json\r\n"
@@ -417,7 +549,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             await stream.WriteAsync(responsePayloadBytes, 0, responsePayloadBytes.Length).ConfigureAwait(false);
         }
 
-        private string HandleRequest(string method, string path, string body, out int code, out string status) {
+        private string HandleRequest(string method, string path, string body, out int code, out string status, out bool closeWithoutResponse) {
+            closeWithoutResponse = false;
             if (string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/v1/models", StringComparison.OrdinalIgnoreCase)) {
                 code = 200;
@@ -432,15 +565,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
             if (string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
-                int callIndex;
+                int requestIndex;
+                var shouldDrop = false;
+                int responseIndex = 0;
                 lock (_sync) {
                     _chatCompletionRequestBodies.Add(body);
-                    callIndex = _chatCompletionRequestBodies.Count;
+                    requestIndex = _chatCompletionRequestBodies.Count;
+                    shouldDrop = _dropChatCompletionResponseOnRequestIndices.Contains(requestIndex);
+                    if (shouldDrop) {
+                        _droppedChatCompletionRequests.Add(requestIndex);
+                    } else {
+                        _successfulChatCompletionResponses++;
+                        responseIndex = _successfulChatCompletionResponses;
+                    }
+                }
+
+                if (shouldDrop) {
+                    closeWithoutResponse = true;
+                    code = 0;
+                    status = string.Empty;
+                    return string.Empty;
                 }
 
                 code = 200;
                 status = "OK";
-                return callIndex switch {
+                return responseIndex switch {
                     1 => BuildToolCallCompletionBody("call_round_1", "one"),
                     2 => BuildToolCallCompletionBody("call_round_2", "two"),
                     3 => BuildTextCompletionBody("Final answer after two tool rounds."),
