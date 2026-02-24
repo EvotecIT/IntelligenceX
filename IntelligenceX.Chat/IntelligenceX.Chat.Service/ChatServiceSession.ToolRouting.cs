@@ -211,8 +211,13 @@ internal sealed partial class ChatServiceSession {
         int selectedToolCount,
         int totalToolCount,
         int insightCount,
-        bool plannerInsightsDetected) {
+        bool plannerInsightsDetected,
+        int? requestedMaxCandidateTools,
+        int? effectiveMaxCandidateTools,
+        long? effectiveContextLength,
+        bool contextAwareBudgetApplied) {
         var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
+        var normalizedContextLength = effectiveContextLength is > 0 ? effectiveContextLength : null;
         return JsonSerializer.Serialize(new {
             strategy = (strategy ?? string.Empty).Trim(),
             weightedToolRouting,
@@ -222,7 +227,13 @@ internal sealed partial class ChatServiceSession {
             totalToolCount = total,
             reducedToolSet = selected > 0 && selected < total,
             insightCount = Math.Max(0, insightCount),
-            plannerInsightsDetected
+            plannerInsightsDetected,
+            toolCandidateBudget = new {
+                requested = requestedMaxCandidateTools,
+                effective = effectiveMaxCandidateTools,
+                contextAwareBudgetApplied,
+                effectiveModelContextLength = normalizedContextLength
+            }
         });
     }
 

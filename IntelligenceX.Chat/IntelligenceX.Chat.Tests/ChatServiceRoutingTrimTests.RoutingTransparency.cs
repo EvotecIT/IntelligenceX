@@ -101,6 +101,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             selectedToolCount,
             totalToolCount,
             0,
+            false,
+            null,
+            null,
+            null,
             false
         });
         var payload = Assert.IsType<string>(payloadResult);
@@ -121,7 +125,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             8,
             21,
             5,
-            true
+            true,
+            null,
+            null,
+            null,
+            false
         });
         var payload = Assert.IsType<string>(result);
 
@@ -145,6 +153,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             14,
             6,
             2,
+            false,
+            null,
+            null,
+            null,
             false
         });
         var payload = Assert.IsType<string>(result);
@@ -166,6 +178,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             5,
             0,
             0,
+            false,
+            null,
+            null,
+            null,
             false
         });
         var payload = Assert.IsType<string>(result);
@@ -176,5 +192,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(0, root.GetProperty("selectedToolCount").GetInt32());
         Assert.Equal(0, root.GetProperty("totalToolCount").GetInt32());
         Assert.False(root.GetProperty("reducedToolSet").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildRoutingMetaPayload_IncludesToolCandidateBudgetDiagnostics() {
+        var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            "weighted_heuristic",
+            true,
+            false,
+            false,
+            4,
+            19,
+            2,
+            false,
+            null,
+            4,
+            8192L,
+            true
+        });
+        var payload = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        var budget = root.GetProperty("toolCandidateBudget");
+        Assert.Equal(4, budget.GetProperty("effective").GetInt32());
+        Assert.True(budget.GetProperty("contextAwareBudgetApplied").GetBoolean());
+        Assert.Equal(8192L, budget.GetProperty("effectiveModelContextLength").GetInt64());
+        Assert.Equal(JsonValueKind.Null, budget.GetProperty("requested").ValueKind);
     }
 }

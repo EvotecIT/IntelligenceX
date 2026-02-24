@@ -66,7 +66,9 @@ internal sealed partial class ChatServiceSession {
         var userIntent = ExtractIntentUserText(request.Text);
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
-        var maxCandidateTools = ResolveMaxCandidateToolsForTurn(request.Options?.MaxCandidateTools, client.TransportKind, selectedModel);
+        var requestedMaxCandidateTools = request.Options?.MaxCandidateTools;
+        var maxCandidateToolDiagnostics = ResolveMaxCandidateToolsDiagnosticsForTurn(requestedMaxCandidateTools, client.TransportKind, selectedModel);
+        var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
         var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
@@ -144,7 +146,11 @@ internal sealed partial class ChatServiceSession {
                 selectedToolCount: routingSelectedToolCount,
                 totalToolCount: routingTotalToolCount,
                 insightCount: routingInsights.Count,
-                plannerInsightsDetected);
+                plannerInsightsDetected,
+                requestedMaxCandidateTools: requestedMaxCandidateTools,
+                effectiveMaxCandidateTools: maxCandidateTools,
+                effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
+                contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
