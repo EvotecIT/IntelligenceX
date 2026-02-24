@@ -111,6 +111,16 @@
   border: 1px dashed rgba(131, 202, 248, 0.7);
 }
 
+.msg-row.assistant.assistant-tool-activity .avatar {
+  background: #af7c1f;
+  color: #fff6df;
+}
+
+.msg-row.assistant.assistant-tool-activity .bubble {
+  background: rgba(85, 66, 22, 0.56);
+  border: 1px dashed rgba(238, 198, 109, 0.68);
+}
+
 .msg-row.user .bubble {
   background: var(--ix-bubble-user-bg);
   border: 1px solid var(--ix-bubble-user-border);
@@ -314,9 +324,28 @@
   letter-spacing: 0.01em;
 }
 
+.assistant-tool-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(238, 198, 109, 0.62);
+  background: rgba(140, 106, 33, 0.45);
+  color: #fff0cf;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
 .bubble.bubble-provisional {
   border-style: dashed;
   box-shadow: inset 0 0 0 1px rgba(129, 204, 255, 0.22);
+}
+
+.bubble.bubble-tool-activity {
+  border-style: dashed;
+  box-shadow: inset 0 0 0 1px rgba(238, 198, 109, 0.2);
 }
 
 .assistant-turn-trace {

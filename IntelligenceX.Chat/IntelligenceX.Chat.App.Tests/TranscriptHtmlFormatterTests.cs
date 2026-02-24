@@ -156,6 +156,34 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures tool-activity decorations render a distinct channel style and trace affordance.
+    /// </summary>
+    [Fact]
+    public void Format_RendersToolActivityChannelWhenDecorationRequestsIt() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 23, 7, 41, 0, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", "Running cross-DC checks...", now, "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    Channel = AssistantBubbleChannelKind.ToolActivity,
+                    Timeline = new[] { "run Eventlog Live Query", "done Eventlog Live Query" }
+                }
+            });
+
+        Assert.Contains("assistant-tool-meta-pill", html, StringComparison.Ordinal);
+        Assert.Contains("Tool Activity", html, StringComparison.Ordinal);
+        Assert.Contains("bubble-tool-activity", html, StringComparison.Ordinal);
+        Assert.Contains("assistant-turn-live-pill'>Tool</span>", html, StringComparison.Ordinal);
+        Assert.Contains("assistant-turn-trace-title'>Tool trace</span>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures trace sections can be suppressed while keeping provisional bubble styling.
     /// </summary>
     [Fact]

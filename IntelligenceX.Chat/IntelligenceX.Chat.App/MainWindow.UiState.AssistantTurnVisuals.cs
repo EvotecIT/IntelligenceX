@@ -14,6 +14,12 @@ public sealed partial class MainWindow : Window {
             _activeTurnAssistantMessageIndex = -1;
             _activeTurnAssistantPendingTimeline.Clear();
             _activeTurnAssistantProvisional = false;
+            _activeTurnLifecycleStage = normalizedConversationId.Length == 0
+                ? AssistantTurnLifecycleStage.Idle
+                : AssistantTurnLifecycleStage.Draft;
+            _activeTurnAssistantChannel = normalizedConversationId.Length == 0
+                ? AssistantBubbleChannelKind.Final
+                : AssistantBubbleChannelKind.DraftThinking;
             _activeTurnUsesProvisionalEvents = false;
             _activeTurnInterimResultSeen = false;
             _activeTurnInterimFingerprint = null;
@@ -33,6 +39,8 @@ public sealed partial class MainWindow : Window {
                 _activeTurnAssistantMessageIndex = -1;
                 _activeTurnAssistantPendingTimeline.Clear();
                 _activeTurnAssistantProvisional = false;
+                _activeTurnLifecycleStage = AssistantTurnLifecycleStage.Idle;
+                _activeTurnAssistantChannel = AssistantBubbleChannelKind.Final;
                 _activeTurnUsesProvisionalEvents = false;
                 _activeTurnInterimResultSeen = false;
                 _activeTurnInterimFingerprint = null;
@@ -93,6 +101,7 @@ public sealed partial class MainWindow : Window {
             _activeTurnAssistantMessageIndex = messageIndex;
             var state = GetOrCreateAssistantVisualState(conversationId, messageIndex);
             state.IsProvisional = _activeTurnAssistantProvisional;
+            state.Channel = _activeTurnAssistantChannel;
             for (var i = 0; i < _activeTurnAssistantPendingTimeline.Count; i++) {
                 AppendTimelineLabel(state.Timeline, _activeTurnAssistantPendingTimeline[i]);
             }
@@ -115,6 +124,9 @@ public sealed partial class MainWindow : Window {
 
         lock (_turnDiagnosticsSync) {
             if (!string.Equals(_activeTurnAssistantConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+            if (IsAssistantTurnLifecycleTerminal(_activeTurnLifecycleStage)) {
                 return false;
             }
 
@@ -160,6 +172,35 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private bool SetActiveTurnAssistantChannel(ConversationRuntime conversation, AssistantBubbleChannelKind channel) {
+        var conversationId = (conversation.Id ?? string.Empty).Trim();
+        if (conversationId.Length == 0) {
+            return false;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (!string.Equals(_activeTurnAssistantConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            var changed = false;
+            if (_activeTurnAssistantChannel != channel) {
+                _activeTurnAssistantChannel = channel;
+                changed = true;
+            }
+
+            if (_activeTurnAssistantMessageIndex >= 0) {
+                var state = GetOrCreateAssistantVisualState(conversationId, _activeTurnAssistantMessageIndex);
+                if (state.Channel != channel) {
+                    state.Channel = channel;
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+    }
+
     private bool ShouldUseProvisionalEventsForActiveTurn(ConversationRuntime conversation) {
         var conversationId = (conversation.Id ?? string.Empty).Trim();
         if (conversationId.Length == 0) {
@@ -183,6 +224,172 @@ public sealed partial class MainWindow : Window {
         return provisionalModePreferredForTurn && hasReceivedProvisionalFragment;
     }
 
+    internal static bool IsAssistantTurnLifecycleTerminal(AssistantTurnLifecycleStage stage) {
+        return stage is AssistantTurnLifecycleStage.Finalized or AssistantTurnLifecycleStage.Failed;
+    }
+
+    internal static bool CanApplyAssistantTurnDraftUpdate(AssistantTurnLifecycleStage stage) {
+        return !IsAssistantTurnLifecycleTerminal(stage);
+    }
+
+    internal static AssistantTurnLifecycleStage PromoteAssistantTurnLifecycleForStatus(
+        AssistantTurnLifecycleStage current,
+        string? status) {
+        if (IsAssistantTurnLifecycleTerminal(current)) {
+            return current;
+        }
+
+        if (IsToolActivityStatus(status)) {
+            return AssistantTurnLifecycleStage.Tool;
+        }
+
+        return current == AssistantTurnLifecycleStage.Idle
+            ? AssistantTurnLifecycleStage.Draft
+            : current;
+    }
+
+    internal static AssistantTurnLifecycleStage ResolveAssistantTurnLifecycleTerminalTransition(
+        AssistantTurnLifecycleStage current,
+        bool succeeded) {
+        if (IsAssistantTurnLifecycleTerminal(current)) {
+            return current;
+        }
+
+        return succeeded ? AssistantTurnLifecycleStage.Finalized : AssistantTurnLifecycleStage.Failed;
+    }
+
+    internal static bool IsToolActivityStatus(string? status) {
+        var normalized = (status ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.Equals(ChatStatusCodes.Routing, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.RoutingMeta, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.RoutingTool, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolCall, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolRunning, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolHeartbeat, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolCompleted, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolCanceled, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolRecovered, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolParallelMode, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolParallelForced, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolParallelSafetyOff, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolBatchStarted, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolBatchProgress, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolBatchHeartbeat, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolBatchRecovering, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolBatchRecovered, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolBatchCompleted, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolRoundStarted, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolRoundCompleted, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolRoundLimitReached, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.ToolRoundCapApplied, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.PhaseExecute, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static AssistantBubbleChannelKind ResolveAssistantBubbleChannelForStatus(
+        AssistantBubbleChannelKind current,
+        string? status) {
+        if (IsToolActivityStatus(status)) {
+            return AssistantBubbleChannelKind.ToolActivity;
+        }
+
+        return current;
+    }
+
+    private bool TryAcceptActiveTurnDraftMutation(ConversationRuntime conversation) {
+        var conversationId = (conversation.Id ?? string.Empty).Trim();
+        if (conversationId.Length == 0) {
+            return false;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (!string.Equals(_activeTurnAssistantConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            if (!CanApplyAssistantTurnDraftUpdate(_activeTurnLifecycleStage)) {
+                return false;
+            }
+
+            if (_activeTurnLifecycleStage == AssistantTurnLifecycleStage.Idle) {
+                _activeTurnLifecycleStage = AssistantTurnLifecycleStage.Draft;
+            }
+
+            return true;
+        }
+    }
+
+    private bool ApplyActiveTurnStatusSignal(ConversationRuntime conversation, string? status) {
+        var conversationId = (conversation.Id ?? string.Empty).Trim();
+        if (conversationId.Length == 0) {
+            return false;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (!string.Equals(_activeTurnAssistantConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            if (IsAssistantTurnLifecycleTerminal(_activeTurnLifecycleStage)) {
+                return false;
+            }
+
+            var changed = false;
+            var nextStage = PromoteAssistantTurnLifecycleForStatus(_activeTurnLifecycleStage, status);
+            if (nextStage != _activeTurnLifecycleStage) {
+                _activeTurnLifecycleStage = nextStage;
+                changed = true;
+            }
+
+            var nextChannel = ResolveAssistantBubbleChannelForStatus(_activeTurnAssistantChannel, status);
+            if (nextChannel != _activeTurnAssistantChannel) {
+                _activeTurnAssistantChannel = nextChannel;
+                changed = true;
+            }
+
+            if (_activeTurnAssistantMessageIndex >= 0) {
+                var state = GetOrCreateAssistantVisualState(conversationId, _activeTurnAssistantMessageIndex);
+                if (state.Channel != _activeTurnAssistantChannel) {
+                    state.Channel = _activeTurnAssistantChannel;
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+    }
+
+    private bool TryFinalizeActiveTurnAssistantState(ConversationRuntime conversation, bool succeeded) {
+        var conversationId = (conversation.Id ?? string.Empty).Trim();
+        if (conversationId.Length == 0) {
+            return false;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (!string.Equals(_activeTurnAssistantConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            var nextStage = ResolveAssistantTurnLifecycleTerminalTransition(_activeTurnLifecycleStage, succeeded);
+            if (nextStage == _activeTurnLifecycleStage && IsAssistantTurnLifecycleTerminal(nextStage)) {
+                return false;
+            }
+
+            _activeTurnLifecycleStage = nextStage;
+            _activeTurnAssistantChannel = AssistantBubbleChannelKind.Final;
+
+            if (_activeTurnAssistantMessageIndex >= 0) {
+                var state = GetOrCreateAssistantVisualState(conversationId, _activeTurnAssistantMessageIndex);
+                state.Channel = AssistantBubbleChannelKind.Final;
+            }
+
+            return true;
+        }
+    }
+
     private bool ApplyFinalAssistantTurnTimeline(ConversationRuntime conversation, IReadOnlyList<TurnTimelineEventDto>? timelineEvents) {
         var conversationId = (conversation.Id ?? string.Empty).Trim();
         if (conversationId.Length == 0) {
@@ -197,13 +404,15 @@ public sealed partial class MainWindow : Window {
             }
 
             var state = GetOrCreateAssistantVisualState(conversationId, messageIndex);
-            var changed = state.IsProvisional;
+            var changed = state.IsProvisional || state.Channel != AssistantBubbleChannelKind.Final;
             state.IsProvisional = false;
+            state.Channel = AssistantBubbleChannelKind.Final;
             changed |= MergeFinalTimeline(state.Timeline, normalizedTimeline);
 
             if (string.Equals(_activeTurnAssistantConversationId, conversationId, StringComparison.OrdinalIgnoreCase)) {
                 _activeTurnAssistantMessageIndex = messageIndex;
                 _activeTurnAssistantProvisional = false;
+                _activeTurnAssistantChannel = AssistantBubbleChannelKind.Final;
                 _activeTurnAssistantPendingTimeline.Clear();
             }
 
@@ -251,12 +460,15 @@ public sealed partial class MainWindow : Window {
                 }
 
                 var state = item.Value;
-                if (!state.IsProvisional && state.Timeline.Count == 0) {
+                if (!state.IsProvisional
+                    && state.Channel == AssistantBubbleChannelKind.Final
+                    && state.Timeline.Count == 0) {
                     continue;
                 }
 
                 snapshot[messageIndex] = new TranscriptMessageDecoration {
                     IsProvisional = state.IsProvisional,
+                    Channel = state.Channel,
                     Timeline = state.Timeline.Count == 0 ? Array.Empty<string>() : state.Timeline.ToArray()
                 };
             }

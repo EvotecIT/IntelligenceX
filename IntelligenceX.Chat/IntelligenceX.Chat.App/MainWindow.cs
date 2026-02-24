@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI.Input;
@@ -368,6 +369,8 @@ public sealed partial class MainWindow : Window {
     private int _activeTurnAssistantMessageIndex = -1;
     private readonly List<string> _activeTurnAssistantPendingTimeline = new();
     private bool _activeTurnAssistantProvisional;
+    private AssistantTurnLifecycleStage _activeTurnLifecycleStage = AssistantTurnLifecycleStage.Idle;
+    private AssistantBubbleChannelKind _activeTurnAssistantChannel = AssistantBubbleChannelKind.Final;
     private bool _activeTurnUsesProvisionalEvents;
     private bool _activeTurnInterimResultSeen;
     private string? _activeTurnInterimFingerprint;
@@ -474,7 +477,16 @@ public sealed partial class MainWindow : Window {
     private sealed class AssistantTurnVisualState {
         // Mutable state; always access under _turnDiagnosticsSync.
         public bool IsProvisional { get; set; }
+        public AssistantBubbleChannelKind Channel { get; set; } = AssistantBubbleChannelKind.Final;
         public List<string> Timeline { get; } = new();
+    }
+
+    internal enum AssistantTurnLifecycleStage {
+        Idle = 0,
+        Draft = 1,
+        Tool = 2,
+        Finalized = 3,
+        Failed = 4
     }
 
     private sealed record QueuedTurn(string Text, string? ConversationId, DateTime EnqueuedUtc, bool SkipUserBubbleOnDispatch = false);
