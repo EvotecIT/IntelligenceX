@@ -60,7 +60,7 @@ jobs:
             ${{ env.PR_WATCH_STATE_CACHE_PREFIX }}-
 
       - name: Build CLI once
-        run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release /m:1
+        run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -c Release /m:1
 
       - name: Apply guarded retry assist for target PR
         env:
@@ -103,6 +103,9 @@ jobs:
             "--retry-cooldown-minutes" "${RETRY_COOLDOWN_MINUTES}"
             "--apply-retry"
             "--confirm-apply-retry" "${CONFIRM}"
+            "--phase" "assist"
+            "--source" "${{ github.event_name }}"
+            "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           )
 
           IFS=',' read -r -a bot_parts <<< "${APPROVED_BOTS}"

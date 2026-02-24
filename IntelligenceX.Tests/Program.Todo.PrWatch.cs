@@ -158,5 +158,64 @@ internal static partial class Program {
             nowUtc: now);
         AssertEqual(false, suppress, "retry should be allowed when dedupe changed and cooldown expired");
     }
+
+    private static void TestPrWatchNormalizePhaseFallback() {
+        var normalized = IntelligenceX.Cli.Todo.PrWatchRunner.NormalizePhase("unknown-phase");
+        AssertEqual("observe", normalized, "unknown phase should fall back to observe");
+    }
+
+    private static void TestPrWatchNormalizeSourceSanitizesUnsafeChars() {
+        var normalized = IntelligenceX.Cli.Todo.PrWatchRunner.NormalizeSource("Workflow Dispatch / Scheduler");
+        AssertEqual("workflow-dispatch---scheduler", normalized, "source should be normalized for audit metadata");
+    }
+
+    private static void TestPrWatchBuildPlannedAuditRecordsIncludesDedupeAndReason() {
+        var snapshot = new IntelligenceX.Cli.Todo.PrWatchRunner.WatchSnapshot(
+            Schema: "intelligencex.pr-watch.snapshot.v1",
+            CapturedAtUtc: new DateTimeOffset(2026, 2, 24, 8, 0, 0, TimeSpan.Zero),
+            Pr: new IntelligenceX.Cli.Todo.PrWatchRunner.PrState(
+                Number: 746,
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/746",
+                Repo: "EvotecIT/IntelligenceX",
+                HeadSha: "abc123",
+                HeadBranch: "feature/audit",
+                State: "OPEN",
+                Merged: false,
+                Closed: false,
+                Mergeable: "MERGEABLE",
+                MergeStateStatus: "CLEAN",
+                ReviewDecision: "APPROVED"),
+            Checks: new IntelligenceX.Cli.Todo.PrWatchRunner.CheckSummary(
+                PendingCount: 0,
+                FailedCount: 1,
+                PassedCount: 4,
+                AllTerminal: true),
+            FailedRuns: new[] {
+                new IntelligenceX.Cli.Todo.PrWatchRunner.FailedRun("100", "build", "completed", "failure", "https://example/run/100")
+            },
+            NewReviewItems: Array.Empty<IntelligenceX.Cli.Todo.PrWatchRunner.ReviewItem>(),
+            Actions: new[] {
+                new IntelligenceX.Cli.Todo.PrWatchRunner.RecommendedAction("diagnose_ci_failure"),
+                new IntelligenceX.Cli.Todo.PrWatchRunner.RecommendedAction("retry_failed_checks", "retry_failed_checks:deadbeef1234")
+            },
+            StopReason: null,
+            RetryState: new IntelligenceX.Cli.Todo.PrWatchRunner.RetryState(0, 3),
+            Audit: Array.Empty<IntelligenceX.Cli.Todo.PrWatchRunner.AuditRecord>());
+
+        var records = IntelligenceX.Cli.Todo.PrWatchRunner.BuildPlannedAuditRecords(
+            snapshot,
+            "assist",
+            "workflow_dispatch",
+            "https://github.com/EvotecIT/IntelligenceX/actions/runs/1");
+
+        AssertEqual(2, records.Count, "expected one planned audit record per action");
+        AssertEqual("assist", records[0].Phase, "phase should be preserved");
+        AssertEqual("workflow_dispatch", records[0].Source, "source should be preserved");
+        AssertEqual("diagnose_ci_failure", records[0].Action, "first action name");
+        AssertEqual("checks_failed", records[0].Reason, "diagnose reason");
+        AssertEqual("retry_failed_checks:deadbeef1234", records[1].DedupeKey, "retry dedupe key");
+        AssertEqual("retry_budget_available", records[1].Reason, "retry reason");
+        AssertEqual("planned", records[1].Result, "planned result");
+    }
 #endif
 }

@@ -118,14 +118,20 @@ Options:
 - `--approved-bot <login>` (repeatable approved bot allow-list extension)
 - `--apply-retry` (once mode only; executes `retry_failed_checks` if eligible)
 - `--confirm-apply-retry RETRY_CHECKS` (required with `--apply-retry`)
+- `--phase <observe|assist|repair>` (audit phase marker; default `observe`)
+- `--source <value>` (audit source marker; default `manual_cli`)
+- `--run-link <url>` (optional workflow/job URL in audit records)
+- `--audit-log-path <path>` (JSONL audit path; default `artifacts/pr-watch/ix-pr-watch-audit.jsonl`)
 
 Default approved bots include `intelligencex-review`, `intelligencex-review[bot]`, and `chatgpt-codex-connector[bot]`.
 
 Default outputs:
 - JSON snapshot on stdout with:
-  - `pr`, `checks`, `failedRuns`, `newReviewItems`, `retryState`, `actions`, `stopReason`
+  - `pr`, `checks`, `failedRuns`, `newReviewItems`, `retryState`, `actions`, `stopReason`, `audit`
 - Stateful tracker file at:
   - `artifacts/pr-watch/ix-pr-watch-<owner>-<repo>-pr<Number>.json`
+- Audit log (JSONL append-only) at:
+  - `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
 
 Workflow automation:
 - `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode on an hourly schedule.
@@ -142,7 +148,8 @@ Workflow automation:
 - Workflow artifacts:
   - per-PR snapshots under `artifacts/pr-watch/snapshots/`,
   - rollup JSON `artifacts/pr-watch/ix-pr-watch-rollup.json`,
-  - markdown summary `artifacts/pr-watch/ix-pr-watch-summary.md`.
+  - markdown summary `artifacts/pr-watch/ix-pr-watch-summary.md`,
+  - audit log JSONL `artifacts/pr-watch/ix-pr-watch-audit.jsonl`.
 
 ## Vision Check (Assistive)
 

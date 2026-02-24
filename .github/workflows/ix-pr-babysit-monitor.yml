@@ -66,7 +66,7 @@ jobs:
             ${{ env.PR_WATCH_STATE_CACHE_PREFIX }}-
 
       - name: Build CLI once
-        run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release /m:1
+        run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -c Release /m:1
 
       - name: Run observe-mode PR watch sweep
         env:
@@ -142,6 +142,9 @@ jobs:
                 "--repo" "${{ github.repository }}"
                 "--pr" "${pr_spec}"
                 "--max-flaky-retries" "${MAX_FLAKY_RETRIES}"
+                "--phase" "observe"
+                "--source" "${{ github.event_name }}"
+                "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
               )
 
               IFS=',' read -r -a bot_parts <<< "${APPROVED_BOTS}"

@@ -65,7 +65,7 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 | `sync-bot-feedback` | Extract explicit bot checklist tasks and keep them tracked in `TODO.md` | Updated `TODO.md` (optional GitHub issues) |
 | `build-triage-index` | Build PR/issue inventory, duplicate clusters, and best PR ranking | `artifacts/triage/ix-triage-index.json`, `.md` |
 | `issue-review` | Detect stale/no-longer-applicable infra blocker issues and optionally auto-close | `artifacts/triage/ix-issue-review.json`, `.md` |
-| `pr-watch` | Observe PR CI/review/mergeability state and emit deterministic action recommendations | JSON snapshot + watcher state in `artifacts/pr-watch/` |
+| `pr-watch` | Observe PR CI/review/mergeability state and emit deterministic action recommendations | JSON snapshot + watcher state + audit JSONL in `artifacts/pr-watch/` |
 | `vision-check` | Compare backlog against `VISION.md` scope | `artifacts/triage/ix-vision-check.json`, `.md` |
 | `project-init` | Create/initialize GitHub Project fields + metadata | `artifacts/triage/ix-project-config.json` |
 | `project-sync` | Push triage/issue-review/vision signals to project items and optional labels/comments | Project field updates, optional comment/label updates |
@@ -88,7 +88,7 @@ Observe-mode babysitter automation:
 - Workflow: `.github/workflows/ix-pr-babysit-monitor.yml`
 - Schedule: hourly observe-mode sweep
 - Manual targeted run: `workflow_dispatch` with optional `pr` and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
-- Outputs: per-PR snapshots + rollup summary in `artifacts/pr-watch/`
+- Outputs: per-PR snapshots + rollup summary + audit log (`ix-pr-watch-audit.jsonl`) in `artifacts/pr-watch/`
 
 Guarded retry assist automation:
 
@@ -96,6 +96,7 @@ Guarded retry assist automation:
 - Trigger: manual `workflow_dispatch` only (single PR target)
 - Safety: requires explicit confirmation token `RETRY_CHECKS`
 - Scope: retries failed checks only when `pr-watch` plans an eligible `retry_failed_checks` action (dedupe + cooldown aware)
+- Audit: emits execution outcomes (`success`/`skipped`/`failed`) into `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
 
 ### Issue-review confidence signals
 
