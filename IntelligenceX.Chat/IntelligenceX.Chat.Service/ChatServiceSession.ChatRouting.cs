@@ -1267,35 +1267,7 @@ internal sealed partial class ChatServiceSession {
                 });
             }
 
-            var next = new ChatInput();
-            var replayedToolCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var replayedToolOutputIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (var outputIndex = 0; outputIndex < executed.Count; outputIndex++) {
-                var output = executed[outputIndex];
-                var normalizedOutputCallId = ResolveToolOutputCallId(
-                    extracted,
-                    executedCallsById,
-                    output.CallId,
-                    outputIndex);
-                if (normalizedOutputCallId.Length == 0) {
-                    continue;
-                }
-
-                if (!executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)) {
-                    continue;
-                }
-
-                if (replayedToolCallIds.Add(normalizedOutputCallId)) {
-                    next.AddToolCall(
-                        executedCall.CallId,
-                        executedCall.Name,
-                        executedCall.Input);
-                }
-
-                if (replayedToolOutputIds.Add(normalizedOutputCallId)) {
-                    next.AddToolOutput(normalizedOutputCallId, output.Output);
-                }
-            }
+            var next = BuildToolRoundReplayInput(extracted, executedCallsById, executed);
             turn = await RunModelPhaseWithProgressAsync(
                     client,
                     writer,
@@ -1332,20 +1304,44 @@ internal sealed partial class ChatServiceSession {
         return transport == OpenAITransportKind.CompatibleHttp;
     }
 
+    private readonly record struct ReplayToolOutputSelection(string Output, bool MatchedRawCallId);
+
     private static string ResolveToolOutputCallId(
         IReadOnlyList<ToolCall> extractedCalls,
         IReadOnlyDictionary<string, ToolCall> extractedCallsById,
         string? rawOutputCallId,
         int outputIndex) {
-        var normalizedOutputCallId = (rawOutputCallId ?? string.Empty).Trim();
-        if (normalizedOutputCallId.Length > 0 && extractedCallsById.ContainsKey(normalizedOutputCallId)) {
-            return normalizedOutputCallId;
+        _ = TryResolveToolOutputCallId(
+            extractedCalls,
+            extractedCallsById,
+            rawOutputCallId,
+            outputIndex,
+            out var normalizedOutputCallId,
+            out _);
+        return normalizedOutputCallId;
+    }
+
+    private static bool TryResolveToolOutputCallId(
+        IReadOnlyList<ToolCall> extractedCalls,
+        IReadOnlyDictionary<string, ToolCall> extractedCallsById,
+        string? rawOutputCallId,
+        int outputIndex,
+        out string normalizedOutputCallId,
+        out bool matchedRawCallId) {
+        normalizedOutputCallId = string.Empty;
+        matchedRawCallId = false;
+        var directOutputCallId = (rawOutputCallId ?? string.Empty).Trim();
+        if (directOutputCallId.Length > 0 && extractedCallsById.ContainsKey(directOutputCallId)) {
+            normalizedOutputCallId = directOutputCallId;
+            matchedRawCallId = true;
+            return true;
         }
 
         if (outputIndex >= 0 && outputIndex < extractedCalls.Count) {
             var fallbackCallId = (extractedCalls[outputIndex].CallId ?? string.Empty).Trim();
             if (fallbackCallId.Length > 0) {
-                return fallbackCallId;
+                normalizedOutputCallId = fallbackCallId;
+                return true;
             }
         }
 
@@ -1353,12 +1349,76 @@ internal sealed partial class ChatServiceSession {
             foreach (var pair in extractedCallsById) {
                 var singleCallId = (pair.Key ?? string.Empty).Trim();
                 if (singleCallId.Length > 0) {
-                    return singleCallId;
+                    normalizedOutputCallId = singleCallId;
+                    return true;
                 }
             }
         }
 
-        return string.Empty;
+        return false;
+    }
+
+    private static ChatInput BuildToolRoundReplayInput(
+        IReadOnlyList<ToolCall> extractedCalls,
+        IReadOnlyDictionary<string, ToolCall> extractedCallsById,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        var next = new ChatInput();
+        var replayedCallIdsInOrder = new List<string>();
+        var replayedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
+        var selectedOutputsByCallId = new Dictionary<string, ReplayToolOutputSelection>(StringComparer.OrdinalIgnoreCase);
+        for (var outputIndex = 0; outputIndex < outputs.Count; outputIndex++) {
+            var output = outputs[outputIndex];
+            if (!TryResolveToolOutputCallId(
+                    extractedCalls,
+                    extractedCallsById,
+                    output.CallId,
+                    outputIndex,
+                    out var normalizedOutputCallId,
+                    out var matchedRawCallId)) {
+                continue;
+            }
+
+            if (normalizedOutputCallId.Length == 0) {
+                continue;
+            }
+
+            if (!extractedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)) {
+                continue;
+            }
+
+            if (replayedCallsById.TryAdd(normalizedOutputCallId, executedCall)) {
+                replayedCallIdsInOrder.Add(normalizedOutputCallId);
+            }
+
+            var candidateOutput = new ReplayToolOutputSelection(
+                Output: output.Output ?? string.Empty,
+                MatchedRawCallId: matchedRawCallId);
+            if (!selectedOutputsByCallId.TryGetValue(normalizedOutputCallId, out var existingOutput)) {
+                selectedOutputsByCallId[normalizedOutputCallId] = candidateOutput;
+                continue;
+            }
+
+            if (!existingOutput.MatchedRawCallId && candidateOutput.MatchedRawCallId) {
+                selectedOutputsByCallId[normalizedOutputCallId] = candidateOutput;
+            }
+        }
+
+        for (var replayIndex = 0; replayIndex < replayedCallIdsInOrder.Count; replayIndex++) {
+            var replayCallId = replayedCallIdsInOrder[replayIndex];
+            if (!replayedCallsById.TryGetValue(replayCallId, out var replayCall)) {
+                continue;
+            }
+
+            next.AddToolCall(
+                replayCallId,
+                replayCall.Name,
+                replayCall.Input);
+            if (selectedOutputsByCallId.TryGetValue(replayCallId, out var selectedOutput)) {
+                next.AddToolOutput(replayCallId, selectedOutput.Output);
+            }
+        }
+
+        return next;
     }
 
     private static ChatInput BuildHostReplayReviewInput(

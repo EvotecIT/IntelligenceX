@@ -167,6 +167,68 @@ public sealed class ChatSchemaRecoveryFallbackTests {
     }
 
     [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnMissingFunctionCallOutputGap() {
+        var ex = new InvalidOperationException("No tool output found for function call host_next_action_abc.");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnMissingCustomToolCallOutputGap() {
+        var ex = new InvalidOperationException("No tool output found for custom tool call host_next_action_abc.");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnNestedFunctionCallOutputReferenceGap() {
+        var ex = new InvalidOperationException(
+            "model step failed",
+            new InvalidOperationException(
+                "assistant projection failed",
+                new InvalidOperationException("No tool call found for function call output with call_id host_next_action_abc.")));
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnNestedFunctionCallOutputGap() {
+        var ex = new InvalidOperationException(
+            "model step failed",
+            new InvalidOperationException("No tool output found for function call host_next_action_abc."));
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
     public void ServiceShouldRetryModelPhaseAttempt_DoesNotRetryAuthenticationErrors() {
         var ex = new OpenAIAuthenticationRequiredException("auth required");
 
