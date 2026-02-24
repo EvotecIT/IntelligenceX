@@ -134,7 +134,10 @@ Default outputs:
   - `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
 
 Workflow automation:
-- `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode on an hourly schedule using `todo pr-watch-monitor`.
+- `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode with hybrid triggering using `todo pr-watch-monitor`:
+  - event-driven on `pull_request`, `pull_request_review`, and `pull_request_review_comment`,
+  - hourly scheduled sweep as a safety-net.
+  - PR-triggered runs are forced to GitHub-hosted runners for untrusted-code safety.
 - Manual targeted run via `workflow_dispatch` supports:
   - `pr` (specific PR number/URL),
   - `max_prs`,
@@ -179,6 +182,7 @@ Cadence matrix:
 
 | Cadence | Workflow | Defaults | Goal |
 | --- | --- | --- | --- |
+| Event-driven | `ix-pr-babysit-monitor.yml` | trigger PR auto-targeted by event payload | react immediately to new commits/review activity |
 | Hourly | `ix-pr-babysit-monitor.yml` | `max_prs=100`, observe mode | detect fresh CI/review regressions quickly |
 | Daily | `ix-pr-babysit-nightly-consolidation.yml` | `stale_days=7`, `max_prs=200` | build no-progress backlog, publish daily tracker snapshot, and watch metric deltas |
 | Weekly | `ix-pr-babysit-weekly-governance.yml` | `stale_days=14`, `max_prs=300` | governance review of persistent blockers/churn patterns and weekly trend validation |

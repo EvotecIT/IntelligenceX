@@ -3,6 +3,18 @@ name: IX PR Babysit Monitor
 on:
   schedule:
     - cron: "23 * * * *"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  pull_request_review:
+    types:
+      - submitted
+  pull_request_review_comment:
+    types:
+      - created
   workflow_dispatch:
     inputs:
       pr:
@@ -43,10 +55,8 @@ env:
 
 jobs:
   monitor:
-    # While private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-    # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
-    # When public, use GitHub-hosted runners by default.
-    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    # Security hardening: monitor runs on GitHub-hosted runners only.
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -75,15 +85,39 @@ jobs:
         run: |
           set -euo pipefail
 
+          PR_SPEC="${{ github.event.inputs.pr }}"
+          MAX_PRS="${{ github.event.inputs.max_prs }}"
+          MAX_FLAKY_RETRIES="${{ github.event.inputs.max_flaky_retries }}"
+          INCLUDE_DRAFTS="${{ github.event.inputs.include_drafts }}"
+          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
+          SOURCE_TAG="${{ github.event_name }}"
+          EVENT_ACTION="${{ github.event.action }}"
+
+          if [ -z "${MAX_PRS}" ]; then MAX_PRS="100"; fi
+          if [ -z "${MAX_FLAKY_RETRIES}" ]; then MAX_FLAKY_RETRIES="3"; fi
+          if [ -z "${INCLUDE_DRAFTS}" ]; then INCLUDE_DRAFTS="false"; fi
+          if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
+
+          if [ -z "${PR_SPEC}" ]; then
+            EVENT_PR_NUMBER="${{ github.event.pull_request.number }}"
+            if [ -n "${EVENT_PR_NUMBER}" ]; then
+              PR_SPEC="${EVENT_PR_NUMBER}"
+            fi
+          fi
+
+          if [ -n "${EVENT_ACTION}" ]; then
+            SOURCE_TAG="${SOURCE_TAG}:${EVENT_ACTION}"
+          fi
+
           dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll \
             todo pr-watch-monitor \
             --repo "${{ github.repository }}" \
-            --pr "${{ inputs.pr }}" \
-            --max-prs "${{ inputs.max_prs }}" \
-            --max-flaky-retries "${{ inputs.max_flaky_retries }}" \
-            --include-drafts "${{ inputs.include_drafts }}" \
-            --approved-bots "${{ inputs.approved_bots }}" \
-            --source "${{ github.event_name }}" \
+            --pr "${PR_SPEC}" \
+            --max-prs "${MAX_PRS}" \
+            --max-flaky-retries "${MAX_FLAKY_RETRIES}" \
+            --include-drafts "${INCLUDE_DRAFTS}" \
+            --approved-bots "${APPROVED_BOTS}" \
+            --source "${SOURCE_TAG}" \
             --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --snapshot-dir "${PR_WATCH_SNAPSHOT_DIR}" \
             --rollup-path "${PR_WATCH_ROLLUP_PATH}" \

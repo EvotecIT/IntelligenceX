@@ -86,9 +86,14 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 Observe-mode babysitter automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-monitor.yml`
-- Schedule: hourly observe-mode sweep
+- Triggers:
+  - event-driven on PR lifecycle/review activity (`pull_request`, `pull_request_review`, `pull_request_review_comment`)
+  - hourly observe-mode safety-net sweep
 - Engine command: `intelligencex todo pr-watch-monitor`
-- Manual targeted run: `workflow_dispatch` with optional `pr` and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
+- Behavior:
+  - event-driven runs target the triggering PR automatically,
+  - PR-triggered monitor runs are forced onto GitHub-hosted runners (security hardening),
+  - `workflow_dispatch` supports manual targeted runs with optional `pr` override and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
 - Outputs: per-PR snapshots + rollup summary + audit log (`ix-pr-watch-audit.jsonl`) in `artifacts/pr-watch/`
 
 Guarded retry assist automation:
@@ -134,13 +139,14 @@ Weekly governance automation:
 
 | Cadence | Workflow | Phase | Purpose | Expected maintainer action |
 | --- | --- | --- | --- | --- |
+| Event-driven | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Immediate reaction to PR updates, review submissions, and review comments | Validate newest blocker classification quickly and decide whether targeted assist is needed |
 | Hourly | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Fast detection of CI/review/mergeability drift on open PRs | Triage fresh blockers and decide whether to run assist retry on specific PRs |
 | Daily | `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` | `observe` | Portfolio-level no-progress and stale-blocker rollup | Prioritize next-day unblock queue, review metrics deltas, and maintain source tracker issue |
 | Weekly | `.github/workflows/ix-pr-babysit-weekly-governance.yml` | `observe` | Wider-window governance snapshot (older stalls/churn classes) | Review systemic patterns, validate stale/no-progress trend direction, and adjust operational ownership |
 
 This cadence keeps mutation guarded and targeted:
 
-- observe runs are scheduled (hourly/daily/weekly),
+- observe runs are event-driven plus scheduled (hourly/daily/weekly),
 - retry assist remains explicit/manual per PR (`ix-pr-babysit-assist-retry.yml`),
 - no autonomous merge or policy mutation is introduced.
 

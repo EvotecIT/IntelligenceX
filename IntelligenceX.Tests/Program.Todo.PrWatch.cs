@@ -217,5 +217,19 @@ internal static partial class Program {
         AssertEqual("retry_budget_available", records[1].Reason, "retry reason");
         AssertEqual("planned", records[1].Result, "planned result");
     }
+
+    private static void TestPrWatchResolveAuthenticatedLoginFallbackUsesActorEnv() {
+        var originalActor = Environment.GetEnvironmentVariable("GITHUB_ACTOR");
+        var originalTriggeringActor = Environment.GetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_ACTOR", "ix-bot-user");
+            Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", null);
+            var login = IntelligenceX.Cli.Todo.PrWatchRunner.ResolveAuthenticatedLoginFallback();
+            AssertEqual("ix-bot-user", login, "authenticated login fallback should use GITHUB_ACTOR");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_ACTOR", originalActor);
+            Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", originalTriggeringActor);
+        }
+    }
 #endif
 }
