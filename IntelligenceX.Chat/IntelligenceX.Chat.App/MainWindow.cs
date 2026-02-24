@@ -272,6 +272,8 @@ public sealed partial class MainWindow : Window {
     private string? _authenticatedAccountId;
     private bool _loginInProgress;
     private bool _debugMode;
+    private bool _showAssistantTurnTrace;
+    private bool _showAssistantDraftBubbles;
     private bool _isConnected;
     private string _statusText = SessionStatusFormatter.Format(SessionStatus.Disconnected());
     private SessionStatusTone _statusTone = SessionStatusToneResolver.Resolve(SessionStatus.Disconnected());
@@ -287,7 +289,7 @@ public sealed partial class MainWindow : Window {
     private bool? _autonomyPlanExecuteReviewLoop;
     private int? _autonomyMaxReviewPasses;
     private int? _autonomyModelHeartbeatSeconds;
-    private bool _proactiveModeEnabled = true;
+    private bool _proactiveModeEnabled;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
     private string _exportVisualThemeMode = ExportPreferencesContract.DefaultVisualThemeMode;

@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -170,6 +174,221 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForExecutionAckDraftReferencingRequestWithoutContinuationSubset() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "I’ll query the user across the relevant DCs and return the max authoritative lastLogon timestamp plus source DC.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        var reason = Assert.IsType<string>(args[7]);
+        Assert.True(
+            string.Equals(reason, "execution_ack_draft_references_request", StringComparison.Ordinal)
+            || string.Equals(reason, "assistant_draft_references_follow_up", StringComparison.Ordinal),
+            "Unexpected reason: " + reason);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForEmptyAssistantDraftWithSubstantialRequest() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = string.Empty;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("empty_assistant_draft_retry", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForEmptyAssistantDraftWithShortRequest() {
+        var userRequest = "hi";
+        var assistantDraft = string.Empty;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("empty_assistant_draft", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForExecutionAckDraftReferencingRequestWithContinuationSubset() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "I’ll query all relevant DCs and return the max authoritative lastLogon timestamp with source DC.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, true, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        Assert.Equal("execution_ack_draft_references_request", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForStructuredContextualBlockerDraft() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = """
+            I can do that.
+            To get authoritative lastLogon, I need to query each relevant DC directly.
+            - exact UTC timestamp
+            - source DC with max value
+            I will run this now.
+            """;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, true, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        var reason = Assert.IsType<string>(args[7]);
+        Assert.True(
+            string.Equals(reason, "structured_contextual_blocker_draft", StringComparison.Ordinal)
+            || string.Equals(reason, "execution_intent_placeholder_draft", StringComparison.Ordinal),
+            "Unexpected reason: " + reason);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForStructuredScopeChoiceDraft() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = """
+            Got it — I can do that, but I need one scope choice first because this account exists in `ad.evotec.xyz` while forest discovery also showed `ad.evotec.pl`.
+            I’ll proceed in `ad.evotec.xyz` unless you want `ad.evotec.pl` instead.
+            """;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        Assert.Equal("structured_scope_choice_draft", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForStructuredScopeChoiceWithoutInlineOptions() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = """
+            I can do that, but I need one scope choice first for this account.
+            I will proceed with the default scope after you confirm.
+            """;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+        Assert.Equal("no_continuation_subset_and_no_cta_or_contextual_follow_up", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForLinkedFollowUpQuestionWithoutContinuationSubset() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "To return the authoritative lastLogon with source DC, should I query only ad.evotec.xyz DCs or include both domains?";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        Assert.Equal("assistant_question_linked_to_follow_up", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForExecutionAckWithInlineCodeAndUnicodeApostrophe() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "I’ll query all relevant DCs for this user’s non-replicated `lastLogon`, then return the latest exact UTC value and the DC that reported it.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        var reason = Assert.IsType<string>(args[7]);
+        Assert.True(
+            string.Equals(reason, "execution_ack_draft_references_request", StringComparison.Ordinal)
+            || string.Equals(reason, "assistant_draft_references_follow_up", StringComparison.Ordinal),
+            "Unexpected reason: " + reason);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForExecutionAckWithMarkdownEmphasis() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "Got it — I’ll query the user on each relevant writable DC and return the **latest authoritative `lastLogon`** with the exact UTC time and source DC.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForRuntimeObservedExecutionAckDraft() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "I’ll query the user across domain controllers and return the **latest authoritative `lastLogon`** (non-replicated) with the exact UTC timestamp and source DC.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForUnlinkedFollowUpQuestionWithoutContinuationSubset() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "Would you like a short summary first?";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+        Assert.Equal("no_continuation_subset_and_no_cta_or_contextual_follow_up", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForExecutionAckDraftWithoutRequestReference() {
+        var userRequest = "thanks";
+        var assistantDraft = "I will execute that now and return the result immediately.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+        Assert.Equal("no_continuation_subset_and_no_cta_or_contextual_follow_up", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForCompactFollowUpCourtesyDraft() {
         var userRequest = "thanks";
         var assistantDraft = "You're welcome.";
@@ -207,13 +426,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
             - discovery returned only one DC candidate.
             - please provide the other DC hostnames.
             """;
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var prompt = Assert.IsType<string>(args[5]);
-        var reason = Assert.IsType<string>(args[6]);
+        var prompt = Assert.IsType<string>(args[6]);
+        var reason = Assert.IsType<string>(args[7]);
         Assert.Equal("structured_next_action_found", reason);
         Assert.Contains("ix:structured-next-action-retry:v1", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("next_tool: ad_scope_discovery", prompt, StringComparison.OrdinalIgnoreCase);
@@ -221,7 +440,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void TryBuildStructuredNextActionRetryPrompt_TriggersWithoutContinuationFollowUpWhenStructuredNextActionsPresent() {
+    public void TryBuildStructuredNextActionRetryPrompt_DoesNotTriggerWithoutContinuationFollowUpWhenStructuredNextActionsPresent() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         var toolDefinitions = new List<ToolDefinition> {
             new("ad_environment_discover", "discover", schema),
@@ -241,12 +460,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
         var userRequest = "Run cross-dc check";
         var assistantDraft = "Can I proceed by running the next discovery action now?";
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, false, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
-        Assert.True(Assert.IsType<bool>(result));
-        Assert.Equal("structured_next_action_found", Assert.IsType<string>(args[6]));
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("not_continuation_follow_up", Assert.IsType<string>(args[7]));
     }
 
     [Fact]
@@ -270,12 +489,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
         var userRequest = "run discovery";
         var assistantDraft = "Done.";
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("assistant_draft_not_blocker_like", Assert.IsType<string>(args[6]));
+        Assert.Equal("assistant_draft_not_blocker_like", Assert.IsType<string>(args[7]));
     }
 
     [Fact]
@@ -301,12 +520,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
             - please provide DC names.
             - discovery returned one host.
             """;
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("no_structured_next_action", Assert.IsType<string>(args[6]));
+        Assert.Equal("no_structured_next_action", Assert.IsType<string>(args[7]));
     }
 
     [Fact]
@@ -330,12 +549,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
         var userRequest = "continue";
         var assistantDraft = "Can I continue with identity normalization now?";
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var prompt = Assert.IsType<string>(args[5]);
+        var prompt = Assert.IsType<string>(args[6]);
         Assert.Contains("next_tool: ad_handoff_prepare", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"entity_handoff_ref\":\"meta.entity_handoff\"", prompt, StringComparison.OrdinalIgnoreCase);
     }
@@ -361,12 +580,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
         var userRequest = "go on";
         var assistantDraft = "Should I fetch installed updates on srv01 next?";
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var prompt = Assert.IsType<string>(args[5]);
+        var prompt = Assert.IsType<string>(args[6]);
         Assert.Contains("next_tool: system_updates_installed", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"computer_name\":\"srv01\"", prompt, StringComparison.OrdinalIgnoreCase);
     }
@@ -390,12 +609,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
         var userRequest = "continue";
         var assistantDraft = "Can I continue with the next discovery phase?";
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var prompt = Assert.IsType<string>(args[5]);
+        var prompt = Assert.IsType<string>(args[6]);
         Assert.Contains("next_tool: ad_scope_discovery", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -420,12 +639,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
         var userRequest = "continue";
         var assistantDraft = "Should I continue with expanded scope discovery now?";
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, userRequest, assistantDraft, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, true, userRequest, assistantDraft, null, null };
 
         var result = TryBuildStructuredNextActionRetryPromptMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var prompt = Assert.IsType<string>(args[5]);
+        var prompt = Assert.IsType<string>(args[6]);
         Assert.Contains("next_tool: ad_scope_discovery", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"discovery_fallback\":\"current_forest\"", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not ask for another confirmation", prompt, StringComparison.OrdinalIgnoreCase);
@@ -647,6 +866,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactContinuation() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: false,
+            userRequest: "continue",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenDraftAnchorsNewContext() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            userRequest: "i mean other dcs",
+            assistantDraft: "Perfect, understood: other DCs only. I will compare AD1 and AD2 now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ShouldAttemptToolProgressRecovery_TriggersForBlockerLikeDraftAfterToolActivity() {
         var draft = """
             I started, but I hit one blocker:
@@ -850,7 +1091,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_TriggersWhenExecutionPathHadNoToolEvidence() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { false, false, true, false, false, false, false, "On it." });
+            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, "On it." });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -859,7 +1100,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { true, false, false, false, false, false, true, "Completed." });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, true, "Completed." });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -876,7 +1117,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { true, false, false, false, false, false, false, structuredBlocker });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, false, structuredBlocker });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -886,7 +1127,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var draft = "On it. Running the all-DC reboot baseline now and returning the side-by-side matrix.";
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { false, false, false, false, true, true, false, draft });
+            new object?[] { "Run the baseline now.", false, false, false, false, true, true, false, draft });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -896,9 +1137,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var draft = "Should I run this now across all domain controllers?";
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { false, false, false, false, true, true, false, draft });
+            new object?[] { "Run the baseline now.", false, false, false, false, true, true, false, draft });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldForceExecutionContractBlockerAtFinalize_TriggersForExecutionIntentPlaceholderWithoutPriorRecoveryFlags() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var draft = "I’ll query the user across domain controllers and return the latest authoritative lastLogon timestamp with source DC.";
+        var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
+            null,
+            new object?[] { userRequest, false, false, false, false, false, false, false, draft });
+
+        Assert.True(Assert.IsType<bool>(result));
     }
 
     [Fact]
@@ -975,15 +1227,113 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldSuppressLocalToolRecoveryRetries_SuppressesNonFollowUpLocalReadOnlyFirstPass() {
+    public void ShouldAttemptNoToolExecutionWatchdog_TriggersForContextualFollowUpWithoutCompactHint() {
+        var args = new object?[] {
+            "could we check if all other dcs had similar issues?",
+            """
+            Absolutely — I can check if all other DCs had similar issues, but I hit one blocker:
+            - discovery returned one candidate.
+            - I need one more execution pass to continue.
+            """,
+            true,
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            null
+        };
+
+        var result = ShouldAttemptNoToolExecutionWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("contextual_follow_up_watchdog_retry", Assert.IsType<string>(args[11]));
+    }
+
+    [Fact]
+    public void ShouldAttemptNoToolExecutionWatchdog_TriggersForEmptyAssistantDraftAfterNudge() {
+        var args = new object?[] {
+            "please continue",
+            string.Empty,
+            true,
+            0,
+            0,
+            0,
+            false,
+            false,
+            true,
+            false,
+            false,
+            null
+        };
+
+        var result = ShouldAttemptNoToolExecutionWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("empty_assistant_draft_watchdog_retry", Assert.IsType<string>(args[11]));
+    }
+
+    [Fact]
+    public void ShouldAttemptNoToolExecutionWatchdog_TriggersAfterExecutionNudgeOutsideCompactFollowUp() {
+        var args = new object?[] {
+            "please continue",
+            """
+            I started, but I hit one blocker:
+            - discovery returned one candidate.
+            - I need one more execution pass to continue.
+            """,
+            true,
+            0,
+            0,
+            0,
+            false,
+            false,
+            true,
+            false,
+            false,
+            null
+        };
+
+        var result = ShouldAttemptNoToolExecutionWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("compact_follow_up_watchdog_retry", Assert.IsType<string>(args[11]));
+    }
+
+    [Fact]
+    public void ShouldSuppressLocalToolRecoveryRetries_DoesNotSuppressWhenToolsAreAvailable() {
         var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
             null,
             new object?[] {
                 true,  // isLocalCompatibleLoopback
                 false, // executionContractApplies
                 false, // compactFollowUpTurn
+                true,  // toolsAvailable
                 0,     // priorToolCalls
-                0      // priorToolOutputs
+                0,     // priorToolOutputs
+                "Check AD status", // userRequest
+                "Working on it."   // assistantDraft
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSuppressLocalToolRecoveryRetries_SuppressesNonFollowUpToollessLocalReadOnlyFirstPass() {
+        var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
+            null,
+            new object?[] {
+                true,  // isLocalCompatibleLoopback
+                false, // executionContractApplies
+                false, // compactFollowUpTurn
+                false, // toolsAvailable
+                0,     // priorToolCalls
+                0,     // priorToolOutputs
+                "Check AD status", // userRequest
+                "Working on it."   // assistantDraft
             });
 
         Assert.True(Assert.IsType<bool>(result));
@@ -997,8 +1347,47 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,  // isLocalCompatibleLoopback
                 false, // executionContractApplies
                 true,  // compactFollowUpTurn
+                true,  // toolsAvailable
                 0,     // priorToolCalls
-                0      // priorToolOutputs
+                0,     // priorToolOutputs
+                "go ahead", // userRequest
+                "On it."    // assistantDraft
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSuppressLocalToolRecoveryRetries_DoesNotSuppressLinkedQuestionDraft() {
+        var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
+            null,
+            new object?[] {
+                true,  // isLocalCompatibleLoopback
+                false, // executionContractApplies
+                false, // compactFollowUpTurn
+                true,  // toolsAvailable
+                0,     // priorToolCalls
+                0,     // priorToolOutputs
+                "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.",
+                "To return the authoritative lastLogon with source DC, should I query only ad.evotec.xyz DCs or include both domains?"
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSuppressLocalToolRecoveryRetries_DoesNotSuppressExecutionAckDraftWithInlineCode() {
+        var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
+            null,
+            new object?[] {
+                true,  // isLocalCompatibleLoopback
+                false, // executionContractApplies
+                false, // compactFollowUpTurn
+                true,  // toolsAvailable
+                0,     // priorToolCalls
+                0,     // priorToolOutputs
+                "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.",
+                "I’ll query all relevant DCs for this user’s non-replicated `lastLogon`, then return the latest exact UTC value and the DC that reported it."
             });
 
         Assert.False(Assert.IsType<bool>(result));
@@ -1159,6 +1548,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAllowHostStructuredNextActionReplay_FalseForLongEvidenceSummaryDraft() {
+        var draft = """
+            Confirmed — here is the exact outcome:
+            - AD0 reboot marker 2026-02-17T07:41:18Z.
+            - AD1 reboot marker 2026-02-17T07:41:22Z.
+            - AD2 reboot marker 2026-02-17T07:50:01Z.
+            - Classification unexpected reboot.
+            - Event 41 present.
+            - Event 6008 present.
+            - Event 6005 present.
+            - Planned 1074 entries also present.
+            - Cross-DC same-window pattern detected.
+            - Next best check is root-cause correlation.
+            """;
+
+        var result = ShouldAllowHostStructuredNextActionReplayMethod.Invoke(
+            null,
+            new object?[] { draft });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldTriggerNoResultPhaseLoopWatchdog_TriggersForRepeatedPhaseLoopsWithToolActivity() {
         var args = new object?[] {
             9,
@@ -1252,12 +1664,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ["ad_scope_discovery"] = false
         };
 
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run discovery", mutabilityHints, null, null };
         var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var toolCall = Assert.IsType<ToolCall>(args[4]);
-        var reason = Assert.IsType<string>(args[5]);
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.Contains("pack_contract_partial_scope_autofallback", reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
@@ -1292,11 +1704,464 @@ public sealed partial class ChatServiceRoutingTrimTests {
             ["ad_scope_discovery"] = false
         };
 
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run discovery", mutabilityHints, null, null };
         var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[5]));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_PrefersAdDiscoveryBeforeCrossDcEventlogFanOut() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_live_stats"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", "live stats", schema),
+            new("eventlog_live_query", "live query", schema),
+            new("ad_scope_discovery", "scope", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-ev", Name = "eventlog_live_stats" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ev",
+                Output = """
+                         {"ok":true,"discovery_status":{"limited_discovery":true,"machine_name":"AD0","domain_name":"ad.evotec.xyz"}}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false,
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Could you check other domain controllers for the same issue?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("ad_scope_discovery", toolCall.Name);
+        Assert.Contains("cross_dc_discovery_first", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_KeepsHostScopedEventlogFallbackWhenRequestIsHostTargeted() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_live_stats"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", "live stats", schema),
+            new("eventlog_live_query", "live query", schema),
+            new("ad_scope_discovery", "scope", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-ev", Name = "eventlog_live_stats" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ev",
+                Output = """
+                         {"ok":true,"discovery_status":{"limited_discovery":true,"machine_name":"AD0","domain_name":"ad.evotec.xyz"}}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false,
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Could you check AD0 for the same issue?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsEventlogLiveQueryFallbackWhenEvtxAccessDeniedWithHostHint() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_evtx_find"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_evtx_find", "find evtx", schema),
+            new("eventlog_live_query", "live query", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-3", Name = "eventlog_evtx_find" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-3",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Can you find out why and when AD0 was rebooted?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+        Assert.Contains("pack_contract_partial_scope_autofallback", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("evtx_access_denied_live_query_fallback", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_ResolvesHostHintAgainstPriorDiscoveryOutputs() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_scope_discovery"] = "active_directory";
+        packMap["eventlog_evtx_find"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("ad_scope_discovery", "scope", schema),
+            new("eventlog_evtx_find", "find evtx", schema),
+            new("eventlog_live_query", "live query", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-ad", Name = "ad_scope_discovery" },
+            new() { CallId = "call-evtx", Name = "eventlog_evtx_find" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ad",
+                Output = """
+                         {"ok":true,"domain_controllers":[{"machine_name":"AD0.contoso.local"},{"machine_name":"AD1.contoso.local"}]}
+                         """,
+                Ok = true
+            },
+            new() {
+                CallId = "call-evtx",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Can you find out why and when AD0 was rebooted?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+        Assert.Contains("\"machine_name\":\"AD0.contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildEventlogFallbackWithoutHostHint() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_evtx_find"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_evtx_find", "find evtx", schema),
+            new("eventlog_live_query", "live query", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-4", Name = "eventlog_evtx_find" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-4",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Please continue with reboot checks.",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
+    public void SupportsSyntheticHostReplayItems_EnablesOnlyCompatibleHttpTransport() {
+        var nativeResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.Native });
+        var appServerResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.AppServer });
+        var compatibleResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.CompatibleHttp });
+        var copilotCliResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.CopilotCli });
+
+        Assert.False(Assert.IsType<bool>(nativeResult));
+        Assert.False(Assert.IsType<bool>(appServerResult));
+        Assert.True(Assert.IsType<bool>(compatibleResult));
+        Assert.False(Assert.IsType<bool>(copilotCliResult));
+    }
+
+    [Fact]
+    public void BuildHostReplayReviewInput_UsesTextReplayForNativeSafeMode() {
+        var call = new ToolCall(
+            callId: "host_next_action_123",
+            name: "ad_scope_discovery",
+            input: "{\"domain\":\"ad.evotec.xyz\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "ad_scope_discovery"));
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "host_next_action_123",
+                Output = "{\"ok\":true,\"domain\":\"ad.evotec.xyz\"}",
+                Ok = true
+            }
+        };
+
+        var inputObj = BuildHostReplayReviewInputMethod.Invoke(
+            null,
+            new object?[] { call, outputs, false });
+
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+        Assert.Equal(1, items.Count);
+
+        var first = Assert.IsType<JsonObject>(items[0].AsObject());
+        Assert.Equal("text", first.GetString("type"));
+        Assert.Contains("ix:host-replay-review:v1", first.GetString("text"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildHostReplayReviewInput_UsesSyntheticReplayItemsWhenSupported() {
+        var call = new ToolCall(
+            callId: "host_pack_fallback_123",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "host_pack_fallback_123",
+                Output = "{\"ok\":true}",
+                Ok = true
+            }
+        };
+
+        var inputObj = BuildHostReplayReviewInputMethod.Invoke(
+            null,
+            new object?[] { call, outputs, true });
+
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+        Assert.Equal(2, items.Count);
+
+        var first = Assert.IsType<JsonObject>(items[0].AsObject());
+        var second = Assert.IsType<JsonObject>(items[1].AsObject());
+        Assert.Equal("custom_tool_call", first.GetString("type"));
+        Assert.Equal("custom_tool_call_output", second.GetString("type"));
+    }
+
+    [Fact]
+    public void BuildHostReplayReviewInput_FallsBackToTextReplayWhenOutputCallIdsDoNotMatch() {
+        var call = new ToolCall(
+            callId: "host_pack_fallback_123",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "host_next_action_mismatch",
+                Output = "{\"ok\":true}",
+                Ok = true
+            }
+        };
+
+        var inputObj = BuildHostReplayReviewInputMethod.Invoke(
+            null,
+            new object?[] { call, outputs, true });
+
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+        Assert.Single(items);
+
+        var first = Assert.IsType<JsonObject>(items[0].AsObject());
+        Assert.Equal("text", first.GetString("type"));
+        Assert.Contains("ix:host-replay-review:v1", first.GetString("text"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveToolOutputCallId_UsesRawCallIdWhenMatched() {
+        var extracted = new List<ToolCall> {
+            new(
+                callId: "call_123",
+                name: "eventlog_live_query",
+                input: "{}",
+                arguments: null,
+                raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"))
+        };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_123"] = extracted[0]
+        };
+
+        var result = ResolveToolOutputCallIdMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, "call_123", 0 });
+
+        Assert.Equal("call_123", Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void ResolveToolOutputCallId_FallsBackToIndexedCallWhenRawCallIdIsMismatched() {
+        var first = new ToolCall(
+            callId: "call_123",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var second = new ToolCall(
+            callId: "call_456",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { first, second };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_123"] = first,
+            ["call_456"] = second
+        };
+
+        var result = ResolveToolOutputCallIdMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, "mismatch_call_id", 1 });
+
+        Assert.Equal("call_456", Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void ResolveToolOutputCallId_ReturnsEmptyWhenNoSafeFallbackExists() {
+        var first = new ToolCall(
+            callId: "call_123",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var second = new ToolCall(
+            callId: "call_456",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { first, second };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_123"] = first,
+            ["call_456"] = second
+        };
+
+        var result = ResolveToolOutputCallIdMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, string.Empty, 99 });
+
+        Assert.Equal(string.Empty, Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void BuildNativeHostReplayReviewPrompt_IncludesToolIdentityAndEvidence() {
+        var call = new ToolCall(
+            callId: "host_carryover_next_action_123",
+            name: "ad_scope_discovery",
+            input: "{\"include_trusts\":true}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "ad_scope_discovery"));
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "host_carryover_next_action_123",
+                Output = "{\"ok\":true,\"domain_controllers\":[\"AD0\",\"AD1\"]}",
+                Ok = true
+            }
+        };
+
+        var promptObj = BuildNativeHostReplayReviewPromptMethod.Invoke(
+            null,
+            new object?[] { call, outputs });
+        var prompt = Assert.IsType<string>(promptObj);
+
+        Assert.Contains("ix:host-replay-review:v1", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("executed_tool: ad_scope_discovery", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("host_carryover_next_action_123", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("domain_controllers", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1319,6 +2184,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "Show failed logons across all domain controllers for the last 24 hours with source IP breakdown." });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    private static JsonArray GetChatInputItems(ChatInput input) {
+        var toJson = typeof(ChatInput).GetMethod("ToJson", BindingFlags.NonPublic | BindingFlags.Instance)
+                     ?? throw new InvalidOperationException("ChatInput.ToJson not found.");
+        var value = toJson.Invoke(input, Array.Empty<object>());
+        return Assert.IsType<JsonArray>(value);
     }
 
 }

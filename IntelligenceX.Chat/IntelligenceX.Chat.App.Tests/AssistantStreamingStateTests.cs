@@ -10,6 +10,9 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Guards thread-safe streamed assistant draft state used by chat_delta/provisional paths.
 /// </summary>
 public sealed class AssistantStreamingStateTests {
+    /// <summary>
+    /// Ensures appending a delta marks state as active and keeps buffered preview content.
+    /// </summary>
     [Fact]
     public void AppendDeltaAndNormalizePreview_MarksDeltaAndBuffersContent() {
         var state = new AssistantStreamingState();
@@ -22,6 +25,9 @@ public sealed class AssistantStreamingStateTests {
         Assert.Contains("hello", preview, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Ensures reset clears every tracked streaming/provisional state flag.
+    /// </summary>
     [Fact]
     public void Reset_ClearsBufferedContentAndDeltaFlag() {
         var state = new AssistantStreamingState();
@@ -35,6 +41,9 @@ public sealed class AssistantStreamingStateTests {
         Assert.Equal(string.Empty, state.SnapshotNormalizedPreview());
     }
 
+    /// <summary>
+    /// Ensures provisional fragments are tracked independently from regular chat deltas.
+    /// </summary>
     [Fact]
     public void AppendDeltaAndNormalizePreview_TracksProvisionalFragmentsSeparately() {
         var state = new AssistantStreamingState();
@@ -48,6 +57,9 @@ public sealed class AssistantStreamingStateTests {
         Assert.True(state.HasReceivedProvisionalDelta());
     }
 
+    /// <summary>
+    /// Ensures concurrent append/reset calls remain thread-safe and recover to a valid state.
+    /// </summary>
     [Fact]
     public async Task AppendAndReset_AreThreadSafeAcrossConcurrentCallers() {
         var state = new AssistantStreamingState();
@@ -72,6 +84,9 @@ public sealed class AssistantStreamingStateTests {
         Assert.Contains("tail", state.SnapshotNormalizedPreview(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Ensures oversized streams are trimmed to the in-memory guardrail size.
+    /// </summary>
     [Fact]
     public void AppendDeltaAndNormalizePreview_TrimsBufferWhenStreamGrowsTooLarge() {
         var state = new AssistantStreamingState();
@@ -84,6 +99,9 @@ public sealed class AssistantStreamingStateTests {
         Assert.True(state.HasBufferedContent());
     }
 
+    /// <summary>
+    /// Ensures empty deltas do not clear preview and return current normalized state.
+    /// </summary>
     [Fact]
     public void AppendDeltaAndNormalizePreview_EmptyDeltaReturnsCurrentPreview() {
         var state = new AssistantStreamingState();
@@ -95,10 +113,41 @@ public sealed class AssistantStreamingStateTests {
         Assert.True(state.HasReceivedDelta());
     }
 
+    /// <summary>
+    /// Ensures null delta input is rejected with a defensive argument exception.
+    /// </summary>
     [Fact]
     public void AppendDeltaAndNormalizePreview_NullDeltaThrowsArgumentNullException() {
         var state = new AssistantStreamingState();
 
         Assert.Throws<ArgumentNullException>(() => state.AppendDeltaAndNormalizePreview(null!));
+    }
+
+    /// <summary>
+    /// Ensures snapshot-style chat delta fragments merge without duplicated prefixes.
+    /// </summary>
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_MergesChatDeltaSnapshotFragmentsWithoutPrefixDuplication() {
+        var state = new AssistantStreamingState();
+        state.AppendDeltaAndNormalizePreview("Thanks for");
+
+        var preview = state.AppendDeltaAndNormalizePreview("Thanks for the nudge — I checked AD0.");
+
+        Assert.Contains("Thanks for the nudge", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("Thanks forThanks for", preview, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures provisional snapshot fragments also merge without duplicated prefixes.
+    /// </summary>
+    [Fact]
+    public void AppendDeltaAndNormalizePreview_MergesProvisionalSnapshotFragmentsWithoutPrefixDuplication() {
+        var state = new AssistantStreamingState();
+        state.AppendDeltaAndNormalizePreview("Done");
+
+        var preview = state.AppendDeltaAndNormalizePreview("Done — and I hit an environment limit.", fromProvisionalEvent: true);
+
+        Assert.Contains("Done — and I hit an environment limit.", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("DoneDone", preview, StringComparison.Ordinal);
     }
 }

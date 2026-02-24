@@ -52,6 +52,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_handoff_prepare to normalize cross-pack entity_handoff payloads before AD queries.",
                 "Example EventLog handoff flow: ad_handoff_prepare -> ad_scope_discovery -> ad_object_resolve -> ad_search/ad_object_get for focused follow-up.",
                 "Use ad_object_resolve to avoid N+1 object lookups when correlating identities.",
+                "For authoritative last-logon investigations, enumerate DCs first (ad_scope_discovery/ad_forest_discover), then query each DC with ad_ldap_query for lastLogon and compare max value; treat lastLogonTimestamp as replicated approximation.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
                 "Use ad_search_facets/ad_replication_summary/ad_replication_connections/ad_replication_status/ad_directory_discovery_diagnostics/ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_delegation_audit/ad_spn_stats for aggregated diagnostics.",
                 "Use ad_monitoring_probe_catalog + ad_monitoring_probe_run for runtime AD monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping)."
@@ -91,6 +92,9 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     goal: "Resolve/expand identities for correlation",
                     suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved" }),
                 ToolPackGuidance.FlowStep(
+                    goal: "Confirm authoritative user/computer logon recency across DCs",
+                    suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_ldap_query", "ad_ldap_query_paged" }),
+                ToolPackGuidance.FlowStep(
                     goal: "Run diagnostics and aggregate analysis",
                     suggestedTools: new[] { "ad_search_facets", "ad_replication_summary", "ad_replication_connections", "ad_replication_status", "ad_directory_discovery_diagnostics", "ad_dns_server_config", "ad_dns_zone_config", "ad_dns_zone_security", "ad_dns_delegation", "ad_delegation_audit", "ad_spn_stats", "ad_spn_hygiene", "ad_ldap_diagnostics", "ad_dns_scavenging" }),
                 ToolPackGuidance.FlowStep(
@@ -106,6 +110,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     id: "identity_resolution",
                     summary: "Resolve identities and membership details for cross-tool correlation.",
                     primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved" }),
+                ToolPackGuidance.Capability(
+                    id: "authoritative_logon_correlation",
+                    summary: "Correlate last-logon evidence per-DC using direct LDAP reads and forest/domain discovery context.",
+                    primaryTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_ldap_query", "ad_ldap_query_paged" }),
                 ToolPackGuidance.Capability(
                     id: "ad_diagnostics",
                     summary: "Provide LDAP diagnostics and aggregated security/replication insights.",

@@ -11,6 +11,7 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const int MaxExecutionContractHistoryScan = 12;
+    private const int InterimFinalNearDuplicateSuffixThresholdChars = 24;
     private sealed record ChatTurnContext(
         ConversationRuntime Conversation,
         string ConversationId,
@@ -146,12 +147,14 @@ public sealed partial class MainWindow : Window {
                 await DisposeClientAsync().ConfigureAwait(false);
                 if (await EnsureConnectedAsync(deferPostConnectMetadataSync: true).ConfigureAwait(false) && _client is { } retryClient) {
                     try {
+                        ResetStreamingTurnStateForRetry(turn);
                         await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception retryEx) {
                         var resolvedRetryEx = retryEx;
                         if (await TryRecoverChatSlotByCancelingKickoffAsync(retryEx).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
                             try {
+                                ResetStreamingTurnStateForRetry(turn);
                                 await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn, cancellationToken).ConfigureAwait(false);
                                 return;
                             } catch (Exception kickoffRetryEx) {
@@ -183,6 +186,7 @@ public sealed partial class MainWindow : Window {
                 var resolvedEx = ex;
                 if (await TryRecoverChatSlotByCancelingKickoffAsync(ex).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
                     try {
+                        ResetStreamingTurnStateForRetry(turn);
                         await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception kickoffRetryEx) {
@@ -256,6 +260,15 @@ public sealed partial class MainWindow : Window {
         return true;
     }
 
+    private void ResetStreamingTurnStateForRetry(ChatTurnContext turn) {
+        if (!_assistantStreamingState.HasReceivedDelta() && !HasActiveTurnInterimResult()) {
+            return;
+        }
+
+        _assistantStreamingState.Reset();
+        ResetActiveTurnAssistantVisuals(turn.ConversationId);
+    }
+
     private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn, CancellationToken cancellationToken) {
         var req = new ChatRequest {
             RequestId = turn.RequestId,
@@ -303,17 +316,24 @@ public sealed partial class MainWindow : Window {
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
         _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
-        var appendFinalAfterInterim = HasActiveTurnInterimResult()
+        var activeTurnReceivedDelta = _assistantStreamingState.HasReceivedDelta();
+        var activeTurnInterimResultSeen = HasActiveTurnInterimResult();
+        var appendFinalAfterInterim = activeTurnInterimResultSeen
                                       && ShouldAppendFinalAssistantAfterInterim(assistantText, latestAssistantText);
+        var appendFinalAfterStreamedDraft = ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta,
+            activeTurnInterimResultSeen,
+            assistantText,
+            latestAssistantText);
         if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
-                _assistantStreamingState.HasReceivedDelta(),
+                activeTurnReceivedDelta,
                 assistantText,
                 latestAssistantText,
                 out var runtimeWarningNotice)) {
             conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
-        } else if (appendFinalAfterInterim) {
+        } else if (appendFinalAfterInterim || appendFinalAfterStreamedDraft) {
             // Keep interim and final as separate assistant bubbles only when the final synthesis
-            // materially differs from the interim snapshot. This avoids duplicate bubble inflation.
+            // materially differs from the existing draft/interim snapshot. This avoids duplicate bubble inflation.
             AppendAssistantText(conversation, assistantText);
         } else {
             ReplaceLastAssistantText(conversation, assistantText);
@@ -389,7 +409,13 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        notice = outcome.Kind switch {
+        notice = BuildPartialTurnFailureNoticeText(outcome);
+        _assistantStreamingState.ClearReceivedDelta();
+        return true;
+    }
+
+    internal static string BuildPartialTurnFailureNoticeText(AssistantTurnOutcome outcome) {
+        return outcome.Kind switch {
             AssistantTurnOutcomeKind.ToolRoundLimit =>
                 "Partial response shown above. The turn hit the tool safety limit before completion. "
                 + "Reply naturally to proceed, or narrow scope (one DC / one OU).",
@@ -400,10 +426,105 @@ public sealed partial class MainWindow : Window {
                 "Partial response shown above. Turn was canceled before completion.",
             AssistantTurnOutcomeKind.Disconnected =>
                 "Partial response shown above. Connection dropped before the turn could finish.",
+            AssistantTurnOutcomeKind.Error =>
+                BuildPartialTurnErrorNoticeText(outcome.Detail),
             _ =>
                 "Partial response shown above. The turn ended before completion."
         };
-        _assistantStreamingState.ClearReceivedDelta();
+    }
+
+    private static string BuildPartialTurnErrorNoticeText(string? detail) {
+        var summary = NormalizePartialTurnFailureDetail(detail, maxChars: 220);
+        var code = TryExtractPartialTurnFailureCode(detail);
+        if (code.Length == 0 && summary.Length == 0) {
+            return "Partial response shown above. The turn ended before completion.";
+        }
+
+        if (code.Length == 0) {
+            return "Partial response shown above. The turn ended before completion. " + summary;
+        }
+
+        if (summary.Length == 0) {
+            return "Partial response shown above. The turn ended before completion (" + code + ").";
+        }
+
+        var suffix = "(" + code + ")";
+        if (summary.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) {
+            summary = summary[..^suffix.Length].TrimEnd(' ', '.', ':', ';', '-', ',');
+        }
+
+        if (summary.Length == 0) {
+            return "Partial response shown above. The turn ended before completion (" + code + ").";
+        }
+
+        return "Partial response shown above. The turn ended before completion (" + code + "). " + summary;
+    }
+
+    private static string NormalizePartialTurnFailureDetail(string? detail, int maxChars) {
+        var text = (detail ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var firstLineEnd = text.IndexOfAny(new[] { '\r', '\n' });
+        if (firstLineEnd >= 0) {
+            text = text[..firstLineEnd].Trim();
+        }
+
+        if (text.Length <= maxChars) {
+            return text;
+        }
+
+        return text[..maxChars].TrimEnd() + "...";
+    }
+
+    private static string TryExtractPartialTurnFailureCode(string? detail) {
+        var text = (detail ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var close = text.LastIndexOf(')');
+        if (close == text.Length - 1) {
+            var open = text.LastIndexOf('(', close);
+            if (open >= 0 && open + 1 < close) {
+                var candidate = text[(open + 1)..close].Trim();
+                if (LooksLikePartialTurnFailureCode(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+
+        const string marker = "reason code:";
+        var markerIndex = text.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return string.Empty;
+        }
+
+        var value = text[(markerIndex + marker.Length)..].Trim();
+        var lineEnd = value.IndexOfAny(new[] { '\r', '\n', '.', ';', ',', ' ' });
+        if (lineEnd > 0) {
+            value = value[..lineEnd].Trim();
+        }
+
+        return LooksLikePartialTurnFailureCode(value) ? value : string.Empty;
+    }
+
+    private static bool LooksLikePartialTurnFailureCode(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length is < 3 or > 80) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch) || ch == '_' || ch == '-' || ch == '.') {
+                continue;
+            }
+
+            return false;
+        }
+
         return true;
     }
 
@@ -456,17 +577,89 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static bool ShouldAppendFinalAssistantAfterInterim(string? finalAssistantText, string? interimAssistantText) {
-        var finalText = (finalAssistantText ?? string.Empty).Trim();
+        var finalText = NormalizeAssistantSnapshotForAppendDecision(finalAssistantText);
         if (finalText.Length == 0) {
             return false;
         }
 
-        var interimText = (interimAssistantText ?? string.Empty).Trim();
+        var interimText = NormalizeAssistantSnapshotForAppendDecision(interimAssistantText);
         if (interimText.Length == 0) {
             return true;
         }
 
-        return !string.Equals(finalText, interimText, StringComparison.Ordinal);
+        if (string.Equals(finalText, interimText, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (AreNearDuplicateAssistantSnapshots(finalText, interimText)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static bool ShouldAppendFinalAssistantAfterStreamedDraft(
+        bool activeTurnReceivedDelta,
+        bool activeTurnInterimResultSeen,
+        string? finalAssistantText,
+        string? streamedAssistantText) {
+        if (!activeTurnReceivedDelta || activeTurnInterimResultSeen) {
+            return false;
+        }
+
+        return ShouldAppendFinalAssistantAfterInterim(finalAssistantText, streamedAssistantText);
+    }
+
+    private static string NormalizeAssistantSnapshotForAppendDecision(string? text) {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        var normalized = new System.Text.StringBuilder(value.Length);
+        var previousSpace = false;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsWhiteSpace(ch)) {
+                if (!previousSpace) {
+                    normalized.Append(' ');
+                    previousSpace = true;
+                }
+                continue;
+            }
+
+            previousSpace = false;
+            normalized.Append(ch);
+        }
+
+        var compact = normalized.ToString().Trim();
+        while (compact.Length > 0) {
+            var tail = compact[^1];
+            if (tail is '.' or '!' or '?' or ':' or ';' or ',') {
+                compact = compact[..^1].TrimEnd();
+                continue;
+            }
+
+            break;
+        }
+
+        return compact;
+    }
+
+    private static bool AreNearDuplicateAssistantSnapshots(string finalText, string interimText) {
+        if (finalText.Length == 0 || interimText.Length == 0) {
+            return false;
+        }
+
+        if (finalText.StartsWith(interimText, StringComparison.OrdinalIgnoreCase)) {
+            return finalText.Length - interimText.Length <= InterimFinalNearDuplicateSuffixThresholdChars;
+        }
+
+        if (interimText.StartsWith(finalText, StringComparison.OrdinalIgnoreCase)) {
+            return interimText.Length - finalText.Length <= InterimFinalNearDuplicateSuffixThresholdChars;
+        }
+
+        return false;
     }
 
     private static string CollapseRepeatedExecutionContractBlockers(ConversationRuntime conversation, string assistantText) {

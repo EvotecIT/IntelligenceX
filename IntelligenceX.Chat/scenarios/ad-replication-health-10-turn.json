@@ -1,0 +1,58 @@
+{
+  "name": "ad-replication-health-10-turn",
+  "turns": [
+    {
+      "name": "Discover DC scope",
+      "user": "Discover DCs in the current AD domain/forest and tell me which hosts you can actively query in this run.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "Run replication posture",
+      "user": "Run an AD replication health check across those DCs and return a compact matrix.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "*replication*status*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Focus on failures",
+      "user": "If there are replication issues, list top failing partners/partitions with exact evidence.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "*replication*status*"]
+    },
+    {
+      "name": "Latency and staleness",
+      "user": "Report replication staleness (oldest successful replication age) and classify each DC as green/yellow/red.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "*replication*status*"]
+    },
+    {
+      "name": "Topology signal",
+      "user": "Classify whether this looks site-local, domain-wide, or forest-wide."
+    },
+    {
+      "name": "Correlate with event logs",
+      "user": "Correlate replication findings with any related directory service/system events in the same timeframe.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_named_events_*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Likely root causes",
+      "user": "Give top 3 likely root-cause categories with confidence and what evidence supports each."
+    },
+    {
+      "name": "Immediate remediation",
+      "user": "Provide a prioritized 30-minute remediation checklist."
+    },
+    {
+      "name": "Safe verification loop",
+      "user": "Provide a short verify-after-fix checklist so we can re-run and confirm replication is improving."
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final replication findings in 6 bullets with UTC timestamps and key evidence.",
+      "assert_contains": ["UTC"]
+    }
+  ]
+}

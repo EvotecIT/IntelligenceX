@@ -95,7 +95,7 @@
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false;TargetFramework=$(ChatServiceTfm)" />
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
   </Target>
 
   <Target Name="CopyChatServiceSidecar" AfterTargets="Build"

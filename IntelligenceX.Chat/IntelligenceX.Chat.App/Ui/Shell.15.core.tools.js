@@ -2594,7 +2594,7 @@
       modelHeartbeatInput.value = autonomy.modelHeartbeatSeconds == null ? "" : String(autonomy.modelHeartbeatSeconds);
     }
     if (proactiveModeToggle) {
-      proactiveModeToggle.checked = autonomy.proactiveMode !== false;
+      proactiveModeToggle.checked = autonomy.proactiveMode === true;
     }
     if (queueAutoDispatchToggle) {
       queueAutoDispatchToggle.checked = autonomy.queueAutoDispatch !== false;
@@ -2740,6 +2740,17 @@
     var toggle = byId("optEnableDebugTools");
     if (toggle) {
       toggle.checked = enabled;
+    }
+    var showTurnTraceToggle = byId("optShowTurnTrace");
+    if (showTurnTraceToggle) {
+      showTurnTraceToggle.checked = normalizeBool(state.options.debug && state.options.debug.showTurnTrace);
+    }
+    var showDraftBubblesToggle = byId("optShowDraftBubbles");
+    if (showDraftBubblesToggle) {
+      var debugOptions = state.options.debug || {};
+      showDraftBubblesToggle.checked = typeof debugOptions.showDraftBubbles === "boolean"
+        ? debugOptions.showDraftBubbles
+        : false;
     }
 
     var profileBadge = byId("optDebugProfileBadge");

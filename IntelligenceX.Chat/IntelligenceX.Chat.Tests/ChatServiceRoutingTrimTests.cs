@@ -80,6 +80,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAllowHostStructuredNextActionReplayMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAllowHostStructuredNextActionReplay", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAllowHostStructuredNextActionReplay not found.");
+    private static readonly MethodInfo SupportsSyntheticHostReplayItemsMethod =
+        typeof(ChatServiceSession).GetMethod("SupportsSyntheticHostReplayItems", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("SupportsSyntheticHostReplayItems not found.");
+    private static readonly MethodInfo BuildHostReplayReviewInputMethod =
+        typeof(ChatServiceSession).GetMethod("BuildHostReplayReviewInput", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildHostReplayReviewInput not found.");
+    private static readonly MethodInfo ResolveToolOutputCallIdMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveToolOutputCallId", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveToolOutputCallId not found.");
+    private static readonly MethodInfo BuildNativeHostReplayReviewPromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildNativeHostReplayReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildNativeHostReplayReviewPrompt not found.");
     private static readonly MethodInfo ShouldTriggerNoResultPhaseLoopWatchdogMethod =
         typeof(ChatServiceSession).GetMethod("ShouldTriggerNoResultPhaseLoopWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldTriggerNoResultPhaseLoopWatchdog not found.");
@@ -304,6 +316,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("dalej?")]
     [InlineData("please continue failed logon report for ado？")]
     [InlineData("please continue failed logon report for ado؟")]
+    [InlineData("ok can you check if other dcs had similar patterns?")]
     [InlineData("继续")]
     [InlineData("继续执行")]
     [InlineData("xqzz ltmv")]
@@ -623,6 +636,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("please continue failed logon report for ado?", true)]
     [InlineData("please continue failed logon report for ado？", true)]
     [InlineData("please continue failed logon report for ado؟", true)]
+    [InlineData("ok can you check if other dcs had similar patterns?", true)]
     [InlineData("please continue failed logon report for ado", false)]
     public void LooksLikeCompactFollowUp_RecognizesUnicodeQuestionPunctuation(string userRequest, bool expected) {
         var result = LooksLikeCompactFollowUpMethod.Invoke(null, new object?[] { userRequest });

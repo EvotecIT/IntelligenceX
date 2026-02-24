@@ -34,6 +34,7 @@ internal static partial class Program {
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
+        failed += Run("Tool call input compatibility fields", TestToolCallInputIncludesCompatibilityFields);
 #if !NET472
         failed += Run("Tool output envelope error omits meta when null", TestToolOutputEnvelopeErrorOmitsMetaWhenNull);
         failed += Run("Tool output envelope error includes meta when provided", TestToolOutputEnvelopeErrorIncludesMetaWhenProvided);
@@ -74,6 +75,9 @@ internal static partial class Program {
         failed += Run("Native tool schema serialization includes tags in description", TestNativeToolSchemaSerializationIncludesTagsInDescription);
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
         failed += Run("Native request body normalizes tools/tool_choice", TestNativeRequestBodyNormalizesToolsAndToolChoice);
+        failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
+        failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
+        failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);

@@ -26,6 +26,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxStructuredNextActionArgumentsChars = 32_768;
     private const int NoResultPhaseLoopThresholdWithToolActivity = 8;
     private const int NoResultPhaseLoopThresholdWithoutToolActivity = 6;
+    private const int FollowUpQuestionMaxTokens = 12;
     private enum ActionMutability {
         Unknown = 0,
         ReadOnly = 1,
@@ -60,6 +61,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldForceExecutionContractBlockerAtFinalize(
+        string userRequest,
         bool executionContractApplies,
         bool autoPendingActionReplayUsed,
         bool executionNudgeUsed,
@@ -72,17 +74,20 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        var looksLikeExecutionIntentPlaceholder = LooksLikeExecutionIntentPlaceholderDraft(userRequest, draft);
+
         // Only force the blocker when this turn entered an execution-required path.
         if (!executionContractApplies
             && !autoPendingActionReplayUsed
             && !executionNudgeUsed
             && !noToolExecutionWatchdogUsed
             && !continuationFollowUpTurn
-            && !compactFollowUpTurn) {
+            && !compactFollowUpTurn
+            && !looksLikeExecutionIntentPlaceholder) {
             return false;
         }
 
-        var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
             return true;
         }
@@ -125,7 +130,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(userRequest);
-        if (!executionContractApplies && !continuationFollowUpTurn && !compactFollowUpTurn) {
+        var contextualFollowUp = LooksLikeContextualFollowUpForExecutionNudge(userRequest, assistantDraft);
+        var postRecoveryWatchdogEligible = executionNudgeUsed || toolReceiptCorrectionUsed || contextualFollowUp;
+        if (!executionContractApplies
+            && !continuationFollowUpTurn
+            && !compactFollowUpTurn
+            && !postRecoveryWatchdogEligible) {
             reason = "execution_contract_or_follow_up_not_applicable";
             return false;
         }
@@ -147,8 +157,8 @@ internal sealed partial class ChatServiceSession {
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
-            reason = "empty_assistant_draft";
-            return false;
+            reason = "empty_assistant_draft_watchdog_retry";
+            return true;
         }
 
         // Avoid correction/watchdog feedback loops if a previous retry prompt is echoed back into the draft.
@@ -162,6 +172,11 @@ internal sealed partial class ChatServiceSession {
             if (!LooksLikeMultilineFollowUpBlockerDraft(draft) && !LooksLikeExecutionAcknowledgeDraft(draft)) {
                 reason = "follow_up_draft_not_blocker_like";
                 return false;
+            }
+
+            if (contextualFollowUp && !compactFollowUpTurn && !continuationFollowUpTurn) {
+                reason = "contextual_follow_up_watchdog_retry";
+                return true;
             }
 
             reason = "compact_follow_up_watchdog_retry";
@@ -178,8 +193,11 @@ internal sealed partial class ChatServiceSession {
         bool isLocalCompatibleLoopback,
         bool executionContractApplies,
         bool compactFollowUpTurn,
+        bool toolsAvailable,
         int priorToolCalls,
-        int priorToolOutputs) {
+        int priorToolOutputs,
+        string userRequest,
+        string assistantDraft) {
         if (!isLocalCompatibleLoopback) {
             return false;
         }
@@ -192,8 +210,36 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return priorToolCalls == 0
-               && priorToolOutputs == 0;
+        // If tools are available, allow retry logic to decide. Local suppression should only guard
+        // truly toolless paths in compatible loopback mode.
+        if (toolsAvailable) {
+            return false;
+        }
+
+        if (priorToolCalls != 0 || priorToolOutputs != 0) {
+            return false;
+        }
+
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0) {
+            return true;
+        }
+
+        // In local loopback runs we still want recovery retries for execution-intent drafts so scenario validation
+        // can converge instead of silently stopping with zero tool calls.
+        if (LooksLikeExecutionAcknowledgeDraft(draft)
+            || LooksLikeMultilineFollowUpBlockerDraft(draft)
+            || LooksLikeStructuredScopeChoiceDraft(draft)
+            || LooksLikeExecutionIntentPlaceholderDraft(userRequest, draft)) {
+            return false;
+        }
+
+        if (ContainsQuestionSignal(draft)
+            && AssistantDraftReferencesUserRequest(userRequest, draft)) {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool ShouldAttemptContinuationSubsetEscape(
@@ -271,7 +317,18 @@ internal sealed partial class ChatServiceSession {
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0 || draft.Length > 2400) {
-            reason = draft.Length == 0 ? "empty_assistant_draft" : "assistant_draft_too_long";
+            if (draft.Length == 0) {
+                var requestTokenCount = CountLetterDigitTokens(request, maxTokens: 64);
+                if (requestTokenCount >= 4) {
+                    reason = "empty_assistant_draft_retry";
+                    return true;
+                }
+
+                reason = "empty_assistant_draft";
+                return false;
+            }
+
+            reason = "assistant_draft_too_long";
             return false;
         }
 
@@ -294,6 +351,36 @@ internal sealed partial class ChatServiceSession {
         var compactFollowUp = compactFollowUpHint || LooksLikeCompactFollowUp(request);
         var contextualFollowUp = !compactFollowUp && LooksLikeContextualFollowUpForExecutionNudge(request, draft);
         var hasSingleReadOnlyPendingActionEnvelope = HasSingleReadOnlyPendingActionEnvelope(draft);
+        var hasExecutionAckReference = LooksLikeExecutionAcknowledgeDraft(draft)
+                                       && draft.IndexOf('"') < 0
+                                       && draft.IndexOf('\'') < 0
+                                       && CountLetterDigitTokens(request, maxTokens: 64) >= 6
+                                       && AssistantDraftReferencesUserRequest(request, draft);
+        var hasStructuredScopeChoiceDraft = LooksLikeStructuredScopeChoiceDraft(draft)
+                                            && CountLetterDigitTokens(request, maxTokens: 64) >= 6;
+        var hasLinkedFollowUpQuestionDraft = ContainsQuestionSignal(draft)
+                                             && CountLetterDigitTokens(request, maxTokens: 64) >= 6
+                                             && AssistantDraftReferencesUserRequest(request, draft);
+        if (hasExecutionAckReference) {
+            reason = "execution_ack_draft_references_request";
+            return true;
+        }
+
+        if (LooksLikeExecutionIntentPlaceholderDraft(request, draft)) {
+            reason = "execution_intent_placeholder_draft";
+            return true;
+        }
+
+        if (hasStructuredScopeChoiceDraft) {
+            reason = "structured_scope_choice_draft";
+            return true;
+        }
+
+        if (hasLinkedFollowUpQuestionDraft) {
+            reason = "assistant_question_linked_to_follow_up";
+            return true;
+        }
+
         if (!usedContinuationSubset && !echoedCallToAction && !contextualFollowUp) {
             if (hasSingleReadOnlyPendingActionEnvelope && !ContainsQuestionSignal(draft)) {
                 reason = "single_readonly_pending_action_envelope";
@@ -339,6 +426,11 @@ internal sealed partial class ChatServiceSession {
         if (hasStructuredOutput) {
             if (hasSingleReadOnlyPendingActionEnvelope && !asksAnotherQuestion) {
                 reason = "structured_draft_single_readonly_pending_action_envelope";
+                return true;
+            }
+
+            if (contextualFollowUp && LooksLikeMultilineFollowUpBlockerDraft(draft)) {
+                reason = "structured_contextual_blocker_draft";
                 return true;
             }
 
@@ -412,7 +504,11 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        return nonEmptyCount >= 3 && bulletLikeCount > 0;
+        // Treat only compact "blocked + minimal input" style drafts as replay blockers.
+        // Longer evidence-heavy summaries often contain bullets but should be returned as final output.
+        return nonEmptyCount >= 3
+               && nonEmptyCount <= 10
+               && bulletLikeCount >= 2;
     }
 
     private static bool IsBulletLikeLine(string value) {
@@ -469,16 +565,72 @@ internal sealed partial class ChatServiceSession {
         return tokenCount >= 5 && tokenCount <= 48;
     }
 
+    private static bool LooksLikeStructuredScopeChoiceDraft(string assistantDraft) {
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length < 48 || draft.Length > 900) {
+            return false;
+        }
+
+        if (!draft.Contains('\n', StringComparison.Ordinal) && !draft.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (draft.Contains("ix:action:v1", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (LooksLikeMultilineFollowUpBlockerDraft(draft)) {
+            return false;
+        }
+
+        if (draft.Contains('|', StringComparison.Ordinal)
+            || draft.Contains('{', StringComparison.Ordinal)
+            || draft.Contains('}', StringComparison.Ordinal)
+            || draft.Contains('[', StringComparison.Ordinal)
+            || draft.Contains(']', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var lines = SplitLines(draft);
+        var nonEmptyCount = 0;
+        for (var i = 0; i < lines.Count; i++) {
+            if ((lines[i] ?? string.Empty).Trim().Length > 0) {
+                nonEmptyCount++;
+            }
+        }
+
+        if (nonEmptyCount < 2 || nonEmptyCount > 6) {
+            return false;
+        }
+
+        // Scope-choice drafts usually present at least two inline options (for example two domain/DC anchors)
+        // but do not include final evidence rows/tables.
+        var backtickCount = 0;
+        for (var i = 0; i < draft.Length; i++) {
+            if (draft[i] == '`') {
+                backtickCount++;
+            }
+        }
+
+        return backtickCount >= 4;
+    }
+
     private static bool TryBuildStructuredNextActionRetryPrompt(
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlyList<ToolCallDto> toolCalls,
         IReadOnlyList<ToolOutputDto> toolOutputs,
+        bool continuationFollowUpTurn,
         string userRequest,
         string assistantDraft,
         out string prompt,
         out string reason) {
         prompt = string.Empty;
         reason = "not_eligible";
+
+        if (!continuationFollowUpTurn) {
+            reason = "not_continuation_follow_up";
+            return false;
+        }
 
         if (toolDefinitions.Count == 0 || toolCalls.Count == 0 || toolOutputs.Count == 0) {
             reason = "missing_tool_context";
@@ -586,6 +738,24 @@ internal sealed partial class ChatServiceSession {
                || LooksLikeExecutionAcknowledgeDraft(draft);
     }
 
+    internal static bool ShouldAttemptCarryoverStructuredNextActionReplay(
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
+        string userRequest,
+        string assistantDraft) {
+        if (!continuationFollowUpTurn || !compactFollowUpTurn) {
+            return false;
+        }
+
+        // If this turn is already anchored to new contextual request content, avoid replaying stale carryover
+        // actions from previous turns and let normal tool planning proceed.
+        if (LooksLikeContextualFollowUpForExecutionNudge(userRequest, assistantDraft)) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool ShouldTriggerNoResultPhaseLoopWatchdog(
         int trailingPhaseLoopEvents,
         bool hasToolActivity,
@@ -611,8 +781,8 @@ internal sealed partial class ChatServiceSession {
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
-            reason = "empty_assistant_draft";
-            return false;
+            reason = "empty_assistant_draft_watchdog_retry";
+            return true;
         }
 
         if (draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)

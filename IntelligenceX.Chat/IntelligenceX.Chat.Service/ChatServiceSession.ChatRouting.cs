@@ -124,7 +124,7 @@ internal sealed partial class ChatServiceSession {
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
         };
-        var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? true;
+        var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? false;
         var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
         var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
         var requestedReviewPasses = request.Options?.MaxReviewPasses;
@@ -254,6 +254,7 @@ internal sealed partial class ChatServiceSession {
         var interimResultSent = false;
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
+        var supportsSyntheticHostReplayItems = SupportsSyntheticHostReplayItems(_options.OpenAITransport);
 
         var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
         for (var round = 0; round < maxRounds; round++) {
@@ -291,7 +292,11 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (!hostStructuredNextActionReplayUsed
-                    && continuationFollowUpTurn
+                    && ShouldAttemptCarryoverStructuredNextActionReplay(
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
+                        userRequest: routedUserRequest,
+                        assistantDraft: text)
                     && toolCalls.Count == 0
                     && toolOutputs.Count == 0
                     && TryBuildCarryoverStructuredNextActionToolCall(
@@ -394,10 +399,10 @@ internal sealed partial class ChatServiceSession {
                         });
                     }
 
-                    var carryoverHostNextInput = new ChatInput();
-                    foreach (var output in carryoverHostOutputs) {
-                        carryoverHostNextInput.AddToolOutput(output.CallId, output.Output);
-                    }
+                    var carryoverHostNextInput = BuildHostReplayReviewInput(
+                        carryoverStructuredNextActionCall,
+                        carryoverHostOutputs,
+                        supportsSyntheticHostReplayItems);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
@@ -422,20 +427,33 @@ internal sealed partial class ChatServiceSession {
                     isLocalCompatibleLoopback: isLocalCompatibleLoopback,
                     executionContractApplies: executionContractApplies,
                     compactFollowUpTurn: compactFollowUpTurn,
+                    toolsAvailable: toolDefs.Count > 0 || fullToolDefs.Length > 0,
                     priorToolCalls: toolCalls.Count,
-                    priorToolOutputs: toolOutputs.Count);
+                    priorToolOutputs: toolOutputs.Count,
+                    userRequest: routedUserRequest,
+                    assistantDraft: text);
                 if (suppressLocalToolRecoveryRetries) {
                     executionNudgeReason = "local_runtime_recovery_disabled";
                 } else if (!executionNudgeUsed) {
-                    shouldAttemptExecutionNudge = EvaluateToolExecutionNudgeDecision(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        toolsAvailable: toolDefs.Count > 0,
-                        priorToolCalls: toolCalls.Count,
-                        assistantDraftToolCalls: extracted.Count,
-                        usedContinuationSubset: usedContinuationSubset,
-                        compactFollowUpHint: compactFollowUpTurn,
-                        out executionNudgeReason);
+                    if (LooksLikeExecutionAcknowledgeDraft(text)
+                        && AssistantDraftReferencesUserRequest(routedUserRequest, text)) {
+                        shouldAttemptExecutionNudge = true;
+                        executionNudgeReason = "execution_ack_draft_direct_retry";
+                    } else {
+                        shouldAttemptExecutionNudge = EvaluateToolExecutionNudgeDecision(
+                            userRequest: routedUserRequest,
+                            assistantDraft: text,
+                            toolsAvailable: toolDefs.Count > 0,
+                            priorToolCalls: toolCalls.Count,
+                            assistantDraftToolCalls: extracted.Count,
+                            usedContinuationSubset: usedContinuationSubset,
+                            compactFollowUpHint: compactFollowUpTurn,
+                            out executionNudgeReason);
+                    }
+                }
+                if (string.Equals(Environment.GetEnvironmentVariable("IX_CHAT_TRACE_TOOL_NUDGE"), "1", StringComparison.Ordinal)) {
+                    Console.Error.WriteLine(
+                        $"[tool-nudge-eval] suppress={suppressLocalToolRecoveryRetries} should={shouldAttemptExecutionNudge} reason={executionNudgeReason} prior_calls={toolCalls.Count} draft_calls={extracted.Count} tools={toolDefs.Count} subset={usedContinuationSubset}");
                 }
 
                 if (shouldAttemptExecutionNudge) {
@@ -627,8 +645,7 @@ internal sealed partial class ChatServiceSession {
                     out _,
                     out _,
                     out _);
-                var allowHostStructuredReplay = continuationFollowUpTurn
-                                                || ShouldAllowHostStructuredNextActionReplay(text);
+                var allowHostStructuredReplay = ShouldAllowHostStructuredNextActionReplay(text);
                 if (!hostStructuredNextActionReplayUsed
                     && allowHostStructuredReplay
                     && toolCalls.Count > 0
@@ -733,10 +750,10 @@ internal sealed partial class ChatServiceSession {
                         });
                     }
 
-                    var hostStructuredNextInput = new ChatInput();
-                    foreach (var output in hostStructuredOutputs) {
-                        hostStructuredNextInput.AddToolOutput(output.CallId, output.Output);
-                    }
+                    var hostStructuredNextInput = BuildHostReplayReviewInput(
+                        hostStructuredNextActionCall,
+                        hostStructuredOutputs,
+                        supportsSyntheticHostReplayItems);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
@@ -761,6 +778,7 @@ internal sealed partial class ChatServiceSession {
                         toolDefinitions: structuredNextActionToolDefs,
                         toolCalls: toolCalls,
                         toolOutputs: toolOutputs,
+                        userRequest: routedUserRequest,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var packFallbackCall,
                         out var packFallbackReason)) {
@@ -857,10 +875,10 @@ internal sealed partial class ChatServiceSession {
                         });
                     }
 
-                    var packFallbackNextInput = new ChatInput();
-                    foreach (var output in packFallbackOutputs) {
-                        packFallbackNextInput.AddToolOutput(output.CallId, output.Output);
-                    }
+                    var packFallbackNextInput = BuildHostReplayReviewInput(
+                        packFallbackCall,
+                        packFallbackOutputs,
+                        supportsSyntheticHostReplayItems);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
@@ -882,6 +900,7 @@ internal sealed partial class ChatServiceSession {
                         toolDefinitions: structuredNextActionToolDefs,
                         toolCalls: toolCalls,
                         toolOutputs: toolOutputs,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
                         userRequest: routedUserRequest,
                         assistantDraft: text,
                         out var structuredNextActionPrompt,
@@ -996,6 +1015,8 @@ internal sealed partial class ChatServiceSession {
 
                 if (!noResultWatchdogTriggered
                     && !interimResultSent
+                    && planExecuteReviewLoop
+                    && maxReviewPasses > 0
                     && hasToolActivity
                     && ShouldEmitInterimResultSnapshot(text)) {
                     interimResultSent = true;
@@ -1047,6 +1068,8 @@ internal sealed partial class ChatServiceSession {
                         proactiveModeEnabled: proactiveModeEnabled,
                         hasToolActivity: hasToolActivity,
                         proactiveFollowUpUsed: proactiveFollowUpUsed,
+                        continuationFollowUpTurn: continuationFollowUpTurn,
+                        compactFollowUpTurn: compactFollowUpTurn,
                         assistantDraft: text)) {
                     proactiveFollowUpUsed = true;
                     var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text);
@@ -1067,6 +1090,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (ShouldForceExecutionContractBlockerAtFinalize(
+                        userRequest: routedUserRequest,
                         executionContractApplies: executionContractApplies,
                         autoPendingActionReplayUsed: autoPendingActionReplayUsed,
                         executionNudgeUsed: executionNudgeUsed,
@@ -1207,13 +1231,29 @@ internal sealed partial class ChatServiceSession {
                     failedCallsThisRound)
                 .ConfigureAwait(false);
             UpdateToolRoutingStats(extracted, executed);
-            foreach (var output in executed) {
+            var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
+            foreach (var call in extracted) {
+                var normalizedCallId = (call.CallId ?? string.Empty).Trim();
+                if (normalizedCallId.Length == 0) {
+                    continue;
+                }
+
+                executedCallsById[normalizedCallId] = call;
+            }
+
+            for (var outputIndex = 0; outputIndex < executed.Count; outputIndex++) {
+                var output = executed[outputIndex];
                 if (WasProjectionFallbackApplied(output)) {
                     projectionFallbackCount++;
                 }
 
+                var normalizedOutputCallId = ResolveToolOutputCallId(
+                    extracted,
+                    executedCallsById,
+                    output.CallId,
+                    outputIndex);
                 toolOutputs.Add(new ToolOutputDto {
-                    CallId = output.CallId,
+                    CallId = normalizedOutputCallId.Length == 0 ? output.CallId : normalizedOutputCallId,
                     Output = output.Output,
                     Ok = output.Ok,
                     ErrorCode = output.ErrorCode,
@@ -1228,8 +1268,27 @@ internal sealed partial class ChatServiceSession {
             }
 
             var next = new ChatInput();
-            foreach (var output in executed) {
-                next.AddToolOutput(output.CallId, output.Output);
+            var replayedToolCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var outputIndex = 0; outputIndex < executed.Count; outputIndex++) {
+                var output = executed[outputIndex];
+                var normalizedOutputCallId = ResolveToolOutputCallId(
+                    extracted,
+                    executedCallsById,
+                    output.CallId,
+                    outputIndex);
+                if (normalizedOutputCallId.Length == 0) {
+                    continue;
+                }
+
+                if (executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)
+                    && replayedToolCallIds.Add(normalizedOutputCallId)) {
+                    next.AddToolCall(
+                        executedCall.CallId,
+                        executedCall.Name,
+                        executedCall.Input);
+                }
+
+                next.AddToolOutput(normalizedOutputCallId, output.Output);
             }
             turn = await RunModelPhaseWithProgressAsync(
                     client,
@@ -1258,6 +1317,186 @@ internal sealed partial class ChatServiceSession {
             .ConfigureAwait(false);
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static bool SupportsSyntheticHostReplayItems(OpenAITransportKind transport) {
+        // Synthetic host replay items (custom_tool_call/custom_tool_call_output) are
+        // only reliable on compatible HTTP transports. Native/AppServer/Copilot
+        // runtimes may reject host-generated call ids.
+        return transport == OpenAITransportKind.CompatibleHttp;
+    }
+
+    private static string ResolveToolOutputCallId(
+        IReadOnlyList<ToolCall> extractedCalls,
+        IReadOnlyDictionary<string, ToolCall> extractedCallsById,
+        string? rawOutputCallId,
+        int outputIndex) {
+        var normalizedOutputCallId = (rawOutputCallId ?? string.Empty).Trim();
+        if (normalizedOutputCallId.Length > 0 && extractedCallsById.ContainsKey(normalizedOutputCallId)) {
+            return normalizedOutputCallId;
+        }
+
+        if (outputIndex >= 0 && outputIndex < extractedCalls.Count) {
+            var fallbackCallId = (extractedCalls[outputIndex].CallId ?? string.Empty).Trim();
+            if (fallbackCallId.Length > 0) {
+                return fallbackCallId;
+            }
+        }
+
+        if (extractedCallsById.Count == 1) {
+            foreach (var pair in extractedCallsById) {
+                var singleCallId = (pair.Key ?? string.Empty).Trim();
+                if (singleCallId.Length > 0) {
+                    return singleCallId;
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static ChatInput BuildHostReplayReviewInput(
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs,
+        bool supportsSyntheticReplayItems) {
+        if (supportsSyntheticReplayItems
+            && TryBuildSyntheticHostReplayInput(executedCall, outputs, out var syntheticInput)) {
+            return syntheticInput;
+        }
+
+        return ChatInput.FromText(BuildNativeHostReplayReviewPrompt(executedCall, outputs));
+    }
+
+    private static bool TryBuildSyntheticHostReplayInput(
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs,
+        out ChatInput input) {
+        input = null!;
+
+        var executedCallId = (executedCall.CallId ?? string.Empty).Trim();
+        if (executedCallId.Length == 0 || outputs.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < outputs.Count; i++) {
+            var outputCallId = (outputs[i].CallId ?? string.Empty).Trim();
+            if (outputCallId.Length == 0) {
+                continue;
+            }
+
+            if (!string.Equals(outputCallId, executedCallId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        var nextInput = new ChatInput();
+        nextInput.AddToolCall(executedCallId, executedCall.Name, executedCall.Input);
+        for (var i = 0; i < outputs.Count; i++) {
+            var output = outputs[i];
+            var outputCallId = (output.CallId ?? string.Empty).Trim();
+            nextInput.AddToolOutput(outputCallId.Length == 0 ? executedCallId : outputCallId, output.Output);
+        }
+
+        input = nextInput;
+        return true;
+    }
+
+    private static string BuildNativeHostReplayReviewPrompt(ToolCall executedCall, IReadOnlyList<ToolOutputDto> outputs) {
+        const int maxOutputsInPrompt = 3;
+        const int maxOutputCharsPerItem = 3_000;
+        const int maxOutputCharsTotal = 9_000;
+        const int maxInputChars = 2_000;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("ix:host-replay-review:v1");
+        sb.AppendLine("A read-only follow-up action was already executed by the host runtime.");
+        sb.AppendLine("Continue from the evidence below and provide the user-facing answer.");
+        sb.AppendLine("Do not ask to rerun this same action and do not require synthetic tool call replay.");
+        sb.AppendLine();
+
+        var toolName = (executedCall.Name ?? string.Empty).Trim();
+        var callId = (executedCall.CallId ?? string.Empty).Trim();
+        sb.AppendLine("executed_tool: " + (toolName.Length == 0 ? "<unknown>" : toolName));
+        sb.AppendLine("executed_call_id: " + (callId.Length == 0 ? "<unknown>" : callId));
+
+        var inputJson = TruncateForHostReplayPrompt(executedCall.Input, maxInputChars);
+        if (inputJson.Length > 0) {
+            sb.AppendLine("executed_input_json:");
+            sb.AppendLine("```json");
+            sb.AppendLine(inputJson);
+            sb.AppendLine("```");
+        }
+
+        if (outputs.Count == 0) {
+            sb.AppendLine("tool_results: none");
+            sb.AppendLine("If results are missing, explain the blocker briefly and request only the minimum next input.");
+            return sb.ToString().TrimEnd();
+        }
+
+        sb.AppendLine("tool_results:");
+        var emittedOutputChars = 0;
+        var outputCount = Math.Min(outputs.Count, maxOutputsInPrompt);
+        for (var i = 0; i < outputCount; i++) {
+            var output = outputs[i];
+            var outputCallId = (output.CallId ?? string.Empty).Trim();
+            var errorCode = (output.ErrorCode ?? string.Empty).Trim();
+            var error = (output.Error ?? string.Empty).Trim();
+
+            sb.Append("result[").Append(i + 1).Append("] ");
+            sb.Append("call_id=").Append(outputCallId.Length == 0 ? "<unknown>" : outputCallId);
+            sb.Append(" ok=").Append(output.Ok == true ? "true" : "false");
+            if (errorCode.Length > 0) {
+                sb.Append(" error_code=").Append(errorCode);
+            }
+            if (error.Length > 0) {
+                sb.Append(" error=").Append(TruncateForHostReplayPrompt(error, 240));
+            }
+            sb.AppendLine();
+
+            var remainingBudget = maxOutputCharsTotal - emittedOutputChars;
+            if (remainingBudget <= 0) {
+                sb.AppendLine("output: <omitted due to prompt budget>");
+                continue;
+            }
+
+            var itemBudget = Math.Min(maxOutputCharsPerItem, remainingBudget);
+            var outputText = TruncateForHostReplayPrompt(output.Output, itemBudget);
+            emittedOutputChars += outputText.Length;
+            if (outputText.Length == 0) {
+                sb.AppendLine("output: <empty>");
+                continue;
+            }
+
+            sb.AppendLine("output:");
+            sb.AppendLine("```");
+            sb.AppendLine(outputText);
+            sb.AppendLine("```");
+        }
+
+        if (outputs.Count > outputCount) {
+            sb.AppendLine("additional_results_omitted: " + (outputs.Count - outputCount));
+        }
+
+        sb.AppendLine("Return the concise final answer with evidence.");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string TruncateForHostReplayPrompt(string? value, int maxChars) {
+        if (maxChars <= 0) {
+            return string.Empty;
+        }
+
+        var text = (value ?? string.Empty).Trim();
+        if (text.Length <= maxChars) {
+            return text;
+        }
+
+        if (maxChars < 64) {
+            return text.Substring(0, maxChars);
+        }
+
+        var omitted = text.Length - maxChars;
+        return text.Substring(0, maxChars) + Environment.NewLine + $"...[truncated {omitted} chars]";
     }
 
 }

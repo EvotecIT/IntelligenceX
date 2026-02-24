@@ -1,0 +1,62 @@
+{
+  "name": "ad-reboot-local-10-turn",
+  "turns": [
+    {
+      "name": "Target reboot on AD0",
+      "user": "Can you find out why AD0 rebooted recently and when exactly?",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*", "eventlog_top_events"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Confirm evidence IDs",
+      "user": "Please confirm with reboot/shutdown evidence IDs (1074, 6008, 41, 6005, 6006) and give UTC timestamps.",
+      "assert_no_questions": true,
+      "assert_matches_regex": ["\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"],
+      "min_tool_calls": 1,
+      "assert_contains": ["UTC"],
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*", "eventlog_top_events"]
+    },
+    {
+      "name": "Classify reboot type",
+      "user": "Classify whether that reboot was planned vs unexpected and explain briefly."
+    },
+    {
+      "name": "Expand lookback",
+      "user": "If the recent slice is truncated, query a broader System log window and restate the exact reboot marker.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*", "eventlog_top_events"]
+    },
+    {
+      "name": "Discover peer DCs",
+      "user": "Discover other DCs in this domain and list their hostnames.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "Cross-check peer DCs",
+      "user": "Check those DCs for the same reboot signature around AD0's window and return a side-by-side matrix.",
+      "assert_no_questions": true,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*"]
+    },
+    {
+      "name": "Pattern signal",
+      "user": "Tell me whether the pattern looks host-local or shared infra/update wave."
+    },
+    {
+      "name": "Top likely causes",
+      "user": "Give top likely root-cause categories for AD0 with confidence levels."
+    },
+    {
+      "name": "Action plan",
+      "user": "Give a prioritized next-action checklist to validate root cause in under 30 minutes."
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final findings in 6 bullets with exact UTC times and key evidence IDs.",
+      "assert_no_questions": true,
+      "assert_matches_regex": ["\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"]
+    }
+  ]
+}

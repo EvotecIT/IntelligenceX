@@ -10,6 +10,19 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class EventLogNamedEventsQueryToolTests {
+    [Theory]
+    [InlineData("ad_kerberos_authentication_ticket_requested", "kerberos_tgt_request")]
+    [InlineData("ad_kerberos_service_ticket_requested", "kerberos_service_ticket")]
+    [InlineData("ad_kerberos_pre_authentication_failed", "kerberos_ticket_failure")]
+    [InlineData("ad_successful_account_logon", "ad_user_logon")]
+    [InlineData("ad_failed_logon", "ad_user_logon_failed")]
+    public void TryParseOne_WhenCommonAliasProvided_ResolvesToSupportedNamedEvent(string alias, string expectedQueryName) {
+        var parsed = EventLogNamedEventsHelper.TryParseOne(alias, out var namedEvent);
+
+        Assert.True(parsed);
+        Assert.Equal(expectedQueryName, EventLogNamedEventsHelper.GetQueryName(namedEvent));
+    }
+
     [Fact]
     public async Task InvokeAsync_WhenQuerySucceeds_EmitsChainingContractFields() {
         var tool = new EventLogNamedEventsQueryTool(new EventLogToolOptions());

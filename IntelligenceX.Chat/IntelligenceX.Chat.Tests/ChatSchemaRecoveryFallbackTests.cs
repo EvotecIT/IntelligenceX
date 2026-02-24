@@ -1,6 +1,8 @@
 using System;
 using System.Reflection;
+using System.Threading;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -17,6 +19,11 @@ public sealed class ChatSchemaRecoveryFallbackTests {
         "ShouldRetryWithoutTools",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ChatServiceSession.ShouldRetryWithoutTools not found.");
+
+    private static readonly MethodInfo ServiceShouldRetryModelPhaseAttemptMethod = ChatServiceSessionType.GetMethod(
+        "ShouldRetryModelPhaseAttempt",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ChatServiceSession.ShouldRetryModelPhaseAttempt not found.");
 
     [Fact]
     public void ServiceShouldRetryWithoutTools_RetriesOnContextWindowFailure() {
@@ -131,6 +138,62 @@ public sealed class ChatSchemaRecoveryFallbackTests {
         Assert.False(shouldRetry);
     }
 
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnTransportDrop() {
+        var ex = new InvalidOperationException("connection reset by peer");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnToolOutputPairingGap() {
+        var ex = new InvalidOperationException("No tool call found for custom tool call output with call_id host_next_action_abc.");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_DoesNotRetryAuthenticationErrors() {
+        var ex = new OpenAIAuthenticationRequiredException("auth required");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_DoesNotRetryAfterLastAttempt() {
+        var ex = new InvalidOperationException("connection refused");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 1,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(shouldRetry);
+    }
+
     private static ChatOptions BuildOptionsWithTools() {
         return new ChatOptions {
             Tools = new[] { new ToolDefinition("fs_list", "List files") },
@@ -140,6 +203,16 @@ public sealed class ChatSchemaRecoveryFallbackTests {
 
     private static bool InvokeShouldRetry(MethodInfo method, Exception ex, ChatOptions options) {
         var result = method.Invoke(null, new object?[] { ex, options });
+        return Assert.IsType<bool>(result);
+    }
+
+    private static bool InvokeShouldRetryModelPhaseAttempt(
+        MethodInfo method,
+        Exception ex,
+        int attempt,
+        int maxAttempts,
+        CancellationToken cancellationToken) {
+        var result = method.Invoke(null, new object?[] { ex, attempt, maxAttempts, cancellationToken });
         return Assert.IsType<bool>(result);
     }
 }

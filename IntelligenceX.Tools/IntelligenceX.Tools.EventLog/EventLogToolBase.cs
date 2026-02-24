@@ -330,6 +330,58 @@ public abstract class EventLogToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Builds the standard auto-column table envelope with Event Log projection sanitization.
+    /// </summary>
+    protected static new string BuildAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int scanned,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        var sanitizedArguments = EventLogProjectionArgumentSanitizer.SanitizeProjectionArguments(
+            arguments,
+            ToolAutoTableColumns.GetColumnKeys<TRow>());
+        return ToolQueryHelpers.BuildAutoTableResponse(
+            arguments: sanitizedArguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            maxTop: maxTop,
+            baseTruncated: baseTruncated,
+            scanned: scanned,
+            metaMutate: metaMutate);
+    }
+
+    /// <summary>
+    /// Builds the standard auto-column table envelope with scanned count inferred from source rows.
+    /// </summary>
+    protected static new string BuildAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        return BuildAutoTableResponse(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            baseTruncated: baseTruncated,
+            scanned: sourceRows.Count,
+            maxTop: maxTop,
+            metaMutate: metaMutate);
+    }
+
+    /// <summary>
     /// Adds language-neutral chaining/discovery metadata for read-only event-log triage tools.
     /// </summary>
     protected static void AddReadOnlyTriageChainingMeta(

@@ -145,11 +145,104 @@ public sealed class TranscriptHtmlFormatterTests {
             });
 
         Assert.Contains("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.Contains("msg-row assistant assistant-draft", html, StringComparison.Ordinal);
+        Assert.Contains("assistant-draft-meta-pill", html, StringComparison.Ordinal);
+        Assert.Contains("Draft/Thinking", html, StringComparison.Ordinal);
         Assert.Contains("assistant-turn-live-pill", html, StringComparison.Ordinal);
         Assert.Contains("assistant-turn-trace-list", html, StringComparison.Ordinal);
         Assert.Contains(">plan</li>", html, StringComparison.Ordinal);
         Assert.Contains(">execute</li>", html, StringComparison.Ordinal);
         Assert.Contains(">review</li>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures trace sections can be suppressed while keeping provisional bubble styling.
+    /// </summary>
+    [Fact]
+    public void Format_DoesNotRenderAssistantTurnTraceWhenDisabled() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", "Running checks...", now, "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "plan", "execute", "review" }
+                }
+            },
+            showAssistantTurnTrace: false);
+
+        Assert.Contains("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant-turn-trace", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures provisional assistant draft bubbles can be hidden while final responses remain available.
+    /// </summary>
+    [Fact]
+    public void Format_HidesAssistantDraftBubbleWhenDraftVisibilityDisabled() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 23, 19, 12, 0, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("User", "Run check", now, null),
+            ("Assistant", "Running checks...", now.AddSeconds(1), "gpt-5.3-codex"),
+            ("Assistant", "Done.", now.AddSeconds(2), "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [1] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "plan", "execute" }
+                }
+            },
+            showAssistantTurnTrace: true,
+            showAssistantDraftBubbles: false);
+
+        Assert.DoesNotContain("Running checks...", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("bubble-provisional", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant-draft-meta-pill", html, StringComparison.Ordinal);
+        Assert.Contains("Done.", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures draft continuations keep visible metadata and never collapse into continuation rows.
+    /// </summary>
+    [Fact]
+    public void Format_KeepsDraftMetadataVisibleAcrossStreamingContinuations() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 23, 22, 5, 0, DateTimeKind.Local);
+        var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", "draft-one", now, "gpt-5.3-codex"),
+            ("Assistant", "draft-two", now.AddSeconds(1), "gpt-5.3-codex")
+        };
+        var html = TranscriptHtmlFormatter.Format(
+            messages,
+            "HH:mm:ss",
+            options,
+            new Dictionary<int, TranscriptMessageDecoration> {
+                [0] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "thinking" }
+                },
+                [1] = new TranscriptMessageDecoration {
+                    IsProvisional = true,
+                    Timeline = new[] { "review" }
+                }
+            },
+            showAssistantTurnTrace: true,
+            showAssistantDraftBubbles: true);
+
+        Assert.DoesNotContain("msg-row assistant assistant-draft cont", html, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(html, "assistant-draft-meta-pill"));
+        Assert.Equal(2, CountOccurrences(html, "Draft/Thinking"));
     }
 
     /// <summary>
@@ -345,6 +438,21 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("<li>Servers with failures <strong>0</strong></li>", html);
         Assert.DoesNotContain("**Servers checked:**", html);
         Assert.DoesNotContain("**Replication edges:**", html);
+    }
+
+    private static int CountOccurrences(string value, string token) {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(token)) {
+            return 0;
+        }
+
+        var count = 0;
+        var index = 0;
+        while ((index = value.IndexOf(token, index, StringComparison.Ordinal)) >= 0) {
+            count++;
+            index += token.Length;
+        }
+
+        return count;
     }
 
     /// <summary>

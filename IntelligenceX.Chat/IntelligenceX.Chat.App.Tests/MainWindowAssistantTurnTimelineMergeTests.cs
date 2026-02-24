@@ -9,6 +9,9 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Verifies final timeline merge behavior keeps live trace when final envelope omits timeline data.
 /// </summary>
 public sealed class MainWindowAssistantTurnTimelineMergeTests {
+    /// <summary>
+    /// Ensures a missing final timeline does not clobber already collected live trace entries.
+    /// </summary>
     [Fact]
     public void MergeFinalTimeline_NullFinalTimeline_PreservesExistingTimeline() {
         var existing = new List<string> { "plan", "tool route", "phase wait" };
@@ -19,6 +22,9 @@ public sealed class MainWindowAssistantTurnTimelineMergeTests {
         Assert.Equal(new[] { "plan", "tool route", "phase wait" }, existing);
     }
 
+    /// <summary>
+    /// Ensures an empty final timeline keeps prior live timeline values intact.
+    /// </summary>
     [Fact]
     public void MergeFinalTimeline_EmptyFinalTimeline_PreservesExistingTimeline() {
         var existing = new List<string> { "plan", "tool route", "phase wait" };
@@ -29,6 +35,9 @@ public sealed class MainWindowAssistantTurnTimelineMergeTests {
         Assert.Equal(new[] { "plan", "tool route", "phase wait" }, existing);
     }
 
+    /// <summary>
+    /// Ensures a populated final timeline replaces provisional/live timeline state.
+    /// </summary>
     [Fact]
     public void MergeFinalTimeline_NonEmptyFinalTimeline_ReplacesExistingTimeline() {
         var existing = new List<string> { "plan", "phase wait" };

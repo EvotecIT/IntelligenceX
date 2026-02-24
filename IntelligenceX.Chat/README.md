@@ -30,6 +30,54 @@ WinUI app:
 pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
 ```
 
+Local repeatable scenario run (non-interactive, same real host/tools runtime):
+
+```powershell
+pwsh .\Build\Run-Chat.ps1 `
+  -ScenarioFile .\IntelligenceX.Chat\scenarios\ad-reboot-local-10-turn.json `
+  -ScenarioOutput .\artifacts\chat-scenarios
+```
+
+Scenario file formats:
+- JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional quality gates):
+  - `assert_contains` (string or array)
+  - `assert_not_contains` (string or array)
+  - `assert_matches_regex` (string or array; regex patterns that must match assistant output)
+  - `assert_no_questions` (boolean; fails when assistant output contains question markers such as `?`/`？`)
+  - `min_tool_calls` (integer >= 0)
+  - `min_tool_rounds` (integer >= 0)
+  - `require_tools` (string or array; all listed tool names must be called; supports `*` and `?` wildcards)
+  - `require_any_tools` (string or array; at least one listed tool name must be called; supports `*` and `?` wildcards)
+  - `forbid_tools` (string or array; listed tool names must not be called; supports `*` and `?` wildcards)
+  - `assert_tool_output_contains` (string or array; expected evidence in tool output payloads)
+  - `assert_tool_output_not_contains` (string or array; disallowed content in tool output payloads)
+  - `assert_no_tool_errors` (boolean; when true, fails turn if any tool output envelope has `ok=false`)
+  - `forbid_tool_error_codes` (string or array; disallow specific tool `error_code` values; supports `*` and `?` wildcards)
+- Plain text where each non-empty line is a user turn (`#` and `//` lines are ignored).
+
+The host writes a markdown run report under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path).
+
+Included AD scenario seeds:
+- `IntelligenceX.Chat/scenarios/ad-reboot-local-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-replication-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-user-last-logon-przemyslaw-10-turn.json`
+
+Batch run all built-in AD scenarios locally:
+
+```powershell
+pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -Filter "ad-*-10-turn.json" `
+  -OutDir .\artifacts\chat-scenarios
+```
+
+Optional flags:
+- `-NoBuild` to skip restore/build in repeated local runs.
+- `-StopOnFailure` to stop on first failed scenario.
+- `-ContinueOnError:$false` to fail a scenario immediately when a turn fails.
+
 Startup profiling (phase timing from `StartupLog`):
 
 ```powershell

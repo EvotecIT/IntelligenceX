@@ -14,6 +14,7 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// </summary>
 internal static class TranscriptHtmlFormatter {
     private const int MaxAssistantTurnTraceEntries = 8;
+    private const string AssistantDraftBadgeText = "Draft/Thinking";
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
@@ -40,7 +41,13 @@ internal static class TranscriptHtmlFormatter {
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(messages);
-        return Format(ProjectLegacyMessages(messages), timestampFormat, markdownOptions, messageDecorations: null);
+        return Format(
+            ProjectLegacyMessages(messages),
+            timestampFormat,
+            markdownOptions,
+            messageDecorations: null,
+            showAssistantTurnTrace: true,
+            showAssistantDraftBubbles: true);
     }
 
     /// <summary>
@@ -50,12 +57,16 @@ internal static class TranscriptHtmlFormatter {
     /// <param name="timestampFormat">Timestamp format.</param>
     /// <param name="markdownOptions">Markdown renderer options.</param>
     /// <param name="messageDecorations">Optional per-message decorations keyed by transcript index.</param>
+    /// <param name="showAssistantTurnTrace">When true, renders assistant turn trace details under assistant bubbles.</param>
+    /// <param name="showAssistantDraftBubbles">When false, hides provisional assistant draft bubbles from the transcript.</param>
     /// <returns>HTML fragment.</returns>
     public static string Format(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
         MarkdownRendererOptions markdownOptions,
-        IReadOnlyDictionary<int, TranscriptMessageDecoration>? messageDecorations = null) {
+        IReadOnlyDictionary<int, TranscriptMessageDecoration>? messageDecorations = null,
+        bool showAssistantTurnTrace = true,
+        bool showAssistantDraftBubbles = true) {
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
@@ -73,9 +84,6 @@ internal static class TranscriptHtmlFormatter {
             }
 
             var role = ResolveRoleStyle(message.Role);
-            var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal);
-            var isContinuation = hideContinuationMeta
-                && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
             var actionExtraction = string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
                 ? ExtractPendingActionsForRendering(normalizedText)
                 : new PendingActionExtraction(normalizedText, Array.Empty<PendingActionRenderItem>());
@@ -84,13 +92,22 @@ internal static class TranscriptHtmlFormatter {
                 : RenderBodyHtml(actionExtraction.CleanedText, markdownOptions);
             TranscriptMessageDecoration? decoration = null;
             messageDecorations?.TryGetValue(messageIndex, out decoration);
+            var isAssistantDraft = decoration is not null
+                                   && decoration.IsProvisional
+                                   && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase);
+            var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal)
+                                       && !isAssistantDraft;
+            var isContinuation = hideContinuationMeta
+                && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
+            if (!showAssistantDraftBubbles && isAssistantDraft) {
+                messageIndex++;
+                continue;
+            }
             if (actionExtraction.Actions.Count > 0) {
                 bodyHtml = AppendPendingActionChips(bodyHtml, actionExtraction.Actions);
             }
             var bubbleClass = "bubble";
-            if (decoration is not null
-                && decoration.IsProvisional
-                && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+            if (isAssistantDraft) {
                 bubbleClass += " bubble-provisional";
             }
             if (TryRenderOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
@@ -102,6 +119,9 @@ internal static class TranscriptHtmlFormatter {
             var showModelBadge = modelLabel.Length > 0;
 
             html.Append("<div class='msg-row ").Append(role.RoleClass);
+            if (isAssistantDraft) {
+                html.Append(" assistant-draft");
+            }
             if (isContinuation) {
                 html.Append(" cont");
             }
@@ -112,14 +132,18 @@ internal static class TranscriptHtmlFormatter {
             if (isContinuation) {
                 html.Append(" hidden");
             }
-            html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time)).Append("</div>")
+            html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time));
+            if (isAssistantDraft) {
+                html.Append(" <span class='assistant-draft-meta-pill'>").Append(encoder.Encode(AssistantDraftBadgeText)).Append("</span>");
+            }
+            html.Append("</div>")
                 .Append("<div class='").Append(bubbleClass).Append("'>").Append(bodyHtml).Append("</div>");
             if (showModelBadge) {
                 html.Append("<div class='bubble-meta'><span class='bubble-model-chip' title='Model used for this response'>")
                     .Append(encoder.Encode(modelLabel))
                     .Append("</span></div>");
             }
-            if (TryBuildAssistantTurnTraceHtml(message.Role, decoration, out var traceHtml)) {
+            if (showAssistantTurnTrace && TryBuildAssistantTurnTraceHtml(message.Role, decoration, out var traceHtml)) {
                 html.Append(traceHtml);
             }
             html
@@ -149,7 +173,7 @@ internal static class TranscriptHtmlFormatter {
         }
 
         var encoder = HtmlEncoder.Default;
-        var summaryLabel = hasTimeline ? "Turn trace" : "Live stream";
+        var summaryLabel = decoration.IsProvisional ? "Draft trace" : hasTimeline ? "Turn trace" : "Live stream";
         var countLabel = hasTimeline ? timeline.Count.ToString(CultureInfo.InvariantCulture) : string.Empty;
         var detailsOpen = decoration.IsProvisional ? " open" : string.Empty;
         var sb = new StringBuilder();

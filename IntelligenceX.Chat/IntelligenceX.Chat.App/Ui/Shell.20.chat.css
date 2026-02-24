@@ -101,6 +101,16 @@
   border: 1px solid var(--ix-bubble-assistant-border);
 }
 
+.msg-row.assistant.assistant-draft .avatar {
+  background: #2b8bb8;
+  color: #eaf8ff;
+}
+
+.msg-row.assistant.assistant-draft .bubble {
+  background: rgba(24, 67, 102, 0.7);
+  border: 1px dashed rgba(131, 202, 248, 0.7);
+}
+
 .msg-row.user .bubble {
   background: var(--ix-bubble-user-bg);
   border: 1px solid var(--ix-bubble-user-border);
@@ -288,6 +298,20 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.assistant-draft-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(130, 210, 255, 0.54);
+  background: rgba(44, 121, 167, 0.34);
+  color: #dff3ff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .bubble.bubble-provisional {

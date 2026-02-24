@@ -143,8 +143,12 @@ public sealed class AdDomainControllerFactsTool : ActiveDirectoryToolBase, ITool
             Errors: errors,
             Rows: projectedRows);
 
+        var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
+            arguments,
+            ToolAutoTableColumns.GetColumnKeys<DomainControllerFactRow>());
+
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: shapedArguments,
             model: result,
             sourceRows: projectedRows,
             viewRowsPath: "rows_view",

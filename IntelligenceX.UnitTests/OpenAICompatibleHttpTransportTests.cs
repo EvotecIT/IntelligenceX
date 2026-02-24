@@ -350,6 +350,69 @@ public sealed class OpenAICompatibleHttpTransportTests {
     }
 
     [Fact]
+    public async Task SyntheticToolCalls_Are_Sent_Before_ToolOutputs() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "id": "chatcmpl_1",
+                  "choices": [
+                    { "index": 0, "message": { "role": "assistant", "content": "ready" } }
+                  ]
+                }
+                """)
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "id": "chatcmpl_2",
+                  "choices": [
+                    { "index": 0, "message": { "role": "assistant", "content": "ok" } }
+                  ]
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://localhost:11434",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var thread = await transport.StartThreadAsync("local-model", null, null, null, CancellationToken.None);
+        _ = await transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"), new ChatOptions { Model = "local-model" }, null, null, null, CancellationToken.None);
+
+        var input = new ChatInput()
+            .AddToolCall("host_next_action_1", "ad_scope_discovery", "{\"discovery_fallback\":\"current_forest\"}")
+            .AddToolOutput("host_next_action_1", "{\"ok\":true}")
+            .AddText("continue");
+
+        _ = await transport.StartTurnAsync(thread.Id, input, new ChatOptions { Model = "local-model" }, null, null, null, CancellationToken.None);
+
+        Assert.True(handler.RequestBodies.Count >= 2);
+        var secondBody = handler.RequestBodies[1];
+        using var doc = JsonDocument.Parse(secondBody);
+        var messages = doc.RootElement.GetProperty("messages");
+        Assert.True(messages.GetArrayLength() >= 3);
+        var lastIndex = messages.GetArrayLength() - 1;
+        var assistantToolCallMsg = messages[lastIndex - 2];
+        var toolMsg = messages[lastIndex - 1];
+        var userMsg = messages[lastIndex];
+
+        Assert.Equal("assistant", assistantToolCallMsg.GetProperty("role").GetString());
+        var toolCalls = assistantToolCallMsg.GetProperty("tool_calls");
+        Assert.Equal(1, toolCalls.GetArrayLength());
+        var syntheticCall = toolCalls[0];
+        Assert.Equal("host_next_action_1", syntheticCall.GetProperty("id").GetString());
+        Assert.Equal("ad_scope_discovery", syntheticCall.GetProperty("function").GetProperty("name").GetString());
+        Assert.Equal("{\"discovery_fallback\":\"current_forest\"}", syntheticCall.GetProperty("function").GetProperty("arguments").GetString());
+
+        Assert.Equal("tool", toolMsg.GetProperty("role").GetString());
+        Assert.Equal("host_next_action_1", toolMsg.GetProperty("tool_call_id").GetString());
+        Assert.Equal("{\"ok\":true}", toolMsg.GetProperty("content").GetString());
+
+        Assert.Equal("user", userMsg.GetProperty("role").GetString());
+        Assert.Equal("continue", userMsg.GetProperty("content").GetString());
+    }
+
+    [Fact]
     public async Task ChatCompletions_ContentArray_Is_Projected_To_TextOutput() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """

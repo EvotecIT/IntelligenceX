@@ -537,7 +537,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        return tokenCount <= 8
+        return tokenCount <= FollowUpQuestionMaxTokens
                && normalized.Length <= 96
                && ContainsQuestionSignal(normalized);
     }

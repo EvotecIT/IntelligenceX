@@ -50,6 +50,8 @@ public sealed partial class MainWindow : Window {
             _appState.QueueAutoDispatchEnabled = _queueAutoDispatchEnabled;
             _appState.ProactiveModeEnabled = _proactiveModeEnabled;
             _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
+            _appState.ShowAssistantTurnTrace = _showAssistantTurnTrace;
+            _appState.ShowAssistantDraftBubbles = _showAssistantDraftBubbles;
             _appState.LocalProviderTransport = _localProviderTransport;
             _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
             _appState.LocalProviderModel = _localProviderModel;

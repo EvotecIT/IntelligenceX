@@ -289,6 +289,49 @@ public class ToolPackInfoContractTests {
         }
     }
 
+    [Fact]
+    public async Task AdPackInfo_ShouldAdvertiseAuthoritativeLastLogonCorrelationFlow() {
+        var tool = new AdPackInfoTool(new ActiveDirectoryToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        var recommendedFlow = root.GetProperty("recommended_flow")
+            .EnumerateArray()
+            .Select(static x => x.GetString() ?? string.Empty)
+            .ToArray();
+        Assert.Contains(
+            recommendedFlow,
+            static step => step.Contains("authoritative last-logon", StringComparison.OrdinalIgnoreCase)
+                && step.Contains("ad_ldap_query", StringComparison.OrdinalIgnoreCase));
+
+        var flowSteps = root.GetProperty("recommended_flow_steps");
+        var lastLogonStep = flowSteps
+            .EnumerateArray()
+            .FirstOrDefault(static step =>
+                (step.GetProperty("goal").GetString() ?? string.Empty)
+                    .Contains("authoritative user/computer logon recency", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(JsonValueKind.Object, lastLogonStep.ValueKind);
+        var lastLogonTools = ReadStringArray(lastLogonStep.GetProperty("suggested_tools"));
+        Assert.Contains("ad_scope_discovery", lastLogonTools, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_query", lastLogonTools, StringComparer.OrdinalIgnoreCase);
+
+        var capabilities = root.GetProperty("capabilities");
+        var capability = capabilities
+            .EnumerateArray()
+            .FirstOrDefault(static entry =>
+                string.Equals(
+                    entry.GetProperty("id").GetString(),
+                    "authoritative_logon_correlation",
+                    StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(JsonValueKind.Object, capability.ValueKind);
+        var primaryTools = ReadStringArray(capability.GetProperty("primary_tools"));
+        Assert.Contains("ad_ldap_query", primaryTools, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_query_paged", primaryTools, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static PackCase[] BuildPackCases() {
         var adOptions = new ActiveDirectoryToolOptions();
         var eventLogOptions = new EventLogToolOptions();

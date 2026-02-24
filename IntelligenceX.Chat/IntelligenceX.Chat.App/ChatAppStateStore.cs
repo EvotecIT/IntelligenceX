@@ -224,8 +224,10 @@ internal sealed class ChatAppState {
     public int ExportDocxVisualMaxWidthPx { get; set; } = ExportPreferencesContract.DefaultDocxVisualMaxWidthPx;
     public string? ExportLastDirectory { get; set; }
     public bool QueueAutoDispatchEnabled { get; set; } = true;
-    public bool ProactiveModeEnabled { get; set; } = true;
+    public bool ProactiveModeEnabled { get; set; }
     public bool PersistentMemoryEnabled { get; set; } = true;
+    public bool ShowAssistantTurnTrace { get; set; }
+    public bool ShowAssistantDraftBubbles { get; set; }
     public List<ChatMemoryFactState> MemoryFacts { get; set; } = new();
     public string CachedModelsTransport { get; set; } = "native";
     public string? CachedModelsBaseUrl { get; set; }

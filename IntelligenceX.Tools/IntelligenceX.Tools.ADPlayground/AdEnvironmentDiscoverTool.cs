@@ -97,10 +97,18 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
                 }));
         }
 
+        var effectiveDnsDomainName = ToolArgs.NormalizeOptional(info.DnsDomainName);
+        if (effectiveDnsDomainName is null
+            && TryExtractDomainNameFromDistinguishedName(context.BaseDn, out var derivedDomainName)) {
+            effectiveDnsDomainName = derivedDomainName;
+        }
+
+        var effectiveForestDnsName = ToolArgs.NormalizeOptional(info.ForestDnsName) ?? effectiveDnsDomainName;
+
         var domainControllerDiscovery = includeDomainControllers
             ? DiscoverDomainControllers(
-                dnsDomainName: info.DnsDomainName,
-                forestDnsName: info.ForestDnsName,
+                dnsDomainName: effectiveDnsDomainName,
+                forestDnsName: effectiveForestDnsName,
                 preferredDomainController: context.DomainController,
                 maxDomainControllers: maxDomainControllers,
                 includeForestDomains: includeForestDomains,
@@ -112,8 +120,8 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
         var nextActions = BuildReadOnlyEnvironmentNextActions(
             hasLimitedDiscovery: hasLimitedDiscovery,
             domainController: context.DomainController,
-            dnsDomainName: info.DnsDomainName,
-            forestDnsName: info.ForestDnsName,
+            dnsDomainName: effectiveDnsDomainName,
+            forestDnsName: effectiveForestDnsName,
             includeForestDomains: includeForestDomains,
             includeTrusts: includeTrusts);
 
@@ -125,8 +133,8 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
                 SearchBaseDnSource = ToSourceName(context.BaseDnSource)
             },
             Domain = new {
-                DnsDomainName = info.DnsDomainName,
-                ForestDnsName = info.ForestDnsName
+                DnsDomainName = effectiveDnsDomainName ?? string.Empty,
+                ForestDnsName = effectiveForestDnsName ?? string.Empty
             },
             DomainControllers = discoveredDomainControllers,
             DiscoveryStatus = new {
@@ -152,8 +160,8 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
         var facts = new List<(string Key, string Value)> {
             ("Domain controller", context.DomainController ?? string.Empty),
             ("Search base DN", context.BaseDn),
-            ("DNS domain", info.DnsDomainName),
-            ("Forest", info.ForestDnsName),
+            ("DNS domain", effectiveDnsDomainName ?? string.Empty),
+            ("Forest", effectiveForestDnsName ?? string.Empty),
             ("Discovered domains", includeDomainControllers ? domainControllerDiscovery.DiscoveredDomains.Count.ToString() : "0"),
             ("Discovered DCs", discoveredDomainControllers.Count.ToString()),
             ("Discovery status", hasLimitedDiscovery ? "limited" : "sufficient"),
@@ -170,8 +178,8 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
             discoveredDomainCount: domainControllerDiscovery.DiscoveredDomains.Count,
             discoveredDomainControllerCount: discoveredDomainControllers.Count,
             preferredDomainController: context.DomainController,
-            dnsDomainName: info.DnsDomainName,
-            forestDnsName: info.ForestDnsName);
+            dnsDomainName: effectiveDnsDomainName,
+            forestDnsName: effectiveForestDnsName);
 
         return Task.FromResult(ToolResponse.OkFactsModel(
             model: model,
@@ -182,6 +190,37 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
             valueHeader: "Value",
             truncated: false,
             render: null));
+    }
+
+    private static bool TryExtractDomainNameFromDistinguishedName(string? distinguishedName, out string domainName) {
+        domainName = string.Empty;
+        var dn = (distinguishedName ?? string.Empty).Trim();
+        if (dn.Length == 0) {
+            return false;
+        }
+
+        var labels = new List<string>();
+        var segments = dn.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < segments.Length; i++) {
+            var segment = segments[i].Trim();
+            if (!segment.StartsWith("DC=", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var label = segment.Substring(3).Trim();
+            if (label.Length == 0) {
+                continue;
+            }
+
+            labels.Add(label);
+        }
+
+        if (labels.Count == 0) {
+            return false;
+        }
+
+        domainName = string.Join(".", labels);
+        return domainName.Length > 0;
     }
 
     private static DomainControllerDiscoveryResult DiscoverDomainControllers(

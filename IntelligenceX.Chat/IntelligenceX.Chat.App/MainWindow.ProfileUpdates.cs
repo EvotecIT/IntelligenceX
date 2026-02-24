@@ -405,8 +405,9 @@ Quick start prompts:
             configuredModel,
             _availableModels);
         var effectiveWeightedToolRouting = _autonomyWeightedToolRouting ?? (isLocalCompatibleRuntime ? false : null);
-        var effectivePlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop ?? (isLocalCompatibleRuntime ? false : null);
-        var effectiveMaxReviewPasses = _autonomyMaxReviewPasses ?? (isLocalCompatibleRuntime ? 0 : null);
+        // Keep conversation flow predictable by default; advanced review loops remain opt-in via autonomy controls.
+        var effectivePlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop ?? false;
+        var effectiveMaxReviewPasses = _autonomyMaxReviewPasses ?? 0;
         var effectiveModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds ?? (isLocalCompatibleRuntime ? 0 : null);
 
         return new ChatRequestOptions {
@@ -530,6 +531,32 @@ Quick start prompts:
         if (!IsTurnDispatchInProgress()) {
             await DispatchNextQueuedTurnAsync(honorAutoDispatch: false).ConfigureAwait(false);
         }
+    }
+
+    private async Task SetShowAssistantTurnTraceAsync(bool enabled) {
+        if (_showAssistantTurnTrace == enabled && _appState.ShowAssistantTurnTrace == enabled) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        _showAssistantTurnTrace = enabled;
+        _appState.ShowAssistantTurnTrace = enabled;
+        await RenderTranscriptAsync().ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task SetShowAssistantDraftBubblesAsync(bool enabled) {
+        if (_showAssistantDraftBubbles == enabled && _appState.ShowAssistantDraftBubbles == enabled) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        _showAssistantDraftBubbles = enabled;
+        _appState.ShowAssistantDraftBubbles = enabled;
+        await RenderTranscriptAsync().ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
     }
 
     private List<string> BuildMissingOnboardingFields() {

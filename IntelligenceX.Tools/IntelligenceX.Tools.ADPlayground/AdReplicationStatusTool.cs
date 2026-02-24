@@ -16,6 +16,16 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private static readonly string[] SupportedProjectionColumns = {
+        "server",
+        "source_dsa",
+        "destination_dsa",
+        "transport_type",
+        "last_successful_sync",
+        "last_failure_time",
+        "status",
+        "failure_message"
+    };
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_replication_status",
@@ -72,8 +82,12 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Rows: rows);
 
+        var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
+            arguments,
+            SupportedProjectionColumns);
+
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: shapedArguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "rows_view",
@@ -88,4 +102,3 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

@@ -101,6 +101,23 @@ internal static partial class Program {
         AssertEqual("ok", item.GetString("output"), "tool output value");
     }
 
+    private static void TestToolCallInputIncludesCompatibilityFields() {
+        var input = new ChatInput().AddToolCall("call_7", "eventlog_live_query", "{\"machine_name\":\"AD0\"}");
+        var json = CallChatInputToJson(input);
+        var item = json[0].AsObject();
+        AssertNotNull(item, "tool call item");
+        AssertEqual("custom_tool_call", item!.GetString("type"), "tool call type");
+        AssertEqual("call_7", item.GetString("id"), "tool call id alias");
+        AssertEqual("call_7", item.GetString("call_id"), "tool call call_id");
+        AssertEqual("eventlog_live_query", item.GetString("name"), "tool call name");
+        AssertEqual("{\"machine_name\":\"AD0\"}", item.GetString("input"), "tool call input");
+        AssertEqual("{\"machine_name\":\"AD0\"}", item.GetString("arguments"), "tool call arguments");
+        var function = item.GetObject("function");
+        AssertNotNull(function, "tool call function object");
+        AssertEqual("eventlog_live_query", function!.GetString("name"), "tool call function name");
+        AssertEqual("{\"machine_name\":\"AD0\"}", function.GetString("arguments"), "tool call function arguments");
+    }
+
     private static void TestTurnResponseIdParsing() {
         var turn = TurnInfo.FromJson(new JsonObject()
             .Add("id", "turn-response")

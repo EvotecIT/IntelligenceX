@@ -136,6 +136,26 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures transcript debug defaults keep draft/thinking bubbles hidden unless explicitly enabled.
+    /// </summary>
+    [Fact]
+    public void Load_DefaultsDraftBubbleVisibilityToOff() {
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+        var toolsScript = File.ReadAllText(toolsScriptPath);
+
+        Assert.Contains("showDraftBubbles: false", coreScript, StringComparison.Ordinal);
+        Assert.Contains("{ showTurnTrace: false, showDraftBubbles: false }", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("previousDebug.showDraftBubbles === \"boolean\" ? previousDebug.showDraftBubbles : false", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("showDraftBubblesToggle.checked = typeof debugOptions.showDraftBubbles === \"boolean\"", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("? debugOptions.showDraftBubbles", toolsScript, StringComparison.Ordinal);
+        Assert.Contains(": false;", toolsScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures export visual-theme and DOCX visual sizing controls/messaging hooks are present in shell assets.
     /// </summary>
     [Fact]

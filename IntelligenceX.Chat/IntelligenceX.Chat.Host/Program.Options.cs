@@ -59,6 +59,9 @@ internal static partial class Program {
         public bool Redact { get; set; }
         public string? AuthPath { get; set; }
         public string? InstructionsFile { get; set; }
+        public string? ScenarioFile { get; set; }
+        public string? ScenarioOutputFile { get; set; }
+        public bool ScenarioContinueOnError { get; set; }
         public string? AdDomainController { get; set; }
         public string? AdDefaultSearchBaseDn { get; set; }
         public int AdMaxResults { get; set; } = 1000;
@@ -247,6 +250,21 @@ internal static partial class Program {
                             return options;
                         }
                         options.InstructionsFile = instructionsFile;
+                        break;
+                    case "--scenario-file":
+                        if (!TryGetValue(args, ref i, out var scenarioFile, out error)) {
+                            return options;
+                        }
+                        options.ScenarioFile = scenarioFile;
+                        break;
+                    case "--scenario-output":
+                        if (!TryGetValue(args, ref i, out var scenarioOutput, out error)) {
+                            return options;
+                        }
+                        options.ScenarioOutputFile = scenarioOutput;
+                        break;
+                    case "--scenario-continue-on-error":
+                        options.ScenarioContinueOnError = true;
                         break;
                     case "--ad-domain-controller":
                         if (!TryGetValue(args, ref i, out var dc, out error)) {
@@ -559,6 +577,9 @@ internal static partial class Program {
                 Redact = Redact,
                 AuthPath = AuthPath,
                 InstructionsFile = InstructionsFile,
+                ScenarioFile = ScenarioFile,
+                ScenarioOutputFile = ScenarioOutputFile,
+                ScenarioContinueOnError = ScenarioContinueOnError,
                 AdDomainController = AdDomainController,
                 AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
                 AdMaxResults = AdMaxResults,

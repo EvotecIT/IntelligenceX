@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -95,9 +96,12 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
             result.IsTruncated,
             result.Results
         };
+        var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
+            arguments,
+            BuildAvailableProjectionColumns(result.Results));
 
         AdDynamicTableView.TryBuildResponseFromQueryRows(
-            arguments: arguments,
+            arguments: shapedArguments,
             model: root,
             rows: result.Results,
             title: "Active Directory: Search (preview)",
@@ -106,5 +110,25 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
             response: out var response);
         return Task.FromResult(response);
     }
-}
 
+    private static IReadOnlyList<string> BuildAvailableProjectionColumns(IReadOnlyList<LdapToolQueryRow> rows) {
+        var availableColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < rows.Count; i++) {
+            var attrs = rows[i]?.Attributes;
+            if (attrs is null) {
+                continue;
+            }
+
+            foreach (var pair in attrs) {
+                var key = (pair.Key ?? string.Empty).Trim();
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                availableColumns.Add(key);
+            }
+        }
+
+        return availableColumns.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+}
