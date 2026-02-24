@@ -101,7 +101,7 @@ Guarded retry assist automation:
 Nightly consolidation automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-nightly-consolidation.yml`
-- Schedule: daily consolidation sweep (plus `workflow_dispatch`)
+- Schedule: daily consolidation sweep (plus `workflow_dispatch` and reusable `workflow_call`)
 - Inputs: `max_prs`, `stale_days`, `include_drafts`, `approved_bots`
 - Outputs:
   - rollup JSON: `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`
@@ -111,6 +111,27 @@ Nightly consolidation automation:
   - review-required/stuck PRs,
   - retry-budget-exhausted PRs,
   - no-progress PRs grouped by age/churn class.
+
+Weekly governance automation:
+
+- Workflow: `.github/workflows/ix-pr-babysit-weekly-governance.yml`
+- Schedule: weekly consolidation sweep (Monday)
+- Implementation: calls the nightly consolidation workflow via `workflow_call` with weekly profile defaults (`max_prs=300`, `stale_days=14`, `source=weekly-governance`)
+- Outputs: same artifact schema as nightly consolidation for comparable trend analysis
+
+### Cadence matrix
+
+| Cadence | Workflow | Phase | Purpose | Expected maintainer action |
+| --- | --- | --- | --- | --- |
+| Hourly | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Fast detection of CI/review/mergeability drift on open PRs | Triage fresh blockers and decide whether to run assist retry on specific PRs |
+| Daily | `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` | `observe` | Portfolio-level no-progress and stale-blocker rollup | Prioritize the next-day unblock queue using bucket summaries |
+| Weekly | `.github/workflows/ix-pr-babysit-weekly-governance.yml` | `observe` | Wider-window governance snapshot (older stalls/churn classes) | Review systemic patterns, update runbooks/SLO targets, and assign owners for repeated blockers |
+
+This cadence keeps mutation guarded and targeted:
+
+- observe runs are scheduled (hourly/daily/weekly),
+- retry assist remains explicit/manual per PR (`ix-pr-babysit-assist-retry.yml`),
+- no autonomous merge or policy mutation is introduced.
 
 ### Issue-review confidence signals
 

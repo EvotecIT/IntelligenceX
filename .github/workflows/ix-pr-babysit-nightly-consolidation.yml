@@ -3,6 +3,33 @@ name: IX PR Babysit Nightly Consolidation
 on:
   schedule:
     - cron: "17 2 * * *"
+  workflow_call:
+    inputs:
+      max_prs:
+        description: "Max open PRs to scan"
+        required: false
+        default: "200"
+        type: string
+      stale_days:
+        description: "Age threshold (days) used for stale/no-progress buckets"
+        required: false
+        default: "7"
+        type: string
+      include_drafts:
+        description: "Include draft PRs in nightly scan"
+        required: false
+        default: false
+        type: boolean
+      approved_bots:
+        description: "Comma-separated approved bot logins for source classification"
+        required: false
+        default: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
+        type: string
+      source:
+        description: "Source tag written into pr-watch snapshots"
+        required: false
+        default: ""
+        type: string
   workflow_dispatch:
     inputs:
       max_prs:
@@ -22,6 +49,10 @@ on:
         description: "Comma-separated approved bot logins for source classification"
         required: false
         default: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
+      source:
+        description: "Optional source tag override for pr-watch snapshots"
+        required: false
+        default: ""
 
 permissions:
   actions: read
@@ -86,15 +117,17 @@ jobs:
           : > "${TARGETS_FILE}"
           : > "${FAILED_TARGETS_FILE}"
 
-          MAX_PRS="${{ github.event.inputs.max_prs }}"
-          STALE_DAYS="${{ github.event.inputs.stale_days }}"
-          INCLUDE_DRAFTS="${{ github.event.inputs.include_drafts }}"
-          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
+          MAX_PRS="${{ inputs.max_prs }}"
+          STALE_DAYS="${{ inputs.stale_days }}"
+          INCLUDE_DRAFTS="${{ inputs.include_drafts }}"
+          APPROVED_BOTS="${{ inputs.approved_bots }}"
+          SOURCE_TAG="${{ inputs.source }}"
 
           if [ -z "${MAX_PRS}" ]; then MAX_PRS="200"; fi
           if [ -z "${STALE_DAYS}" ]; then STALE_DAYS="7"; fi
           if [ -z "${INCLUDE_DRAFTS}" ]; then INCLUDE_DRAFTS="false"; fi
           if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
+          if [ -z "${SOURCE_TAG}" ]; then SOURCE_TAG="${{ github.event_name }}"; fi
 
           if [ "${INCLUDE_DRAFTS}" = "true" ]; then
             gh pr list \
@@ -145,7 +178,7 @@ jobs:
                 "--pr" "${pr_spec}"
                 "--max-flaky-retries" "3"
                 "--phase" "observe"
-                "--source" "${{ github.event_name }}"
+                "--source" "${SOURCE_TAG}"
                 "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
               )
 
