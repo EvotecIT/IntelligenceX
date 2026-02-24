@@ -211,6 +211,16 @@ public interface IToolPackRuntimeSettings {
     bool EnableOfficeImoPack { get; }
 
     /// <summary>
+    /// Enables IX.DnsClientX open-source DNS query tools when available.
+    /// </summary>
+    bool EnableDnsClientXPack { get; }
+
+    /// <summary>
+    /// Enables IX.DomainDetective open-source domain diagnostics tools when available.
+    /// </summary>
+    bool EnableDomainDetectivePack { get; }
+
+    /// <summary>
     /// Enables default plugin search roots.
     /// </summary>
     bool EnableDefaultPluginPaths { get; }
@@ -412,6 +422,8 @@ public static partial class ToolPackBootstrap {
             PowerShellAllowWrite = settings.PowerShellAllowWrite,
             EnableTestimoXPack = settings.EnableTestimoXPack,
             EnableOfficeImoPack = settings.EnableOfficeImoPack,
+            EnableDnsClientXPack = settings.EnableDnsClientXPack,
+            EnableDomainDetectivePack = settings.EnableDomainDetectivePack,
             EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
             PluginPaths = pluginPaths,
             AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,

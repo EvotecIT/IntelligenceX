@@ -137,6 +137,9 @@ Progress:
 - Added bootstrap/plugin gating support for these IDs through `ToolPackBootstrapOptions`:
   - `EnableDnsClientXPack`
   - `EnableDomainDetectivePack`
+- Added host/service runtime CLI toggles to control these packs per run:
+  - `--enable/--disable-dnsclientx-pack`
+  - `--enable/--disable-domaindetective-pack`
 - Added metadata regression test coverage for disabled-by-configuration behavior and source-kind classification.
 
 ### WS5: Tool Count, Context Budget, Compaction

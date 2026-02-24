@@ -55,6 +55,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public bool PowerShellAllowWrite { get; set; }
     public bool EnableTestimoXPack { get; set; } = true;
     public bool EnableOfficeImoPack { get; set; } = true;
+    public bool EnableDnsClientXPack { get; set; } = true;
+    public bool EnableDomainDetectivePack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
     public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
@@ -419,6 +421,22 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.EnableOfficeImoPack = false;
                 continue;
             }
+            if (arg is "--enable-dnsclientx-pack") {
+                options.EnableDnsClientXPack = true;
+                continue;
+            }
+            if (arg is "--disable-dnsclientx-pack") {
+                options.EnableDnsClientXPack = false;
+                continue;
+            }
+            if (arg is "--enable-domaindetective-pack") {
+                options.EnableDomainDetectivePack = true;
+                continue;
+            }
+            if (arg is "--disable-domaindetective-pack") {
+                options.EnableDomainDetectivePack = false;
+                continue;
+            }
             if (arg is "--plugin-path") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -555,6 +573,10 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
         Console.WriteLine("  --enable-officeimo-pack  Enable IX.OfficeIMO document ingestion tools (default: on).");
         Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
+        Console.WriteLine("  --enable-dnsclientx-pack  Enable IX.DnsClientX DNS tools (default: on).");
+        Console.WriteLine("  --disable-dnsclientx-pack Disable IX.DnsClientX DNS tools.");
+        Console.WriteLine("  --enable-domaindetective-pack  Enable IX.DomainDetective diagnostics tools (default: on).");
+        Console.WriteLine("  --disable-domaindetective-pack Disable IX.DomainDetective diagnostics tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);

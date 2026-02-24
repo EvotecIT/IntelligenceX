@@ -29,6 +29,8 @@ public sealed class ToolPackBootstrapMetadataTests {
                 PowerShellAllowWrite = true,
                 EnableTestimoXPack = false,
                 EnableOfficeImoPack = false,
+                EnableDnsClientXPack = false,
+                EnableDomainDetectivePack = false,
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" }
             },
@@ -42,6 +44,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.True(options.PowerShellAllowWrite);
         Assert.False(options.EnableTestimoXPack);
         Assert.False(options.EnableOfficeImoPack);
+        Assert.False(options.EnableDnsClientXPack);
+        Assert.False(options.EnableDomainDetectivePack);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
         Assert.Same(runtimePolicyContext.AuthenticationProbeStore, options.AuthenticationProbeStore);
@@ -243,6 +247,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         public bool PowerShellAllowWrite { get; init; }
         public bool EnableTestimoXPack { get; init; } = true;
         public bool EnableOfficeImoPack { get; init; } = true;
+        public bool EnableDnsClientXPack { get; init; } = true;
+        public bool EnableDomainDetectivePack { get; init; } = true;
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
     }
