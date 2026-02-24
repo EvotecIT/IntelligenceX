@@ -129,45 +129,26 @@ jobs:
       - name: Run nightly PR babysit consolidation engine
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAX_PRS="${{ inputs.max_prs }}"
-          STALE_DAYS="${{ inputs.stale_days }}"
-          INCLUDE_DRAFTS="${{ inputs.include_drafts }}"
-          APPROVED_BOTS="${{ inputs.approved_bots }}"
-          SOURCE_TAG="${{ inputs.source }}"
-          PUBLISH_TRACKING_ISSUE="${{ inputs.publish_tracking_issue }}"
-          TRACKER_ISSUE_TITLE="${{ inputs.tracker_issue_title }}"
-          TRACKER_ISSUE_LABELS="${{ inputs.tracker_issue_labels }}"
-
-          if [ -z "${MAX_PRS}" ]; then MAX_PRS="200"; fi
-          if [ -z "${STALE_DAYS}" ]; then STALE_DAYS="7"; fi
-          if [ -z "${INCLUDE_DRAFTS}" ]; then INCLUDE_DRAFTS="false"; fi
-          if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
-          if [ -z "${SOURCE_TAG}" ]; then SOURCE_TAG="${{ github.event_name }}"; fi
-          if [ -z "${PUBLISH_TRACKING_ISSUE}" ]; then PUBLISH_TRACKING_ISSUE="true"; fi
-
-          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll \
-            todo pr-watch-consolidate \
-            --repo "${{ github.repository }}" \
-            --max-prs "${MAX_PRS}" \
-            --max-flaky-retries "3" \
-            --stale-days "${STALE_DAYS}" \
-            --include-drafts "${INCLUDE_DRAFTS}" \
-            --approved-bots "${APPROVED_BOTS}" \
-            --source "${SOURCE_TAG}" \
-            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --snapshot-dir "${PR_WATCH_NIGHTLY_DIR}" \
-            --rollup-path "${PR_WATCH_NIGHTLY_ROLLUP_PATH}" \
-            --summary-path "${PR_WATCH_NIGHTLY_SUMMARY_PATH}" \
-            --metrics-path "${PR_WATCH_NIGHTLY_METRICS_PATH}" \
-            --metrics-history-path "${PR_WATCH_METRICS_HISTORY_PATH}" \
-            --tracker-path "${PR_WATCH_NIGHTLY_TRACKER_PATH}" \
-            --publish-tracking-issue "${PUBLISH_TRACKING_ISSUE}" \
-            --tracker-issue-title "${TRACKER_ISSUE_TITLE}" \
-            --tracker-issue-labels "${TRACKER_ISSUE_LABELS}"
+        run: >
+          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll
+          todo pr-watch-consolidate
+          --repo "${{ github.repository }}"
+          --max-prs "${{ inputs.max_prs }}"
+          --max-flaky-retries "3"
+          --stale-days "${{ inputs.stale_days }}"
+          --include-drafts "${{ inputs.include_drafts }}"
+          --approved-bots "${{ inputs.approved_bots }}"
+          --source "${{ inputs.source }}"
+          --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --snapshot-dir "${PR_WATCH_NIGHTLY_DIR}"
+          --rollup-path "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+          --summary-path "${PR_WATCH_NIGHTLY_SUMMARY_PATH}"
+          --metrics-path "${PR_WATCH_NIGHTLY_METRICS_PATH}"
+          --metrics-history-path "${PR_WATCH_METRICS_HISTORY_PATH}"
+          --tracker-path "${PR_WATCH_NIGHTLY_TRACKER_PATH}"
+          --publish-tracking-issue "${{ inputs.publish_tracking_issue }}"
+          --tracker-issue-title "${{ inputs.tracker_issue_title }}"
+          --tracker-issue-labels "${{ inputs.tracker_issue_labels }}"
 
       - name: Upload nightly pr-watch artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

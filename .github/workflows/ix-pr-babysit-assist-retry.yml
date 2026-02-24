@@ -66,22 +66,19 @@ jobs:
       - name: Run guarded retry assist engine
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll \
-            todo pr-watch-assist-retry \
-            --repo "${{ github.repository }}" \
-            --pr "${{ inputs.pr }}" \
-            --max-flaky-retries "${{ inputs.max_flaky_retries }}" \
-            --retry-cooldown-minutes "${{ inputs.retry_cooldown_minutes }}" \
-            --approved-bots "${{ inputs.approved_bots }}" \
-            --confirm-apply-retries "${{ inputs.confirm_apply_retries }}" \
-            --source "${{ github.event_name }}" \
-            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --output-path "${PR_WATCH_ASSIST_OUTPUT_PATH}" \
-            --summary-path "${PR_WATCH_ASSIST_SUMMARY_PATH}"
+        run: >
+          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll
+          todo pr-watch-assist-retry
+          --repo "${{ github.repository }}"
+          --pr "${{ inputs.pr }}"
+          --max-flaky-retries "${{ inputs.max_flaky_retries }}"
+          --retry-cooldown-minutes "${{ inputs.retry_cooldown_minutes }}"
+          --approved-bots "${{ inputs.approved_bots }}"
+          --confirm-apply-retries "${{ inputs.confirm_apply_retries }}"
+          --source "${{ github.event_name }}"
+          --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --output-path "${PR_WATCH_ASSIST_OUTPUT_PATH}"
+          --summary-path "${PR_WATCH_ASSIST_SUMMARY_PATH}"
 
       - name: Upload pr-watch assist artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

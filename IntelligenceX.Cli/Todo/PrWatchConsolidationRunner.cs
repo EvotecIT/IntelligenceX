@@ -150,6 +150,7 @@ internal static class PrWatchConsolidationRunner {
             }
         }
 
+        options.Source = ResolveSourceWithDefault(options.Source, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME"));
         return options;
     }
 
@@ -590,7 +591,19 @@ internal static class PrWatchConsolidationRunner {
     }
 
     private static bool IsHelp(string value) => value.Equals("-h", StringComparison.OrdinalIgnoreCase) || value.Equals("--help", StringComparison.OrdinalIgnoreCase) || value.Equals("help", StringComparison.OrdinalIgnoreCase);
-    private static string ResolveDefaultSource() => Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? DefaultSource;
+    internal static string ResolveSourceWithDefault(string? source, string? eventName) {
+        if (!string.IsNullOrWhiteSpace(source)) {
+            return source.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(eventName)) {
+            return eventName.Trim();
+        }
+
+        return DefaultSource;
+    }
+
+    private static string ResolveDefaultSource() => ResolveSourceWithDefault(null, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME"));
     private static string? ResolveDefaultRunLink() {
         var server = Environment.GetEnvironmentVariable("GITHUB_SERVER_URL");
         var repo = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
