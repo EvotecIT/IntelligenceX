@@ -92,6 +92,7 @@ Observe-mode babysitter automation:
 - Engine command: `intelligencex todo pr-watch-monitor`
 - Behavior:
   - event-driven runs target the triggering PR automatically,
+  - PR-triggered monitor runs are forced onto GitHub-hosted runners (security hardening),
   - `workflow_dispatch` supports manual targeted runs with optional `pr` override and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
 - Outputs: per-PR snapshots + rollup summary + audit log (`ix-pr-watch-audit.jsonl`) in `artifacts/pr-watch/`
 
