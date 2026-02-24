@@ -21,6 +21,8 @@ public sealed class HostScenarioParsingTests {
       "user": "Check AD0 reboot",
       "assert_contains": ["6008", "unexpected reboot"],
       "assert_not_contains": ["I can do that, but"],
+      "assert_matches_regex": ["\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"],
+      "assert_no_questions": true,
       "min_tool_calls": 1,
       "min_tool_rounds": 1,
       "require_tools": ["eventlog_live_query"],
@@ -44,6 +46,8 @@ public sealed class HostScenarioParsingTests {
         Assert.Equal("Check AD0 reboot", ReadStringProperty(turns[0], "User"));
         Assert.Equal(2, ReadStringListProperty(turns[0], "AssertContains").Count);
         Assert.Single(ReadStringListProperty(turns[0], "AssertNotContains"));
+        Assert.Single(ReadStringListProperty(turns[0], "AssertMatchesRegex"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertNoQuestions"));
         Assert.Equal(1, ReadNullableIntProperty(turns[0], "MinToolCalls"));
         Assert.Equal(1, ReadNullableIntProperty(turns[0], "MinToolRounds"));
         Assert.Single(ReadStringListProperty(turns[0], "RequireTools"));
@@ -56,6 +60,8 @@ public sealed class HostScenarioParsingTests {
         Assert.Equal("Check peer DCs", ReadStringProperty(turns[1], "User"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertContains"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertNotContains"));
+        Assert.Empty(ReadStringListProperty(turns[1], "AssertMatchesRegex"));
+        Assert.False(ReadBooleanProperty(turns[1], "AssertNoQuestions"));
         Assert.Null(ReadNullableIntProperty(turns[1], "MinToolCalls"));
         Assert.Null(ReadNullableIntProperty(turns[1], "MinToolRounds"));
         Assert.Empty(ReadStringListProperty(turns[1], "RequireTools"));

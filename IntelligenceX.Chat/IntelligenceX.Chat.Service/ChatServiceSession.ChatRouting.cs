@@ -124,7 +124,7 @@ internal sealed partial class ChatServiceSession {
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
         };
-        var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? true;
+        var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? false;
         var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
         var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
         var requestedReviewPasses = request.Options?.MaxReviewPasses;
@@ -1225,13 +1225,29 @@ internal sealed partial class ChatServiceSession {
                     failedCallsThisRound)
                 .ConfigureAwait(false);
             UpdateToolRoutingStats(extracted, executed);
-            foreach (var output in executed) {
+            var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
+            foreach (var call in extracted) {
+                var normalizedCallId = (call.CallId ?? string.Empty).Trim();
+                if (normalizedCallId.Length == 0) {
+                    continue;
+                }
+
+                executedCallsById[normalizedCallId] = call;
+            }
+
+            for (var outputIndex = 0; outputIndex < executed.Count; outputIndex++) {
+                var output = executed[outputIndex];
                 if (WasProjectionFallbackApplied(output)) {
                     projectionFallbackCount++;
                 }
 
+                var normalizedOutputCallId = ResolveToolOutputCallId(
+                    extracted,
+                    executedCallsById,
+                    output.CallId,
+                    outputIndex);
                 toolOutputs.Add(new ToolOutputDto {
-                    CallId = output.CallId,
+                    CallId = normalizedOutputCallId.Length == 0 ? output.CallId : normalizedOutputCallId,
                     Output = output.Output,
                     Ok = output.Ok,
                     ErrorCode = output.ErrorCode,
@@ -1246,24 +1262,20 @@ internal sealed partial class ChatServiceSession {
             }
 
             var next = new ChatInput();
-            var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
-            foreach (var call in extracted) {
-                var normalizedCallId = (call.CallId ?? string.Empty).Trim();
-                if (normalizedCallId.Length == 0) {
-                    continue;
-                }
-
-                executedCallsById[normalizedCallId] = call;
-            }
-
-            foreach (var output in executed) {
-                var normalizedOutputCallId = (output.CallId ?? string.Empty).Trim();
+            var replayedToolCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var outputIndex = 0; outputIndex < executed.Count; outputIndex++) {
+                var output = executed[outputIndex];
+                var normalizedOutputCallId = ResolveToolOutputCallId(
+                    extracted,
+                    executedCallsById,
+                    output.CallId,
+                    outputIndex);
                 if (normalizedOutputCallId.Length == 0) {
                     continue;
                 }
 
-                if (normalizedOutputCallId.Length > 0
-                    && executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)) {
+                if (executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)
+                    && replayedToolCallIds.Add(normalizedOutputCallId)) {
                     next.AddToolCall(
                         executedCall.CallId,
                         executedCall.Name,
@@ -1302,28 +1314,85 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool SupportsSyntheticHostReplayItems(OpenAITransportKind transport) {
-        return transport != OpenAITransportKind.Native;
+        // Synthetic host replay items (custom_tool_call/custom_tool_call_output) are
+        // only reliable on compatible HTTP transports. Native/AppServer/Copilot
+        // runtimes may reject host-generated call ids.
+        return transport == OpenAITransportKind.CompatibleHttp;
+    }
+
+    private static string ResolveToolOutputCallId(
+        IReadOnlyList<ToolCall> extractedCalls,
+        IReadOnlyDictionary<string, ToolCall> extractedCallsById,
+        string? rawOutputCallId,
+        int outputIndex) {
+        var normalizedOutputCallId = (rawOutputCallId ?? string.Empty).Trim();
+        if (normalizedOutputCallId.Length > 0 && extractedCallsById.ContainsKey(normalizedOutputCallId)) {
+            return normalizedOutputCallId;
+        }
+
+        if (outputIndex >= 0 && outputIndex < extractedCalls.Count) {
+            var fallbackCallId = (extractedCalls[outputIndex].CallId ?? string.Empty).Trim();
+            if (fallbackCallId.Length > 0) {
+                return fallbackCallId;
+            }
+        }
+
+        if (extractedCallsById.Count == 1) {
+            foreach (var pair in extractedCallsById) {
+                var singleCallId = (pair.Key ?? string.Empty).Trim();
+                if (singleCallId.Length > 0) {
+                    return singleCallId;
+                }
+            }
+        }
+
+        return string.Empty;
     }
 
     private static ChatInput BuildHostReplayReviewInput(
         ToolCall executedCall,
         IReadOnlyList<ToolOutputDto> outputs,
         bool supportsSyntheticReplayItems) {
-        if (supportsSyntheticReplayItems) {
-            var nextInput = new ChatInput();
-            if (outputs.Count > 0) {
-                nextInput.AddToolCall(executedCall.CallId, executedCall.Name, executedCall.Input);
-            }
-
-            for (var i = 0; i < outputs.Count; i++) {
-                var output = outputs[i];
-                nextInput.AddToolOutput(output.CallId, output.Output);
-            }
-
-            return nextInput;
+        if (supportsSyntheticReplayItems
+            && TryBuildSyntheticHostReplayInput(executedCall, outputs, out var syntheticInput)) {
+            return syntheticInput;
         }
 
         return ChatInput.FromText(BuildNativeHostReplayReviewPrompt(executedCall, outputs));
+    }
+
+    private static bool TryBuildSyntheticHostReplayInput(
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs,
+        out ChatInput input) {
+        input = null!;
+
+        var executedCallId = (executedCall.CallId ?? string.Empty).Trim();
+        if (executedCallId.Length == 0 || outputs.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < outputs.Count; i++) {
+            var outputCallId = (outputs[i].CallId ?? string.Empty).Trim();
+            if (outputCallId.Length == 0) {
+                continue;
+            }
+
+            if (!string.Equals(outputCallId, executedCallId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        var nextInput = new ChatInput();
+        nextInput.AddToolCall(executedCallId, executedCall.Name, executedCall.Input);
+        for (var i = 0; i < outputs.Count; i++) {
+            var output = outputs[i];
+            var outputCallId = (output.CallId ?? string.Empty).Trim();
+            nextInput.AddToolOutput(outputCallId.Length == 0 ? executedCallId : outputCallId, output.Output);
+        }
+
+        input = nextInput;
+        return true;
     }
 
     private static string BuildNativeHostReplayReviewPrompt(ToolCall executedCall, IReadOnlyList<ToolOutputDto> outputs) {

@@ -2594,7 +2594,7 @@
       modelHeartbeatInput.value = autonomy.modelHeartbeatSeconds == null ? "" : String(autonomy.modelHeartbeatSeconds);
     }
     if (proactiveModeToggle) {
-      proactiveModeToggle.checked = autonomy.proactiveMode !== false;
+      proactiveModeToggle.checked = autonomy.proactiveMode === true;
     }
     if (queueAutoDispatchToggle) {
       queueAutoDispatchToggle.checked = autonomy.queueAutoDispatch !== false;

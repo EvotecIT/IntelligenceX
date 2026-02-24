@@ -88,6 +88,48 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures materially different finalized text is appended after streamed draft content.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_AppendsWhenFinalDiffersFromStreamedDraft() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: false,
+            finalAssistantText: "Confirmed reboot evidence on AD0: 41 + 6008 at 2026-02-17T07:41Z.",
+            streamedAssistantText: "Running checks now.");
+
+        Assert.True(append);
+    }
+
+    /// <summary>
+    /// Ensures near-duplicate final text does not create an extra assistant bubble after streaming.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_DoesNotAppendNearDuplicates() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: false,
+            finalAssistantText: "Running checks now!",
+            streamedAssistantText: "running checks now");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures streamed-draft append path is disabled once interim snapshots are already in play.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_DoesNotAppendWhenInterimAlreadySeen() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: true,
+            finalAssistantText: "Confirmed reboot evidence on AD0.",
+            streamedAssistantText: "Running checks now.");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
     /// Ensures interim results are suppressed when a streaming draft already exists in the turn.
     /// </summary>
     [Fact]

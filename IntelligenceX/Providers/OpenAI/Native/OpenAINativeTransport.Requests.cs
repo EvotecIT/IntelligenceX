@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -28,7 +29,8 @@ internal sealed partial class OpenAINativeTransport {
     private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId, ChatOptions options,
         ToolWireFormat toolWireFormat = ToolWireFormat.FunctionNestedParameters) {
         var input = new JsonArray();
-        foreach (var message in messages) {
+        var replayItems = NormalizeAndFilterReplayInputItems(messages);
+        foreach (var message in replayItems) {
             input.Add(message);
         }
 
@@ -324,5 +326,254 @@ internal sealed partial class OpenAINativeTransport {
             items.AddRange(extras);
         }
         return items;
+    }
+
+    private static JsonObject NormalizeInputItemForRequest(JsonObject message) {
+        if (message is null) {
+            return new JsonObject();
+        }
+
+        var type = (GetStringIgnoreCase(message, "type") ?? string.Empty).Trim();
+        if (IsToolCallInputType(type)) {
+            return NormalizeToolCallInputItem(message);
+        }
+        if (IsToolOutputInputType(type)) {
+            return NormalizeToolOutputInputItem(message);
+        }
+
+        return message;
+    }
+
+    private static IReadOnlyList<JsonObject> NormalizeAndFilterReplayInputItems(IReadOnlyList<JsonObject> messages) {
+        if (messages is null || messages.Count == 0) {
+            return Array.Empty<JsonObject>();
+        }
+
+        var normalized = new List<JsonObject>(messages.Count);
+        var callIdsWithCalls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var callIdsWithOutputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < messages.Count; i++) {
+            var item = NormalizeInputItemForRequest(messages[i] ?? new JsonObject());
+            normalized.Add(item);
+
+            var type = (GetStringIgnoreCase(item, "type") ?? string.Empty).Trim();
+            var callId = ExtractToolReplayCallId(item);
+            if (string.IsNullOrWhiteSpace(callId)) {
+                continue;
+            }
+
+            if (IsToolCallInputType(type)) {
+                callIdsWithCalls.Add(callId!);
+            } else if (IsToolOutputInputType(type)) {
+                callIdsWithOutputs.Add(callId!);
+            }
+        }
+
+        if (callIdsWithCalls.Count == 0 && callIdsWithOutputs.Count == 0) {
+            return normalized;
+        }
+
+        var pairedCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var callId in callIdsWithCalls) {
+            if (callIdsWithOutputs.Contains(callId)) {
+                pairedCallIds.Add(callId);
+            }
+        }
+
+        if (pairedCallIds.Count == callIdsWithCalls.Count && pairedCallIds.Count == callIdsWithOutputs.Count) {
+            return normalized;
+        }
+
+        var filtered = new List<JsonObject>(normalized.Count);
+        for (var i = 0; i < normalized.Count; i++) {
+            var item = normalized[i];
+            var type = (GetStringIgnoreCase(item, "type") ?? string.Empty).Trim();
+            if (!IsToolCallInputType(type) && !IsToolOutputInputType(type)) {
+                filtered.Add(item);
+                continue;
+            }
+
+            var callId = ExtractToolReplayCallId(item);
+            if (!string.IsNullOrWhiteSpace(callId) && pairedCallIds.Contains(callId!)) {
+                filtered.Add(item);
+            }
+        }
+
+        return filtered;
+    }
+
+    private static bool IsToolCallInputType(string type) {
+        return string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsToolOutputInputType(string type) {
+        return string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "tool_call_output", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "function_call_output", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonObject NormalizeToolCallInputItem(JsonObject message) {
+        var sourceId = GetStringIgnoreCase(message, "id");
+        var callId = FirstNonEmpty(
+            GetStringIgnoreCase(message, "call_id"),
+            GetStringIgnoreCase(message, "tool_call_id"),
+            sourceId);
+
+        var function = GetObjectIgnoreCase(message, "function");
+        var action = GetObjectIgnoreCase(message, "action");
+        var name = FirstNonEmpty(
+            GetStringIgnoreCase(message, "name"),
+            function?.GetString("name"),
+            action?.GetString("name"));
+        var arguments = FirstNonEmpty(
+            GetStringOrSerializedIgnoreCase(message, "arguments"),
+            GetStringOrSerializedIgnoreCase(message, "input"),
+            function is null ? null : GetStringOrSerializedIgnoreCase(function, "arguments"),
+            action is null ? null : GetStringOrSerializedIgnoreCase(action, "arguments"));
+        var normalizedArguments = string.IsNullOrWhiteSpace(arguments) ? "{}" : arguments!;
+        var wireId = BuildCustomToolCallWireId(sourceId, callId, name, normalizedArguments);
+
+        var normalized = new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("id", wireId)
+            .Add("input", normalizedArguments);
+        if (!string.IsNullOrWhiteSpace(callId)) {
+            normalized.Add("call_id", callId!.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(name)) {
+            normalized.Add("name", name!.Trim());
+        }
+
+        return normalized;
+    }
+
+    private static JsonObject NormalizeToolOutputInputItem(JsonObject message) {
+        var callId = FirstNonEmpty(
+            GetStringIgnoreCase(message, "call_id"),
+            GetStringIgnoreCase(message, "tool_call_id"),
+            GetStringIgnoreCase(message, "id"));
+        var output = FirstNonEmpty(
+            GetStringOrSerializedIgnoreCase(message, "output"),
+            GetStringOrSerializedIgnoreCase(message, "result"),
+            GetStringOrSerializedIgnoreCase(message, "content")) ?? string.Empty;
+
+        var normalized = new JsonObject()
+            .Add("type", "custom_tool_call_output")
+            .Add("output", output);
+        if (!string.IsNullOrWhiteSpace(callId)) {
+            normalized.Add("call_id", callId!.Trim());
+        }
+
+        return normalized;
+    }
+
+    private static string? ExtractToolReplayCallId(JsonObject message) {
+        return FirstNonEmpty(
+            GetStringIgnoreCase(message, "call_id"),
+            GetStringIgnoreCase(message, "tool_call_id"),
+            GetStringIgnoreCase(message, "id"));
+    }
+
+    private static string BuildCustomToolCallWireId(string? sourceId, string? callId, string? name, string arguments) {
+        var candidate = FirstNonEmpty(sourceId, callId, name);
+        if (!string.IsNullOrWhiteSpace(candidate)) {
+            var trimmed = candidate!.Trim();
+            if (trimmed.StartsWith("ctc", StringComparison.OrdinalIgnoreCase)) {
+                return trimmed;
+            }
+        }
+
+        var seed = string.IsNullOrWhiteSpace(candidate)
+            ? "call"
+            : candidate!.Trim();
+        var sb = new StringBuilder(seed.Length);
+        for (var i = 0; i < seed.Length; i++) {
+            var c = seed[i];
+            if (char.IsLetterOrDigit(c) || c == '_' || c == '-') {
+                sb.Append(c);
+            }
+        }
+
+        if (sb.Length == 0) {
+            sb.Append("call");
+        }
+
+        if (sb.Length > 48) {
+            sb.Length = 48;
+        }
+
+        var hash = Math.Abs((arguments ?? string.Empty).GetHashCode()).ToString("x");
+        return "ctc_" + sb + "_" + hash;
+    }
+
+    private static string? GetStringIgnoreCase(JsonObject source, string key) {
+        if (source is null || string.IsNullOrWhiteSpace(key)) {
+            return null;
+        }
+
+        foreach (var pair in source) {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                return pair.Value?.AsString();
+            }
+        }
+
+        return null;
+    }
+
+    private static JsonObject? GetObjectIgnoreCase(JsonObject source, string key) {
+        if (source is null || string.IsNullOrWhiteSpace(key)) {
+            return null;
+        }
+
+        foreach (var pair in source) {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                return pair.Value?.AsObject();
+            }
+        }
+
+        return null;
+    }
+
+    private static string? GetStringOrSerializedIgnoreCase(JsonObject source, string key) {
+        if (source is null || string.IsNullOrWhiteSpace(key)) {
+            return null;
+        }
+
+        foreach (var pair in source) {
+            if (!string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var asString = pair.Value?.AsString();
+            if (!string.IsNullOrWhiteSpace(asString)) {
+                return asString;
+            }
+
+            if (pair.Value is not null) {
+                return JsonLite.Serialize(pair.Value);
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values) {
+        if (values is null || values.Length == 0) {
+            return null;
+        }
+
+        for (var i = 0; i < values.Length; i++) {
+            var value = values[i];
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

@@ -9,10 +9,17 @@
   1) discover domain facts (`ad_domain_info` / `ad_search_facts`)
   2) locate the group object (`ad_search`)
   3) resolve members (`ad_group_members` or `ad_group_members_resolved`)
+- For AD "authoritative latest lastLogon" requests, if multiple DCs are known/discovered, query `lastLogon` per DC and return the max value with source DC.
+- When AD date/time attributes are returned as FILETIME ticks (for example `lastLogon`, `lastLogonTimestamp`, `pwdLastSet`, `accountExpires`, `badPasswordTime`), convert them to exact UTC ISO-8601 in the response.
+- When timestamps are requested, format each as strict UTC ISO-8601 with `T` and trailing `Z` (for example `2026-02-24T17:20:10.5177390Z`) and include the exact uppercase token `UTC` at least once.
+- If a query returns no matching evidence, still include queried time-window boundaries in strict ISO-8601 UTC (`T` + `Z`) so the response remains timestamp-explicit.
 - If a tool returns empty/invalid projection metadata, retry with a smaller projection and minimal required fields.
+- For optional projection arguments (`columns`, `sort_by`), use only supported fields. If unsure, omit projection arguments instead of risking `invalid_argument`.
+- For `eventlog_named_events_query`, use names from `eventlog_named_events_catalog`; if unsure of names, prefer `eventlog_live_query` with explicit `event_ids`.
 - Do not surface raw tool errors as final output before fallback attempts are exhausted.
 - If a fallback succeeds, present the recovered result directly and briefly note that an alternate retrieval path was used.
 - When follow-up is required, include what was tried and ask only for the minimal missing inputs needed to continue.
+- Do not use blocker-preface phrasing like "I can do that, but". Execute best-effort tool calls first, then report results or blockers.
 - Do not promise background execution ("running now", "I'll post when done") unless a tool call is actually executed in this same turn.
 - This session has no autonomous wake-up loop after a turn ends; use the in-turn tool budget first, and only then ask focused follow-up input.
 - If a prior turn failed, acknowledge that failure briefly and continue from it instead of restarting context from scratch.

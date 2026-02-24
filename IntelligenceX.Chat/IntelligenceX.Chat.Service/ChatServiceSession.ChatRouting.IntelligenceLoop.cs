@@ -102,7 +102,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var options = request.Options;
-        if (!(options?.PlanExecuteReviewLoop ?? true)) {
+        if (!(options?.PlanExecuteReviewLoop ?? false)) {
             return false;
         }
 
@@ -256,6 +256,14 @@ internal sealed partial class ChatServiceSession {
         if (draft.Contains(ProactiveFollowUpMarker, StringComparison.OrdinalIgnoreCase)
             || draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)
             || draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (LooksLikeMultilineFollowUpBlockerDraft(draft)
+            || LooksLikeExecutionAcknowledgeDraft(draft)
+            || LooksLikeStructuredScopeChoiceDraft(draft)) {
+            // Blocker/choice drafts should terminate cleanly instead of expanding
+            // into an additional proactive rewrite pass.
             return false;
         }
 

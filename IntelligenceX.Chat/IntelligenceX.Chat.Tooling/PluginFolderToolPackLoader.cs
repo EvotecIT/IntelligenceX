@@ -16,9 +16,11 @@ internal static class PluginFolderToolPackLoader {
     private const string TestAssemblyFileName = "IntelligenceX.Chat.Tests.dll";
     private const int SupportedSchemaVersion = 1;
     private const int PluginArchiveCacheMaxEntries = 128;
-    private static readonly TimeSpan PluginArchiveLockTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan PluginArchiveLockTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan PluginArchiveCleanupLockTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan PluginArchiveCacheMaxAge = TimeSpan.FromDays(30);
+    private static readonly TimeSpan PluginArchiveTrimInterval = TimeSpan.FromSeconds(30);
+    private static long _lastPluginArchiveTrimUtcTicks;
 
     internal static IReadOnlyList<PluginSearchRoot> ResolvePluginSearchRoots(ToolPackBootstrapOptions options) {
         if (options is null) {
@@ -177,7 +179,7 @@ internal static class PluginFolderToolPackLoader {
         try {
             var cacheRoot = ResolvePluginArchiveCacheRoot(options);
             Directory.CreateDirectory(cacheRoot);
-            TryTrimPluginArchiveCache(cacheRoot, onWarning);
+            TryTrimPluginArchiveCacheIfDue(cacheRoot, onWarning);
 
             var cacheKey = BuildPluginArchiveCacheKey(normalizedArchive);
             if (string.IsNullOrWhiteSpace(cacheKey)) {
@@ -242,6 +244,20 @@ internal static class PluginFolderToolPackLoader {
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return Path.Combine(localAppData, "IntelligenceX.Chat", "plugin-cache");
+    }
+
+    private static void TryTrimPluginArchiveCacheIfDue(string cacheRoot, Action<string>? onWarning) {
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var lastTicks = Interlocked.Read(ref _lastPluginArchiveTrimUtcTicks);
+        if (lastTicks > 0 && nowTicks - lastTicks < PluginArchiveTrimInterval.Ticks) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _lastPluginArchiveTrimUtcTicks, nowTicks, lastTicks) != lastTicks) {
+            return;
+        }
+
+        TryTrimPluginArchiveCache(cacheRoot, onWarning);
     }
 
     private static void TryTrimPluginArchiveCache(string cacheRoot, Action<string>? onWarning) {

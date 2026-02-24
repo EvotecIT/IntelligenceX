@@ -181,11 +181,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var request = new ChatRequest {
             RequestId = "req",
             Text = "Could you check events from AD0, AD1, and AD2 for the last 24 hours, list relevant failures, and summarize the top risks to fix first?",
-            Options = new ChatRequestOptions()
+            Options = new ChatRequestOptions {
+                PlanExecuteReviewLoop = true
+            }
         };
 
         var result = ChatServiceSession.ShouldBufferDraftDeltasForSmartReview(request);
         Assert.True(result);
+    }
+
+    [Fact]
+    public void SmartReviewDeltaBuffer_DisablesWhenPlanExecuteReviewLoopIsUnset() {
+        var request = new ChatRequest {
+            RequestId = "req",
+            Text = "Could you check events from AD0, AD1, and AD2 for the last 24 hours, list relevant failures, and summarize the top risks to fix first?",
+            Options = new ChatRequestOptions()
+        };
+
+        var result = ChatServiceSession.ShouldBufferDraftDeltasForSmartReview(request);
+        Assert.False(result);
     }
 
     [Fact]
@@ -254,6 +268,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData(true, false, false, "Findings summary without actions.", false)]
     [InlineData(true, true, true, "Findings summary without actions.", false)]
     [InlineData(true, true, false, "[Action]\nix:action:v1\nid: act_001\nreply: /act act_001", false)]
+    [InlineData(true, true, false, "I can continue once I get one minimal input:\n- time window\n- target DC list\n- then I will execute immediately", false)]
     public void ShouldAttemptProactiveFollowUpReview_RespectsToolActivityAndActionBlocks(
         bool proactiveModeEnabled,
         bool hasToolActivity,

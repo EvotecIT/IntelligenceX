@@ -19,6 +19,14 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
     private const int DefaultMaxDomainControllers = 200;
     private const int DefaultMaxErrors = 25;
     private const int MaxViewTop = 5000;
+    private static readonly string[] SupportedProjectionColumns = {
+        "server",
+        "fails",
+        "total",
+        "percentage_error",
+        "largest_delta",
+        "replication_error"
+    };
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_replication_summary",
@@ -90,8 +98,11 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
             cancellationToken);
 
         var anyTruncated = result.DetailsTruncated == true || result.ErrorsTruncated == true;
+        var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
+            arguments,
+            SupportedProjectionColumns);
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: shapedArguments,
             model: result,
             sourceRows: result.Summary,
             viewRowsPath: "summary_view",

@@ -225,7 +225,9 @@ public sealed partial class MainWindow : Window {
         }
         conversation.UpdatedUtc = DateTime.UtcNow;
         BindActiveTurnAssistantMessage(conversation);
-        SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
+        // Interim snapshots are draft-by-definition and should stay visually distinct
+        // from the finalized assistant response.
+        SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents: false);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             QueueTranscriptRender("assistant_interim_result");
         }

@@ -15,6 +15,15 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private static readonly IReadOnlyList<string> SupportedProjectionColumns = new[] {
+        "forest_name",
+        "domain_name",
+        "sam_account_name",
+        "last_logon",
+        "last_logon_timestamp",
+        "never_logged_on",
+        "days_since_last_logon"
+    };
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_admin_count_report",
@@ -113,8 +122,12 @@ public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Accounts: rows);
 
+        var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
+            arguments,
+            availableColumns: SupportedProjectionColumns);
+
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: shapedArguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "accounts_view",

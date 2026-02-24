@@ -23,6 +23,8 @@
     [switch] $OpenAINoStream,
     [switch] $OpenAIAllowInsecureHttp,
     [switch] $OpenAIAllowInsecureHttpNonLoopback,
+    [int] $TurnTimeoutSeconds = 0,
+    [int] $ToolTimeoutSeconds = 0,
     [string] $ScenarioFile,
     [string] $ScenarioOutput,
     [switch] $ScenarioContinueOnError,
@@ -122,6 +124,12 @@ if ($OpenAIAllowInsecureHttp) {
 }
 if ($OpenAIAllowInsecureHttpNonLoopback) {
     $runArgs += '--openai-allow-insecure-http-non-loopback'
+}
+if ($TurnTimeoutSeconds -gt 0) {
+    $runArgs += @('--turn-timeout-seconds', $TurnTimeoutSeconds.ToString())
+}
+if ($ToolTimeoutSeconds -gt 0) {
+    $runArgs += @('--tool-timeout-seconds', $ToolTimeoutSeconds.ToString())
 }
 if (-not [string]::IsNullOrWhiteSpace($ScenarioFile)) {
     $runArgs += @('--scenario-file', $ScenarioFile)

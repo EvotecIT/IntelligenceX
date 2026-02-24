@@ -1940,12 +1940,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void SupportsSyntheticHostReplayItems_DisablesSyntheticReplayForNativeTransport() {
+    public void SupportsSyntheticHostReplayItems_EnablesOnlyCompatibleHttpTransport() {
         var nativeResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.Native });
+        var appServerResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.AppServer });
         var compatibleResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.CompatibleHttp });
+        var copilotCliResult = SupportsSyntheticHostReplayItemsMethod.Invoke(null, new object?[] { OpenAITransportKind.CopilotCli });
 
         Assert.False(Assert.IsType<bool>(nativeResult));
+        Assert.False(Assert.IsType<bool>(appServerResult));
         Assert.True(Assert.IsType<bool>(compatibleResult));
+        Assert.False(Assert.IsType<bool>(copilotCliResult));
     }
 
     [Fact]
@@ -2005,6 +2009,110 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var second = Assert.IsType<JsonObject>(items[1].AsObject());
         Assert.Equal("custom_tool_call", first.GetString("type"));
         Assert.Equal("custom_tool_call_output", second.GetString("type"));
+    }
+
+    [Fact]
+    public void BuildHostReplayReviewInput_FallsBackToTextReplayWhenOutputCallIdsDoNotMatch() {
+        var call = new ToolCall(
+            callId: "host_pack_fallback_123",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "host_next_action_mismatch",
+                Output = "{\"ok\":true}",
+                Ok = true
+            }
+        };
+
+        var inputObj = BuildHostReplayReviewInputMethod.Invoke(
+            null,
+            new object?[] { call, outputs, true });
+
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+        Assert.Single(items);
+
+        var first = Assert.IsType<JsonObject>(items[0].AsObject());
+        Assert.Equal("text", first.GetString("type"));
+        Assert.Contains("ix:host-replay-review:v1", first.GetString("text"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveToolOutputCallId_UsesRawCallIdWhenMatched() {
+        var extracted = new List<ToolCall> {
+            new(
+                callId: "call_123",
+                name: "eventlog_live_query",
+                input: "{}",
+                arguments: null,
+                raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"))
+        };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_123"] = extracted[0]
+        };
+
+        var result = ResolveToolOutputCallIdMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, "call_123", 0 });
+
+        Assert.Equal("call_123", Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void ResolveToolOutputCallId_FallsBackToIndexedCallWhenRawCallIdIsMismatched() {
+        var first = new ToolCall(
+            callId: "call_123",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var second = new ToolCall(
+            callId: "call_456",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { first, second };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_123"] = first,
+            ["call_456"] = second
+        };
+
+        var result = ResolveToolOutputCallIdMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, "mismatch_call_id", 1 });
+
+        Assert.Equal("call_456", Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void ResolveToolOutputCallId_ReturnsEmptyWhenNoSafeFallbackExists() {
+        var first = new ToolCall(
+            callId: "call_123",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var second = new ToolCall(
+            callId: "call_456",
+            name: "eventlog_live_query",
+            input: "{}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { first, second };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_123"] = first,
+            ["call_456"] = second
+        };
+
+        var result = ResolveToolOutputCallIdMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, string.Empty, 99 });
+
+        Assert.Equal(string.Empty, Assert.IsType<string>(result));
     }
 
     [Fact]

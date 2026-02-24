@@ -147,12 +147,14 @@ public sealed partial class MainWindow : Window {
                 await DisposeClientAsync().ConfigureAwait(false);
                 if (await EnsureConnectedAsync(deferPostConnectMetadataSync: true).ConfigureAwait(false) && _client is { } retryClient) {
                     try {
+                        ResetStreamingTurnStateForRetry(turn);
                         await ExecuteChatTurnWithThreadRecoveryAsync(retryClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception retryEx) {
                         var resolvedRetryEx = retryEx;
                         if (await TryRecoverChatSlotByCancelingKickoffAsync(retryEx).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
                             try {
+                                ResetStreamingTurnStateForRetry(turn);
                                 await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn, cancellationToken).ConfigureAwait(false);
                                 return;
                             } catch (Exception kickoffRetryEx) {
@@ -184,6 +186,7 @@ public sealed partial class MainWindow : Window {
                 var resolvedEx = ex;
                 if (await TryRecoverChatSlotByCancelingKickoffAsync(ex).ConfigureAwait(false) && _client is { } kickoffFreedClient) {
                     try {
+                        ResetStreamingTurnStateForRetry(turn);
                         await ExecuteChatTurnWithThreadRecoveryAsync(kickoffFreedClient, turn, cancellationToken).ConfigureAwait(false);
                         return;
                     } catch (Exception kickoffRetryEx) {
@@ -257,6 +260,15 @@ public sealed partial class MainWindow : Window {
         return true;
     }
 
+    private void ResetStreamingTurnStateForRetry(ChatTurnContext turn) {
+        if (!_assistantStreamingState.HasReceivedDelta() && !HasActiveTurnInterimResult()) {
+            return;
+        }
+
+        _assistantStreamingState.Reset();
+        ResetActiveTurnAssistantVisuals(turn.ConversationId);
+    }
+
     private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn, CancellationToken cancellationToken) {
         var req = new ChatRequest {
             RequestId = turn.RequestId,
@@ -304,17 +316,24 @@ public sealed partial class MainWindow : Window {
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
         _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
-        var appendFinalAfterInterim = HasActiveTurnInterimResult()
+        var activeTurnReceivedDelta = _assistantStreamingState.HasReceivedDelta();
+        var activeTurnInterimResultSeen = HasActiveTurnInterimResult();
+        var appendFinalAfterInterim = activeTurnInterimResultSeen
                                       && ShouldAppendFinalAssistantAfterInterim(assistantText, latestAssistantText);
+        var appendFinalAfterStreamedDraft = ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta,
+            activeTurnInterimResultSeen,
+            assistantText,
+            latestAssistantText);
         if (ShouldPreserveStreamedAssistantDraftOnNoTextWarning(
-                _assistantStreamingState.HasReceivedDelta(),
+                activeTurnReceivedDelta,
                 assistantText,
                 latestAssistantText,
                 out var runtimeWarningNotice)) {
             conversation.Messages.Add(("System", runtimeWarningNotice, DateTime.Now, null));
-        } else if (appendFinalAfterInterim) {
+        } else if (appendFinalAfterInterim || appendFinalAfterStreamedDraft) {
             // Keep interim and final as separate assistant bubbles only when the final synthesis
-            // materially differs from the interim snapshot. This avoids duplicate bubble inflation.
+            // materially differs from the existing draft/interim snapshot. This avoids duplicate bubble inflation.
             AppendAssistantText(conversation, assistantText);
         } else {
             ReplaceLastAssistantText(conversation, assistantText);
@@ -577,6 +596,18 @@ public sealed partial class MainWindow : Window {
         }
 
         return true;
+    }
+
+    internal static bool ShouldAppendFinalAssistantAfterStreamedDraft(
+        bool activeTurnReceivedDelta,
+        bool activeTurnInterimResultSeen,
+        string? finalAssistantText,
+        string? streamedAssistantText) {
+        if (!activeTurnReceivedDelta || activeTurnInterimResultSeen) {
+            return false;
+        }
+
+        return ShouldAppendFinalAssistantAfterInterim(finalAssistantText, streamedAssistantText);
     }
 
     private static string NormalizeAssistantSnapshotForAppendDecision(string? text) {

@@ -179,7 +179,24 @@ internal static class EventLogNamedEventsHelper {
             map[NormalizeKey(enumName)] = value;
             map[NormalizeKey(ToSnakeCase(enumName))] = value;
         }
+
+        // Common alias variants produced by LLMs for Kerberos/authentication named events.
+        AddAlias(map, "ad_kerberos_authentication_ticket_requested", NamedEvents.KerberosTGTRequest);
+        AddAlias(map, "ad_kerberos_service_ticket_requested", NamedEvents.KerberosServiceTicket);
+        AddAlias(map, "ad_kerberos_pre_authentication_failed", NamedEvents.KerberosTicketFailure);
+        AddAlias(map, "ad_successful_account_logon", NamedEvents.ADUserLogon);
+        AddAlias(map, "ad_failed_logon", NamedEvents.ADUserLogonFailed);
+
         return map;
+    }
+
+    private static void AddAlias(IDictionary<string, NamedEvents> map, string alias, NamedEvents target) {
+        var normalized = NormalizeKey(alias);
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        map[normalized] = target;
     }
 
     private static IReadOnlyList<string> BuildKnownCategories() {

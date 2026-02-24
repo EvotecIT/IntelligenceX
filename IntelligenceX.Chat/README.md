@@ -42,6 +42,8 @@ Scenario file formats:
 - JSON object with `name` + `turns` (each turn can be a string or object with `user`/`name` and optional quality gates):
   - `assert_contains` (string or array)
   - `assert_not_contains` (string or array)
+  - `assert_matches_regex` (string or array; regex patterns that must match assistant output)
+  - `assert_no_questions` (boolean; fails when assistant output contains question markers such as `?`/`？`)
   - `min_tool_calls` (integer >= 0)
   - `min_tool_rounds` (integer >= 0)
   - `require_tools` (string or array; all listed tool names must be called; supports `*` and `?` wildcards)
@@ -65,12 +67,16 @@ Included AD scenario seeds:
 Batch run all built-in AD scenarios locally:
 
 ```powershell
-$scenarioDir = ".\IntelligenceX.Chat\scenarios"
-$outDir = ".\artifacts\chat-scenarios"
-Get-ChildItem $scenarioDir -Filter "ad-*-10-turn.json" | Sort-Object Name | ForEach-Object {
-  pwsh .\Build\Run-Chat.ps1 -ScenarioFile $_.FullName -ScenarioOutput $outDir
-}
+pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -Filter "ad-*-10-turn.json" `
+  -OutDir .\artifacts\chat-scenarios
 ```
+
+Optional flags:
+- `-NoBuild` to skip restore/build in repeated local runs.
+- `-StopOnFailure` to stop on first failed scenario.
+- `-ContinueOnError:$false` to fail a scenario immediately when a turn fails.
 
 Startup profiling (phase timing from `StartupLog`):
 

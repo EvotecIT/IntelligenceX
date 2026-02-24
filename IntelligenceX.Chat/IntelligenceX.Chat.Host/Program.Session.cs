@@ -412,6 +412,13 @@ internal static partial class Program {
 
                 If tools can satisfy this request, execute at least one relevant tool call now in this turn.
                 For read-only requests, infer missing inputs from prior tool outputs where possible and do not ask for confirmation before the first tool call.
+                For AD "authoritative latest lastLogon" requests, query lastLogon per discovered DC and report the max value with source DC.
+                When AD datetime fields are FILETIME ticks, convert and report exact UTC ISO timestamps using strict ISO-8601 with T and trailing Z (for example 2026-02-24T17:20:10.5177390Z) and include the exact uppercase token UTC at least once.
+                Include at least one timestamp matching regex \d{4}-\d{2}-\d{2}T\d{2}:\d{2} when timestamps are requested.
+                If no matching evidence is found, still include queried time-window boundaries as strict ISO-8601 UTC timestamps (T + Z).
+                Do not use blocker-preface phrasing like "I can do that, but"; execute best-effort tools first, then report results or exact blockers.
+                For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.
+                For eventlog_named_events_query, use names from eventlog_named_events_catalog; if uncertain, prefer eventlog_live_query with explicit event_ids.
                 If Event Log source input is missing, default machine_name to the first discovered/source DC from prior turns.
                 If tools still cannot satisfy this request after a best-effort tool attempt, state the exact blocker and the minimal missing input once.
                 """;

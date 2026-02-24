@@ -131,6 +131,8 @@ internal static partial class Program {
                                     || minToolRounds > 0
                                     || turn.RequireTools.Count > 0
                                     || turn.RequireAnyTools.Count > 0;
+        var requiresTimestampShape = turn.AssertContains.Any(static value => value.Contains("UTC", StringComparison.OrdinalIgnoreCase))
+                                     || turn.AssertMatchesRegex.Any(static value => value.Contains(@"\d{4}-\d{2}-\d{2}", StringComparison.Ordinal));
         var requiresEventLogTool = TurnRequiresToolPrefix(turn, "eventlog_");
         if (!requiresToolExecution) {
             return turn.User;
@@ -162,8 +164,22 @@ internal static partial class Program {
 
         sb.AppendLine("- Do not ask for permission/confirmation before the first required tool call.");
         sb.AppendLine("- Make at least one best-effort qualifying tool call in this turn, then summarize results.");
+        sb.AppendLine("- Required tool-call constraints are strict for this turn: execute at least one qualifying required tool before final response.");
+        sb.AppendLine("- *_pack_info tools are orientation-only and do not satisfy required tool-call assertions unless explicitly listed.");
         sb.AppendLine("- Infer missing read-only inputs from prior tool outputs when reasonably available.");
         sb.AppendLine("- If time window is missing and needed for read-only evidence correlation, default to last_24_hours_utc.");
+        sb.AppendLine("- Do not use blocker-preface phrasing like \"I can do that, but\"; execute best-effort tools first.");
+        sb.AppendLine("- When timestamps are requested, use strict ISO-8601 UTC with T and trailing Z (for example 2026-02-24T17:20:10Z), and include the exact uppercase token 'UTC' at least once.");
+        sb.AppendLine("- For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.");
+        sb.AppendLine("- For eventlog_named_events_query, use names from eventlog_named_events_catalog; if uncertain, prefer eventlog_live_query with explicit event_ids.");
+        if (turn.AssertNoQuestions) {
+            sb.AppendLine("- Do not ask any follow-up questions in the final response for this turn.");
+        }
+        if (requiresTimestampShape) {
+            sb.AppendLine("- Hard requirement: final response must include at least one timestamp matching regex \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2} and include 'UTC'.");
+            sb.AppendLine("- If evidence rows are empty, include the queried UTC window boundaries in strict ISO-8601 (T + Z) so timestamp shape is still present.");
+            sb.AppendLine("- If the first query returns no matching evidence, automatically broaden lookback once before finalizing.");
+        }
         if (requiresEventLogTool) {
             sb.AppendLine("- If Event Log machine_name is missing, default to the first discovered/source DC from prior turns.");
             sb.AppendLine("- eventlog_pack_info alone is insufficient; execute at least one eventlog_*query* or eventlog_*stats* call in this turn.");
@@ -276,6 +292,8 @@ internal static partial class Program {
                     user: userText,
                     assertContains: Array.Empty<string>(),
                     assertNotContains: Array.Empty<string>(),
+                    assertMatchesRegex: Array.Empty<string>(),
+                    assertNoQuestions: false,
                     minToolCalls: null,
                     minToolRounds: null,
                     requireTools: Array.Empty<string>(),
@@ -302,6 +320,8 @@ internal static partial class Program {
                 : null;
             var assertContains = ReadScenarioAssertContains(element);
             var assertNotContains = ReadScenarioAssertNotContains(element);
+            var assertMatchesRegex = ReadScenarioStringList(element, "assert_matches_regex");
+            var assertNoQuestions = ReadScenarioOptionalBoolean(element, "assert_no_questions", defaultValue: false);
             var minToolCalls = ReadScenarioOptionalNonNegativeInt(element, "min_tool_calls");
             var minToolRounds = ReadScenarioOptionalNonNegativeInt(element, "min_tool_rounds");
             var requireTools = ReadScenarioStringList(element, "require_tools");
@@ -316,6 +336,8 @@ internal static partial class Program {
                 user.Trim(),
                 assertContains,
                 assertNotContains,
+                assertMatchesRegex,
+                assertNoQuestions,
                 minToolCalls,
                 minToolRounds,
                 requireTools,
@@ -352,6 +374,8 @@ internal static partial class Program {
                 user: candidate,
                 assertContains: Array.Empty<string>(),
                 assertNotContains: Array.Empty<string>(),
+                assertMatchesRegex: Array.Empty<string>(),
+                assertNoQuestions: false,
                 minToolCalls: null,
                 minToolRounds: null,
                 requireTools: Array.Empty<string>(),
@@ -479,6 +503,22 @@ internal static partial class Program {
             }
 
             failures.Add($"Expected assistant output to not contain '{disallowed}'.");
+        }
+
+        foreach (var pattern in turn.AssertMatchesRegex) {
+            try {
+                if (Regex.IsMatch(assistantText, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) {
+                    continue;
+                }
+
+                failures.Add($"Expected assistant output to match regex '{pattern}'.");
+            } catch (ArgumentException ex) {
+                failures.Add($"Invalid regex in assert_matches_regex '{pattern}': {ex.Message}");
+            }
+        }
+
+        if (turn.AssertNoQuestions && ContainsQuestionSignal(assistantText)) {
+            failures.Add("Expected assistant output to not contain question markers.");
         }
 
         var toolCallsCount = turnResult?.Metrics.ToolCallsCount ?? 0;
@@ -616,6 +656,14 @@ internal static partial class Program {
         }
 
         return false;
+    }
+
+    private static bool ContainsQuestionSignal(string text) {
+        var value = text ?? string.Empty;
+        return value.IndexOf('?', StringComparison.Ordinal) >= 0
+               || value.IndexOf('？', StringComparison.Ordinal) >= 0
+               || value.IndexOf('¿', StringComparison.Ordinal) >= 0
+               || value.IndexOf('؟', StringComparison.Ordinal) >= 0;
     }
 
     private static (int ErrorCount, HashSet<string> ErrorCodes) SummarizeToolOutputErrors(IReadOnlyList<ToolOutput> toolOutputs) {
@@ -823,6 +871,8 @@ internal static partial class Program {
             string user,
             IReadOnlyList<string> assertContains,
             IReadOnlyList<string> assertNotContains,
+            IReadOnlyList<string> assertMatchesRegex,
+            bool assertNoQuestions,
             int? minToolCalls,
             int? minToolRounds,
             IReadOnlyList<string> requireTools,
@@ -836,6 +886,8 @@ internal static partial class Program {
             User = user ?? string.Empty;
             AssertContains = assertContains ?? Array.Empty<string>();
             AssertNotContains = assertNotContains ?? Array.Empty<string>();
+            AssertMatchesRegex = assertMatchesRegex ?? Array.Empty<string>();
+            AssertNoQuestions = assertNoQuestions;
             MinToolCalls = minToolCalls;
             MinToolRounds = minToolRounds;
             RequireTools = requireTools ?? Array.Empty<string>();
@@ -851,6 +903,8 @@ internal static partial class Program {
         public string User { get; }
         public IReadOnlyList<string> AssertContains { get; }
         public IReadOnlyList<string> AssertNotContains { get; }
+        public IReadOnlyList<string> AssertMatchesRegex { get; }
+        public bool AssertNoQuestions { get; }
         public int? MinToolCalls { get; }
         public int? MinToolRounds { get; }
         public IReadOnlyList<string> RequireTools { get; }
