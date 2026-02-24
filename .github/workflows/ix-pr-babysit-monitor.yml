@@ -81,52 +81,19 @@ jobs:
       - name: Run observe-mode PR watch monitor engine
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          PR_SPEC="${{ github.event.inputs.pr }}"
-          MAX_PRS="${{ github.event.inputs.max_prs }}"
-          MAX_FLAKY_RETRIES="${{ github.event.inputs.max_flaky_retries }}"
-          INCLUDE_DRAFTS="${{ github.event.inputs.include_drafts }}"
-          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
-          SOURCE_TAG="${{ github.event_name }}"
-          EVENT_ACTION="${{ github.event.action }}"
-
-          if [ -z "${MAX_PRS}" ]; then MAX_PRS="100"; fi
-          if [ -z "${MAX_FLAKY_RETRIES}" ]; then MAX_FLAKY_RETRIES="3"; fi
-          if [ -z "${INCLUDE_DRAFTS}" ]; then INCLUDE_DRAFTS="false"; fi
-          if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
-
-          if [ -z "${PR_SPEC}" ]; then
-            EVENT_PR_NUMBER="${{ github.event.pull_request.number }}"
-            if [ -n "${EVENT_PR_NUMBER}" ]; then
-              PR_SPEC="${EVENT_PR_NUMBER}"
-            fi
-          fi
-
-          if [ -n "${EVENT_ACTION}" ]; then
-            SOURCE_TAG="${SOURCE_TAG}:${EVENT_ACTION}"
-          fi
-
-          ARGS=(
-            "todo" "pr-watch-monitor"
-            "--repo" "${{ github.repository }}"
-            "--max-prs" "${MAX_PRS}"
-            "--max-flaky-retries" "${MAX_FLAKY_RETRIES}"
-            "--include-drafts" "${INCLUDE_DRAFTS}"
-            "--approved-bots" "${APPROVED_BOTS}"
-            "--source" "${SOURCE_TAG}"
-            "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            "--snapshot-dir" "${PR_WATCH_SNAPSHOT_DIR}"
-            "--rollup-path" "${PR_WATCH_ROLLUP_PATH}"
-            "--summary-path" "${PR_WATCH_SUMMARY_PATH}"
-          )
-          if [ -n "${PR_SPEC}" ]; then
-            ARGS+=("--pr" "${PR_SPEC}")
-          fi
-
-          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll "${ARGS[@]}"
+        run: >
+          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll
+          todo pr-watch-monitor
+          --repo "${{ github.repository }}"
+          --pr "${{ github.event.inputs.pr }}"
+          --max-prs "${{ github.event.inputs.max_prs }}"
+          --max-flaky-retries "${{ github.event.inputs.max_flaky_retries }}"
+          --include-drafts "${{ github.event.inputs.include_drafts }}"
+          --approved-bots "${{ github.event.inputs.approved_bots }}"
+          --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --snapshot-dir "${PR_WATCH_SNAPSHOT_DIR}"
+          --rollup-path "${PR_WATCH_ROLLUP_PATH}"
+          --summary-path "${PR_WATCH_SUMMARY_PATH}"
 
       - name: Upload pr-watch artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
