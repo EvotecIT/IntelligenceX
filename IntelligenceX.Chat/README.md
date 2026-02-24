@@ -53,6 +53,12 @@ Scenario file formats:
   - `assert_tool_output_not_contains` (string or array; disallowed content in tool output payloads)
   - `assert_no_tool_errors` (boolean; when true, fails turn if any tool output envelope has `ok=false`)
   - `forbid_tool_error_codes` (string or array; disallow specific tool `error_code` values; supports `*` and `?` wildcards)
+  - `assert_clean_completion` (boolean; default `true`; fails when assistant output includes partial/transport-failure markers)
+  - `assert_tool_call_output_pairing` (boolean; defaults to `true` for tool-contract turns; enforces call/output `call_id` pairing integrity)
+  - `assert_no_duplicate_tool_call_ids` (boolean; defaults to `true` for tool-contract turns)
+  - `assert_no_duplicate_tool_output_call_ids` (boolean; defaults to `true` for tool-contract turns)
+  - `max_no_tool_execution_retries` (integer >= 0; defaults to `0` for tool-contract turns)
+  - `max_duplicate_tool_call_signatures` (integer >= 0; defaults to `1` for tool-contract turns)
 - Plain text where each non-empty line is a user turn (`#` and `//` lines are ignored).
 
 The host writes a markdown run report under `artifacts/chat-scenarios` by default (or your `-ScenarioOutput` path).

@@ -31,7 +31,13 @@ public sealed class HostScenarioParsingTests {
       "assert_tool_output_contains": ["6008", "Kernel-Power"],
       "assert_tool_output_not_contains": ["schema_validation_failed"],
       "assert_no_tool_errors": true,
-      "forbid_tool_error_codes": ["invalid_argument", "query_*"]
+      "forbid_tool_error_codes": ["invalid_argument", "query_*"],
+      "assert_clean_completion": true,
+      "assert_tool_call_output_pairing": true,
+      "assert_no_duplicate_tool_call_ids": true,
+      "assert_no_duplicate_tool_output_call_ids": true,
+      "max_no_tool_execution_retries": 0,
+      "max_duplicate_tool_call_signatures": 1
     },
     "Check peer DCs"
   ]
@@ -57,6 +63,12 @@ public sealed class HostScenarioParsingTests {
         Assert.Single(ReadStringListProperty(turns[0], "AssertToolOutputNotContains"));
         Assert.True(ReadBooleanProperty(turns[0], "AssertNoToolErrors"));
         Assert.Equal(2, ReadStringListProperty(turns[0], "ForbidToolErrorCodes").Count);
+        Assert.True(ReadBooleanProperty(turns[0], "AssertCleanCompletion"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertToolCallOutputPairing"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertNoDuplicateToolCallIds"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertNoDuplicateToolOutputCallIds"));
+        Assert.Equal(0, ReadNullableIntProperty(turns[0], "MaxNoToolExecutionRetries"));
+        Assert.Equal(1, ReadNullableIntProperty(turns[0], "MaxDuplicateToolCallSignatures"));
         Assert.Equal("Check peer DCs", ReadStringProperty(turns[1], "User"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertContains"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertNotContains"));
@@ -71,6 +83,12 @@ public sealed class HostScenarioParsingTests {
         Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputNotContains"));
         Assert.False(ReadBooleanProperty(turns[1], "AssertNoToolErrors"));
         Assert.Empty(ReadStringListProperty(turns[1], "ForbidToolErrorCodes"));
+        Assert.True(ReadBooleanProperty(turns[1], "AssertCleanCompletion"));
+        Assert.False(ReadBooleanProperty(turns[1], "AssertToolCallOutputPairing"));
+        Assert.False(ReadBooleanProperty(turns[1], "AssertNoDuplicateToolCallIds"));
+        Assert.False(ReadBooleanProperty(turns[1], "AssertNoDuplicateToolOutputCallIds"));
+        Assert.Null(ReadNullableIntProperty(turns[1], "MaxNoToolExecutionRetries"));
+        Assert.Null(ReadNullableIntProperty(turns[1], "MaxDuplicateToolCallSignatures"));
     }
 
     [Fact]
@@ -163,6 +181,32 @@ Check AD0 reboot
         Assert.Contains("first discovered/source DC", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_pack_info alone is insufficient", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseChatScenarioDefinition_ToolContractTurn_AppliesStrictDefaultsWhenFieldsAreOmitted() {
+        const string json = """
+{
+  "name": "strict-defaults",
+  "turns": [
+    {
+      "name": "Strict Turn",
+      "user": "Check AD0 reboot evidence",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"]
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "strict-defaults");
+        var turn = ReadTurns(scenario).Single();
+
+        Assert.True(ReadBooleanProperty(turn, "AssertCleanCompletion"));
+        Assert.True(ReadBooleanProperty(turn, "AssertToolCallOutputPairing"));
+        Assert.True(ReadBooleanProperty(turn, "AssertNoDuplicateToolCallIds"));
+        Assert.True(ReadBooleanProperty(turn, "AssertNoDuplicateToolOutputCallIds"));
+        Assert.Equal(0, ReadNullableIntProperty(turn, "MaxNoToolExecutionRetries"));
+        Assert.Equal(1, ReadNullableIntProperty(turn, "MaxDuplicateToolCallSignatures"));
     }
 
     private static object InvokeParseScenarioDefinition(string raw, string fallbackName) {

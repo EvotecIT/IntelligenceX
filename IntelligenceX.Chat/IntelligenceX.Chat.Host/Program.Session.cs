@@ -78,7 +78,8 @@ internal static partial class Program {
                     ttftMs: ttftMs,
                     usage: result.Usage,
                     toolCallsCount: result.ToolCalls.Count,
-                    toolRounds: result.ToolRounds);
+                    toolRounds: result.ToolRounds,
+                    noToolExecutionRetries: result.NoToolExecutionRetries);
                 return new ReplTurnMetricsResult(result, metrics);
             } finally {
                 _client.DeltaReceived -= OnDelta;
@@ -144,7 +145,7 @@ internal static partial class Program {
                     }
 
                     _previousResponseId = TryGetResponseId(turn) ?? _previousResponseId;
-                    return new ReplTurnResult(finalText, calls, outputs, turn.Usage, toolRounds);
+                    return new ReplTurnResult(finalText, calls, outputs, turn.Usage, toolRounds, noToolExecutionRetryCount);
                 }
 
                 toolRounds++;
@@ -601,12 +602,13 @@ internal static partial class Program {
 
     private sealed class ReplTurnResult {
         public ReplTurnResult(string text, IReadOnlyList<ToolCall> toolCalls, IReadOnlyList<ToolOutput> toolOutputs,
-            TurnUsage? usage = null, int toolRounds = 0) {
+            TurnUsage? usage = null, int toolRounds = 0, int noToolExecutionRetries = 0) {
             Text = text ?? string.Empty;
             ToolCalls = toolCalls ?? Array.Empty<ToolCall>();
             ToolOutputs = toolOutputs ?? Array.Empty<ToolOutput>();
             Usage = usage;
             ToolRounds = Math.Max(0, toolRounds);
+            NoToolExecutionRetries = Math.Max(0, noToolExecutionRetries);
         }
 
         public string Text { get; }
@@ -614,11 +616,12 @@ internal static partial class Program {
         public IReadOnlyList<ToolOutput> ToolOutputs { get; }
         public TurnUsage? Usage { get; }
         public int ToolRounds { get; }
+        public int NoToolExecutionRetries { get; }
     }
 
     private sealed class ReplTurnMetrics {
         public ReplTurnMetrics(DateTime startedAtUtc, DateTime? firstDeltaAtUtc, DateTime completedAtUtc, long durationMs, long? ttftMs,
-            TurnUsage? usage, int toolCallsCount, int toolRounds) {
+            TurnUsage? usage, int toolCallsCount, int toolRounds, int noToolExecutionRetries) {
             StartedAtUtc = startedAtUtc;
             FirstDeltaAtUtc = firstDeltaAtUtc;
             CompletedAtUtc = completedAtUtc;
@@ -627,6 +630,7 @@ internal static partial class Program {
             Usage = usage;
             ToolCallsCount = Math.Max(0, toolCallsCount);
             ToolRounds = Math.Max(0, toolRounds);
+            NoToolExecutionRetries = Math.Max(0, noToolExecutionRetries);
         }
 
         public DateTime StartedAtUtc { get; }
@@ -637,6 +641,7 @@ internal static partial class Program {
         public TurnUsage? Usage { get; }
         public int ToolCallsCount { get; }
         public int ToolRounds { get; }
+        public int NoToolExecutionRetries { get; }
     }
 
     private sealed class ReplTurnMetricsResult {
