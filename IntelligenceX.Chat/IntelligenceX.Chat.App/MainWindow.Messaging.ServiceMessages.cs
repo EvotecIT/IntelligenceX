@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -89,6 +90,7 @@ public sealed partial class MainWindow : Window {
                     }
 
                     MarkTurnStatusStage(status);
+                    var assistantStatusSignalChanged = ApplyActiveTurnStatusSignal(requestConversation, status.Status);
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
                     var timelineChanged = AppendActivityTimeline(status, activityText ?? string.Empty);
@@ -105,7 +107,7 @@ public sealed partial class MainWindow : Window {
                     if (timelineChanged) {
                         RequestServiceDrivenSessionPublish();
                     }
-                    if (assistantTimelineChanged
+                    if ((assistantTimelineChanged || assistantStatusSignalChanged)
                         && string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
                         QueueTranscriptRender("chat_status_timeline");
                     }
@@ -194,6 +196,9 @@ public sealed partial class MainWindow : Window {
         if (delta.Length == 0) {
             return;
         }
+        if (!TryAcceptActiveTurnDraftMutation(conversation)) {
+            return;
+        }
 
         var normalizedPreview = _assistantStreamingState.AppendDeltaAndNormalizePreview(
             delta,
@@ -203,6 +208,7 @@ public sealed partial class MainWindow : Window {
             normalizedPreview);
         conversation.UpdatedUtc = DateTime.UtcNow;
         BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.DraftThinking);
         SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents);
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             QueueTranscriptRender(renderReason);
@@ -211,7 +217,7 @@ public sealed partial class MainWindow : Window {
 
     private void ApplyInterimAssistantResult(ConversationRuntime conversation, string? text) {
         var interimText = (text ?? string.Empty).Trim();
-        if (interimText.Length == 0 || !TryMarkActiveTurnInterimResult(interimText)) {
+        if (interimText.Length == 0 || !TryAcceptActiveTurnDraftMutation(conversation) || !TryMarkActiveTurnInterimResult(interimText)) {
             return;
         }
 
@@ -225,6 +231,7 @@ public sealed partial class MainWindow : Window {
         }
         conversation.UpdatedUtc = DateTime.UtcNow;
         BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.DraftThinking);
         // Interim snapshots are draft-by-definition and should stay visually distinct
         // from the finalized assistant response.
         SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents: false);

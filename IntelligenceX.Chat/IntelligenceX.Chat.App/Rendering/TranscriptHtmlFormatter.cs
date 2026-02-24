@@ -15,6 +15,7 @@ namespace IntelligenceX.Chat.App.Rendering;
 internal static class TranscriptHtmlFormatter {
     private const int MaxAssistantTurnTraceEntries = 8;
     private const string AssistantDraftBadgeText = "Draft/Thinking";
+    private const string AssistantToolBadgeText = "Tool Activity";
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
@@ -95,8 +96,15 @@ internal static class TranscriptHtmlFormatter {
             var isAssistantDraft = decoration is not null
                                    && decoration.IsProvisional
                                    && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase);
+            var assistantChannel = decoration?.Channel ?? AssistantBubbleChannelKind.Final;
+            if (isAssistantDraft && assistantChannel == AssistantBubbleChannelKind.Final) {
+                assistantChannel = AssistantBubbleChannelKind.DraftThinking;
+            }
+            var isAssistantToolActivity = assistantChannel == AssistantBubbleChannelKind.ToolActivity
+                                          && string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase);
             var hideContinuationMeta = !string.Equals(role.RoleClass, "system", StringComparison.Ordinal)
-                                       && !isAssistantDraft;
+                                       && !isAssistantDraft
+                                       && !isAssistantToolActivity;
             var isContinuation = hideContinuationMeta
                 && string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
             if (!showAssistantDraftBubbles && isAssistantDraft) {
@@ -110,6 +118,9 @@ internal static class TranscriptHtmlFormatter {
             if (isAssistantDraft) {
                 bubbleClass += " bubble-provisional";
             }
+            if (isAssistantToolActivity) {
+                bubbleClass += " bubble-tool-activity";
+            }
             if (TryRenderOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
                 bodyHtml = calloutHtml;
                 bubbleClass = "bubble bubble-callout";
@@ -121,6 +132,9 @@ internal static class TranscriptHtmlFormatter {
             html.Append("<div class='msg-row ").Append(role.RoleClass);
             if (isAssistantDraft) {
                 html.Append(" assistant-draft");
+            }
+            if (isAssistantToolActivity) {
+                html.Append(" assistant-tool-activity");
             }
             if (isContinuation) {
                 html.Append(" cont");
@@ -135,6 +149,8 @@ internal static class TranscriptHtmlFormatter {
             html.Append("'>").Append(encoder.Encode(role.DisplayName)).Append(" &middot; ").Append(encoder.Encode(time));
             if (isAssistantDraft) {
                 html.Append(" <span class='assistant-draft-meta-pill'>").Append(encoder.Encode(AssistantDraftBadgeText)).Append("</span>");
+            } else if (isAssistantToolActivity) {
+                html.Append(" <span class='assistant-tool-meta-pill'>").Append(encoder.Encode(AssistantToolBadgeText)).Append("</span>");
             }
             html.Append("</div>")
                 .Append("<div class='").Append(bubbleClass).Append("'>").Append(bodyHtml).Append("</div>");
@@ -173,14 +189,25 @@ internal static class TranscriptHtmlFormatter {
         }
 
         var encoder = HtmlEncoder.Default;
-        var summaryLabel = decoration.IsProvisional ? "Draft trace" : hasTimeline ? "Turn trace" : "Live stream";
+        var channel = decoration.Channel;
+        if (decoration.IsProvisional && channel == AssistantBubbleChannelKind.Final) {
+            channel = AssistantBubbleChannelKind.DraftThinking;
+        }
+        var summaryLabel = channel switch {
+            AssistantBubbleChannelKind.DraftThinking => "Draft trace",
+            AssistantBubbleChannelKind.ToolActivity => "Tool trace",
+            _ => hasTimeline ? "Turn trace" : "Live stream"
+        };
         var countLabel = hasTimeline ? timeline.Count.ToString(CultureInfo.InvariantCulture) : string.Empty;
-        var detailsOpen = decoration.IsProvisional ? " open" : string.Empty;
+        var detailsOpen = channel is AssistantBubbleChannelKind.DraftThinking or AssistantBubbleChannelKind.ToolActivity
+            ? " open"
+            : string.Empty;
         var sb = new StringBuilder();
         sb.Append("<details class='assistant-turn-trace'").Append(detailsOpen).Append(">")
             .Append("<summary class='assistant-turn-trace-summary'>");
-        if (decoration.IsProvisional) {
-            sb.Append("<span class='assistant-turn-live-pill'>Live</span>");
+        if (channel is AssistantBubbleChannelKind.DraftThinking or AssistantBubbleChannelKind.ToolActivity) {
+            var liveLabel = channel == AssistantBubbleChannelKind.ToolActivity ? "Tool" : "Live";
+            sb.Append("<span class='assistant-turn-live-pill'>").Append(encoder.Encode(liveLabel)).Append("</span>");
         }
         sb.Append("<span class='assistant-turn-trace-title'>").Append(encoder.Encode(summaryLabel)).Append("</span>");
         if (countLabel.Length > 0) {

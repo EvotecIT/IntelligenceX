@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI.Xaml;
 
@@ -282,6 +283,10 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyChatResultAsync(ChatTurnContext turn, ChatResultMessage result) {
+        if (!TryFinalizeActiveTurnAssistantState(turn.Conversation, succeeded: true)) {
+            return;
+        }
+
         var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
         if (completion is not null) {
             RegisterTurnSuccessReliability(completion);
@@ -339,6 +344,7 @@ public sealed partial class MainWindow : Window {
             ReplaceLastAssistantText(conversation, assistantText);
         }
         BindActiveTurnAssistantMessage(conversation);
+        SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.Final);
         SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
         ApplyFinalAssistantTurnTimeline(conversation, result.TurnTimelineEvents);
         _assistantStreamingState.ClearReceivedDelta();
@@ -356,6 +362,10 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
+        if (!TryFinalizeActiveTurnAssistantState(turn.Conversation, succeeded: false)) {
+            return;
+        }
+
         var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
         if (completion is not null) {
             RegisterTurnFailureReliability(completion, outcome);
@@ -384,6 +394,7 @@ public sealed partial class MainWindow : Window {
             ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
         }
         BindActiveTurnAssistantMessage(turn.Conversation);
+        SetActiveTurnAssistantChannel(turn.Conversation, AssistantBubbleChannelKind.Final);
         SetActiveTurnAssistantProvisional(turn.Conversation, provisional: false, preferProvisionalEvents: false);
 
         turn.Conversation.UpdatedUtc = DateTime.UtcNow;
