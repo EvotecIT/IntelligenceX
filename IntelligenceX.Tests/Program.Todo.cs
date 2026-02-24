@@ -27,6 +27,9 @@ internal static partial class Program {
             AssertContainsText(output, "project-view-checklist", "todo help includes project view checklist command");
             AssertContainsText(output, "project-view-apply", "todo help includes project view apply command");
             AssertContainsText(output, "pr-watch", "todo help includes pr-watch command");
+            AssertContainsText(output, "pr-watch-monitor", "todo help includes pr-watch-monitor command");
+            AssertContainsText(output, "pr-watch-assist-retry", "todo help includes pr-watch-assist-retry command");
+            AssertContainsText(output, "pr-watch-consolidate", "todo help includes pr-watch-consolidate command");
         } finally {
             Console.SetOut(originalOut);
             Console.SetError(originalError);

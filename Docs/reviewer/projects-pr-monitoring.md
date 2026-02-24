@@ -87,6 +87,7 @@ Observe-mode babysitter automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-monitor.yml`
 - Schedule: hourly observe-mode sweep
+- Engine command: `intelligencex todo pr-watch-monitor`
 - Manual targeted run: `workflow_dispatch` with optional `pr` and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
 - Outputs: per-PR snapshots + rollup summary + audit log (`ix-pr-watch-audit.jsonl`) in `artifacts/pr-watch/`
 
@@ -94,6 +95,7 @@ Guarded retry assist automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-assist-retry.yml`
 - Trigger: manual `workflow_dispatch` only (single PR target)
+- Engine command: `intelligencex todo pr-watch-assist-retry`
 - Safety: requires explicit confirmation token `RETRY_CHECKS`
 - Scope: retries failed checks only when `pr-watch` plans an eligible `retry_failed_checks` action (dedupe + cooldown aware)
 - Audit: emits execution outcomes (`success`/`skipped`/`failed`) into `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
@@ -102,30 +104,39 @@ Nightly consolidation automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-nightly-consolidation.yml`
 - Schedule: daily consolidation sweep (plus `workflow_dispatch` and reusable `workflow_call`)
-- Inputs: `max_prs`, `stale_days`, `include_drafts`, `approved_bots`
+- Engine command: `intelligencex todo pr-watch-consolidate`
+- Inputs: `max_prs`, `stale_days`, `include_drafts`, `approved_bots`, `source`
+- Optional tracker issue inputs: `publish_tracking_issue`, `tracker_issue_title`, `tracker_issue_labels`
 - Outputs:
   - rollup JSON: `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`
   - markdown summary: `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`
+  - metrics JSON: `artifacts/pr-watch/ix-pr-watch-nightly-metrics.json`
+  - metrics history JSON: `artifacts/pr-watch/ix-pr-watch-nightly-metrics-history.json`
+  - tracker issue body markdown: `artifacts/pr-watch/ix-pr-watch-nightly-tracker.md`
 - Consolidation buckets include:
   - stale infra-like blockers,
   - review-required/stuck PRs,
   - retry-budget-exhausted PRs,
   - no-progress PRs grouped by age/churn class.
+- Tracker issue behavior:
+  - source-scoped upsert using marker `<!-- intelligencex:pr-watch-rollup-tracker:<source> -->`,
+  - auto-enabled for scheduled/reusable runs, opt-in for manual dispatch.
 
 Weekly governance automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-weekly-governance.yml`
 - Schedule: weekly consolidation sweep (Monday)
 - Implementation: calls the nightly consolidation workflow via `workflow_call` with weekly profile defaults (`max_prs=300`, `stale_days=14`, `source=weekly-governance`)
-- Outputs: same artifact schema as nightly consolidation for comparable trend analysis
+- Outputs: same rollup/summary/metrics schema as nightly consolidation for comparable trend analysis
+- Tracker issue: enabled by default (`publish_tracking_issue=true`) for weekly governance runs
 
 ### Cadence matrix
 
 | Cadence | Workflow | Phase | Purpose | Expected maintainer action |
 | --- | --- | --- | --- | --- |
 | Hourly | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Fast detection of CI/review/mergeability drift on open PRs | Triage fresh blockers and decide whether to run assist retry on specific PRs |
-| Daily | `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` | `observe` | Portfolio-level no-progress and stale-blocker rollup | Prioritize the next-day unblock queue using bucket summaries |
-| Weekly | `.github/workflows/ix-pr-babysit-weekly-governance.yml` | `observe` | Wider-window governance snapshot (older stalls/churn classes) | Review systemic patterns, update runbooks/SLO targets, and assign owners for repeated blockers |
+| Daily | `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` | `observe` | Portfolio-level no-progress and stale-blocker rollup | Prioritize next-day unblock queue, review metrics deltas, and maintain source tracker issue |
+| Weekly | `.github/workflows/ix-pr-babysit-weekly-governance.yml` | `observe` | Wider-window governance snapshot (older stalls/churn classes) | Review systemic patterns, validate stale/no-progress trend direction, and adjust operational ownership |
 
 This cadence keeps mutation guarded and targeted:
 

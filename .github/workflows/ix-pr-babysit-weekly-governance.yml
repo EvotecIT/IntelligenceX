@@ -8,7 +8,7 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: read
+  issues: write
   pull-requests: read
 
 jobs:
@@ -20,4 +20,5 @@ jobs:
       include_drafts: false
       approved_bots: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
       source: "weekly-governance"
+      publish_tracking_issue: true
     secrets: inherit
