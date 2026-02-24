@@ -1,0 +1,69 @@
+{
+  "name": "ad-cross-dc-followthrough-10-turn",
+  "tags": ["ad", "cross-dc", "continuation", "eventlog", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover DC scope",
+      "user": "Discover domain controllers in scope for this run and list which hosts are reachable right now.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Baseline on AD0 or first discovered DC",
+      "user": "Start with AD0 if present, otherwise use the first discovered DC. Find recent reboot evidence and return exact UTC markers.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Continue across all other DCs",
+      "user": "Now continue and run the same check for all other discovered DCs in this turn. Do not stop after the first host.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC matrix",
+      "user": "Return a side-by-side per-DC matrix showing evidence present/missing, earliest and latest UTC, and confidence.",
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Fallback path for unreachable DCs",
+      "user": "If any DC is unreachable, explain exact blocker and continue with remaining DCs instead of stopping."
+    },
+    {
+      "name": "Replication context",
+      "user": "Correlate reboot spread with replication or topology health signals when available.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_*diagnostics*", "ad_monitoring_probe_*", "eventlog_*query*"]
+    },
+    {
+      "name": "Root cause classes",
+      "user": "Classify likely root cause families with confidence and cite strongest evidence for each."
+    },
+    {
+      "name": "Immediate validation checklist",
+      "user": "Give a prioritized 30-minute checklist to validate the top likely cause."
+    },
+    {
+      "name": "Re-run verification plan",
+      "user": "Provide a short re-run plan to confirm the cross-DC state is stabilizing and not a partial result."
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final cross-DC findings in 6 bullets with UTC timestamps, participating DC count, and unresolved blockers.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}

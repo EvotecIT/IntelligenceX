@@ -10,6 +10,10 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
+using IxJsonArray = IntelligenceX.Json.JsonArray;
+using IxJsonObject = IntelligenceX.Json.JsonObject;
+using IxJsonValue = IntelligenceX.Json.JsonValue;
+using IxJsonValueKind = IntelligenceX.Json.JsonValueKind;
 using JsonLite = IntelligenceX.Json.JsonLite;
 
 namespace IntelligenceX.Chat.Host;
@@ -110,19 +114,21 @@ internal static partial class Program {
 
         var completedAtUtc = DateTime.UtcNow;
         var reportPath = ResolveScenarioReportPath(options, scenarioPath, scenario.Name, startedAtUtc);
+        var report = new ScenarioRunReport(
+            scenarioName: scenario.Name,
+            scenarioSourcePath: scenarioPath,
+            startedAtUtc: startedAtUtc,
+            completedAtUtc: completedAtUtc,
+            continueOnError: options.ScenarioContinueOnError,
+            turnRuns: turnRuns);
         try {
-            WriteScenarioReportMarkdown(
-                reportPath,
-                new ScenarioRunReport(
-                    scenarioName: scenario.Name,
-                    scenarioSourcePath: scenarioPath,
-                    startedAtUtc: startedAtUtc,
-                    completedAtUtc: completedAtUtc,
-                    continueOnError: options.ScenarioContinueOnError,
-                    turnRuns: turnRuns));
+            WriteScenarioReportMarkdown(reportPath, report);
             Console.WriteLine($"Scenario report saved: {reportPath}");
+            var jsonReportPath = ResolveScenarioJsonReportPath(reportPath);
+            WriteScenarioReportJson(jsonReportPath, report);
+            Console.WriteLine($"Scenario ledger saved: {jsonReportPath}");
         } catch (Exception ex) {
-            Console.Error.WriteLine($"Failed to save scenario report '{reportPath}': {ex.Message}");
+            Console.Error.WriteLine($"Failed to save scenario artifacts '{reportPath}': {ex.Message}");
             failed = true;
         }
 
@@ -288,13 +294,16 @@ internal static partial class Program {
             scenarioName = root.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
                 ? nameElement.GetString() ?? string.Empty
                 : fallbackName;
+            var defaults = root.TryGetProperty("defaults", out var defaultsElement)
+                ? ReadScenarioDefaults(defaultsElement)
+                : ChatScenarioDefaults.None;
             if (!root.TryGetProperty("turns", out var turnsElement) || turnsElement.ValueKind != JsonValueKind.Array) {
                 throw new InvalidOperationException("Scenario JSON object must include a 'turns' array.");
             }
-            turns = ParseChatScenarioTurnsFromJsonArray(turnsElement);
+            turns = ParseChatScenarioTurnsFromJsonArray(turnsElement, defaults);
         } else if (root.ValueKind == JsonValueKind.Array) {
             scenarioName = fallbackName;
-            turns = ParseChatScenarioTurnsFromJsonArray(root);
+            turns = ParseChatScenarioTurnsFromJsonArray(root, ChatScenarioDefaults.None);
         } else {
             throw new InvalidOperationException("Scenario JSON must be an object or an array.");
         }
@@ -308,8 +317,26 @@ internal static partial class Program {
             turns);
     }
 
-    private static IReadOnlyList<ChatScenarioTurn> ParseChatScenarioTurnsFromJsonArray(JsonElement arrayElement) {
+    private static ChatScenarioDefaults ReadScenarioDefaults(JsonElement element) {
+        if (element.ValueKind == JsonValueKind.Null || element.ValueKind == JsonValueKind.Undefined) {
+            return ChatScenarioDefaults.None;
+        }
+        if (element.ValueKind != JsonValueKind.Object) {
+            throw new InvalidOperationException("Scenario 'defaults' must be an object.");
+        }
+
+        return new ChatScenarioDefaults(
+            assertCleanCompletion: ReadScenarioOptionalNullableBoolean(element, "assert_clean_completion"),
+            assertToolCallOutputPairing: ReadScenarioOptionalNullableBoolean(element, "assert_tool_call_output_pairing"),
+            assertNoDuplicateToolCallIds: ReadScenarioOptionalNullableBoolean(element, "assert_no_duplicate_tool_call_ids"),
+            assertNoDuplicateToolOutputCallIds: ReadScenarioOptionalNullableBoolean(element, "assert_no_duplicate_tool_output_call_ids"),
+            maxNoToolExecutionRetries: ReadScenarioOptionalNonNegativeInt(element, "max_no_tool_execution_retries"),
+            maxDuplicateToolCallSignatures: ReadScenarioOptionalNonNegativeInt(element, "max_duplicate_tool_call_signatures"));
+    }
+
+    private static IReadOnlyList<ChatScenarioTurn> ParseChatScenarioTurnsFromJsonArray(JsonElement arrayElement, ChatScenarioDefaults defaults) {
         var turns = new List<ChatScenarioTurn>();
+        var effectiveDefaults = defaults ?? ChatScenarioDefaults.None;
         var turnIndex = 0;
         foreach (var element in arrayElement.EnumerateArray()) {
             turnIndex++;
@@ -318,7 +345,7 @@ internal static partial class Program {
                 if (userText.Length == 0) {
                     continue;
                 }
-                turns.Add(new ChatScenarioTurn(
+                turns.Add(CreateScenarioTurn(
                     name: null,
                     user: userText,
                     assertContains: Array.Empty<string>(),
@@ -334,12 +361,7 @@ internal static partial class Program {
                     assertToolOutputNotContains: Array.Empty<string>(),
                     assertNoToolErrors: false,
                     forbidToolErrorCodes: Array.Empty<string>(),
-                    assertCleanCompletion: true,
-                    assertToolCallOutputPairing: false,
-                    assertNoDuplicateToolCallIds: false,
-                    assertNoDuplicateToolOutputCallIds: false,
-                    maxNoToolExecutionRetries: null,
-                    maxDuplicateToolCallSignatures: null));
+                    defaults: effectiveDefaults));
                 continue;
             }
 
@@ -377,22 +399,25 @@ internal static partial class Program {
                 assertToolOutputNotContains,
                 assertNoToolErrors,
                 forbidToolErrorCodes);
-            var assertCleanCompletion = ReadScenarioOptionalBoolean(element, "assert_clean_completion", defaultValue: true);
+            var assertCleanCompletionDefault = effectiveDefaults.AssertCleanCompletion ?? true;
+            var assertCleanCompletion = ReadScenarioOptionalBoolean(element, "assert_clean_completion", defaultValue: assertCleanCompletionDefault);
             var assertToolCallOutputPairing = ReadScenarioOptionalBoolean(
                 element,
                 "assert_tool_call_output_pairing",
-                defaultValue: hasToolContract);
+                defaultValue: effectiveDefaults.AssertToolCallOutputPairing ?? hasToolContract);
             var assertNoDuplicateToolCallIds = ReadScenarioOptionalBoolean(
                 element,
                 "assert_no_duplicate_tool_call_ids",
-                defaultValue: hasToolContract);
+                defaultValue: effectiveDefaults.AssertNoDuplicateToolCallIds ?? hasToolContract);
             var assertNoDuplicateToolOutputCallIds = ReadScenarioOptionalBoolean(
                 element,
                 "assert_no_duplicate_tool_output_call_ids",
-                defaultValue: hasToolContract);
+                defaultValue: effectiveDefaults.AssertNoDuplicateToolOutputCallIds ?? hasToolContract);
             var maxNoToolExecutionRetries = ReadScenarioOptionalNonNegativeInt(element, "max_no_tool_execution_retries")
+                                            ?? effectiveDefaults.MaxNoToolExecutionRetries
                                             ?? (hasToolContract ? 0 : null);
             var maxDuplicateToolCallSignatures = ReadScenarioOptionalNonNegativeInt(element, "max_duplicate_tool_call_signatures")
+                                                 ?? effectiveDefaults.MaxDuplicateToolCallSignatures
                                                  ?? (hasToolContract ? 1 : null);
             turns.Add(new ChatScenarioTurn(
                 name,
@@ -438,7 +463,7 @@ internal static partial class Program {
             if (candidate.Length == 0) {
                 continue;
             }
-            turns.Add(new ChatScenarioTurn(
+            turns.Add(CreateScenarioTurn(
                 name: $"Turn {turns.Count + 1}",
                 user: candidate,
                 assertContains: Array.Empty<string>(),
@@ -454,14 +479,60 @@ internal static partial class Program {
                 assertToolOutputNotContains: Array.Empty<string>(),
                 assertNoToolErrors: false,
                 forbidToolErrorCodes: Array.Empty<string>(),
-                assertCleanCompletion: true,
-                assertToolCallOutputPairing: false,
-                assertNoDuplicateToolCallIds: false,
-                assertNoDuplicateToolOutputCallIds: false,
-                maxNoToolExecutionRetries: null,
-                maxDuplicateToolCallSignatures: null));
+                defaults: ChatScenarioDefaults.None));
         }
         return turns;
+    }
+
+    private static ChatScenarioTurn CreateScenarioTurn(
+        string? name,
+        string user,
+        IReadOnlyList<string> assertContains,
+        IReadOnlyList<string> assertNotContains,
+        IReadOnlyList<string> assertMatchesRegex,
+        bool assertNoQuestions,
+        int? minToolCalls,
+        int? minToolRounds,
+        IReadOnlyList<string> requireTools,
+        IReadOnlyList<string> requireAnyTools,
+        IReadOnlyList<string> forbidTools,
+        IReadOnlyList<string> assertToolOutputContains,
+        IReadOnlyList<string> assertToolOutputNotContains,
+        bool assertNoToolErrors,
+        IReadOnlyList<string> forbidToolErrorCodes,
+        ChatScenarioDefaults defaults) {
+        var hasToolContract = TurnHasToolContract(
+            minToolCalls,
+            minToolRounds,
+            requireTools,
+            requireAnyTools,
+            assertToolOutputContains,
+            assertToolOutputNotContains,
+            assertNoToolErrors,
+            forbidToolErrorCodes);
+        var effectiveDefaults = defaults ?? ChatScenarioDefaults.None;
+        return new ChatScenarioTurn(
+            name,
+            user,
+            assertContains,
+            assertNotContains,
+            assertMatchesRegex,
+            assertNoQuestions,
+            minToolCalls,
+            minToolRounds,
+            requireTools,
+            requireAnyTools,
+            forbidTools,
+            assertToolOutputContains,
+            assertToolOutputNotContains,
+            assertNoToolErrors,
+            forbidToolErrorCodes,
+            assertCleanCompletion: effectiveDefaults.AssertCleanCompletion ?? true,
+            assertToolCallOutputPairing: effectiveDefaults.AssertToolCallOutputPairing ?? hasToolContract,
+            assertNoDuplicateToolCallIds: effectiveDefaults.AssertNoDuplicateToolCallIds ?? hasToolContract,
+            assertNoDuplicateToolOutputCallIds: effectiveDefaults.AssertNoDuplicateToolOutputCallIds ?? hasToolContract,
+            maxNoToolExecutionRetries: effectiveDefaults.MaxNoToolExecutionRetries ?? (hasToolContract ? 0 : null),
+            maxDuplicateToolCallSignatures: effectiveDefaults.MaxDuplicateToolCallSignatures ?? (hasToolContract ? 1 : null));
     }
 
     private static string ReadScenarioUserText(JsonElement element) {
@@ -541,6 +612,20 @@ internal static partial class Program {
             return defaultValue;
         }
 
+        if (boolElement.ValueKind == JsonValueKind.True) {
+            return true;
+        }
+        if (boolElement.ValueKind == JsonValueKind.False) {
+            return false;
+        }
+
+        throw new InvalidOperationException($"'{propertyName}' must be a boolean.");
+    }
+
+    private static bool? ReadScenarioOptionalNullableBoolean(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var boolElement) || boolElement.ValueKind == JsonValueKind.Null) {
+            return null;
+        }
         if (boolElement.ValueKind == JsonValueKind.True) {
             return true;
         }
@@ -820,8 +905,54 @@ internal static partial class Program {
             return string.Empty;
         }
 
-        var args = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments);
+        var args = SerializeCanonicalToolArguments(call.Arguments);
         return toolName + " " + args;
+    }
+
+    private static string SerializeCanonicalToolArguments(IxJsonObject? arguments) {
+        if (arguments is null) {
+            return "{}";
+        }
+
+        var canonical = CanonicalizeJsonObject(arguments);
+        return JsonLite.Serialize(canonical);
+    }
+
+    private static IxJsonObject CanonicalizeJsonObject(IxJsonObject source) {
+        var result = new IxJsonObject(StringComparer.Ordinal);
+        var keys = source
+            .Select(static pair => pair.Key)
+            .OrderBy(static key => key, StringComparer.Ordinal);
+        foreach (var key in keys) {
+            if (!source.TryGetValue(key, out var value) || value is null) {
+                result.Add(key, IxJsonValue.Null);
+                continue;
+            }
+
+            result.Add(key, CanonicalizeJsonValue(value));
+        }
+
+        return result;
+    }
+
+    private static IxJsonArray CanonicalizeJsonArray(IxJsonArray source) {
+        var result = new IxJsonArray();
+        foreach (var value in source) {
+            result.Add(CanonicalizeJsonValue(value));
+        }
+        return result;
+    }
+
+    private static IxJsonValue CanonicalizeJsonValue(IxJsonValue value) {
+        if (value is null) {
+            return IxJsonValue.Null;
+        }
+
+        return value.Kind switch {
+            IxJsonValueKind.Object => IxJsonValue.From(CanonicalizeJsonObject(value.AsObject() ?? new IxJsonObject(StringComparer.Ordinal))),
+            IxJsonValueKind.Array => IxJsonValue.From(CanonicalizeJsonArray(value.AsArray() ?? new IxJsonArray())),
+            _ => value
+        };
     }
 
     private static string FormatValuesForAssertion(IReadOnlyList<string> values, int maxItems = 6) {
@@ -984,6 +1115,20 @@ internal static partial class Program {
         return Path.Combine(artifactsDir, BuildScenarioReportFileName(fallbackName, startedAtUtc));
     }
 
+    private static string ResolveScenarioJsonReportPath(string markdownReportPath) {
+        var markdownPath = (markdownReportPath ?? string.Empty).Trim();
+        if (markdownPath.Length == 0) {
+            throw new ArgumentException("Scenario markdown report path is required.", nameof(markdownReportPath));
+        }
+
+        var extension = Path.GetExtension(markdownPath);
+        if (string.IsNullOrWhiteSpace(extension)) {
+            return markdownPath + ".json";
+        }
+
+        return Path.ChangeExtension(markdownPath, ".json");
+    }
+
     private static string BuildScenarioReportFileName(string scenarioName, DateTime startedAtUtc) {
         var stem = SanitizeScenarioName(scenarioName);
         return $"{stem}-{startedAtUtc:yyyyMMdd-HHmmss}.md";
@@ -1015,6 +1160,79 @@ internal static partial class Program {
     private static void WriteScenarioReportMarkdown(string reportPath, ScenarioRunReport report) {
         var markdown = BuildScenarioReportMarkdown(report);
         File.WriteAllText(reportPath, markdown);
+    }
+
+    private static void WriteScenarioReportJson(string reportPath, ScenarioRunReport report) {
+        var payload = new {
+            schema_version = "ix_chat_scenario_report_v1",
+            name = report.ScenarioName,
+            source = report.ScenarioSourcePath,
+            started_utc = report.StartedAtUtc,
+            completed_utc = report.CompletedAtUtc,
+            continue_on_error = report.ContinueOnError,
+            passed_turns = report.TurnRuns.Count(static turn => turn.Success),
+            total_turns = report.TurnRuns.Count,
+            turns = report.TurnRuns.Select(turn => {
+                var toolCalls = turn.Result?.Result.ToolCalls
+                    .Select(call => new {
+                        call_id = call.CallId,
+                        name = call.Name,
+                        input = call.Input,
+                        signature = BuildToolCallSignature(call)
+                    })
+                    .ToArray()
+                    ?? Array.Empty<object>();
+                var toolOutputs = turn.Result?.Result.ToolOutputs
+                    .Select(output => {
+                        var isError = TryReadToolOutputErrorCode(output.Output, out var errorCode);
+                        var hasOk = TryReadToolOutputOk(output.Output, out var ok);
+                        return new {
+                            call_id = output.CallId,
+                            output = output.Output,
+                            ok = hasOk ? ok : (bool?)null,
+                            is_error = isError,
+                            error_code = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode
+                        };
+                    })
+                    .ToArray()
+                    ?? Array.Empty<object>();
+                return new {
+                    index = turn.Index,
+                    label = turn.Label,
+                    success = turn.Success,
+                    started_utc = turn.StartedAtUtc,
+                    completed_utc = turn.CompletedAtUtc,
+                    user = turn.User,
+                    assistant = turn.Result?.Result.Text ?? string.Empty,
+                    metrics = turn.Result is null
+                        ? null
+                        : new {
+                            duration_ms = turn.Result.Metrics.DurationMs,
+                            ttft_ms = turn.Result.Metrics.TtftMs,
+                            tool_calls = turn.Result.Metrics.ToolCallsCount,
+                            tool_rounds = turn.Result.Metrics.ToolRounds,
+                            no_tool_retries = turn.Result.Metrics.NoToolExecutionRetries,
+                            usage = turn.Result.Result.Usage is null
+                                ? null
+                                : new {
+                                    input_tokens = turn.Result.Result.Usage.InputTokens,
+                                    output_tokens = turn.Result.Result.Usage.OutputTokens,
+                                    total_tokens = turn.Result.Result.Usage.TotalTokens,
+                                    cached_input_tokens = turn.Result.Result.Usage.CachedInputTokens,
+                                    reasoning_tokens = turn.Result.Result.Usage.ReasoningTokens
+                                }
+                        },
+                    assertion_failures = turn.AssertionFailures,
+                    exception = turn.Exception?.ToString(),
+                    tool_calls = toolCalls,
+                    tool_outputs = toolOutputs
+                };
+            })
+        };
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions {
+            WriteIndented = true
+        });
+        File.WriteAllText(reportPath, json);
     }
 
     private static string BuildScenarioReportMarkdown(ScenarioRunReport report) {
@@ -1096,6 +1314,28 @@ internal static partial class Program {
         return sb.ToString();
     }
 
+    private static bool TryReadToolOutputOk(string output, out bool ok) {
+        ok = false;
+        if (string.IsNullOrWhiteSpace(output)) {
+            return false;
+        }
+
+        try {
+            using var document = JsonDocument.Parse(output);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("ok", out var okElement)
+                || (okElement.ValueKind != JsonValueKind.True && okElement.ValueKind != JsonValueKind.False)) {
+                return false;
+            }
+
+            ok = okElement.GetBoolean();
+            return true;
+        } catch (JsonException) {
+            return false;
+        }
+    }
+
     private static string FormatToken(int? value) {
         return value.HasValue ? Math.Max(0, value.Value).ToString() : "-";
     }
@@ -1175,6 +1415,38 @@ internal static partial class Program {
         public bool AssertToolCallOutputPairing { get; }
         public bool AssertNoDuplicateToolCallIds { get; }
         public bool AssertNoDuplicateToolOutputCallIds { get; }
+        public int? MaxNoToolExecutionRetries { get; }
+        public int? MaxDuplicateToolCallSignatures { get; }
+    }
+
+    private sealed class ChatScenarioDefaults {
+        public static ChatScenarioDefaults None { get; } = new(
+            assertCleanCompletion: null,
+            assertToolCallOutputPairing: null,
+            assertNoDuplicateToolCallIds: null,
+            assertNoDuplicateToolOutputCallIds: null,
+            maxNoToolExecutionRetries: null,
+            maxDuplicateToolCallSignatures: null);
+
+        public ChatScenarioDefaults(
+            bool? assertCleanCompletion,
+            bool? assertToolCallOutputPairing,
+            bool? assertNoDuplicateToolCallIds,
+            bool? assertNoDuplicateToolOutputCallIds,
+            int? maxNoToolExecutionRetries,
+            int? maxDuplicateToolCallSignatures) {
+            AssertCleanCompletion = assertCleanCompletion;
+            AssertToolCallOutputPairing = assertToolCallOutputPairing;
+            AssertNoDuplicateToolCallIds = assertNoDuplicateToolCallIds;
+            AssertNoDuplicateToolOutputCallIds = assertNoDuplicateToolOutputCallIds;
+            MaxNoToolExecutionRetries = maxNoToolExecutionRetries;
+            MaxDuplicateToolCallSignatures = maxDuplicateToolCallSignatures;
+        }
+
+        public bool? AssertCleanCompletion { get; }
+        public bool? AssertToolCallOutputPairing { get; }
+        public bool? AssertNoDuplicateToolCallIds { get; }
+        public bool? AssertNoDuplicateToolOutputCallIds { get; }
         public int? MaxNoToolExecutionRetries { get; }
         public int? MaxDuplicateToolCallSignatures { get; }
     }

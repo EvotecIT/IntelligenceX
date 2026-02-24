@@ -598,14 +598,37 @@ public sealed partial class MainWindow : Window {
         return (requestId ?? string.Empty).Trim();
     }
 
-    private bool IsActiveTurnRequest(string? requestId) {
+    internal static bool IsRequestIdMatch(string? requestId, string? expectedRequestId) {
         var id = NormalizeRequestId(requestId);
         if (id.Length == 0) {
             return false;
         }
 
-        return !string.IsNullOrWhiteSpace(_activeTurnRequestId)
-               && string.Equals(id, _activeTurnRequestId, StringComparison.OrdinalIgnoreCase);
+        var expected = NormalizeRequestId(expectedRequestId);
+        if (expected.Length == 0) {
+            return false;
+        }
+
+        return string.Equals(id, expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool ShouldProcessLiveRequestMessage(
+        string? requestId,
+        string? activeTurnRequestId,
+        string? activeKickoffRequestId,
+        bool isSending,
+        bool modelKickoffInProgress) {
+        var id = NormalizeRequestId(requestId);
+        if (id.Length == 0) {
+            return isSending || modelKickoffInProgress;
+        }
+
+        return IsRequestIdMatch(id, activeTurnRequestId)
+               || IsRequestIdMatch(id, activeKickoffRequestId);
+    }
+
+    private bool IsActiveTurnRequest(string? requestId) {
+        return IsRequestIdMatch(requestId, _activeTurnRequestId);
     }
 
     private bool IsLatestTurnRequest(string? requestId) {
@@ -619,22 +642,16 @@ public sealed partial class MainWindow : Window {
     }
 
     private bool IsActiveKickoffRequest(string? requestId) {
-        var id = NormalizeRequestId(requestId);
-        if (id.Length == 0) {
-            return false;
-        }
-
-        return !string.IsNullOrWhiteSpace(_activeKickoffRequestId)
-               && string.Equals(id, _activeKickoffRequestId, StringComparison.OrdinalIgnoreCase);
+        return IsRequestIdMatch(requestId, _activeKickoffRequestId);
     }
 
     private bool ShouldProcessLiveRequestMessage(string? requestId) {
-        var id = NormalizeRequestId(requestId);
-        if (id.Length == 0) {
-            return _isSending || _modelKickoffInProgress;
-        }
-
-        return IsActiveTurnRequest(id) || IsActiveKickoffRequest(id);
+        return ShouldProcessLiveRequestMessage(
+            requestId,
+            _activeTurnRequestId,
+            _activeKickoffRequestId,
+            _isSending,
+            _modelKickoffInProgress);
     }
 
     private static bool IsTerminalChatStatus(string? status) {

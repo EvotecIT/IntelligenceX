@@ -209,6 +209,49 @@ Check AD0 reboot
         Assert.Equal(1, ReadNullableIntProperty(turn, "MaxDuplicateToolCallSignatures"));
     }
 
+    [Fact]
+    public void ParseChatScenarioDefinition_WithScenarioDefaults_AppliesDefaultsAndTurnOverride() {
+        const string json = """
+{
+  "name": "scenario-defaults",
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    "Check AD scope",
+    {
+      "name": "Override pairing",
+      "user": "Summarize current status.",
+      "assert_tool_call_output_pairing": false
+    }
+  ]
+}
+""";
+
+        var scenario = InvokeParseScenarioDefinition(json, "scenario-defaults");
+        var turns = ReadTurns(scenario);
+        Assert.Equal(2, turns.Count);
+
+        Assert.True(ReadBooleanProperty(turns[0], "AssertCleanCompletion"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertToolCallOutputPairing"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertNoDuplicateToolCallIds"));
+        Assert.True(ReadBooleanProperty(turns[0], "AssertNoDuplicateToolOutputCallIds"));
+        Assert.Equal(0, ReadNullableIntProperty(turns[0], "MaxNoToolExecutionRetries"));
+        Assert.Equal(1, ReadNullableIntProperty(turns[0], "MaxDuplicateToolCallSignatures"));
+
+        Assert.True(ReadBooleanProperty(turns[1], "AssertCleanCompletion"));
+        Assert.False(ReadBooleanProperty(turns[1], "AssertToolCallOutputPairing"));
+        Assert.True(ReadBooleanProperty(turns[1], "AssertNoDuplicateToolCallIds"));
+        Assert.True(ReadBooleanProperty(turns[1], "AssertNoDuplicateToolOutputCallIds"));
+        Assert.Equal(0, ReadNullableIntProperty(turns[1], "MaxNoToolExecutionRetries"));
+        Assert.Equal(1, ReadNullableIntProperty(turns[1], "MaxDuplicateToolCallSignatures"));
+    }
+
     private static object InvokeParseScenarioDefinition(string raw, string fallbackName) {
         var programType = ResolveHostProgramType();
         var parseMethod = programType.GetMethod("ParseChatScenarioDefinition", BindingFlags.NonPublic | BindingFlags.Static);

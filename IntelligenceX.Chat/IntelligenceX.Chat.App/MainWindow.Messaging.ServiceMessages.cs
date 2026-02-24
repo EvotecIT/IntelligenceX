@@ -221,9 +221,12 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
         var appendInterimBubble = ShouldAppendInterimAssistantResult(
             activeTurnReceivedDelta: _assistantStreamingState.HasReceivedDelta(),
-            activeTurnBoundToConversation: IsActiveTurnBoundToConversation(conversation));
+            activeTurnBoundToConversation: IsActiveTurnBoundToConversation(conversation),
+            interimAssistantText: interimText,
+            latestAssistantText: latestAssistantText);
         if (appendInterimBubble) {
             AppendAssistantText(conversation, interimText);
         } else {
@@ -244,6 +247,36 @@ public sealed partial class MainWindow : Window {
         // Interim snapshots should replace the active provisional draft when this turn has already streamed
         // assistant content; appending in that case creates duplicate assistant bubbles.
         if (activeTurnReceivedDelta && activeTurnBoundToConversation) {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static bool ShouldAppendInterimAssistantResult(
+        bool activeTurnReceivedDelta,
+        bool activeTurnBoundToConversation,
+        string? interimAssistantText,
+        string? latestAssistantText) {
+        if (!ShouldAppendInterimAssistantResult(activeTurnReceivedDelta, activeTurnBoundToConversation)) {
+            return false;
+        }
+
+        var interimText = NormalizeAssistantSnapshotForAppendDecision(interimAssistantText);
+        if (interimText.Length == 0) {
+            return false;
+        }
+
+        var latestText = NormalizeAssistantSnapshotForAppendDecision(latestAssistantText);
+        if (latestText.Length == 0) {
+            return true;
+        }
+
+        if (string.Equals(interimText, latestText, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (AreNearDuplicateAssistantSnapshots(interimText, latestText)) {
             return false;
         }
 

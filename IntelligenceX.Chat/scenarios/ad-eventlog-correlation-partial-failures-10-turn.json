@@ -1,0 +1,71 @@
+{
+  "name": "ad-eventlog-correlation-partial-failures-10-turn",
+  "tags": ["ad", "cross-dc", "eventlog", "partial-recovery", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover AD scope",
+      "user": "Discover AD scope for this run and list which DCs are currently reachable for live checks.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Replication baseline",
+      "user": "Run a replication baseline and identify the most impacted DCs first.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "EventLog correlation window",
+      "user": "Correlate impacted DCs with Directory Service and System event evidence in the same time window.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Continue across remaining DCs",
+      "user": "Continue the same event correlation for every remaining discovered DC in this turn. Do not stop after the first failure.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Retry failed targets once",
+      "user": "For targets that failed, retry once with narrower time range and continue with all others.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC evidence matrix",
+      "user": "Return per-DC matrix: replication state, event evidence found/missing, earliest UTC, latest UTC, confidence.",
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Root cause families",
+      "user": "Classify likely root cause families with confidence and strongest supporting evidence."
+    },
+    {
+      "name": "Immediate validation plan",
+      "user": "Provide a prioritized 30-minute validation plan with exact checks."
+    },
+    {
+      "name": "Follow-up rerun plan",
+      "user": "Provide rerun plan that verifies improvement and catches partial/unfinished evidence paths."
+    },
+    {
+      "name": "Compact final summary",
+      "user": "Summarize in 6 bullets with UTC markers, participating DC count, unresolved blockers, and next action.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}
