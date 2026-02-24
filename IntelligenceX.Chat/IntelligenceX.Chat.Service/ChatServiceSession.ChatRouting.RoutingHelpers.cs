@@ -90,7 +90,11 @@ internal sealed partial class ChatServiceSession {
         var normalized = (userRequest ?? string.Empty).Trim();
         var isFollowUp = LooksLikeContinuationFollowUp(normalized);
         var isActionPayload = LooksLikeActionSelectionPayload(normalized);
-        if (!isFollowUp && !isActionPayload) {
+        var forceTrace = string.Equals(
+            Environment.GetEnvironmentVariable("IX_CHAT_TRACE_TOOL_NUDGE"),
+            "1",
+            StringComparison.Ordinal);
+        if (!forceTrace && !isFollowUp && !isActionPayload) {
             return;
         }
 

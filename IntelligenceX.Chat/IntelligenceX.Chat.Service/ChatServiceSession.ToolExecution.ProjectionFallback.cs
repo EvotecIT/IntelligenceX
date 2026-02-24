@@ -31,7 +31,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = CloneWithoutProjectionViewArguments(call.Arguments, output, out var removedArguments);
+        var sourceArguments = call.Arguments;
+        if (sourceArguments is null && TryParseToolCallArgumentsFromInput(call.Input, out var parsedInputArguments)) {
+            sourceArguments = parsedInputArguments;
+        }
+
+        var fallbackArguments = CloneWithoutProjectionViewArguments(sourceArguments, output, out var removedArguments);
         if (removedArguments.Length == 0) {
             return false;
         }
@@ -43,6 +48,22 @@ internal sealed partial class ChatServiceSession {
             OriginalErrorCode: (output.ErrorCode ?? string.Empty).Trim(),
             OriginalError: CompactProjectionFallbackReason(output.Error));
         return true;
+    }
+
+    private static bool TryParseToolCallArgumentsFromInput(string? input, out JsonObject arguments) {
+        arguments = null!;
+        var raw = (input ?? string.Empty).Trim();
+        if (raw.Length == 0) {
+            return false;
+        }
+
+        try {
+            arguments = JsonLite.Parse(raw)?.AsObject()!;
+            return arguments is not null;
+        } catch {
+            arguments = null!;
+            return false;
+        }
     }
 
     private static bool IsProjectionViewArgumentFailure(ToolOutputDto output) {

@@ -150,6 +150,38 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void TryBuildProjectionArgsFallbackCall_ParsesInputArgumentsWhenStructuredArgumentsMissing() {
+        var call = new ToolCall(
+            callId: "call-6b",
+            name: "ad_search",
+            input: """
+                   {"query":"przemyslaw.klys","log_name":"System","columns":["objectSid"],"sort_by":"sAMAccountName","sort_direction":"asc","top":10}
+                   """,
+            arguments: null,
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"columns contains unsupported value 'objectSid'.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "columns contains unsupported value 'objectSid'."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal("przemyslaw.klys", fallbackCall.Arguments!.GetString("query"));
+        Assert.Equal("System", fallbackCall.Arguments.GetString("log_name"));
+        Assert.False(fallbackCall.Arguments.TryGetValue("columns", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_by", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_direction", out _));
+        Assert.Equal(10, fallbackCall.Arguments.GetInt64("top"));
+    }
+
+    [Fact]
     public void TryBuildProjectionArgsFallbackCall_DropsTopAsLastResortForProjectionEnvelopeFailures() {
         var call = new ToolCall(
             callId: "call-7",

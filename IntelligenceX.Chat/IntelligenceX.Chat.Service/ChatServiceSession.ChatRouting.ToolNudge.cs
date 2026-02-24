@@ -190,7 +190,9 @@ internal sealed partial class ChatServiceSession {
         bool executionContractApplies,
         bool compactFollowUpTurn,
         int priorToolCalls,
-        int priorToolOutputs) {
+        int priorToolOutputs,
+        string userRequest,
+        string assistantDraft) {
         if (!isLocalCompatibleLoopback) {
             return false;
         }
@@ -203,8 +205,29 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return priorToolCalls == 0
-               && priorToolOutputs == 0;
+        if (priorToolCalls != 0 || priorToolOutputs != 0) {
+            return false;
+        }
+
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0) {
+            return true;
+        }
+
+        // In local loopback runs we still want recovery retries for execution-intent drafts so scenario validation
+        // can converge instead of silently stopping with zero tool calls.
+        if (LooksLikeExecutionAcknowledgeDraft(draft)
+            || LooksLikeMultilineFollowUpBlockerDraft(draft)
+            || LooksLikeStructuredScopeChoiceDraft(draft)) {
+            return false;
+        }
+
+        if (ContainsQuestionSignal(draft)
+            && AssistantDraftReferencesUserRequest(userRequest, draft)) {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool ShouldAttemptContinuationSubsetEscape(
@@ -305,6 +328,31 @@ internal sealed partial class ChatServiceSession {
         var compactFollowUp = compactFollowUpHint || LooksLikeCompactFollowUp(request);
         var contextualFollowUp = !compactFollowUp && LooksLikeContextualFollowUpForExecutionNudge(request, draft);
         var hasSingleReadOnlyPendingActionEnvelope = HasSingleReadOnlyPendingActionEnvelope(draft);
+        var hasExecutionAckReference = LooksLikeExecutionAcknowledgeDraft(draft)
+                                       && draft.IndexOf('"') < 0
+                                       && draft.IndexOf('\'') < 0
+                                       && CountLetterDigitTokens(request, maxTokens: 64) >= 6
+                                       && AssistantDraftReferencesUserRequest(request, draft);
+        var hasStructuredScopeChoiceDraft = LooksLikeStructuredScopeChoiceDraft(draft)
+                                            && CountLetterDigitTokens(request, maxTokens: 64) >= 6;
+        var hasLinkedFollowUpQuestionDraft = ContainsQuestionSignal(draft)
+                                             && CountLetterDigitTokens(request, maxTokens: 64) >= 6
+                                             && AssistantDraftReferencesUserRequest(request, draft);
+        if (hasExecutionAckReference) {
+            reason = "execution_ack_draft_references_request";
+            return true;
+        }
+
+        if (hasStructuredScopeChoiceDraft) {
+            reason = "structured_scope_choice_draft";
+            return true;
+        }
+
+        if (hasLinkedFollowUpQuestionDraft) {
+            reason = "assistant_question_linked_to_follow_up";
+            return true;
+        }
+
         if (!usedContinuationSubset && !echoedCallToAction && !contextualFollowUp) {
             if (hasSingleReadOnlyPendingActionEnvelope && !ContainsQuestionSignal(draft)) {
                 reason = "single_readonly_pending_action_envelope";
@@ -350,6 +398,11 @@ internal sealed partial class ChatServiceSession {
         if (hasStructuredOutput) {
             if (hasSingleReadOnlyPendingActionEnvelope && !asksAnotherQuestion) {
                 reason = "structured_draft_single_readonly_pending_action_envelope";
+                return true;
+            }
+
+            if (contextualFollowUp && LooksLikeMultilineFollowUpBlockerDraft(draft)) {
+                reason = "structured_contextual_blocker_draft";
                 return true;
             }
 
@@ -482,6 +535,56 @@ internal sealed partial class ChatServiceSession {
 
         var tokenCount = CountLetterDigitTokens(draft, maxTokens: 64);
         return tokenCount >= 5 && tokenCount <= 48;
+    }
+
+    private static bool LooksLikeStructuredScopeChoiceDraft(string assistantDraft) {
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length < 48 || draft.Length > 900) {
+            return false;
+        }
+
+        if (!draft.Contains('\n', StringComparison.Ordinal) && !draft.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (draft.Contains("ix:action:v1", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (LooksLikeMultilineFollowUpBlockerDraft(draft)) {
+            return false;
+        }
+
+        if (draft.Contains('|', StringComparison.Ordinal)
+            || draft.Contains('{', StringComparison.Ordinal)
+            || draft.Contains('}', StringComparison.Ordinal)
+            || draft.Contains('[', StringComparison.Ordinal)
+            || draft.Contains(']', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var lines = SplitLines(draft);
+        var nonEmptyCount = 0;
+        for (var i = 0; i < lines.Count; i++) {
+            if ((lines[i] ?? string.Empty).Trim().Length > 0) {
+                nonEmptyCount++;
+            }
+        }
+
+        if (nonEmptyCount < 2 || nonEmptyCount > 6) {
+            return false;
+        }
+
+        // Scope-choice drafts usually present at least two inline options (for example two domain/DC anchors)
+        // but do not include final evidence rows/tables.
+        var backtickCount = 0;
+        for (var i = 0; i < draft.Length; i++) {
+            if (draft[i] == '`') {
+                backtickCount++;
+            }
+        }
+
+        return backtickCount >= 4;
     }
 
     private static bool TryBuildStructuredNextActionRetryPrompt(

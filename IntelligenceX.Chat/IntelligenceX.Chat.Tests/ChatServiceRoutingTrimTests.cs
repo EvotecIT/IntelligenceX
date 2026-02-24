@@ -80,6 +80,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAllowHostStructuredNextActionReplayMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAllowHostStructuredNextActionReplay", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAllowHostStructuredNextActionReplay not found.");
+    private static readonly MethodInfo SupportsSyntheticHostReplayItemsMethod =
+        typeof(ChatServiceSession).GetMethod("SupportsSyntheticHostReplayItems", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("SupportsSyntheticHostReplayItems not found.");
+    private static readonly MethodInfo BuildHostReplayReviewInputMethod =
+        typeof(ChatServiceSession).GetMethod("BuildHostReplayReviewInput", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildHostReplayReviewInput not found.");
+    private static readonly MethodInfo BuildNativeHostReplayReviewPromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildNativeHostReplayReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildNativeHostReplayReviewPrompt not found.");
     private static readonly MethodInfo ShouldTriggerNoResultPhaseLoopWatchdogMethod =
         typeof(ChatServiceSession).GetMethod("ShouldTriggerNoResultPhaseLoopWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldTriggerNoResultPhaseLoopWatchdog not found.");
