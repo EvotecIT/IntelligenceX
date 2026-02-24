@@ -14,6 +14,7 @@ namespace IntelligenceX.Cli.Todo;
 internal static class PrWatchMonitorRunner {
     private const string DefaultRepo = "EvotecIT/IntelligenceX";
     private static readonly JsonSerializerOptions CompactJson = new() { WriteIndented = false };
+    private readonly record struct GitHubEventContext(string? EventName, JsonObject? Payload);
 
     private sealed class Options {
         public string Repo { get; set; } = DefaultRepo;
@@ -125,12 +126,15 @@ internal static class PrWatchMonitorRunner {
     }
 
     private static void ApplyGitHubEventDefaults(Options options) {
+        var eventContext = ResolveGitHubEventContextFromEnvironment();
+        options.PrSpec = ResolvePrSpecWithEventDefaults(options.PrSpec, eventContext.Payload);
+        options.Source = ResolveSourceWithEventDefaults(options.Source, options.SourceExplicitlySet, eventContext.Payload, eventContext.EventName);
+    }
+
+    private static GitHubEventContext ResolveGitHubEventContextFromEnvironment() {
         var eventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
         var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
-        var payload = LoadGitHubEventPayload(eventPath);
-
-        options.PrSpec = ResolvePrSpecWithEventDefaults(options.PrSpec, payload);
-        options.Source = ResolveSourceWithEventDefaults(options.Source, options.SourceExplicitlySet, payload, eventName);
+        return new GitHubEventContext(eventName, LoadGitHubEventPayload(eventPath));
     }
 
     internal static string ComposeSourceTag(string source, string action) {
@@ -139,9 +143,9 @@ internal static class PrWatchMonitorRunner {
         return string.IsNullOrWhiteSpace(normalizedAction) ? normalizedSource : $"{normalizedSource}:{normalizedAction}";
     }
 
-    internal static string ResolveSourceWithEventDefaults(string source, bool sourceExplicitlySet, JsonObject? payload, string? eventName) {
+    internal static string ResolveSourceWithEventDefaults(string? source, bool sourceExplicitlySet, JsonObject? payload, string? eventName) {
         if (sourceExplicitlySet) {
-            return source;
+            return ResolveDefaultSourceBase(source, eventName: null);
         }
 
         var action = ResolveEventActionFromGitHubEventPayload(payload);
@@ -149,7 +153,7 @@ internal static class PrWatchMonitorRunner {
         return ComposeSourceTag(fallbackSource, action);
     }
 
-    internal static string ResolveDefaultSourceBase(string source, string? eventName) {
+    internal static string ResolveDefaultSourceBase(string? source, string? eventName) {
         if (!string.IsNullOrWhiteSpace(source)) {
             return source.Trim();
         }
@@ -161,7 +165,7 @@ internal static class PrWatchMonitorRunner {
         return "manual_cli";
     }
 
-    internal static string ResolvePrSpecWithEventDefaults(string prSpec, JsonObject? payload) {
+    internal static string ResolvePrSpecWithEventDefaults(string? prSpec, JsonObject? payload) {
         if (!string.IsNullOrWhiteSpace(prSpec)) {
             return prSpec;
         }
@@ -186,7 +190,7 @@ internal static class PrWatchMonitorRunner {
         return number > 0 ? number.ToString(CultureInfo.InvariantCulture) : string.Empty;
     }
 
-    private static JsonObject? LoadGitHubEventPayload(string? eventPath) {
+    internal static JsonObject? LoadGitHubEventPayload(string? eventPath) {
         if (string.IsNullOrWhiteSpace(eventPath) || !File.Exists(eventPath)) {
             return null;
         }
@@ -194,7 +198,7 @@ internal static class PrWatchMonitorRunner {
         try {
             return JsonNode.Parse(File.ReadAllText(eventPath)) as JsonObject;
         } catch (Exception ex) {
-            Console.Error.WriteLine($"Warning: failed to parse GITHUB_EVENT_PATH payload '{eventPath}': {ex.Message}");
+            Console.Error.WriteLine($"Warning: failed to parse GITHUB_EVENT_PATH payload '{eventPath}': {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
