@@ -94,6 +94,7 @@ internal static partial class Program {
             var calls = new List<ToolCall>();
             var outputs = new List<ToolOutput>();
             var toolRounds = 0;
+            var noToolExecutionRetryUsed = false;
 
             var input = ChatInput.FromText(text);
             var toolDefs = _registry.GetDefinitions();
@@ -121,6 +122,25 @@ internal static partial class Program {
                 var extracted = ToolCallParser.Extract(turn);
                 if (extracted.Count == 0) {
                     var finalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+
+                    var shouldRetryNoToolExecution = !noToolExecutionRetryUsed
+                                                     && calls.Count == 0
+                                                     && outputs.Count == 0
+                                                     && toolDefs.Count > 0
+                                                     && LooksLikeExecutionIntentPlaceholderDraft(text, finalText);
+                    if (shouldRetryNoToolExecution) {
+                        noToolExecutionRetryUsed = true;
+                        var retryPrompt = BuildNoToolExecutionRetryPrompt(text, finalText);
+                        chatOptions.NewThread = false;
+                        chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                        if (_options.LiveProgress) {
+                            _status?.Invoke("re-planning tool execution for this turn...");
+                        }
+                        turn = await ChatWithToolSchemaRecoveryAsync(ChatInput.FromText(retryPrompt), chatOptions, turnToken)
+                            .ConfigureAwait(false);
+                        continue;
+                    }
+
                     _previousResponseId = TryGetResponseId(turn) ?? _previousResponseId;
                     return new ReplTurnResult(finalText, calls, outputs, turn.Usage, toolRounds);
                 }
@@ -151,6 +171,147 @@ internal static partial class Program {
             }
 
             throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+        }
+
+        private static bool LooksLikeExecutionIntentPlaceholderDraft(string userRequest, string assistantDraft) {
+            var requestTokens = ExtractMeaningfulTokens(userRequest, maxTokens: 24);
+            var draftTokens = ExtractMeaningfulTokens(assistantDraft, maxTokens: 48);
+            if (requestTokens.Count < 4 || draftTokens.Count < 4) {
+                return false;
+            }
+
+            var normalizedDraft = (assistantDraft ?? string.Empty).Trim();
+            if (normalizedDraft.Length < 24 || normalizedDraft.Length > 560) {
+                return false;
+            }
+
+            if (normalizedDraft.Contains('\n', StringComparison.Ordinal)
+                || normalizedDraft.Contains('\r', StringComparison.Ordinal)
+                || normalizedDraft.Contains('?', StringComparison.Ordinal)
+                || normalizedDraft.Contains('？', StringComparison.Ordinal)
+                || normalizedDraft.Contains('¿', StringComparison.Ordinal)
+                || normalizedDraft.Contains('؟', StringComparison.Ordinal)) {
+                return false;
+            }
+
+            if (normalizedDraft.Contains('|', StringComparison.Ordinal)
+                || normalizedDraft.Contains('{', StringComparison.Ordinal)
+                || normalizedDraft.Contains('}', StringComparison.Ordinal)
+                || normalizedDraft.Contains('[', StringComparison.Ordinal)
+                || normalizedDraft.Contains(']', StringComparison.Ordinal)
+                || normalizedDraft.Contains('<', StringComparison.Ordinal)
+                || normalizedDraft.Contains('>', StringComparison.Ordinal)
+                || normalizedDraft.Contains('=', StringComparison.Ordinal)) {
+                return false;
+            }
+
+            var requestUnique = new HashSet<string>(requestTokens, StringComparer.OrdinalIgnoreCase);
+            var draftUnique = new HashSet<string>(draftTokens, StringComparer.OrdinalIgnoreCase);
+            var sharedCount = 0;
+            foreach (var token in requestUnique) {
+                if (draftUnique.Contains(token)) {
+                    sharedCount++;
+                }
+            }
+
+            if (sharedCount < 3) {
+                return false;
+            }
+
+            var overlapRatio = requestUnique.Count == 0 ? 0d : (double)sharedCount / requestUnique.Count;
+            if (overlapRatio < 0.35d) {
+                return false;
+            }
+
+            var longDigitRunCount = 0;
+            var currentDigitRun = 0;
+            for (var i = 0; i < normalizedDraft.Length; i++) {
+                if (char.IsDigit(normalizedDraft[i])) {
+                    currentDigitRun++;
+                    continue;
+                }
+
+                if (currentDigitRun >= 4) {
+                    longDigitRunCount++;
+                }
+                currentDigitRun = 0;
+            }
+
+            if (currentDigitRun >= 4) {
+                longDigitRunCount++;
+            }
+
+            return longDigitRunCount == 0;
+        }
+
+        private static List<string> ExtractMeaningfulTokens(string text, int maxTokens) {
+            var value = (text ?? string.Empty).Trim();
+            var tokens = new List<string>();
+            if (value.Length == 0 || maxTokens <= 0) {
+                return tokens;
+            }
+
+            var inToken = false;
+            var tokenStart = 0;
+            for (var i = 0; i <= value.Length; i++) {
+                var ch = i < value.Length ? value[i] : '\0';
+                var isTokenChar = i < value.Length && char.IsLetterOrDigit(ch);
+                if (isTokenChar) {
+                    if (!inToken) {
+                        inToken = true;
+                        tokenStart = i;
+                    }
+                    continue;
+                }
+
+                if (!inToken) {
+                    continue;
+                }
+
+                var token = value.Substring(tokenStart, i - tokenStart);
+                inToken = false;
+                if (token.Length == 0) {
+                    continue;
+                }
+
+                var hasNonAscii = false;
+                for (var t = 0; t < token.Length; t++) {
+                    if (token[t] > 127) {
+                        hasNonAscii = true;
+                        break;
+                    }
+                }
+
+                var minLen = hasNonAscii ? 2 : 3;
+                if (token.Length < minLen) {
+                    continue;
+                }
+
+                tokens.Add(token);
+                if (tokens.Count >= maxTokens) {
+                    break;
+                }
+            }
+
+            return tokens;
+        }
+
+        private static string BuildNoToolExecutionRetryPrompt(string userRequest, string assistantDraft) {
+            var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
+            var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
+            return $$"""
+                [Execution correction]
+                The previous assistant draft implied execution but no tool calls were emitted.
+
+                User request:
+                {{request}}
+
+                Previous assistant draft:
+                {{draft}}
+
+                If tools can satisfy this request, call them now in this turn.
+                If tools cannot satisfy this request, state the exact blocker and the minimal missing input.
+                """;
         }
 
         private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, CancellationToken cancellationToken) {
