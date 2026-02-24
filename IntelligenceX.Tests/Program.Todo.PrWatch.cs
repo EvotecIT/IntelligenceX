@@ -288,6 +288,12 @@ internal static partial class Program {
         AssertEqual("workflow_dispatch", source, "explicit source should bypass action suffix auto-append");
     }
 
+    private static void TestPrWatchMonitorResolveSourceWithEventDefaultsNormalizesWhitespaceExplicitSource() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"action\":\"edited\"}") as global::System.Text.Json.Nodes.JsonObject;
+        var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveSourceWithEventDefaults("   ", true, payload, "pull_request");
+        AssertEqual("manual_cli", source, "whitespace explicit source should normalize to manual_cli and bypass action suffix");
+    }
+
     private static void TestPrWatchMonitorResolveSourceWithEventDefaultsUsesEventNameWhenSourceEmpty() {
         var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"action\":\"edited\"}") as global::System.Text.Json.Nodes.JsonObject;
         var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveSourceWithEventDefaults(string.Empty, false, payload, "pull_request");
@@ -304,6 +310,33 @@ internal static partial class Program {
         var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"pull_request\":{\"number\":742}}") as global::System.Text.Json.Nodes.JsonObject;
         var prSpec = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolvePrSpecWithEventDefaults("123", payload);
         AssertEqual("123", prSpec, "explicit PR should be preserved even when payload contains pull_request.number");
+    }
+
+    private static void TestPrWatchMonitorLoadGitHubEventPayloadParseFailureWarnsAndDefaultsSafely() {
+        var originalError = Console.Error;
+        using var errorWriter = new StringWriter();
+        var tempPath = Path.GetTempFileName();
+        try {
+            File.WriteAllText(tempPath, "{not-valid-json");
+            Console.SetError(errorWriter);
+
+            var payload = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.LoadGitHubEventPayload(tempPath);
+            var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveSourceWithEventDefaults(string.Empty, false, payload, "pull_request");
+            var prSpec = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolvePrSpecWithEventDefaults(string.Empty, payload);
+
+            AssertEqual(true, payload is null, "invalid JSON payload should fail closed to null");
+            AssertEqual("pull_request", source, "source should safely default when payload parsing fails");
+            AssertEqual(string.Empty, prSpec, "PR spec should safely default when payload parsing fails");
+
+            var stderr = errorWriter.ToString();
+            AssertContainsText(stderr, "Warning: failed to parse GITHUB_EVENT_PATH payload", "parse warning prefix");
+            AssertContainsText(stderr, "JsonReaderException", "parse warning should include exception type");
+        } finally {
+            Console.SetError(originalError);
+            if (File.Exists(tempPath)) {
+                File.Delete(tempPath);
+            }
+        }
     }
 #endif
 }
