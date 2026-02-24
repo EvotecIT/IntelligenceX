@@ -305,6 +305,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static int ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools(long effectiveContextLength) {
+        if (effectiveContextLength <= 0) {
+            return 8;
+        }
+
         if (effectiveContextLength <= 8_192) {
             return 4;
         }

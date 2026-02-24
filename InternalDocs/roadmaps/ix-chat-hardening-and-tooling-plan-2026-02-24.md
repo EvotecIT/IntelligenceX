@@ -179,6 +179,10 @@ Progress:
   - larger contexts keep the `8` candidate default
 - Preserved explicit `maxCandidateTools` overrides and safety clamping.
 - Added regression tests for context-band budget selection logic.
+- Added branch-coverage tests for end-to-end budget selection flow:
+  - explicit override precedence
+  - matched model loaded/max context selection
+  - single-model fallback and unknown-model multi-model fallback
 
 ### WS6: Merge Gates
 Status: in_progress  

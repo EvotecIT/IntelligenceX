@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using IntelligenceX.Json;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -32,6 +34,15 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo ResolveContextAwareCompatibleHttpDefaultMaxCandidateToolsMethod =
         typeof(ChatServiceSession).GetMethod("ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools not found.");
+    private static readonly MethodInfo ResolveMaxCandidateToolsForTurnMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveMaxCandidateToolsForTurn", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveMaxCandidateToolsForTurn not found.");
+    private static readonly FieldInfo ModelListCacheField =
+        typeof(ChatServiceSession).GetField("_modelListCache", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_modelListCache not found.");
+    private static readonly Type ModelListCacheEntryType =
+        typeof(ChatServiceSession).GetNestedType("ModelListCacheEntry", BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("ModelListCacheEntry type not found.");
 
     [Fact]
     public void BuildModelPlannerPrompt_IncludesSchemaArgumentsRequiredAndTableViewTrait() {
@@ -160,6 +171,7 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Theory]
+    [InlineData(0L, 8)]
     [InlineData(4096L, 4)]
     [InlineData(8192L, 4)]
     [InlineData(12000L, 6)]
@@ -169,5 +181,97 @@ public sealed class ChatServicePlannerPromptTests {
         var result = ResolveContextAwareCompatibleHttpDefaultMaxCandidateToolsMethod.Invoke(null, new object?[] { effectiveContextLength });
         var value = Assert.IsType<int>(result);
         Assert.Equal(expected, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsForTurn_PreservesExplicitRequestForCompatibleHttp() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { 21, OpenAITransportKind.CompatibleHttp, "any-model" });
+        var value = Assert.IsType<int>(result);
+
+        Assert.Equal(21, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsForTurn_ReturnsNoOverrideForNativeWithoutRequest() {
+        var session = BuildSessionWithModelCache(BuildModelInfo("native-model", loadedContextLength: 4096, maxContextLength: null));
+
+        var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { null, OpenAITransportKind.Native, "native-model" });
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsForTurn_UsesMatchedModelLoadedContextForCompatibleHttp() {
+        var session = BuildSessionWithModelCache(BuildModelInfo("ctx-small", loadedContextLength: 4096, maxContextLength: 32768));
+
+        var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { null, OpenAITransportKind.CompatibleHttp, "ctx-small" });
+        var value = Assert.IsType<int>(result);
+
+        Assert.Equal(4, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsForTurn_UsesMatchedModelMaxContextWhenLoadedContextMissing() {
+        var session = BuildSessionWithModelCache(BuildModelInfo("ctx-max-only", loadedContextLength: null, maxContextLength: 12000));
+
+        var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { null, OpenAITransportKind.CompatibleHttp, "ctx-max-only" });
+        var value = Assert.IsType<int>(result);
+
+        Assert.Equal(6, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsForTurn_UsesSingleModelFallbackWhenSelectionDoesNotMatch() {
+        var session = BuildSessionWithModelCache(BuildModelInfo("only-model", loadedContextLength: 12000, maxContextLength: null));
+
+        var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { null, OpenAITransportKind.CompatibleHttp, "unknown-model" });
+        var value = Assert.IsType<int>(result);
+
+        Assert.Equal(6, value);
+    }
+
+    [Fact]
+    public void ResolveMaxCandidateToolsForTurn_FallsBackToCompatibleHttpDefaultWhenModelSelectionUnknownAndMultipleModelsExist() {
+        var session = BuildSessionWithModelCache(
+            BuildModelInfo("model-a", loadedContextLength: 4096, maxContextLength: null),
+            BuildModelInfo("model-b", loadedContextLength: 12000, maxContextLength: null));
+
+        var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { null, OpenAITransportKind.CompatibleHttp, "unknown-model" });
+        var value = Assert.IsType<int>(result);
+
+        Assert.Equal(8, value);
+    }
+
+    private static ChatServiceSession BuildSessionWithModelCache(params ModelInfo[] models) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var modelList = new ModelListResult(models, nextCursor: null, raw: new JsonObject(), additional: null);
+        var cacheEntry = Activator.CreateInstance(
+            ModelListCacheEntryType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: new object?[] { "test-cache-key", DateTime.UtcNow.AddMinutes(5), modelList },
+            culture: null);
+        Assert.NotNull(cacheEntry);
+
+        ModelListCacheField.SetValue(session, cacheEntry);
+        return session;
+    }
+
+    private static ModelInfo BuildModelInfo(string id, long? loadedContextLength, long? maxContextLength) {
+        return new ModelInfo(
+            id: id,
+            model: id,
+            displayName: id,
+            description: string.Empty,
+            supportedReasoningEfforts: Array.Empty<ReasoningEffortOption>(),
+            defaultReasoningEffort: null,
+            isDefault: false,
+            raw: new JsonObject(),
+            additional: null,
+            maxContextLength: maxContextLength,
+            loadedContextLength: loadedContextLength,
+            capabilities: Array.Empty<string>());
     }
 }
