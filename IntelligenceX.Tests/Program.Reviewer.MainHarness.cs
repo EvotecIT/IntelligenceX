@@ -236,8 +236,10 @@ internal static partial class Program {
         failed += Run("Todo pr-watch monitor compose source tag skips empty action", TestPrWatchMonitorComposeSourceTagSkipsEmptyAction);
         failed += Run("Todo pr-watch monitor resolves event action from payload", TestPrWatchMonitorResolveEventActionFromPayload);
         failed += Run("Todo pr-watch monitor resolves PR spec from payload", TestPrWatchMonitorResolvePrSpecFromPayload);
-        failed += Run("Todo pr-watch monitor compose source tag uses event name when source empty", TestPrWatchMonitorComposeSourceTagUsesEventNameWhenSourceEmpty);
-        failed += Run("Todo pr-watch monitor compose source tag uses manual_cli when source and event name empty", TestPrWatchMonitorComposeSourceTagUsesManualCliWhenSourceAndEventNameEmpty);
+        failed += Run("Todo pr-watch monitor resolves source defaults keeps explicit source", TestPrWatchMonitorResolveSourceWithEventDefaultsKeepsExplicitSource);
+        failed += Run("Todo pr-watch monitor resolves source defaults uses event name when source empty", TestPrWatchMonitorResolveSourceWithEventDefaultsUsesEventNameWhenSourceEmpty);
+        failed += Run("Todo pr-watch monitor resolves source defaults uses manual_cli when source and event name empty", TestPrWatchMonitorResolveSourceWithEventDefaultsUsesManualCliWhenSourceAndEventNameEmpty);
+        failed += Run("Todo pr-watch monitor resolves PR defaults keeps explicit PR", TestPrWatchMonitorResolvePrSpecWithEventDefaultsKeepsExplicitPr);
         failed += Run("Todo pr-watch monitor workflow review triggers include submitted and edited",
             TestPrWatchMonitorWorkflowReviewTriggersIncludeSubmittedAndEdited);
         failed += Run("Todo pr-watch monitor workflow excludes review comment trigger",
