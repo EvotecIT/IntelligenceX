@@ -181,6 +181,8 @@ Progress:
   - extracted named constants for minimum relevant candidates and dominant-share threshold
   - clarification now triggers only for strictly non-dominant mixes (not at the 80% dominance boundary)
   - added targeted regression tests for mixed-positive and boundary-negative cases
+- Added dedicated DomainDetective network diagnostics tool:
+  - `domaindetective_network_probe` exposes bounded ping + optional traceroute checks for open-source host/path troubleshooting.
 
 ### WS5: Tool Count, Context Budget, Compaction
 Status: in_progress  

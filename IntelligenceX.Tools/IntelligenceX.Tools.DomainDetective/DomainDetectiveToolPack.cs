@@ -23,7 +23,7 @@ public sealed class DomainDetectiveToolPack : IToolPack {
         Name = "DomainDetective",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
-        Description = "Open-source domain and DNS posture diagnostics.",
+        Description = "Open-source domain, DNS, and network-path diagnostics.",
         SourceKind = "open_source"
     };
 
@@ -32,4 +32,3 @@ public sealed class DomainDetectiveToolPack : IToolPack {
         registry.RegisterDomainDetectivePack(_options);
     }
 }
-

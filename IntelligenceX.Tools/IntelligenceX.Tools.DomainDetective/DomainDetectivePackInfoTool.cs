@@ -33,6 +33,7 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
             tools: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Use domaindetective_domain_summary for broad domain posture checks (DNS/email/security).",
+                "Use domaindetective_network_probe for host-level ping/traceroute diagnostics.",
                 "When you need resolver-specific evidence, pair with dnsclientx_query.",
                 "When the request is AD directory-scoped (domains/DCs/LDAP), route to AD pack tools instead of DomainDetective."
             },
@@ -41,6 +42,10 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
                     goal: "Run bounded domain posture checks",
                     suggestedTools: new[] { "domaindetective_domain_summary" },
                     notes: "Prefer a focused checks[] set and explicit timeout_ms for deterministic runs."),
+                ToolPackGuidance.FlowStep(
+                    goal: "Run bounded host reachability diagnostics",
+                    suggestedTools: new[] { "domaindetective_network_probe" },
+                    notes: "Use ping first, then enable traceroute when path diagnostics are needed."),
                 ToolPackGuidance.FlowStep(
                     goal: "Validate resolver-specific discrepancies",
                     suggestedTools: new[] { "dnsclientx_query" },
@@ -55,6 +60,10 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
                     id: "domain_posture_summary",
                     summary: "Run selected DomainDetective health checks and return condensed DNS/email/security posture summary.",
                     primaryTools: new[] { "domaindetective_domain_summary" }),
+                ToolPackGuidance.Capability(
+                    id: "network_reachability_probe",
+                    summary: "Run host-level ping and optional traceroute diagnostics for fast path validation.",
+                    primaryTools: new[] { "domaindetective_network_probe" }),
                 ToolPackGuidance.Capability(
                     id: "domain_vs_ad_context_separation",
                     summary: "Keep public-domain diagnostics separate from AD directory operations to reduce routing ambiguity.",
@@ -82,4 +91,3 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
         return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
     }
 }
-
