@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>IntelligenceX.Tools.DnsClientX</AssemblyName>
+    <PackageId>IntelligenceX.Tools.DnsClientX</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>DnsClientX-backed DNS and ping diagnostics tools for IntelligenceX tool calling (read-only).</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Local-dev discovery: DnsClientX repo is expected as a sibling checkout next to IntelligenceX. -->
+    <DnsClientXProject>$([System.IO.Path]::GetFullPath('$(DnsClientXRoot)DnsClientX\DnsClientX.csproj'))</DnsClientXProject>
+    <DnsClientXAvailable Condition="Exists('$(DnsClientXProject)') OR '$(DnsClientXNuGetVersion)' != ''">true</DnsClientXAvailable>
+    <DefineConstants Condition="'$(DnsClientXAvailable)' == 'true'">$(DefineConstants);DNSCLIENTX_ENABLED</DefineConstants>
+    <DefineConstants Condition="'$(DnsClientXAvailable)' != 'true'">$(DefineConstants);DNSCLIENTX_DISABLED</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
+    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(DnsClientXProject)')">
+    <ProjectReference Include="$(DnsClientXProject)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(DnsClientXProject)') AND '$(DnsClientXNuGetVersion)' != ''">
+    <PackageReference Include="DnsClientX" Version="$(DnsClientXNuGetVersion)" />
+  </ItemGroup>
+</Project>

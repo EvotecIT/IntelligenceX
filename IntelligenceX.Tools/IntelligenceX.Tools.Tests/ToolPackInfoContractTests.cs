@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
+using IntelligenceX.Tools.DnsClientX;
+using IntelligenceX.Tools.DomainDetective;
 using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.FileSystem;
@@ -341,6 +343,8 @@ public class ToolPackInfoContractTests {
         var powerShellOptions = new PowerShellToolOptions { Enabled = true };
         var testimoXOptions = new TestimoXToolOptions { Enabled = true };
         var officeImoOptions = new OfficeImoToolOptions();
+        var dnsClientXOptions = new DnsClientXToolOptions();
+        var domainDetectiveOptions = new DomainDetectiveToolOptions();
 
         return new[] {
             new PackCase(
@@ -390,7 +394,19 @@ public class ToolPackInfoContractTests {
                 Engine: "OfficeIMO.Reader",
                 Tool: new OfficeImoPackInfoTool(officeImoOptions),
                 ExpectedTools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(officeImoOptions),
-                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions))
+                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions)),
+            new PackCase(
+                Pack: "dnsclientx",
+                Engine: "DnsClientX",
+                Tool: new DnsClientXPackInfoTool(dnsClientXOptions),
+                ExpectedTools: ToolRegistryDnsClientXExtensions.GetRegisteredToolNames(dnsClientXOptions),
+                ExpectedCatalog: ToolRegistryDnsClientXExtensions.GetRegisteredToolCatalog(dnsClientXOptions)),
+            new PackCase(
+                Pack: "domaindetective",
+                Engine: "DomainDetective",
+                Tool: new DomainDetectivePackInfoTool(domainDetectiveOptions),
+                ExpectedTools: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolNames(domainDetectiveOptions),
+                ExpectedCatalog: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolCatalog(domainDetectiveOptions))
         };
     }
 

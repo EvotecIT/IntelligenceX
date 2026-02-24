@@ -31,6 +31,8 @@
     <ProjectReference Include="..\IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.OfficeIMO\IntelligenceX.Tools.OfficeIMO.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.DnsClientX\IntelligenceX.Tools.DnsClientX.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.DomainDetective\IntelligenceX.Tools.DomainDetective.csproj" />
   </ItemGroup>
 
 </Project>

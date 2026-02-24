@@ -7,6 +7,8 @@ using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
+using IntelligenceX.Tools.DnsClientX;
+using IntelligenceX.Tools.DomainDetective;
 using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.FileSystem;
@@ -27,6 +29,8 @@ public class ToolDefinitionContractTests {
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
+        registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
+        registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
         var definitions = registry.GetDefinitions();
         Assert.NotEmpty(definitions);
@@ -58,6 +62,8 @@ public class ToolDefinitionContractTests {
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
+        registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
+        registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
         var definitions = registry.GetDefinitions();
         Assert.NotEmpty(definitions);
@@ -552,6 +558,23 @@ public class ToolDefinitionContractTests {
         Assert.Contains("testimox_pack_info", names);
         Assert.Contains("testimox_rules_list", names);
         Assert.Contains("testimox_rules_run", names);
+    }
+
+    [Fact]
+    public void OpenSourceDnsAndDomainPacks_ShouldExposePackInfoAndCoreTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
+        registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
+
+        var names = new HashSet<string>(
+            registry.GetDefinitions().Select(static d => d.Name),
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Contains("dnsclientx_pack_info", names);
+        Assert.Contains("dnsclientx_query", names);
+        Assert.Contains("dnsclientx_ping", names);
+        Assert.Contains("domaindetective_pack_info", names);
+        Assert.Contains("domaindetective_domain_summary", names);
     }
 
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {

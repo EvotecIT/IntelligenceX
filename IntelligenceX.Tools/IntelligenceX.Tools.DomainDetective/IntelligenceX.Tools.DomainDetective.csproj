@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>IntelligenceX.Tools.DomainDetective</AssemblyName>
+    <PackageId>IntelligenceX.Tools.DomainDetective</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>DomainDetective-backed domain diagnostics tools for IntelligenceX tool calling (read-only).</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Local-dev discovery: DomainDetective repo is expected as a sibling checkout next to IntelligenceX. -->
+    <DomainDetectiveProject>$([System.IO.Path]::GetFullPath('$(DomainDetectiveRoot)DomainDetective\DomainDetective.csproj'))</DomainDetectiveProject>
+    <DomainDetectiveAvailable Condition="Exists('$(DomainDetectiveProject)') OR '$(DomainDetectiveNuGetVersion)' != ''">true</DomainDetectiveAvailable>
+    <DefineConstants Condition="'$(DomainDetectiveAvailable)' == 'true'">$(DefineConstants);DOMAINDETECTIVE_ENABLED</DefineConstants>
+    <DefineConstants Condition="'$(DomainDetectiveAvailable)' != 'true'">$(DefineConstants);DOMAINDETECTIVE_DISABLED</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
+    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(DomainDetectiveProject)')">
+    <ProjectReference Include="$(DomainDetectiveProject)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(DomainDetectiveProject)') AND '$(DomainDetectiveNuGetVersion)' != ''">
+    <PackageReference Include="DomainDetective" Version="$(DomainDetectiveNuGetVersion)" />
+  </ItemGroup>
+</Project>
