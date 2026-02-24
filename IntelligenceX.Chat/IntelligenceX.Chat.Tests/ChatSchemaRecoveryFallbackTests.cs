@@ -276,6 +276,24 @@ public sealed class ChatSchemaRecoveryFallbackTests {
     }
 
     [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_DoesNotRetryOnNestedNonTransportFailure() {
+        var ex = new InvalidOperationException(
+            "model phase failed after tool call",
+            new InvalidOperationException(
+                "tool replay failed",
+                new FormatException("schema parse failure in recovered replay payload")));
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
     public void ServiceShouldRetryModelPhaseAttempt_DoesNotRetryWhenCancellationAlreadyRequested() {
         using var cts = new CancellationTokenSource();
         cts.Cancel();

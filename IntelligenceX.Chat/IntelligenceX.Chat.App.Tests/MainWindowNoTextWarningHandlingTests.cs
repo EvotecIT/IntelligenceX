@@ -116,6 +116,20 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures Unicode punctuation-only differences do not create duplicate final bubbles after streaming.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_DoesNotAppendForUnicodePunctuationOnlyDiffs() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: false,
+            finalAssistantText: "Running checks now！",
+            streamedAssistantText: "running checks now");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
     /// Ensures short suffix-only final updates are treated as near-duplicates after streamed drafts.
     /// </summary>
     [Fact]
@@ -190,6 +204,20 @@ public sealed class MainWindowNoTextWarningHandlingTests {
             activeTurnReceivedDelta: false,
             activeTurnBoundToConversation: true,
             interimAssistantText: "Running checks now!",
+            latestAssistantText: "running checks now");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures Unicode punctuation-only interim/latest diffs stay replace-only during reconnect snapshots.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_DoesNotAppendForUnicodePunctuationOnlyDiffs() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: false,
+            activeTurnBoundToConversation: true,
+            interimAssistantText: "Running checks now！",
             latestAssistantText: "running checks now");
 
         Assert.False(append);

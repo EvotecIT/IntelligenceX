@@ -2558,14 +2558,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var items = GetChatInputItems(input);
 
         Assert.Equal(4, items.Count);
+        var sequence = new List<string>();
         var outputByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < items.Count; i++) {
             var item = Assert.IsType<JsonObject>(items[i].AsObject());
-            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+            var type = item.GetString("type");
+            var callId = item.GetString("call_id");
+            if (!string.IsNullOrWhiteSpace(callId)
+                && (string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase))) {
+                sequence.Add(type + ":" + callId);
+            }
+
+            if (!string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
-            var callId = item.GetString("call_id");
             if (string.IsNullOrWhiteSpace(callId)) {
                 continue;
             }
@@ -2576,6 +2584,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, outputByCallId.Count);
         Assert.Equal("out-a-explicit-latest", outputByCallId["call_a"]);
         Assert.Equal("out-b-explicit-latest", outputByCallId["call_b"]);
+        Assert.Equal(
+            new[] {
+                "custom_tool_call:call_a",
+                "custom_tool_call_output:call_a",
+                "custom_tool_call:call_b",
+                "custom_tool_call_output:call_b"
+            },
+            sequence);
     }
 
     [Fact]
