@@ -28,6 +28,9 @@ Last validated: 2026-02-24
 - Scenario suite now supports scenario-tag filtering (`-Tags`) and preflight forwards tags via `-ScenarioTags`.
 - Added live-suite runner (`Build/Run-ChatLiveConversationSuite.ps1`) so local live validation can run tag-driven batches without hardcoded single-scenario defaults.
 - Preflight now supports `-RunLiveHarnessSuite` for the same tag-driven live validation path.
+- Updated live-suite/preflight defaults to remove AD-only hardcoding:
+  - default filter now targets all `*-10-turn.json` scenarios
+  - default live-suite tags now target `strict,live` across AD + DNS/domain paths
 - App already supports debug toggles for turn trace and draft bubbles with distinct rendering channels.
 
 ## Scenario Coverage (Current)

@@ -52,8 +52,8 @@ Live 10-turn harness suite run (tag-driven, no hardcoded single scenario):
 ```powershell
 pwsh .\Build\Run-ChatLiveConversationSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
-  -Filter "ad-*-10-turn.json" `
-  -Tags ad,strict,live `
+  -Filter "*-10-turn.json" `
+  -Tags strict,live `
   -ExpectedTurns 10 `
   -OutDir .\artifacts\chat-live-suite
 ```
@@ -123,14 +123,14 @@ One-command local quality preflight (strict scenario suite + optional live smoke
 
 ```powershell
 pwsh .\Build\Run-ChatQualityPreflight.ps1 `
-  -ScenarioFilter "ad-*-10-turn.json"
+  -ScenarioFilter "*-10-turn.json"
 ```
 
 To include a live 10-turn smoke run in the same preflight:
 
 ```powershell
 pwsh .\Build\Run-ChatQualityPreflight.ps1 `
-  -ScenarioFilter "ad-*-10-turn.json" `
+  -ScenarioFilter "*-10-turn.json" `
   -RunLiveHarness
 ```
 
@@ -138,9 +138,9 @@ To include a tag-driven live harness suite run in the same preflight:
 
 ```powershell
 pwsh .\Build\Run-ChatQualityPreflight.ps1 `
-  -ScenarioFilter "ad-*-10-turn.json" `
+  -ScenarioFilter "*-10-turn.json" `
   -RunLiveHarnessSuite `
-  -LiveSuiteTags ad,strict,live
+  -LiveSuiteTags strict,live
 ```
 
 To run only strict AD continuation scenarios in preflight:
@@ -155,7 +155,7 @@ To include recovery unit tests (tool-pairing/transport retry guards) in prefligh
 
 ```powershell
 pwsh .\Build\Run-ChatQualityPreflight.ps1 `
-  -ScenarioFilter "ad-*-10-turn.json" `
+  -ScenarioFilter "*-10-turn.json" `
   -RunRecoveryUnitTests
 ```
 
@@ -163,7 +163,7 @@ To add a dedicated strict transport-recovery gate run (tags: `ad,strict,transpor
 
 ```powershell
 pwsh .\Build\Run-ChatQualityPreflight.ps1 `
-  -ScenarioFilter "ad-*-10-turn.json" `
+  -ScenarioFilter "*-10-turn.json" `
   -RunTransportRecoveryProfile `
   -RunRecoveryUnitTests
 ```
