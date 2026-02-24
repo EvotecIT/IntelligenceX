@@ -1,4 +1,4 @@
-name: IX PR Babysit Monitor
+name: IX PR Babysit Monitor (PR + Submitted Review Signals)
 
 on:
   schedule:
@@ -10,11 +10,10 @@ on:
       - reopened
       - ready_for_review
   pull_request_review:
+    # GitHub often emits pull_request_review and pull_request_review_comment together.
+    # Keep submitted reviews as the event-driven signal and avoid duplicate monitor runs.
     types:
       - submitted
-  pull_request_review_comment:
-    types:
-      - created
   workflow_dispatch:
     inputs:
       pr:
