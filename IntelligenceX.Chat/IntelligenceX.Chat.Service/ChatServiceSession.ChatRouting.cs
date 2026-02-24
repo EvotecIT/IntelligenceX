@@ -1269,6 +1269,7 @@ internal sealed partial class ChatServiceSession {
 
             var next = new ChatInput();
             var replayedToolCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var replayedToolOutputIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var outputIndex = 0; outputIndex < executed.Count; outputIndex++) {
                 var output = executed[outputIndex];
                 var normalizedOutputCallId = ResolveToolOutputCallId(
@@ -1280,15 +1281,20 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                if (executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)
-                    && replayedToolCallIds.Add(normalizedOutputCallId)) {
+                if (!executedCallsById.TryGetValue(normalizedOutputCallId, out var executedCall)) {
+                    continue;
+                }
+
+                if (replayedToolCallIds.Add(normalizedOutputCallId)) {
                     next.AddToolCall(
                         executedCall.CallId,
                         executedCall.Name,
                         executedCall.Input);
                 }
 
-                next.AddToolOutput(normalizedOutputCallId, output.Output);
+                if (replayedToolOutputIds.Add(normalizedOutputCallId)) {
+                    next.AddToolOutput(normalizedOutputCallId, output.Output);
+                }
             }
             turn = await RunModelPhaseWithProgressAsync(
                     client,

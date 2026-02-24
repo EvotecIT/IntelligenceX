@@ -341,7 +341,7 @@ internal sealed partial class OpenAINativeTransport {
             return NormalizeToolOutputInputItem(message);
         }
 
-        return message;
+        return RemoveLegacyArgumentsFieldForNonToolInput(message);
     }
 
     private static IReadOnlyList<JsonObject> NormalizeAndFilterReplayInputItems(IReadOnlyList<JsonObject> messages) {
@@ -350,39 +350,64 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         var normalized = new List<JsonObject>(messages.Count);
-        var callIdsWithCalls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var callIdsWithOutputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var callIndexesById = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var outputIndexesById = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var hasToolReplayItems = false;
 
         for (var i = 0; i < messages.Count; i++) {
             var item = NormalizeInputItemForRequest(messages[i] ?? new JsonObject());
             normalized.Add(item);
 
             var type = (GetStringIgnoreCase(item, "type") ?? string.Empty).Trim();
+            var isToolCall = IsToolCallInputType(type);
+            var isToolOutput = IsToolOutputInputType(type);
+            if (!isToolCall && !isToolOutput) {
+                continue;
+            }
+
+            hasToolReplayItems = true;
             var callId = ExtractToolReplayCallId(item);
             if (string.IsNullOrWhiteSpace(callId)) {
                 continue;
             }
 
-            if (IsToolCallInputType(type)) {
-                callIdsWithCalls.Add(callId!);
-            } else if (IsToolOutputInputType(type)) {
-                callIdsWithOutputs.Add(callId!);
+            if (isToolCall) {
+                AddReplayIndex(callIndexesById, callId!, i);
+            } else if (isToolOutput) {
+                AddReplayIndex(outputIndexesById, callId!, i);
             }
         }
 
-        if (callIdsWithCalls.Count == 0 && callIdsWithOutputs.Count == 0) {
+        if (!hasToolReplayItems) {
             return normalized;
         }
 
-        var pairedCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var callId in callIdsWithCalls) {
-            if (callIdsWithOutputs.Contains(callId)) {
-                pairedCallIds.Add(callId);
+        var selectedCallIndexById = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var selectedOutputIndexById = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in callIndexesById) {
+            var callId = entry.Key;
+            if (!outputIndexesById.TryGetValue(callId, out var outputIndexes)) {
+                continue;
             }
+
+            if (!TrySelectReplayPairIndexes(entry.Value, outputIndexes, out var selectedCallIndex, out var selectedOutputIndex)) {
+                continue;
+            }
+
+            selectedCallIndexById[callId] = selectedCallIndex;
+            selectedOutputIndexById[callId] = selectedOutputIndex;
         }
 
-        if (pairedCallIds.Count == callIdsWithCalls.Count && pairedCallIds.Count == callIdsWithOutputs.Count) {
-            return normalized;
+        if (selectedCallIndexById.Count == 0) {
+            var noToolReplay = new List<JsonObject>(normalized.Count);
+            for (var i = 0; i < normalized.Count; i++) {
+                var item = normalized[i];
+                var type = (GetStringIgnoreCase(item, "type") ?? string.Empty).Trim();
+                if (!IsToolCallInputType(type) && !IsToolOutputInputType(type)) {
+                    noToolReplay.Add(item);
+                }
+            }
+            return noToolReplay;
         }
 
         var filtered = new List<JsonObject>(normalized.Count);
@@ -395,7 +420,20 @@ internal sealed partial class OpenAINativeTransport {
             }
 
             var callId = ExtractToolReplayCallId(item);
-            if (!string.IsNullOrWhiteSpace(callId) && pairedCallIds.Contains(callId!)) {
+            if (string.IsNullOrWhiteSpace(callId)) {
+                continue;
+            }
+
+            if (IsToolCallInputType(type)
+                && selectedCallIndexById.TryGetValue(callId!, out var selectedCallIndex)
+                && selectedCallIndex == i) {
+                filtered.Add(item);
+                continue;
+            }
+
+            if (IsToolOutputInputType(type)
+                && selectedOutputIndexById.TryGetValue(callId!, out var selectedOutputIndex)
+                && selectedOutputIndex == i) {
                 filtered.Add(item);
             }
         }
@@ -508,11 +546,64 @@ internal sealed partial class OpenAINativeTransport {
         return normalized;
     }
 
+    private static JsonObject RemoveLegacyArgumentsFieldForNonToolInput(JsonObject message) {
+        var removed = false;
+        var normalized = new JsonObject();
+        foreach (var pair in message) {
+            if (string.Equals(pair.Key, "arguments", StringComparison.OrdinalIgnoreCase)) {
+                removed = true;
+                continue;
+            }
+
+            normalized.Add(pair.Key, pair.Value ?? JsonValue.Null);
+        }
+
+        return removed ? normalized : message;
+    }
+
     private static string? ExtractToolReplayCallId(JsonObject message) {
         return FirstNonEmpty(
             GetStringIgnoreCase(message, "call_id"),
             GetStringIgnoreCase(message, "tool_call_id"),
             GetStringIgnoreCase(message, "id"));
+    }
+
+    private static void AddReplayIndex(IDictionary<string, List<int>> indexesById, string callId, int index) {
+        if (!indexesById.TryGetValue(callId, out var indexes)) {
+            indexes = new List<int>();
+            indexesById[callId] = indexes;
+        }
+
+        indexes.Add(index);
+    }
+
+    private static bool TrySelectReplayPairIndexes(
+        IReadOnlyList<int> callIndexes,
+        IReadOnlyList<int> outputIndexes,
+        out int selectedCallIndex,
+        out int selectedOutputIndex) {
+        selectedCallIndex = -1;
+        selectedOutputIndex = -1;
+        if (callIndexes is null || outputIndexes is null || callIndexes.Count == 0 || outputIndexes.Count == 0) {
+            return false;
+        }
+
+        var outputCursor = 0;
+        for (var i = 0; i < callIndexes.Count; i++) {
+            var callIndex = callIndexes[i];
+            while (outputCursor < outputIndexes.Count && outputIndexes[outputCursor] <= callIndex) {
+                outputCursor++;
+            }
+
+            if (outputCursor >= outputIndexes.Count) {
+                break;
+            }
+
+            selectedCallIndex = callIndex;
+            selectedOutputIndex = outputIndexes[outputCursor];
+        }
+
+        return selectedCallIndex >= 0 && selectedOutputIndex >= 0;
     }
 
     private static string BuildCustomToolCallWireId(string? sourceId, string? callId, string? name, string arguments) {

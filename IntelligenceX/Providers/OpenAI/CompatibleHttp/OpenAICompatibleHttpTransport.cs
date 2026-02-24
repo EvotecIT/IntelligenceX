@@ -395,7 +395,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             requestMessages.AddRange(newMessages);
         }
 
-        var body = BuildChatCompletionsRequest(state.Model, requestMessages, options, streaming: _options.Streaming);
+        var normalizedRequestMessages = NormalizeToolReplayMessages(requestMessages);
+        var body = BuildChatCompletionsRequest(state.Model, normalizedRequestMessages, options, streaming: _options.Streaming);
         var rpcParams = JsonValue.From(body);
         RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("chat.completions.create", rpcParams));
 
@@ -406,7 +407,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
             // Update history with the messages we sent + the assistant message we received.
             lock (_threadsLock) {
-                state.Messages.AddRange(newMessages);
+                state.Messages.Clear();
+                state.Messages.AddRange(normalizedRequestMessages);
                 state.Messages.Add(response.AssistantMessageForHistory);
             }
 
