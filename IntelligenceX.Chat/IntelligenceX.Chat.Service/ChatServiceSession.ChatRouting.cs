@@ -1221,58 +1221,92 @@ internal sealed partial class ChatServiceSession {
                     ResolvedModel: resolvedModel);
             }
 
-            toolRounds++;
-            var roundNumber = round + 1;
-            await WriteToolRoundStartedStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    roundNumber,
-                    maxRounds,
-                    extracted.Count,
-                    parallelTools,
-                    allowMutatingParallel)
-                .ConfigureAwait(false);
-            if (planExecuteReviewLoop) {
-                await TryWriteStatusAsync(
+            var priorOutputsByCallId = BuildLatestToolOutputsByCallId(toolOutputs);
+            var callsToExecute = new List<ToolCall>(extracted.Count);
+            var replayRecoveredOutputs = new List<ToolOutputDto>(extracted.Count);
+            for (var callIndex = 0; callIndex < extracted.Count; callIndex++) {
+                var call = extracted[callIndex];
+                if (TryGetReplayRecoveredOutputForCall(call, priorOutputsByCallId, out var replayRecoveredOutput)) {
+                    replayRecoveredOutputs.Add(replayRecoveredOutput);
+                    continue;
+                }
+
+                callsToExecute.Add(call);
+            }
+
+            var hasFreshCallsToExecute = callsToExecute.Count > 0;
+            var roundNumber = 0;
+            if (hasFreshCallsToExecute) {
+                toolRounds++;
+                roundNumber = toolRounds;
+                await WriteToolRoundStartedStatusAsync(
                         writer,
                         request.RequestId,
                         threadId,
-                        status: ChatStatusCodes.PhaseExecute,
-                        message: $"Executing {extracted.Count} planned tool call(s)...")
+                        roundNumber,
+                        maxRounds,
+                        callsToExecute.Count,
+                        parallelTools,
+                        allowMutatingParallel)
                     .ConfigureAwait(false);
+                if (planExecuteReviewLoop) {
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.PhaseExecute,
+                            message: $"Executing {callsToExecute.Count} planned tool call(s)...")
+                        .ConfigureAwait(false);
+                }
+
+                foreach (var call in callsToExecute) {
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.ToolCall,
+                            toolName: call.Name,
+                            toolCallId: call.CallId)
+                        .ConfigureAwait(false);
+                    toolCalls.Add(new ToolCallDto {
+                        CallId = call.CallId,
+                        Name = call.Name,
+                        ArgumentsJson = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments)
+                    });
+                }
             }
 
-            foreach (var call in extracted) {
-                await TryWriteStatusAsync(
+            IReadOnlyList<ToolOutputDto> executed;
+            if (hasFreshCallsToExecute) {
+                executed = await ExecuteToolsAsync(
                         writer,
                         request.RequestId,
                         threadId,
-                        status: ChatStatusCodes.ToolCall,
-                        toolName: call.Name,
-                        toolCallId: call.CallId)
+                        callsToExecute,
+                        parallelTools,
+                        allowMutatingParallel,
+                        mutatingToolHints,
+                        toolTimeoutSeconds,
+                        turnToken)
                     .ConfigureAwait(false);
-                toolCalls.Add(new ToolCallDto {
-                    CallId = call.CallId,
-                    Name = call.Name,
-                    ArgumentsJson = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments)
-                });
+            } else {
+                executed = Array.Empty<ToolOutputDto>();
             }
 
-            var executed = await ExecuteToolsAsync(writer, request.RequestId, threadId, extracted, parallelTools, allowMutatingParallel,
-                    mutatingToolHints, toolTimeoutSeconds, turnToken)
-                .ConfigureAwait(false);
-            var failedCallsThisRound = CountFailedToolOutputs(executed);
-            await WriteToolRoundCompletedStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    roundNumber,
-                    maxRounds,
-                    executed.Count,
-                    failedCallsThisRound)
-                .ConfigureAwait(false);
-            UpdateToolRoutingStats(extracted, executed);
+            if (hasFreshCallsToExecute) {
+                var failedCallsThisRound = CountFailedToolOutputs(executed);
+                await WriteToolRoundCompletedStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        roundNumber,
+                        maxRounds,
+                        executed.Count,
+                        failedCallsThisRound)
+                    .ConfigureAwait(false);
+            }
+
+            UpdateToolRoutingStats(callsToExecute, executed);
             var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
             foreach (var call in extracted) {
                 var normalizedCallId = (call.CallId ?? string.Empty).Trim();
@@ -1309,7 +1343,8 @@ internal sealed partial class ChatServiceSession {
                 });
             }
 
-            var next = BuildToolRoundReplayInput(extracted, executedCallsById, executed);
+            var replayInputOutputs = MergeToolRoundReplayOutputs(executed, replayRecoveredOutputs);
+            var next = BuildToolRoundReplayInput(extracted, executedCallsById, replayInputOutputs);
             turn = await RunModelPhaseWithProgressAsync(
                     client,
                     writer,
@@ -1398,6 +1433,44 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static Dictionary<string, ToolOutputDto> BuildLatestToolOutputsByCallId(IReadOnlyList<ToolOutputDto> outputs) {
+        var byCallId = new Dictionary<string, ToolOutputDto>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < outputs.Count; i++) {
+            var callId = (outputs[i].CallId ?? string.Empty).Trim();
+            if (callId.Length == 0) {
+                continue;
+            }
+
+            byCallId[callId] = outputs[i];
+        }
+
+        return byCallId;
+    }
+
+    private static bool TryGetReplayRecoveredOutputForCall(ToolCall call, IReadOnlyDictionary<string, ToolOutputDto> outputsByCallId,
+        out ToolOutputDto replayRecoveredOutput) {
+        var callId = (call.CallId ?? string.Empty).Trim();
+        if (callId.Length > 0 && outputsByCallId.TryGetValue(callId, out var priorOutput)) {
+            replayRecoveredOutput = priorOutput with { CallId = callId };
+            return true;
+        }
+
+        replayRecoveredOutput = default!;
+        return false;
+    }
+
+    private static IReadOnlyList<ToolOutputDto> MergeToolRoundReplayOutputs(IReadOnlyList<ToolOutputDto> executed,
+        IReadOnlyList<ToolOutputDto> replayRecoveredOutputs) {
+        if (replayRecoveredOutputs.Count == 0) {
+            return executed;
+        }
+
+        var merged = new List<ToolOutputDto>(executed.Count + replayRecoveredOutputs.Count);
+        merged.AddRange(executed);
+        merged.AddRange(replayRecoveredOutputs);
+        return merged;
     }
 
     private static ChatInput BuildToolRoundReplayInput(
