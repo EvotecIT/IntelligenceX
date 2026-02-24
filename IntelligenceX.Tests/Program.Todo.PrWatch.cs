@@ -125,5 +125,38 @@ internal static partial class Program {
         AssertEqual(keyA, keyB, "dedupe key should be stable regardless of input order");
         AssertContainsText(keyA, "retry_failed_checks:", "dedupe key prefix");
     }
+
+    private static void TestPrWatchRetrySuppressionByMatchingDedupeKey() {
+        var now = new DateTimeOffset(2026, 2, 24, 8, 0, 0, TimeSpan.Zero);
+        var suppress = IntelligenceX.Cli.Todo.PrWatchRunner.ShouldSuppressRetryAction(
+            lastRetryDedupeKey: "retry_failed_checks:abc123",
+            lastRetryAtUtc: now.AddMinutes(-20),
+            currentRetryDedupeKey: "retry_failed_checks:abc123",
+            retryCooldownMinutes: 15,
+            nowUtc: now);
+        AssertEqual(true, suppress, "matching dedupe key should suppress retry");
+    }
+
+    private static void TestPrWatchRetrySuppressionByCooldown() {
+        var now = new DateTimeOffset(2026, 2, 24, 8, 0, 0, TimeSpan.Zero);
+        var suppress = IntelligenceX.Cli.Todo.PrWatchRunner.ShouldSuppressRetryAction(
+            lastRetryDedupeKey: "retry_failed_checks:old",
+            lastRetryAtUtc: now.AddMinutes(-5),
+            currentRetryDedupeKey: "retry_failed_checks:new",
+            retryCooldownMinutes: 15,
+            nowUtc: now);
+        AssertEqual(true, suppress, "active cooldown should suppress retry");
+    }
+
+    private static void TestPrWatchRetrySuppressionAllowsRetryWhenWindowExpired() {
+        var now = new DateTimeOffset(2026, 2, 24, 8, 0, 0, TimeSpan.Zero);
+        var suppress = IntelligenceX.Cli.Todo.PrWatchRunner.ShouldSuppressRetryAction(
+            lastRetryDedupeKey: "retry_failed_checks:old",
+            lastRetryAtUtc: now.AddMinutes(-30),
+            currentRetryDedupeKey: "retry_failed_checks:new",
+            retryCooldownMinutes: 15,
+            nowUtc: now);
+        AssertEqual(false, suppress, "retry should be allowed when dedupe changed and cooldown expired");
+    }
 #endif
 }

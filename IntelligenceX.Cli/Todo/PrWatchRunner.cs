@@ -28,7 +28,10 @@ internal static class PrWatchRunner {
     private const string StopReasonPrClosed = "pr_closed";
     private const string StopReasonReadyToMerge = "ready_to_merge";
     private const string StopReasonRetryBudgetExhausted = "retry_budget_exhausted";
+    private const string ConfirmApplyRetryToken = "RETRY_CHECKS";
     private const int DefaultPollSeconds = 60;
+    private const int DefaultRetryCooldownMinutes = 15;
+    private const int MaxRetryCooldownMinutes = 24 * 60;
     private const int MaxPollSeconds = 60 * 60;
     private static readonly HashSet<string> PendingCheckStates = new(StringComparer.OrdinalIgnoreCase) {
         "QUEUED",
@@ -135,6 +138,8 @@ internal static class PrWatchRunner {
         public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
         public string LastSeenHeadSha { get; set; } = string.Empty;
         public Dictionary<string, int> RetriesBySha { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> LastRetryDedupeBySha { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, DateTimeOffset> LastRetryAtBySha { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> SeenIssueCommentIds { get; set; } = new();
         public List<string> SeenReviewCommentIds { get; set; } = new();
         public List<string> SeenReviewIds { get; set; } = new();
@@ -145,6 +150,9 @@ internal static class PrWatchRunner {
         public string PrSpec { get; set; } = "auto";
         public int PollSeconds { get; set; } = DefaultPollSeconds;
         public int MaxFlakyRetries { get; set; } = 3;
+        public int RetryCooldownMinutes { get; set; } = DefaultRetryCooldownMinutes;
+        public bool ApplyRetry { get; set; }
+        public string ConfirmApplyRetry { get; set; } = string.Empty;
         public string? StateFilePath { get; set; }
         public bool Once { get; set; } = true;
         public bool Watch { get; set; }
@@ -157,7 +165,7 @@ internal static class PrWatchRunner {
         };
     }
 
-    private sealed record WatchCollectionResult(WatchSnapshot Snapshot, string StateFilePath);
+    private sealed record WatchCollectionResult(WatchSnapshot Snapshot, string StateFilePath, RunnerState State);
 
     public static async Task<int> RunAsync(string[] args) {
         var options = ParseOptions(args);
@@ -181,13 +189,61 @@ internal static class PrWatchRunner {
             return 1;
         }
 
+        if (options.ApplyRetry && !options.Once) {
+            Console.Error.WriteLine("`--apply-retry` is supported only in `--once` mode.");
+            return 1;
+        }
+
+        if (options.ApplyRetry && !string.Equals(options.ConfirmApplyRetry, ConfirmApplyRetryToken, StringComparison.Ordinal)) {
+            Console.Error.WriteLine("`--apply-retry` requires `--confirm-apply-retry RETRY_CHECKS`.");
+            return 1;
+        }
+
         if (options.Watch) {
             return await RunWatchAsync(options, authenticatedLogin).ConfigureAwait(false);
         }
 
         try {
-            var snapshot = await CollectSnapshotAsync(options, authenticatedLogin).ConfigureAwait(false);
-            PrintJson(snapshot.Snapshot);
+            var result = await CollectSnapshotAsync(options, authenticatedLogin).ConfigureAwait(false);
+            if (options.ApplyRetry) {
+                var applied = await TryApplyRetryActionAsync(result).ConfigureAwait(false);
+                if (applied) {
+                    var refreshedRetryState = new RetryState(
+                        CurrentShaRetriesUsed: GetRetriesUsed(result.State, result.Snapshot.Pr.HeadSha),
+                        MaxFlakyRetries: options.MaxFlakyRetries
+                    );
+                    var retryDedupeKey = BuildRetryActionDedupeKey(
+                        result.Snapshot.Pr.Repo,
+                        result.Snapshot.Pr.Number,
+                        result.Snapshot.Pr.HeadSha,
+                        result.Snapshot.FailedRuns.Select(item => item.RunId));
+                    var allowRetryAction = !ShouldSuppressRetryAction(
+                        GetLastRetryDedupeKey(result.State, result.Snapshot.Pr.HeadSha),
+                        GetLastRetryAt(result.State, result.Snapshot.Pr.HeadSha),
+                        retryDedupeKey,
+                        options.RetryCooldownMinutes,
+                        DateTimeOffset.UtcNow);
+                    var refreshedActions = RecommendActions(
+                        result.Snapshot.Pr,
+                        result.Snapshot.Checks,
+                        result.Snapshot.FailedRuns,
+                        result.Snapshot.NewReviewItems,
+                        refreshedRetryState,
+                        out var refreshedStopReason,
+                        allowRetryAction);
+
+                    result = result with {
+                        Snapshot = result.Snapshot with {
+                            CapturedAtUtc = DateTimeOffset.UtcNow,
+                            RetryState = refreshedRetryState,
+                            Actions = refreshedActions,
+                            StopReason = refreshedStopReason
+                        }
+                    };
+                }
+            }
+
+            PrintJson(result.Snapshot);
             return 0;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
@@ -230,7 +286,8 @@ internal static class PrWatchRunner {
     }
 
     internal static IReadOnlyList<RecommendedAction> RecommendActions(PrState pr, CheckSummary checks,
-        IReadOnlyList<FailedRun> failedRuns, IReadOnlyList<ReviewItem> newReviewItems, RetryState retryState, out string? stopReason) {
+        IReadOnlyList<FailedRun> failedRuns, IReadOnlyList<ReviewItem> newReviewItems, RetryState retryState, out string? stopReason,
+        bool allowRetryAction = true) {
         var actions = new List<RecommendedAction>();
         stopReason = null;
 
@@ -265,7 +322,7 @@ internal static class PrWatchRunner {
             }
 
             actions.Add(new RecommendedAction(ActionDiagnoseCiFailure));
-            if (checks.AllTerminal && failedRuns.Count > 0 && retryState.CurrentShaRetriesUsed < retryState.MaxFlakyRetries) {
+            if (allowRetryAction && checks.AllTerminal && failedRuns.Count > 0 && retryState.CurrentShaRetriesUsed < retryState.MaxFlakyRetries) {
                 var dedupeKey = BuildRetryActionDedupeKey(pr.Repo, pr.Number, pr.HeadSha, failedRuns.Select(item => item.RunId));
                 actions.Add(new RecommendedAction(ActionRetryFailedChecks, dedupeKey));
             }
@@ -275,6 +332,24 @@ internal static class PrWatchRunner {
             actions.Add(new RecommendedAction(ActionIdleWait));
         }
         return actions;
+    }
+
+    internal static bool ShouldSuppressRetryAction(string? lastRetryDedupeKey, DateTimeOffset? lastRetryAtUtc,
+        string currentRetryDedupeKey, int retryCooldownMinutes, DateTimeOffset nowUtc) {
+        if (!string.IsNullOrWhiteSpace(lastRetryDedupeKey) &&
+            !string.IsNullOrWhiteSpace(currentRetryDedupeKey) &&
+            string.Equals(lastRetryDedupeKey, currentRetryDedupeKey, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (lastRetryAtUtc.HasValue && retryCooldownMinutes > 0) {
+            var elapsed = nowUtc - lastRetryAtUtc.Value;
+            if (elapsed < TimeSpan.FromMinutes(retryCooldownMinutes)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task<int> RunWatchAsync(Options options, string authenticatedLogin) {
@@ -357,7 +432,14 @@ internal static class PrWatchRunner {
             CurrentShaRetriesUsed: GetRetriesUsed(state, pr.HeadSha),
             MaxFlakyRetries: options.MaxFlakyRetries
         );
-        var actions = RecommendActions(pr, checksSummary, failedRuns, newReviewItems, retryState, out var stopReason);
+        var retryDedupeKey = BuildRetryActionDedupeKey(pr.Repo, pr.Number, pr.HeadSha, failedRuns.Select(item => item.RunId));
+        var allowRetryAction = !ShouldSuppressRetryAction(
+            GetLastRetryDedupeKey(state, pr.HeadSha),
+            GetLastRetryAt(state, pr.HeadSha),
+            retryDedupeKey,
+            options.RetryCooldownMinutes,
+            DateTimeOffset.UtcNow);
+        var actions = RecommendActions(pr, checksSummary, failedRuns, newReviewItems, retryState, out var stopReason, allowRetryAction);
 
         state.Repo = pr.Repo;
         state.PrNumber = pr.Number;
@@ -376,7 +458,7 @@ internal static class PrWatchRunner {
             StopReason: stopReason,
             RetryState: retryState
         );
-        return new WatchCollectionResult(snapshot, statePath);
+        return new WatchCollectionResult(snapshot, statePath, state);
     }
 
     private static string ResolveStatePath(Options options, PrState pr) {
@@ -400,6 +482,8 @@ internal static class PrWatchRunner {
                 return new RunnerState();
             }
             value.RetriesBySha ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            value.LastRetryDedupeBySha ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            value.LastRetryAtBySha ??= new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
             value.SeenIssueCommentIds ??= new List<string>();
             value.SeenReviewCommentIds ??= new List<string>();
             value.SeenReviewIds ??= new List<string>();
@@ -434,6 +518,92 @@ internal static class PrWatchRunner {
         }
 
         return Math.Max(0, count);
+    }
+
+    private static string? GetLastRetryDedupeKey(RunnerState state, string headSha) {
+        if (string.IsNullOrWhiteSpace(headSha)) {
+            return null;
+        }
+
+        return state.LastRetryDedupeBySha.TryGetValue(headSha, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
+    }
+
+    private static DateTimeOffset? GetLastRetryAt(RunnerState state, string headSha) {
+        if (string.IsNullOrWhiteSpace(headSha)) {
+            return null;
+        }
+
+        return state.LastRetryAtBySha.TryGetValue(headSha, out var value)
+            ? value
+            : null;
+    }
+
+    private static async Task<bool> TryApplyRetryActionAsync(WatchCollectionResult result) {
+        var retryAction = result.Snapshot.Actions
+            .FirstOrDefault(action => action.Name.Equals(ActionRetryFailedChecks, StringComparison.OrdinalIgnoreCase));
+        if (retryAction is null) {
+            Console.Error.WriteLine("Assist retry requested, but no eligible retry action was planned.");
+            return false;
+        }
+
+        var runIds = result.Snapshot.FailedRuns
+            .Select(item => item.RunId)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (runIds.Count == 0) {
+            Console.Error.WriteLine("Assist retry requested, but no failed run IDs are available.");
+            return false;
+        }
+
+        var failedReruns = new List<string>();
+        var rerunSucceeded = false;
+        foreach (var runId in runIds) {
+            var (code, _, stderr) = await GhCli.RunAsync(
+                TimeSpan.FromSeconds(90),
+                "run",
+                "rerun",
+                runId,
+                "--repo",
+                result.Snapshot.Pr.Repo,
+                "--failed").ConfigureAwait(false);
+            if (code == 0) {
+                rerunSucceeded = true;
+                continue;
+            }
+
+            var failure = string.IsNullOrWhiteSpace(stderr)
+                ? $"run:{runId}"
+                : $"run:{runId}:{stderr.Trim()}";
+            failedReruns.Add(failure);
+        }
+
+        if (!rerunSucceeded) {
+            throw new InvalidOperationException("Retry rerun failed for all targeted workflow runs.");
+        }
+
+        var headSha = result.Snapshot.Pr.HeadSha;
+        var currentCount = GetRetriesUsed(result.State, headSha);
+        result.State.RetriesBySha[headSha] = currentCount + 1;
+        if (!string.IsNullOrWhiteSpace(retryAction.DedupeKey)) {
+            result.State.LastRetryDedupeBySha[headSha] = retryAction.DedupeKey!;
+        }
+        result.State.LastRetryAtBySha[headSha] = DateTimeOffset.UtcNow;
+        result.State.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        SaveState(result.StateFilePath, result.State);
+
+        Console.Error.WriteLine(
+            $"Applied retry_failed_checks for PR #{result.Snapshot.Pr.Number.ToString(CultureInfo.InvariantCulture)} on SHA {headSha} (runs={runIds.Count.ToString(CultureInfo.InvariantCulture)}).");
+
+        if (failedReruns.Count > 0) {
+            throw new InvalidOperationException(
+                $"Retry rerun partially failed for PR #{result.Snapshot.Pr.Number.ToString(CultureInfo.InvariantCulture)}: {string.Join("; ", failedReruns)}");
+        }
+
+        return true;
     }
 
     private static async Task<string> GetAuthenticatedLoginAsync() {
@@ -811,6 +981,16 @@ internal static class PrWatchRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--retry-cooldown-minutes":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var retryCooldownMinutes) &&
+                        retryCooldownMinutes >= 0) {
+                        options.RetryCooldownMinutes = Math.Min(MaxRetryCooldownMinutes, retryCooldownMinutes);
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 case "--state-file":
                     if (i + 1 < args.Length) {
                         options.StateFilePath = args[++i];
@@ -841,6 +1021,17 @@ internal static class PrWatchRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--apply-retry":
+                    options.ApplyRetry = true;
+                    break;
+                case "--confirm-apply-retry":
+                    if (i + 1 < args.Length) {
+                        options.ConfirmApplyRetry = args[++i] ?? string.Empty;
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 default:
                     Console.Error.WriteLine($"Unknown option: {arg}");
                     options.ParseFailed = true;
@@ -864,6 +1055,11 @@ internal static class PrWatchRunner {
             options.ShowHelp = true;
         }
 
+        if (options.ApplyRetry && options.Watch) {
+            options.ParseFailed = true;
+            options.ShowHelp = true;
+        }
+
         return options;
     }
 
@@ -878,8 +1074,11 @@ internal static class PrWatchRunner {
         Console.WriteLine("  --watch                     Emit continuous snapshots until terminal state");
         Console.WriteLine("  --poll-seconds <n>          Base poll interval in watch mode (default: 60)");
         Console.WriteLine("  --max-flaky-retries <n>     Retry budget for recommendation classification (default: 3)");
+        Console.WriteLine("  --retry-cooldown-minutes <n> Suppress repeated retry recommendations during cooldown (default: 15)");
         Console.WriteLine("  --state-file <path>         Optional watcher state file path");
         Console.WriteLine("  --approved-bot <login>      Additional approved bot login (repeatable)");
+        Console.WriteLine("  --apply-retry               Execute retry_failed_checks action if eligible (once mode only)");
+        Console.WriteLine("  --confirm-apply-retry <v>   Required safety confirmation token (`RETRY_CHECKS`)");
     }
 
     private static void PrintJson(object value) {

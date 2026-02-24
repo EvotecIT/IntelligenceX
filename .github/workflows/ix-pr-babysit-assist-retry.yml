@@ -1,0 +1,152 @@
+name: IX PR Babysit Assist Retry
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number or URL to assist"
+        required: true
+      max_flaky_retries:
+        description: "Per-SHA retry budget ceiling"
+        required: false
+        default: "3"
+      retry_cooldown_minutes:
+        description: "Cooldown before re-planning retry for same SHA"
+        required: false
+        default: "15"
+      approved_bots:
+        description: "Comma-separated approved bot logins for source classification"
+        required: false
+        default: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
+      confirm_apply_retries:
+        description: "Required confirmation token: RETRY_CHECKS"
+        required: true
+        default: ""
+
+permissions:
+  actions: write
+  contents: read
+  issues: read
+  pull-requests: read
+
+env:
+  PR_WATCH_STATE_DIR: artifacts/pr-watch
+  PR_WATCH_ASSIST_DIR: artifacts/pr-watch/assist
+  PR_WATCH_STATE_CACHE_PREFIX: ix-pr-watch-state-${{ github.repository }}-${{ github.ref_name }}
+  PR_WATCH_STATE_CACHE_KEY: ix-pr-watch-state-${{ github.repository }}-${{ github.ref_name }}-${{ github.run_id }}
+
+jobs:
+  assist-retry:
+    # While private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+    # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
+    # When public, use GitHub-hosted runners by default.
+    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore pr-watch state cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.PR_WATCH_STATE_DIR }}/ix-pr-watch-*.json
+          key: ${{ env.PR_WATCH_STATE_CACHE_KEY }}
+          restore-keys: |
+            ${{ env.PR_WATCH_STATE_CACHE_PREFIX }}-
+
+      - name: Build CLI once
+        run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release /m:1
+
+      - name: Apply guarded retry assist for target PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required for assist summary rendering."
+            exit 1
+          fi
+
+          CONFIRM="${{ github.event.inputs.confirm_apply_retries }}"
+          if [ "${CONFIRM}" != "RETRY_CHECKS" ]; then
+            echo "confirm_apply_retries must equal RETRY_CHECKS"
+            exit 1
+          fi
+
+          PR_INPUT="${{ github.event.inputs.pr }}"
+          MAX_FLAKY_RETRIES="${{ github.event.inputs.max_flaky_retries }}"
+          RETRY_COOLDOWN_MINUTES="${{ github.event.inputs.retry_cooldown_minutes }}"
+          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
+
+          if [ -z "${MAX_FLAKY_RETRIES}" ]; then MAX_FLAKY_RETRIES="3"; fi
+          if [ -z "${RETRY_COOLDOWN_MINUTES}" ]; then RETRY_COOLDOWN_MINUTES="15"; fi
+          if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
+
+          mkdir -p "${PR_WATCH_STATE_DIR}"
+          mkdir -p "${PR_WATCH_ASSIST_DIR}"
+
+          OUTPUT_PATH="${PR_WATCH_ASSIST_DIR}/ix-pr-watch-assist-pr.json"
+
+          ARGS=(
+            "todo" "pr-watch"
+            "--repo" "${{ github.repository }}"
+            "--pr" "${PR_INPUT}"
+            "--once"
+            "--max-flaky-retries" "${MAX_FLAKY_RETRIES}"
+            "--retry-cooldown-minutes" "${RETRY_COOLDOWN_MINUTES}"
+            "--apply-retry"
+            "--confirm-apply-retry" "${CONFIRM}"
+          )
+
+          IFS=',' read -r -a bot_parts <<< "${APPROVED_BOTS}"
+          for raw in "${bot_parts[@]}"; do
+            bot="$(echo "${raw}" | xargs)"
+            if [ -n "${bot}" ]; then
+              ARGS+=("--approved-bot" "${bot}")
+            fi
+          done
+
+          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll "${ARGS[@]}" > "${OUTPUT_PATH}"
+
+          {
+            echo "# IX PR Babysit Assist Retry"
+            echo
+            echo "- Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "- Repo: \`${{ github.repository }}\`"
+            echo "- Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "## Snapshot"
+            jq -r '"- PR: #\(.pr.number) (\(.pr.url))"' "${OUTPUT_PATH}"
+            jq -r '"- Head SHA: `\(.pr.headSha)`"' "${OUTPUT_PATH}"
+            jq -r '"- Stop reason: `\((.stopReason // "none"))`"' "${OUTPUT_PATH}"
+            jq -r '"- Retry usage: \(.retryState.currentShaRetriesUsed)/\(.retryState.maxFlakyRetries)"' "${OUTPUT_PATH}"
+            echo
+            echo "## Planned actions"
+            jq -r '
+              if (.actions | length) == 0 then
+                "- none"
+              else
+                .actions | map("- `\(.name)`\((if .dedupeKey then " (`\(.dedupeKey)`)" else "" end)") | .[]
+              end
+            ' "${OUTPUT_PATH}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload pr-watch assist artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ix-pr-watch-assist
+          path: artifacts/pr-watch
+
+      - name: Save pr-watch state cache
+        if: ${{ always() && hashFiles('artifacts/pr-watch/ix-pr-watch-*.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.PR_WATCH_STATE_DIR }}/ix-pr-watch-*.json
+          key: ${{ env.PR_WATCH_STATE_CACHE_KEY }}

@@ -223,6 +223,9 @@ internal static partial class Program {
         failed += Run("Todo pr-watch prioritizes review before retry", TestPrWatchRecommendActionsPrioritizesReviewBeforeRetry);
         failed += Run("Todo pr-watch source precedence", TestPrWatchDetermineReviewSourceTypeUsesPrecedence);
         failed += Run("Todo pr-watch retry dedupe key stability", TestPrWatchRetryDedupeKeyIsStableAcrossRunOrdering);
+        failed += Run("Todo pr-watch retry suppression by matching dedupe key", TestPrWatchRetrySuppressionByMatchingDedupeKey);
+        failed += Run("Todo pr-watch retry suppression by cooldown", TestPrWatchRetrySuppressionByCooldown);
+        failed += Run("Todo pr-watch retry suppression window expiry allows retry", TestPrWatchRetrySuppressionAllowsRetryWhenWindowExpired);
         failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
         failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
