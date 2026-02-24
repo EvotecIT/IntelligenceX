@@ -259,5 +259,49 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", originalTriggeringActor);
         }
     }
+
+    private static void TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent() {
+        var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag("pull_request_review", "submitted");
+        AssertEqual("pull_request_review:submitted", source, "source tag should append action");
+    }
+
+    private static void TestPrWatchMonitorComposeSourceTagSkipsEmptyAction() {
+        var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag("schedule", string.Empty);
+        AssertEqual("schedule", source, "source tag should remain unchanged when action is empty");
+    }
+
+    private static void TestPrWatchMonitorResolveEventActionFromPayload() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"action\":\"edited\"}") as global::System.Text.Json.Nodes.JsonObject;
+        var action = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveEventActionFromGitHubEventPayload(payload);
+        AssertEqual("edited", action, "event action should resolve from payload");
+    }
+
+    private static void TestPrWatchMonitorResolvePrSpecFromPayload() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"pull_request\":{\"number\":742}}") as global::System.Text.Json.Nodes.JsonObject;
+        var prSpec = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolvePrSpecFromGitHubEventPayload(payload);
+        AssertEqual("742", prSpec, "PR spec should resolve from event payload pull_request.number");
+    }
+
+    private static void TestPrWatchMonitorComposeSourceTagUsesEventNameWhenSourceEmpty() {
+        var originalEventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", "pull_request");
+            var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag(string.Empty, "edited");
+            AssertEqual("pull_request:edited", source, "empty source should fall back to GITHUB_EVENT_NAME before appending action");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", originalEventName);
+        }
+    }
+
+    private static void TestPrWatchMonitorComposeSourceTagUsesManualCliWhenSourceAndEventNameEmpty() {
+        var originalEventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", null);
+            var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag(string.Empty, "edited");
+            AssertEqual("manual_cli:edited", source, "empty source should fall back to manual_cli when event name is unavailable");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", originalEventName);
+        }
+    }
 #endif
 }

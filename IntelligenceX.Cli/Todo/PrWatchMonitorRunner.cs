@@ -22,6 +22,7 @@ internal static class PrWatchMonitorRunner {
         public int MaxFlakyRetries { get; set; } = 3;
         public bool IncludeDrafts { get; set; }
         public string Source { get; set; } = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "manual_cli";
+        public bool SourceExplicitlySet { get; set; }
         public string? RunLink { get; set; } = ResolveRunLink();
         public string SnapshotDir { get; set; } = Path.Combine("artifacts", "pr-watch", "snapshots");
         public string RollupPath { get; set; } = Path.Combine("artifacts", "pr-watch", "ix-pr-watch-rollup.json");
@@ -108,7 +109,10 @@ internal static class PrWatchMonitorRunner {
                 case "--include-drafts": options.IncludeDrafts = ParseBool(Next(args, ref i, arg), options.IncludeDrafts, arg); break;
                 case "--approved-bot": options.ApprovedBots.Add(Next(args, ref i, arg)); break;
                 case "--approved-bots": AddCsv(options.ApprovedBots, Next(args, ref i, arg)); break;
-                case "--source": options.Source = Next(args, ref i, arg); break;
+                case "--source":
+                    options.Source = Next(args, ref i, arg);
+                    options.SourceExplicitlySet = true;
+                    break;
                 case "--run-link": options.RunLink = Next(args, ref i, arg); break;
                 case "--snapshot-dir": options.SnapshotDir = Next(args, ref i, arg); break;
                 case "--rollup-path": options.RollupPath = Next(args, ref i, arg); break;
@@ -116,7 +120,59 @@ internal static class PrWatchMonitorRunner {
                 default: throw new InvalidOperationException($"Unknown option: {arg}");
             }
         }
+        ApplyGitHubEventDefaults(options);
         return options;
+    }
+
+    private static void ApplyGitHubEventDefaults(Options options) {
+        var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        var payload = LoadGitHubEventPayload(eventPath);
+
+        if (string.IsNullOrWhiteSpace(options.PrSpec)) {
+            options.PrSpec = ResolvePrSpecFromGitHubEventPayload(payload);
+        }
+
+        if (!options.SourceExplicitlySet) {
+            var action = ResolveEventActionFromGitHubEventPayload(payload);
+            options.Source = ComposeSourceTag(options.Source, action);
+        }
+    }
+
+    internal static string ComposeSourceTag(string source, string action) {
+        var normalizedSource = string.IsNullOrWhiteSpace(source)
+            ? (Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "manual_cli")
+            : source.Trim();
+        var normalizedAction = string.IsNullOrWhiteSpace(action) ? string.Empty : action.Trim();
+        return string.IsNullOrWhiteSpace(normalizedAction) ? normalizedSource : $"{normalizedSource}:{normalizedAction}";
+    }
+
+    internal static string ResolveEventActionFromGitHubEventPayload(JsonObject? payload) {
+        if (payload is null) {
+            return string.Empty;
+        }
+
+        return ReadString(payload, "action");
+    }
+
+    internal static string ResolvePrSpecFromGitHubEventPayload(JsonObject? payload) {
+        if (payload is null || !payload.TryGetPropertyValue("pull_request", out var prNode) || prNode is not JsonObject pr) {
+            return string.Empty;
+        }
+
+        var number = ReadInt(pr, "number");
+        return number > 0 ? number.ToString(CultureInfo.InvariantCulture) : string.Empty;
+    }
+
+    private static JsonObject? LoadGitHubEventPayload(string? eventPath) {
+        if (string.IsNullOrWhiteSpace(eventPath) || !File.Exists(eventPath)) {
+            return null;
+        }
+
+        try {
+            return JsonNode.Parse(File.ReadAllText(eventPath)) as JsonObject;
+        } catch {
+            return null;
+        }
     }
 
     private static async Task<List<string>> ResolveTargetsAsync(Options options) {
