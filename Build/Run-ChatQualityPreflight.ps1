@@ -1,6 +1,7 @@
 # Runs strict chat quality checks in one command.
 # - Strict scenario suite (required)
 # - Optional live harness smoke run (opt-in)
+# - Optional live harness suite run (opt-in, no hardcoded single scenario)
 
 [CmdletBinding()] param(
     [string] $ScenarioDir = '.\IntelligenceX.Chat\scenarios',
@@ -16,6 +17,12 @@
     [string] $LiveScenarioFile = '.\IntelligenceX.Chat\scenarios\ad-cross-dc-followthrough-10-turn.json',
     [int] $LiveExpectedTurns = 10,
     [string] $LiveOutDir = '.\artifacts\chat-live',
+    [switch] $RunLiveHarnessSuite,
+    [string] $LiveSuiteScenarioDir = '.\IntelligenceX.Chat\scenarios',
+    [string] $LiveSuiteFilter = 'ad-*-10-turn.json',
+    [string[]] $LiveSuiteTags = @('ad', 'strict', 'live'),
+    [int] $LiveSuiteExpectedTurns = 10,
+    [string] $LiveSuiteOutDir = '.\artifacts\chat-live-suite',
     [string[]] $AllowRoot,
     [switch] $NoBuild,
     [switch] $ParallelTools = $true,
@@ -39,12 +46,19 @@ function Write-Step([string] $text) { Write-Host "[+] $text" -ForegroundColor Ye
 $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 $scenarioSuiteScript = Join-Path $repoRoot 'Build\Run-ChatScenarioSuite.ps1'
 $liveHarnessScript = Join-Path $repoRoot 'Build\Run-ChatLiveConversation.ps1'
+$liveHarnessSuiteScript = Join-Path $repoRoot 'Build\Run-ChatLiveConversationSuite.ps1'
 
 if (-not (Test-Path $scenarioSuiteScript)) {
     throw "Scenario suite script not found: $scenarioSuiteScript"
 }
 if (-not (Test-Path $liveHarnessScript)) {
     throw "Live harness script not found: $liveHarnessScript"
+}
+if (-not (Test-Path $liveHarnessSuiteScript)) {
+    throw "Live harness suite script not found: $liveHarnessSuiteScript"
+}
+if ($RunLiveHarness -and $RunLiveHarnessSuite) {
+    throw "Use only one live mode per run: -RunLiveHarness or -RunLiveHarnessSuite."
 }
 
 Write-Header 'IX Chat Quality Preflight'
@@ -171,9 +185,57 @@ if ($RunRecoveryUnitTests) {
     Write-Step "Recovery unit tests passed."
 }
 
-if (-not $RunLiveHarness) {
+if ((-not $RunLiveHarness) -and (-not $RunLiveHarnessSuite)) {
     Write-Step "Strict scenario suite passed."
-    Write-Step "Live harness smoke run skipped. Use -RunLiveHarness to include it."
+    Write-Step "Live harness run skipped. Use -RunLiveHarness (single scenario) or -RunLiveHarnessSuite (tag-driven suite)."
+    exit 0
+}
+
+if ($RunLiveHarnessSuite) {
+    Write-Step "Strict scenario suite passed."
+    Write-Step "Running live harness suite..."
+
+    $liveSuiteParams = @{
+        ScenarioDir = $LiveSuiteScenarioDir
+        Filter = $LiveSuiteFilter
+        Tags = $LiveSuiteTags
+        ExpectedTurns = $LiveSuiteExpectedTurns
+        OutDir = $LiveSuiteOutDir
+        ContinueOnError = $false
+        ParallelTools = [bool]$ParallelTools
+        EchoToolOutputs = [bool]$EchoToolOutputs
+        NoBuild = $true
+    }
+    if ($AllowRoot -and $AllowRoot.Count -gt 0) {
+        $liveSuiteParams['AllowRoot'] = $AllowRoot
+    }
+    if ($EnablePowerShellPack) {
+        $liveSuiteParams['EnablePowerShellPack'] = $true
+    }
+    if ($EnableTestimoXPack) {
+        $liveSuiteParams['EnableTestimoXPack'] = $true
+    }
+    if ($EnableDnsClientXPack) {
+        $liveSuiteParams['EnableDnsClientXPack'] = $true
+    }
+    if ($DisableDnsClientXPack) {
+        $liveSuiteParams['DisableDnsClientXPack'] = $true
+    }
+    if ($EnableDomainDetectivePack) {
+        $liveSuiteParams['EnableDomainDetectivePack'] = $true
+    }
+    if ($DisableDomainDetectivePack) {
+        $liveSuiteParams['DisableDomainDetectivePack'] = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Model)) {
+        $liveSuiteParams['Model'] = $Model
+    }
+    if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
+        $liveSuiteParams['ExtraArgs'] = $ExtraArgs
+    }
+
+    & $liveHarnessSuiteScript @liveSuiteParams
+    Write-Step "Live harness suite passed."
     exit 0
 }
 
