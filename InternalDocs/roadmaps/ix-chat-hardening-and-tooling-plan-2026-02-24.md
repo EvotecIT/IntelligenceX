@@ -98,6 +98,10 @@ Progress:
   - `BuildToolRoundReplayInput_DelayedMixedReplay_EmitsSingleLatestOutputPerCall`
   - `ServiceShouldRetryModelPhaseAttempt_RetriesOnNestedUnexpectedEndOfStreamAfterToolCall`
   - `ServiceShouldRetryModelPhaseAttempt_DoesNotRetryWhenCancellationAlreadyRequested`
+- Tightened replay and reconnect quality checks:
+  - replay test now asserts stable `call -> output` sequencing for mixed delayed-output paths
+  - added negative retry-control test for nested non-transport failures
+  - expanded app duplicate-bubble normalization to include common Unicode terminal punctuation
 - Extended preflight recovery unit tests to include app duplicate-bubble guards:
   - `MainWindowNoTextWarningHandlingTests`
 

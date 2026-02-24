@@ -646,7 +646,7 @@ public sealed partial class MainWindow : Window {
         var compact = normalized.ToString().Trim();
         while (compact.Length > 0) {
             var tail = compact[^1];
-            if (tail is '.' or '!' or '?' or ':' or ';' or ',') {
+            if (IsAssistantSnapshotTerminalPunctuation(tail)) {
                 compact = compact[..^1].TrimEnd();
                 continue;
             }
@@ -655,6 +655,23 @@ public sealed partial class MainWindow : Window {
         }
 
         return compact;
+    }
+
+    private static bool IsAssistantSnapshotTerminalPunctuation(char value) {
+        return value is '.'
+            or '!'
+            or '?'
+            or ':'
+            or ';'
+            or ','
+            or '\u3002' // 。
+            or '\uFF01' // ！
+            or '\uFF1F' // ？
+            or '\uFF1A' // ：
+            or '\uFF1B' // ；
+            or '\uFF0C' // ，
+            or '\u061F' // ؟
+            or '\u060C'; // ،
     }
 
     private static bool AreNearDuplicateAssistantSnapshots(string finalText, string interimText) {
