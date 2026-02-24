@@ -20,7 +20,81 @@ internal static partial class Program {
             "monitor workflow should not define pull_request_review_comment trigger");
     }
 
+    private static void TestPrWatchWorkflowParserSupportsScalarTypesValue() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-prwatch-workflow-scalar-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var workflowPath = Path.Combine(tempDir, "workflow.yml");
+            var content = string.Join('\n', new[] {
+                "on:",
+                "  pull_request_review:",
+                "    types: submitted",
+                "jobs:",
+                "  test:",
+                "    runs-on: ubuntu-latest"
+            }) + "\n";
+            File.WriteAllText(workflowPath, content);
+
+            var eventTypes = ParseWorkflowOnEventTypes(workflowPath);
+            AssertEqual(true, eventTypes.TryGetValue("pull_request_review", out var reviewTypes),
+                "scalar types parser event key");
+            AssertEqual(1, reviewTypes!.Count, "scalar types parser type count");
+            AssertContains(reviewTypes, "submitted", "scalar types parser submitted");
+        } finally {
+            TryDeleteDirectory(tempDir);
+        }
+    }
+
+    private static void TestPrWatchWorkflowParserSupportsFlowSequenceTypesValue() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-prwatch-workflow-flow-seq-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var workflowPath = Path.Combine(tempDir, "workflow.yml");
+            var content = string.Join('\n', new[] {
+                "on:",
+                "  pull_request_review:",
+                "    types: ['submitted', \"edited\"]",
+                "jobs:",
+                "  test:",
+                "    runs-on: ubuntu-latest"
+            }) + "\n";
+            File.WriteAllText(workflowPath, content);
+
+            var eventTypes = ParseWorkflowOnEventTypes(workflowPath);
+            AssertEqual(true, eventTypes.TryGetValue("pull_request_review", out var reviewTypes),
+                "flow sequence parser event key");
+            AssertContains(reviewTypes!, "submitted", "flow sequence parser submitted");
+            AssertContains(reviewTypes!, "edited", "flow sequence parser edited");
+        } finally {
+            TryDeleteDirectory(tempDir);
+        }
+    }
+
+    private static void TestPrWatchWorkflowParserMissingFileHasClearError() {
+        var workflowPath = Path.Combine(Path.GetTempPath(), "ix-prwatch-workflow-missing-" + Guid.NewGuid().ToString("N") + ".yml");
+        if (File.Exists(workflowPath)) {
+            File.Delete(workflowPath);
+        }
+
+        try {
+            _ = ParseWorkflowOnEventTypes(workflowPath);
+            throw new InvalidOperationException("Expected parser to fail when workflow file is missing.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "Workflow file not found:", "missing file error prefix");
+            AssertContainsText(ex.Message, workflowPath, "missing file error path");
+        }
+    }
+
     private static Dictionary<string, List<string>> ParseWorkflowOnEventTypes(string workflowPath) {
+        if (string.IsNullOrWhiteSpace(workflowPath)) {
+            throw new InvalidOperationException("Workflow path cannot be empty.");
+        }
+        if (!File.Exists(workflowPath)) {
+            throw new InvalidOperationException($"Workflow file not found: {workflowPath}");
+        }
+
         var lines = File.ReadAllLines(workflowPath);
         var events = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var inOnBlock = false;
@@ -40,10 +114,15 @@ internal static partial class Program {
             }
 
             var indent = rawLine.Length - trimmedStart.Length;
-            var trimmed = trimmedStart.TrimEnd();
+            var trimmed = StripInlineComment(trimmedStart).TrimEnd();
+            if (string.IsNullOrWhiteSpace(trimmed)) {
+                continue;
+            }
 
             if (!inOnBlock) {
-                if (string.Equals(trimmed, "on:", StringComparison.Ordinal)) {
+                if (TryParseYamlKeyValueLine(trimmed, out var rootKey, out var hasRootValue, out _) &&
+                    string.Equals(rootKey, "on", StringComparison.OrdinalIgnoreCase) &&
+                    !hasRootValue) {
                     inOnBlock = true;
                     onIndent = indent;
                 }
@@ -60,28 +139,26 @@ internal static partial class Program {
 
             if (trimmed.StartsWith("- ", StringComparison.Ordinal)) {
                 if (inTypesBlock && currentEvent is not null && events.TryGetValue(currentEvent, out var types)) {
-                    var value = trimmed.Substring(2).Trim();
-                    if (!string.IsNullOrWhiteSpace(value)) {
-                        types.Add(value);
-                    }
+                    AddTypeValue(types, trimmed.Substring(2));
                 }
                 continue;
             }
 
-            if (!trimmed.EndsWith(":", StringComparison.Ordinal)) {
-                continue;
-            }
-
-            var key = trimmed.Substring(0, trimmed.Length - 1).Trim();
-            if (string.IsNullOrWhiteSpace(key)) {
+            if (!TryParseYamlKeyValueLine(trimmed, out var key, out var hasValue, out var value)) {
                 continue;
             }
 
             if (string.Equals(key, "types", StringComparison.OrdinalIgnoreCase) && currentEvent is not null) {
-                inTypesBlock = true;
-                typesIndent = indent;
                 if (!events.ContainsKey(currentEvent)) {
                     events[currentEvent] = new List<string>();
+                }
+
+                if (hasValue) {
+                    ParseInlineTypesValue(value, events[currentEvent]);
+                    inTypesBlock = false;
+                } else {
+                    inTypesBlock = true;
+                    typesIndent = indent;
                 }
                 continue;
             }
@@ -99,39 +176,173 @@ internal static partial class Program {
     }
 
     private static string ResolveRepoFilePath(params string[] relativeSegments) {
-        var fromCurrent = TryResolveRepoFilePath(Environment.CurrentDirectory, relativeSegments);
-        if (!string.IsNullOrWhiteSpace(fromCurrent)) {
-            return fromCurrent!;
+        if (relativeSegments is null || relativeSegments.Length == 0) {
+            throw new InvalidOperationException("Repository file path segments cannot be empty.");
         }
 
-        var fromBase = TryResolveRepoFilePath(AppContext.BaseDirectory, relativeSegments);
-        if (!string.IsNullOrWhiteSpace(fromBase)) {
-            return fromBase!;
+        var rootFromCurrent = TryResolveRepositoryRoot(Environment.CurrentDirectory);
+        var rootFromBase = TryResolveRepositoryRoot(AppContext.BaseDirectory);
+
+        if (!string.IsNullOrWhiteSpace(rootFromCurrent) &&
+            !string.IsNullOrWhiteSpace(rootFromBase) &&
+            !PathsEqual(rootFromCurrent!, rootFromBase!)) {
+            throw new InvalidOperationException(
+                $"Resolved different repository roots from current and base directories: current='{rootFromCurrent}', base='{rootFromBase}'.");
         }
 
-        throw new InvalidOperationException($"Unable to locate repository file: {Path.Combine(relativeSegments)}");
+        var repoRoot = !string.IsNullOrWhiteSpace(rootFromCurrent) ? rootFromCurrent : rootFromBase;
+        if (string.IsNullOrWhiteSpace(repoRoot)) {
+            throw new InvalidOperationException("Unable to locate repository root from current directory or application base directory.");
+        }
+
+        var candidate = repoRoot!;
+        for (var i = 0; i < relativeSegments.Length; i++) {
+            if (string.IsNullOrWhiteSpace(relativeSegments[i])) {
+                throw new InvalidOperationException("Repository file path segment cannot be empty.");
+            }
+            candidate = Path.Combine(candidate, relativeSegments[i]);
+        }
+
+        if (!File.Exists(candidate)) {
+            throw new InvalidOperationException($"Repository file not found: {candidate}");
+        }
+
+        return candidate;
     }
 
-    private static string? TryResolveRepoFilePath(string startPath, IReadOnlyList<string> relativeSegments) {
-        if (string.IsNullOrWhiteSpace(startPath) || relativeSegments is null || relativeSegments.Count == 0) {
+    private static string? TryResolveRepositoryRoot(string? startPath) {
+        if (string.IsNullOrWhiteSpace(startPath)) {
             return null;
         }
 
         var current = new DirectoryInfo(startPath);
         while (current is not null) {
-            var candidate = current.FullName;
-            for (var i = 0; i < relativeSegments.Count; i++) {
-                candidate = Path.Combine(candidate, relativeSegments[i]);
-            }
-
-            if (File.Exists(candidate)) {
-                return candidate;
+            var gitDirectory = Path.Combine(current.FullName, ".git");
+            if (Directory.Exists(gitDirectory) || File.Exists(gitDirectory)) {
+                return current.FullName;
             }
 
             current = current.Parent;
         }
 
         return null;
+    }
+
+    private static void ParseInlineTypesValue(string value, List<string> types) {
+        var trimmed = NormalizeYamlToken(value);
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return;
+        }
+
+        if (trimmed.StartsWith("[", StringComparison.Ordinal) && trimmed.EndsWith("]", StringComparison.Ordinal)) {
+            var inner = trimmed.Substring(1, trimmed.Length - 2);
+            var parts = inner.Split(',');
+            for (var i = 0; i < parts.Length; i++) {
+                AddTypeValue(types, parts[i]);
+            }
+            return;
+        }
+
+        AddTypeValue(types, trimmed);
+    }
+
+    private static void AddTypeValue(List<string> types, string rawValue) {
+        var normalized = NormalizeYamlToken(rawValue);
+        if (!string.IsNullOrWhiteSpace(normalized)) {
+            types.Add(normalized);
+        }
+    }
+
+    private static bool TryParseYamlKeyValueLine(string line, out string key, out bool hasValue, out string value) {
+        key = string.Empty;
+        value = string.Empty;
+        hasValue = false;
+
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var separatorIndex = line.IndexOf(':', StringComparison.Ordinal);
+        if (separatorIndex <= 0) {
+            return false;
+        }
+
+        key = NormalizeYamlToken(line.Substring(0, separatorIndex));
+        if (string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        value = line.Substring(separatorIndex + 1).Trim();
+        hasValue = value.Length > 0;
+        return true;
+    }
+
+    private static string NormalizeYamlToken(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length >= 2) {
+            var first = trimmed[0];
+            var last = trimmed[trimmed.Length - 1];
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                return trimmed.Substring(1, trimmed.Length - 2).Trim();
+            }
+        }
+
+        return trimmed;
+    }
+
+    private static string StripInlineComment(string line) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return string.Empty;
+        }
+
+        var inSingleQuote = false;
+        var inDoubleQuote = false;
+
+        for (var i = 0; i < line.Length; i++) {
+            var ch = line[i];
+            if (ch == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+                continue;
+            }
+
+            if (ch == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+                continue;
+            }
+
+            if (ch == '#' && !inSingleQuote && !inDoubleQuote) {
+                if (i == 0 || char.IsWhiteSpace(line[i - 1])) {
+                    return line.Substring(0, i).TrimEnd();
+                }
+            }
+        }
+
+        return line;
+    }
+
+    private static bool PathsEqual(string left, string right) {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedRight = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(normalizedLeft, normalizedRight, comparison);
+    }
+
+    private static void TryDeleteDirectory(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return;
+        }
+
+        try {
+            if (Directory.Exists(path)) {
+                Directory.Delete(path, recursive: true);
+            }
+        } catch {
+            // best effort cleanup for temp test directories
+        }
     }
 #endif
 }

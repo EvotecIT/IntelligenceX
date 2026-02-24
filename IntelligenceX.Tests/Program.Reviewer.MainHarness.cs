@@ -236,6 +236,12 @@ internal static partial class Program {
             TestPrWatchMonitorWorkflowReviewTriggersIncludeSubmittedAndEdited);
         failed += Run("Todo pr-watch monitor workflow excludes review comment trigger",
             TestPrWatchMonitorWorkflowExcludesReviewCommentTrigger);
+        failed += Run("Todo pr-watch workflow parser supports scalar types value",
+            TestPrWatchWorkflowParserSupportsScalarTypesValue);
+        failed += Run("Todo pr-watch workflow parser supports flow sequence types value",
+            TestPrWatchWorkflowParserSupportsFlowSequenceTypesValue);
+        failed += Run("Todo pr-watch workflow parser missing file has clear error",
+            TestPrWatchWorkflowParserMissingFileHasClearError);
         failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
         failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
