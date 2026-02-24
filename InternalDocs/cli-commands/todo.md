@@ -134,41 +134,54 @@ Default outputs:
   - `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
 
 Workflow automation:
-- `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode on an hourly schedule.
+- `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode on an hourly schedule using `todo pr-watch-monitor`.
 - Manual targeted run via `workflow_dispatch` supports:
   - `pr` (specific PR number/URL),
   - `max_prs`,
   - `max_flaky_retries`,
   - `include_drafts`,
   - `approved_bots`.
-- `.github/workflows/ix-pr-babysit-assist-retry.yml` provides manual guarded retry assist for one PR:
+- `.github/workflows/ix-pr-babysit-assist-retry.yml` provides manual guarded retry assist for one PR using `todo pr-watch-assist-retry`:
   - requires `confirm_apply_retries=RETRY_CHECKS`,
   - executes `pr-watch --apply-retry` in once mode,
   - persists retry state and cooldown metadata in `artifacts/pr-watch/ix-pr-watch-*.json`.
-- `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` runs daily consolidation (supports `workflow_dispatch` and reusable `workflow_call`) with:
+- `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` runs daily consolidation using `todo pr-watch-consolidate` (supports `workflow_dispatch` and reusable `workflow_call`) with:
   - `max_prs`,
   - `stale_days`,
   - `include_drafts`,
-  - `approved_bots`.
+  - `approved_bots`,
+  - `source`.
+- Optional tracker issue controls:
+  - `publish_tracking_issue`,
+  - `tracker_issue_title`,
+  - `tracker_issue_labels`.
 - `.github/workflows/ix-pr-babysit-weekly-governance.yml` runs weekly governance consolidation by calling nightly consolidation with weekly defaults:
   - `max_prs=300`,
   - `stale_days=14`,
-  - `source=weekly-governance`.
+  - `source=weekly-governance`,
+  - `publish_tracking_issue=true`.
 - Workflow artifacts:
   - per-PR snapshots under `artifacts/pr-watch/snapshots/`,
   - rollup JSON `artifacts/pr-watch/ix-pr-watch-rollup.json`,
   - markdown summary `artifacts/pr-watch/ix-pr-watch-summary.md`,
   - audit log JSONL `artifacts/pr-watch/ix-pr-watch-audit.jsonl`,
   - nightly rollup JSON `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`,
-  - nightly markdown summary `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`.
+  - nightly markdown summary `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`,
+  - nightly metrics JSON `artifacts/pr-watch/ix-pr-watch-nightly-metrics.json`,
+  - nightly metrics history JSON `artifacts/pr-watch/ix-pr-watch-nightly-metrics-history.json`,
+  - nightly tracker issue body markdown `artifacts/pr-watch/ix-pr-watch-nightly-tracker.md`.
+- Tracker issue automation:
+  - source-scoped upsert marker: `<!-- intelligencex:pr-watch-rollup-tracker:<source> -->`
+  - create/update open issue per source with latest bucket/metric snapshot
+  - manual dispatch defaults to tracker publishing off unless explicitly enabled
 
 Cadence matrix:
 
 | Cadence | Workflow | Defaults | Goal |
 | --- | --- | --- | --- |
 | Hourly | `ix-pr-babysit-monitor.yml` | `max_prs=100`, observe mode | detect fresh CI/review regressions quickly |
-| Daily | `ix-pr-babysit-nightly-consolidation.yml` | `stale_days=7`, `max_prs=200` | build no-progress backlog for next-day triage |
-| Weekly | `ix-pr-babysit-weekly-governance.yml` | `stale_days=14`, `max_prs=300` | governance review of persistent blockers/churn patterns |
+| Daily | `ix-pr-babysit-nightly-consolidation.yml` | `stale_days=7`, `max_prs=200` | build no-progress backlog, publish daily tracker snapshot, and watch metric deltas |
+| Weekly | `ix-pr-babysit-weekly-governance.yml` | `stale_days=14`, `max_prs=300` | governance review of persistent blockers/churn patterns and weekly trend validation |
 
 ## Vision Check (Assistive)
 

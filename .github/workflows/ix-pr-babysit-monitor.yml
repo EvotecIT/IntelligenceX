@@ -68,176 +68,26 @@ jobs:
       - name: Build CLI once
         run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -c Release /m:1
 
-      - name: Run observe-mode PR watch sweep
+      - name: Run observe-mode PR watch monitor engine
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "jq is required for ix-pr-babysit-monitor workflow rollup generation."
-            exit 1
-          fi
-
-          mkdir -p "${PR_WATCH_STATE_DIR}"
-          rm -rf "${PR_WATCH_SNAPSHOT_DIR}"
-          mkdir -p "${PR_WATCH_SNAPSHOT_DIR}"
-
-          TARGETS_FILE="${PR_WATCH_STATE_DIR}/ix-pr-watch-targets.txt"
-          : > "${TARGETS_FILE}"
-
-          PR_INPUT="${{ github.event.inputs.pr }}"
-          MAX_PRS="${{ github.event.inputs.max_prs }}"
-          MAX_FLAKY_RETRIES="${{ github.event.inputs.max_flaky_retries }}"
-          INCLUDE_DRAFTS="${{ github.event.inputs.include_drafts }}"
-          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
-
-          if [ -z "${MAX_PRS}" ]; then MAX_PRS="100"; fi
-          if [ -z "${MAX_FLAKY_RETRIES}" ]; then MAX_FLAKY_RETRIES="3"; fi
-          if [ -z "${INCLUDE_DRAFTS}" ]; then INCLUDE_DRAFTS="false"; fi
-          if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
-
-          if [ -n "${PR_INPUT}" ]; then
-            echo "${PR_INPUT}" >> "${TARGETS_FILE}"
-          else
-            if [ "${INCLUDE_DRAFTS}" = "true" ]; then
-              gh pr list \
-                --repo "${{ github.repository }}" \
-                --state open \
-                --limit "${MAX_PRS}" \
-                --json number \
-                --jq '.[].number' >> "${TARGETS_FILE}"
-            else
-              gh pr list \
-                --repo "${{ github.repository }}" \
-                --state open \
-                --limit "${MAX_PRS}" \
-                --json number,isDraft \
-                --jq '.[] | select(.isDraft == false) | .number' >> "${TARGETS_FILE}"
-            fi
-          fi
-
-          if [ ! -s "${TARGETS_FILE}" ]; then
-            printf '%s\n' '{"schema":"intelligencex.pr-watch.rollup.v1","repo":"","generatedAtUtc":"","totalSnapshots":0,"stopReasons":[],"actionCounts":[],"prs":[]}' > "${PR_WATCH_ROLLUP_PATH}"
-            jq \
-              --arg repo "${{ github.repository }}" \
-              --arg generatedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-              '.repo = $repo | .generatedAtUtc = $generatedAt' \
-              "${PR_WATCH_ROLLUP_PATH}" > "${PR_WATCH_ROLLUP_PATH}.tmp"
-            mv "${PR_WATCH_ROLLUP_PATH}.tmp" "${PR_WATCH_ROLLUP_PATH}"
-          else
-            sort -u "${TARGETS_FILE}" -o "${TARGETS_FILE}"
-            while IFS= read -r pr_spec; do
-              [ -z "${pr_spec}" ] && continue
-
-              safe_spec="$(printf '%s' "${pr_spec}" | tr '/:#?&=' '-' | tr -cd 'A-Za-z0-9._-')"
-              if [ -z "${safe_spec}" ]; then
-                safe_spec="target"
-              fi
-              output_path="${PR_WATCH_SNAPSHOT_DIR}/pr-${safe_spec}.json"
-
-              ARGS=(
-                "todo" "pr-watch"
-                "--repo" "${{ github.repository }}"
-                "--pr" "${pr_spec}"
-                "--max-flaky-retries" "${MAX_FLAKY_RETRIES}"
-                "--phase" "observe"
-                "--source" "${{ github.event_name }}"
-                "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              )
-
-              IFS=',' read -r -a bot_parts <<< "${APPROVED_BOTS}"
-              for raw in "${bot_parts[@]}"; do
-                bot="$(echo "${raw}" | xargs)"
-                if [ -n "${bot}" ]; then
-                  ARGS+=("--approved-bot" "${bot}")
-                fi
-              done
-
-              dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll "${ARGS[@]}" > "${output_path}"
-
-              pr_number="$(jq -r '.pr.number // empty' "${output_path}")"
-              if [ -n "${pr_number}" ]; then
-                mv "${output_path}" "${PR_WATCH_SNAPSHOT_DIR}/pr-${pr_number}.json"
-              fi
-            done < "${TARGETS_FILE}"
-
-            jq -s '
-              {
-                schema: "intelligencex.pr-watch.rollup.v1",
-                repo: env.GITHUB_REPOSITORY,
-                generatedAtUtc: (now | gmtime | strftime("%Y-%m-%dT%H:%M:%SZ")),
-                totalSnapshots: length,
-                stopReasons: (
-                  map(.stopReason // "none")
-                  | group_by(.)
-                  | map({ reason: .[0], count: length })
-                ),
-                actionCounts: (
-                  map(.actions[]?.name)
-                  | group_by(.)
-                  | map({ action: .[0], count: length })
-                ),
-                prs: (
-                  map({
-                    number: .pr.number,
-                    url: .pr.url,
-                    headSha: .pr.headSha,
-                    stopReason: (.stopReason // ""),
-                    actions: (.actions | map(.name)),
-                    checks: {
-                      passedCount: .checks.passedCount,
-                      failedCount: .checks.failedCount,
-                      pendingCount: .checks.pendingCount
-                    }
-                  })
-                  | sort_by(.number)
-                )
-              }
-            ' "${PR_WATCH_SNAPSHOT_DIR}"/pr-*.json > "${PR_WATCH_ROLLUP_PATH}"
-          fi
-
-          {
-            echo "# IX PR Babysit Monitor (Observe)"
-            echo
-            echo "- Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            echo "- Repo: \`${{ github.repository }}\`"
-            echo "- Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo
-            echo "## Snapshot counts"
-            jq -r '"- PRs scanned: \(.totalSnapshots)"' "${PR_WATCH_ROLLUP_PATH}"
-            echo
-            echo "## Stop reasons"
-            jq -r '
-              if (.stopReasons | length) == 0 then
-                "- none"
-              else
-                .stopReasons | map("- `\(.reason)`: \(.count)") | .[]
-              end
-            ' "${PR_WATCH_ROLLUP_PATH}"
-            echo
-            echo "## Actions"
-            jq -r '
-              if (.actionCounts | length) == 0 then
-                "- none"
-              else
-                .actionCounts | map("- `\(.action)`: \(.count)") | .[]
-              end
-            ' "${PR_WATCH_ROLLUP_PATH}"
-            echo
-            echo "## Per PR"
-            jq -r '
-              if (.prs | length) == 0 then
-                "- none"
-              else
-                .prs[]
-                | "- #\(.number) | stop=`\((if (.stopReason | length) == 0 then "none" else .stopReason end))` | actions=`\((.actions | join(",")))` | checks pass/fail/pending=\(.checks.passedCount)/\(.checks.failedCount)/\(.checks.pendingCount)"
-              end
-            ' "${PR_WATCH_ROLLUP_PATH}"
-          } > "${PR_WATCH_SUMMARY_PATH}"
-
-          cat "${PR_WATCH_SUMMARY_PATH}" >> "${GITHUB_STEP_SUMMARY}"
+          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll \
+            todo pr-watch-monitor \
+            --repo "${{ github.repository }}" \
+            --pr "${{ inputs.pr }}" \
+            --max-prs "${{ inputs.max_prs }}" \
+            --max-flaky-retries "${{ inputs.max_flaky_retries }}" \
+            --include-drafts "${{ inputs.include_drafts }}" \
+            --approved-bots "${{ inputs.approved_bots }}" \
+            --source "${{ github.event_name }}" \
+            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --snapshot-dir "${PR_WATCH_SNAPSHOT_DIR}" \
+            --rollup-path "${PR_WATCH_ROLLUP_PATH}" \
+            --summary-path "${PR_WATCH_SUMMARY_PATH}"
 
       - name: Upload pr-watch artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

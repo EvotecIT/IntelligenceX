@@ -27,6 +27,9 @@ internal static class TodoRunner {
             "project-view-checklist" => ProjectViewChecklistRunner.RunAsync(rest),
             "project-view-apply" => ProjectViewApplyRunner.RunAsync(rest),
             "pr-watch" => PrWatchRunner.RunAsync(rest),
+            "pr-watch-monitor" => PrWatchMonitorRunner.RunAsync(rest),
+            "pr-watch-assist-retry" => PrWatchAssistRetryRunner.RunAsync(rest),
+            "pr-watch-consolidate" => PrWatchConsolidationRunner.RunAsync(rest),
             _ => Task.FromResult(PrintHelpReturn(command))
         };
     }
@@ -58,6 +61,9 @@ internal static class TodoRunner {
         Console.WriteLine("  intelligencex todo project-view-checklist [options]");
         Console.WriteLine("  intelligencex todo project-view-apply [options]");
         Console.WriteLine("  intelligencex todo pr-watch [options]");
+        Console.WriteLine("  intelligencex todo pr-watch-monitor [options]");
+        Console.WriteLine("  intelligencex todo pr-watch-assist-retry [options]");
+        Console.WriteLine("  intelligencex todo pr-watch-consolidate [options]");
         Console.WriteLine();
         Console.WriteLine("Use `intelligencex todo sync-bot-feedback --help` for options.");
         Console.WriteLine("Use `intelligencex todo build-triage-index --help` for options.");
@@ -70,5 +76,8 @@ internal static class TodoRunner {
         Console.WriteLine("Use `intelligencex todo project-view-checklist --help` for options.");
         Console.WriteLine("Use `intelligencex todo project-view-apply --help` for options.");
         Console.WriteLine("Use `intelligencex todo pr-watch --help` for options.");
+        Console.WriteLine("Use `intelligencex todo pr-watch-monitor --help` for options.");
+        Console.WriteLine("Use `intelligencex todo pr-watch-assist-retry --help` for options.");
+        Console.WriteLine("Use `intelligencex todo pr-watch-consolidate --help` for options.");
     }
 }

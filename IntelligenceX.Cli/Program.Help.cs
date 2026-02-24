@@ -74,6 +74,9 @@ internal static partial class Program {
         Console.WriteLine("  todo project-view-checklist  Build maintainer checklist for missing/default GitHub Project views");
         Console.WriteLine("  todo project-view-apply  Generate deterministic apply plan for missing GitHub Project views");
         Console.WriteLine("  todo pr-watch            Observe PR CI/review/mergeability state with deterministic action recommendations");
+        Console.WriteLine("  todo pr-watch-monitor    Run observe-mode PR babysit sweep and emit monitor rollup artifacts");
+        Console.WriteLine("  todo pr-watch-assist-retry   Run guarded retry assist for a single PR and emit assist artifacts");
+        Console.WriteLine("  todo pr-watch-consolidate Build nightly/weekly PR-babysit rollups, metrics, and tracker issue updates");
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
