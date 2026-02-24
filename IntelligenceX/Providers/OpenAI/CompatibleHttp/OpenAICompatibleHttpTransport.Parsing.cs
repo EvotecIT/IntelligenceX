@@ -425,4 +425,210 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         return messages;
     }
 
+    private static List<JsonObject> NormalizeToolReplayMessages(IReadOnlyList<JsonObject> messages) {
+        if (messages is null || messages.Count == 0) {
+            return new List<JsonObject>();
+        }
+
+        var callIndexesById = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var outputIndexesById = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var toolOutputCallIdByMessageIndex = new Dictionary<int, string>();
+        var hasReplayMessages = false;
+
+        for (var messageIndex = 0; messageIndex < messages.Count; messageIndex++) {
+            var message = messages[messageIndex];
+            if (message is null) {
+                continue;
+            }
+
+            var role = (message.GetString("role") ?? string.Empty).Trim();
+            if (string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                && message.GetArray("tool_calls") is { Count: > 0 } toolCalls) {
+                for (var i = 0; i < toolCalls.Count; i++) {
+                    var toolCall = toolCalls[i].AsObject();
+                    if (toolCall is null) {
+                        continue;
+                    }
+
+                    var callId = (toolCall.GetString("id") ?? string.Empty).Trim();
+                    if (callId.Length == 0) {
+                        continue;
+                    }
+
+                    hasReplayMessages = true;
+                    AddReplayIndex(callIndexesById, callId, messageIndex);
+                }
+            } else if (string.Equals(role, "tool", StringComparison.OrdinalIgnoreCase)) {
+                var callId = (message.GetString("tool_call_id") ?? string.Empty).Trim();
+                if (callId.Length == 0) {
+                    continue;
+                }
+
+                hasReplayMessages = true;
+                AddReplayIndex(outputIndexesById, callId, messageIndex);
+                toolOutputCallIdByMessageIndex[messageIndex] = callId;
+            }
+        }
+
+        if (!hasReplayMessages) {
+            return new List<JsonObject>(messages);
+        }
+
+        var selectedCallMessageIndexById = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var selectedOutputMessageIndexById = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in callIndexesById) {
+            if (!outputIndexesById.TryGetValue(pair.Key, out var outputIndexes)) {
+                continue;
+            }
+
+            if (!TrySelectReplayPairIndexes(pair.Value, outputIndexes, out var selectedCallIndex, out var selectedOutputIndex)) {
+                continue;
+            }
+
+            selectedCallMessageIndexById[pair.Key] = selectedCallIndex;
+            selectedOutputMessageIndexById[pair.Key] = selectedOutputIndex;
+        }
+
+        if (selectedCallMessageIndexById.Count == 0) {
+            var passthrough = new List<JsonObject>(messages.Count);
+            for (var i = 0; i < messages.Count; i++) {
+                var message = messages[i];
+                var role = (message.GetString("role") ?? string.Empty).Trim();
+                if (!string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(role, "tool", StringComparison.OrdinalIgnoreCase)) {
+                    passthrough.Add(message);
+                }
+            }
+
+            return passthrough;
+        }
+
+        var filtered = new List<JsonObject>(messages.Count);
+        for (var messageIndex = 0; messageIndex < messages.Count; messageIndex++) {
+            var message = messages[messageIndex];
+            if (message is null) {
+                continue;
+            }
+
+            var role = (message.GetString("role") ?? string.Empty).Trim();
+            if (string.Equals(role, "tool", StringComparison.OrdinalIgnoreCase)) {
+                if (!toolOutputCallIdByMessageIndex.TryGetValue(messageIndex, out var toolOutputCallId)) {
+                    continue;
+                }
+
+                if (selectedOutputMessageIndexById.TryGetValue(toolOutputCallId, out var selectedOutputIndex)
+                    && selectedOutputIndex == messageIndex) {
+                    filtered.Add(message);
+                }
+                continue;
+            }
+
+            if (string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                && message.GetArray("tool_calls") is { Count: > 0 } toolCalls) {
+                var filteredToolCalls = new JsonArray();
+                for (var i = 0; i < toolCalls.Count; i++) {
+                    var toolCall = toolCalls[i].AsObject();
+                    if (toolCall is null) {
+                        continue;
+                    }
+
+                    var callId = (toolCall.GetString("id") ?? string.Empty).Trim();
+                    if (callId.Length == 0) {
+                        continue;
+                    }
+
+                    if (selectedCallMessageIndexById.TryGetValue(callId, out var selectedCallIndex)
+                        && selectedCallIndex == messageIndex) {
+                        filteredToolCalls.Add(toolCall);
+                    }
+                }
+
+                if (filteredToolCalls.Count == 0) {
+                    var normalizedAssistantMessage = CloneMessageWithoutToolCalls(message);
+                    if (AssistantMessageHasUserVisibleContent(normalizedAssistantMessage)) {
+                        filtered.Add(normalizedAssistantMessage);
+                    }
+                    continue;
+                }
+
+                var replayMessage = CloneMessageWithoutToolCalls(message);
+                replayMessage.Add("tool_calls", filteredToolCalls);
+                filtered.Add(replayMessage);
+                continue;
+            }
+
+            filtered.Add(message);
+        }
+
+        return filtered;
+    }
+
+    private static void AddReplayIndex(IDictionary<string, List<int>> indexesById, string callId, int messageIndex) {
+        if (!indexesById.TryGetValue(callId, out var indexes)) {
+            indexes = new List<int>();
+            indexesById[callId] = indexes;
+        }
+
+        indexes.Add(messageIndex);
+    }
+
+    private static bool TrySelectReplayPairIndexes(
+        IReadOnlyList<int> callIndexes,
+        IReadOnlyList<int> outputIndexes,
+        out int selectedCallIndex,
+        out int selectedOutputIndex) {
+        selectedCallIndex = -1;
+        selectedOutputIndex = -1;
+        if (callIndexes is null || outputIndexes is null || callIndexes.Count == 0 || outputIndexes.Count == 0) {
+            return false;
+        }
+
+        var outputCursor = 0;
+        for (var i = 0; i < callIndexes.Count; i++) {
+            var callIndex = callIndexes[i];
+            while (outputCursor < outputIndexes.Count && outputIndexes[outputCursor] <= callIndex) {
+                outputCursor++;
+            }
+
+            if (outputCursor >= outputIndexes.Count) {
+                break;
+            }
+
+            selectedCallIndex = callIndex;
+            selectedOutputIndex = outputIndexes[outputCursor];
+        }
+
+        return selectedCallIndex >= 0 && selectedOutputIndex >= 0;
+    }
+
+    private static JsonObject CloneMessageWithoutToolCalls(JsonObject message) {
+        var clone = new JsonObject();
+        foreach (var pair in message) {
+            if (string.Equals(pair.Key, "tool_calls", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            clone.Add(pair.Key, pair.Value ?? JsonValue.Null);
+        }
+
+        return clone;
+    }
+
+    private static bool AssistantMessageHasUserVisibleContent(JsonObject message) {
+        if (message is null) {
+            return false;
+        }
+
+        if (!string.Equals((message.GetString("role") ?? string.Empty).Trim(), "assistant", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (message.GetArray("tool_calls") is { Count: > 0 }) {
+            return true;
+        }
+
+        var content = message.GetString("content");
+        return !string.IsNullOrWhiteSpace(content);
+    }
+
 }

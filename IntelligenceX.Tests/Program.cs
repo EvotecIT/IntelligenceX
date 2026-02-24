@@ -78,6 +78,8 @@ internal static partial class Program {
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
         failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);
+        failed += Run("Native request body deduplicates replay pairs", TestNativeRequestBodyDeduplicatesReplayPairsAndStripsLegacyArguments);
+        failed += Run("AppServer transport normalizes replay input items", TestAppServerTransportNormalizesReplayInputItems);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);

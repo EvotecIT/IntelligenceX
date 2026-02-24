@@ -237,4 +237,76 @@ internal static partial class Program {
         AssertEqual("shape_call_1", second.GetString("call_id") ?? string.Empty, "type-missing output normalized id");
         AssertEqual("{\"ok\":true}", second.GetString("output") ?? string.Empty, "type-missing output normalized payload");
     }
+
+    private static void TestNativeRequestBodyDeduplicatesReplayPairsAndStripsLegacyArguments() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var options = Activator.CreateInstance(optionsType);
+        AssertNotNull(options, "OpenAINativeOptions");
+
+        var transport = Activator.CreateInstance(transportType, options);
+        AssertNotNull(transport, "OpenAINativeTransport");
+
+        var wireEnum = transportType.GetNestedType("ToolWireFormat", BindingFlags.NonPublic);
+        AssertNotNull(wireEnum, "ToolWireFormat enum");
+        var customParameters = Enum.Parse(wireEnum!, "CustomParameters");
+
+        var method = transportType.GetMethod("BuildRequestBody", BindingFlags.Instance | BindingFlags.NonPublic);
+        AssertNotNull(method, "BuildRequestBody method");
+
+        var messages = new List<JsonObject> {
+            new JsonObject()
+                .Add("type", "custom_tool_call")
+                .Add("call_id", "call_dup")
+                .Add("name", "ad_scope_discovery")
+                .Add("input", "{\"domain\":\"ad.evotec.xyz\"}")
+                .Add("arguments", "{\"domain\":\"ad.evotec.xyz\"}"),
+            new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", "call_dup")
+                .Add("name", "ad_scope_discovery")
+                .Add("arguments", "{\"domain\":\"ad.evotec.xyz\"}"),
+            new JsonObject()
+                .Add("type", "custom_tool_call_output")
+                .Add("call_id", "call_dup")
+                .Add("output", "{\"ok\":true}"),
+            new JsonObject()
+                .Add("type", "diagnostic")
+                .Add("arguments", "{\"unexpected\":true}")
+                .Add("value", "kept")
+        };
+
+        var chatOptions = new ChatOptions();
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var input = body.GetArray("input");
+        AssertNotNull(input, "input array");
+        AssertEqual(3, input!.Count, "deduplicated input item count");
+
+        var callCount = 0;
+        var outputCount = 0;
+        var diagnosticCount = 0;
+        for (var i = 0; i < input.Count; i++) {
+            var item = input[i].AsObject();
+            AssertNotNull(item, "normalized replay item object");
+            var type = item!.GetString("type") ?? string.Empty;
+            if (string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase)) {
+                callCount++;
+                AssertEqual("call_dup", item.GetString("call_id") ?? string.Empty, "dedup call id");
+                AssertEqual(true, item.GetString("arguments") is null, "dedup call strips arguments field");
+            } else if (string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                outputCount++;
+                AssertEqual("call_dup", item.GetString("call_id") ?? string.Empty, "dedup output call id");
+            } else if (string.Equals(type, "diagnostic", StringComparison.OrdinalIgnoreCase)) {
+                diagnosticCount++;
+                AssertEqual(true, item.GetString("arguments") is null, "non-tool replay strips legacy arguments");
+                AssertEqual("kept", item.GetString("value") ?? string.Empty, "non-tool replay keeps payload");
+            }
+        }
+
+        AssertEqual(1, callCount, "exactly one replay call retained");
+        AssertEqual(1, outputCount, "exactly one replay output retained");
+        AssertEqual(1, diagnosticCount, "diagnostic item retained");
+    }
 }

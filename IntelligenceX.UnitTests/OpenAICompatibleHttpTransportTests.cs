@@ -413,6 +413,84 @@ public sealed class OpenAICompatibleHttpTransportTests {
     }
 
     [Fact]
+    public async Task ReplayMessages_Deduplicate_DuplicateToolCallIds_ToSinglePair() {
+        var handler = new StubHandler()
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "id": "chatcmpl_1",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [
+                          { "id": "call_dup", "type": "function", "function": { "name": "do_it", "arguments": "{}" } }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """)
+            .RespondJson(HttpStatusCode.OK, """
+                {
+                  "id": "chatcmpl_2",
+                  "choices": [
+                    { "index": 0, "message": { "role": "assistant", "content": "ok" } }
+                  ]
+                }
+                """);
+
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new OpenAICompatibleHttpOptions {
+            BaseUrl = "http://localhost:11434",
+            AllowInsecureHttp = true,
+            Streaming = false
+        }, http);
+
+        var thread = await transport.StartThreadAsync("local-model", null, null, null, CancellationToken.None);
+        var first = await transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"), new ChatOptions { Model = "local-model" }, null, null, null, CancellationToken.None);
+        var firstCall = Assert.Single(ToolCallParser.Extract(first));
+
+        var replayInput = new ChatInput()
+            .AddToolCall(firstCall.CallId, firstCall.Name, "{}")
+            .AddToolOutput(firstCall.CallId, """{"ok":true}""")
+            .AddText("continue");
+
+        _ = await transport.StartTurnAsync(thread.Id, replayInput, new ChatOptions { Model = "local-model" }, null, null, null, CancellationToken.None);
+
+        Assert.True(handler.RequestBodies.Count >= 2);
+        using var doc = JsonDocument.Parse(handler.RequestBodies[1]);
+        var messages = doc.RootElement.GetProperty("messages");
+
+        var callCount = 0;
+        var outputCount = 0;
+        for (var i = 0; i < messages.GetArrayLength(); i++) {
+            var msg = messages[i];
+            var role = msg.GetProperty("role").GetString() ?? string.Empty;
+            if (string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                && msg.TryGetProperty("tool_calls", out var toolCalls)) {
+                for (var j = 0; j < toolCalls.GetArrayLength(); j++) {
+                    var toolCall = toolCalls[j];
+                    var id = toolCall.GetProperty("id").GetString() ?? string.Empty;
+                    if (string.Equals(id, firstCall.CallId, StringComparison.OrdinalIgnoreCase)) {
+                        callCount++;
+                    }
+                }
+            } else if (string.Equals(role, "tool", StringComparison.OrdinalIgnoreCase)
+                       && msg.TryGetProperty("tool_call_id", out var toolCallId)) {
+                var id = toolCallId.GetString() ?? string.Empty;
+                if (string.Equals(id, firstCall.CallId, StringComparison.OrdinalIgnoreCase)) {
+                    outputCount++;
+                }
+            }
+        }
+
+        Assert.Equal(1, callCount);
+        Assert.Equal(1, outputCount);
+    }
+
+    [Fact]
     public async Task ChatCompletions_ContentArray_Is_Projected_To_TextOutput() {
         var handler = new StubHandler()
             .RespondJson(HttpStatusCode.OK, """
