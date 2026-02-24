@@ -10,10 +10,22 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
+using JsonLite = IntelligenceX.Json.JsonLite;
 
 namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
+    private static readonly string[] PartialCompletionMarkers = {
+        "partial response shown above",
+        "turn ended before completion",
+        "chat failed:",
+        "[execution blocked]",
+        "no tool call found for custom tool call output with call_id",
+        "no tool output found for function call",
+        "unknown parameter: 'input[",
+        "(chat_failed)"
+    };
+
     private static async Task<int> RunScenarioFileAsync(ReplSession session, ReplOptions options, CancellationToken cancellationToken) {
         if (session is null) {
             throw new ArgumentNullException(nameof(session));
@@ -223,6 +235,25 @@ internal static partial class Program {
                || MatchesPrefix(turn.RequireAnyTools, prefix);
     }
 
+    private static bool TurnHasToolContract(
+        int? minToolCalls,
+        int? minToolRounds,
+        IReadOnlyList<string> requireTools,
+        IReadOnlyList<string> requireAnyTools,
+        IReadOnlyList<string> assertToolOutputContains,
+        IReadOnlyList<string> assertToolOutputNotContains,
+        bool assertNoToolErrors,
+        IReadOnlyList<string> forbidToolErrorCodes) {
+        return Math.Max(0, minToolCalls ?? 0) > 0
+               || Math.Max(0, minToolRounds ?? 0) > 0
+               || requireTools.Count > 0
+               || requireAnyTools.Count > 0
+               || assertToolOutputContains.Count > 0
+               || assertToolOutputNotContains.Count > 0
+               || assertNoToolErrors
+               || forbidToolErrorCodes.Count > 0;
+    }
+
     private static ChatScenarioDefinition LoadChatScenarioDefinition(string scenarioPath) {
         if (string.IsNullOrWhiteSpace(scenarioPath)) {
             throw new ArgumentException("Scenario path cannot be empty.", nameof(scenarioPath));
@@ -302,7 +333,13 @@ internal static partial class Program {
                     assertToolOutputContains: Array.Empty<string>(),
                     assertToolOutputNotContains: Array.Empty<string>(),
                     assertNoToolErrors: false,
-                    forbidToolErrorCodes: Array.Empty<string>()));
+                    forbidToolErrorCodes: Array.Empty<string>(),
+                    assertCleanCompletion: true,
+                    assertToolCallOutputPairing: false,
+                    assertNoDuplicateToolCallIds: false,
+                    assertNoDuplicateToolOutputCallIds: false,
+                    maxNoToolExecutionRetries: null,
+                    maxDuplicateToolCallSignatures: null));
                 continue;
             }
 
@@ -331,6 +368,32 @@ internal static partial class Program {
             var assertToolOutputNotContains = ReadScenarioStringList(element, "assert_tool_output_not_contains");
             var assertNoToolErrors = ReadScenarioOptionalBoolean(element, "assert_no_tool_errors", defaultValue: false);
             var forbidToolErrorCodes = ReadScenarioStringList(element, "forbid_tool_error_codes");
+            var hasToolContract = TurnHasToolContract(
+                minToolCalls,
+                minToolRounds,
+                requireTools,
+                requireAnyTools,
+                assertToolOutputContains,
+                assertToolOutputNotContains,
+                assertNoToolErrors,
+                forbidToolErrorCodes);
+            var assertCleanCompletion = ReadScenarioOptionalBoolean(element, "assert_clean_completion", defaultValue: true);
+            var assertToolCallOutputPairing = ReadScenarioOptionalBoolean(
+                element,
+                "assert_tool_call_output_pairing",
+                defaultValue: hasToolContract);
+            var assertNoDuplicateToolCallIds = ReadScenarioOptionalBoolean(
+                element,
+                "assert_no_duplicate_tool_call_ids",
+                defaultValue: hasToolContract);
+            var assertNoDuplicateToolOutputCallIds = ReadScenarioOptionalBoolean(
+                element,
+                "assert_no_duplicate_tool_output_call_ids",
+                defaultValue: hasToolContract);
+            var maxNoToolExecutionRetries = ReadScenarioOptionalNonNegativeInt(element, "max_no_tool_execution_retries")
+                                            ?? (hasToolContract ? 0 : null);
+            var maxDuplicateToolCallSignatures = ReadScenarioOptionalNonNegativeInt(element, "max_duplicate_tool_call_signatures")
+                                                 ?? (hasToolContract ? 1 : null);
             turns.Add(new ChatScenarioTurn(
                 name,
                 user.Trim(),
@@ -346,7 +409,13 @@ internal static partial class Program {
                 assertToolOutputContains,
                 assertToolOutputNotContains,
                 assertNoToolErrors,
-                forbidToolErrorCodes));
+                forbidToolErrorCodes,
+                assertCleanCompletion,
+                assertToolCallOutputPairing,
+                assertNoDuplicateToolCallIds,
+                assertNoDuplicateToolOutputCallIds,
+                maxNoToolExecutionRetries,
+                maxDuplicateToolCallSignatures));
         }
 
         return turns;
@@ -384,7 +453,13 @@ internal static partial class Program {
                 assertToolOutputContains: Array.Empty<string>(),
                 assertToolOutputNotContains: Array.Empty<string>(),
                 assertNoToolErrors: false,
-                forbidToolErrorCodes: Array.Empty<string>()));
+                forbidToolErrorCodes: Array.Empty<string>(),
+                assertCleanCompletion: true,
+                assertToolCallOutputPairing: false,
+                assertNoDuplicateToolCallIds: false,
+                assertNoDuplicateToolOutputCallIds: false,
+                maxNoToolExecutionRetries: null,
+                maxDuplicateToolCallSignatures: null));
         }
         return turns;
     }
@@ -481,6 +556,7 @@ internal static partial class Program {
         var assistantText = turnResult?.Result.Text ?? string.Empty;
         var toolCalls = turnResult?.Result.ToolCalls ?? Array.Empty<ToolCall>();
         var toolOutputs = turnResult?.Result.ToolOutputs ?? Array.Empty<ToolOutput>();
+        var noToolExecutionRetries = turnResult?.Result.NoToolExecutionRetries ?? 0;
         var toolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolCalls.Count; i++) {
             var toolName = (toolCalls[i].Name ?? string.Empty).Trim();
@@ -489,6 +565,13 @@ internal static partial class Program {
             }
         }
         var (toolErrorCount, toolErrorCodes) = SummarizeToolOutputErrors(toolOutputs);
+        var toolCallIdCounts = BuildToolCallIdCounts(toolCalls);
+        var toolOutputCallIdCounts = BuildToolOutputCallIdCounts(toolOutputs);
+        var toolCallSignatureCounts = BuildToolCallSignatureCounts(toolCalls);
+
+        if (turn.AssertCleanCompletion && ContainsPartialCompletionMarker(assistantText)) {
+            failures.Add("Expected clean completion, but assistant output contains partial/transport failure markers.");
+        }
 
         foreach (var expected in turn.AssertContains) {
             if (assistantText.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -529,6 +612,11 @@ internal static partial class Program {
         var toolRounds = turnResult?.Metrics.ToolRounds ?? 0;
         if (turn.MinToolRounds.HasValue && toolRounds < turn.MinToolRounds.Value) {
             failures.Add($"Expected at least {turn.MinToolRounds.Value} tool round(s); observed {toolRounds}.");
+        }
+
+        if (turn.MaxNoToolExecutionRetries.HasValue && noToolExecutionRetries > turn.MaxNoToolExecutionRetries.Value) {
+            failures.Add(
+                $"Expected at most {turn.MaxNoToolExecutionRetries.Value} no-tool execution retry attempt(s); observed {noToolExecutionRetries}.");
         }
 
         foreach (var requiredTool in turn.RequireTools) {
@@ -594,7 +682,163 @@ internal static partial class Program {
             failures.Add($"Expected tool error code '{forbiddenErrorCode}' (exact or wildcard) to be absent, but it was observed.");
         }
 
+        if (turn.AssertNoDuplicateToolCallIds) {
+            var duplicateCallIds = toolCallIdCounts
+                .Where(static pair => pair.Value > 1)
+                .Select(static pair => pair.Key)
+                .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (duplicateCallIds.Length > 0) {
+                failures.Add("Expected unique tool call IDs, but duplicates were observed: " + FormatValuesForAssertion(duplicateCallIds) + ".");
+            }
+        }
+
+        if (turn.AssertNoDuplicateToolOutputCallIds) {
+            var duplicateOutputCallIds = toolOutputCallIdCounts
+                .Where(static pair => pair.Value > 1)
+                .Select(static pair => pair.Key)
+                .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (duplicateOutputCallIds.Length > 0) {
+                failures.Add("Expected unique tool output call IDs, but duplicates were observed: " + FormatValuesForAssertion(duplicateOutputCallIds) + ".");
+            }
+        }
+
+        if (turn.AssertToolCallOutputPairing) {
+            var callIds = new HashSet<string>(toolCallIdCounts.Keys, StringComparer.OrdinalIgnoreCase);
+            var outputCallIds = new HashSet<string>(toolOutputCallIdCounts.Keys, StringComparer.OrdinalIgnoreCase);
+            callIds.Remove(string.Empty);
+            outputCallIds.Remove(string.Empty);
+
+            var missingOutputs = callIds
+                .Where(id => !outputCallIds.Contains(id))
+                .OrderBy(static id => id, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (missingOutputs.Length > 0) {
+                failures.Add("Expected a tool output for each tool call ID; missing output(s) for: " + FormatValuesForAssertion(missingOutputs) + ".");
+            }
+
+            var orphanOutputs = outputCallIds
+                .Where(id => !callIds.Contains(id))
+                .OrderBy(static id => id, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (orphanOutputs.Length > 0) {
+                failures.Add("Expected tool outputs to map to in-turn tool calls; orphan output ID(s): " + FormatValuesForAssertion(orphanOutputs) + ".");
+            }
+
+            var emptyOutputCallIds = toolOutputs.Count(static output => string.IsNullOrWhiteSpace(output.CallId));
+            if (emptyOutputCallIds > 0) {
+                failures.Add($"Expected tool output call_id to be present; observed {emptyOutputCallIds} output(s) without call_id.");
+            }
+        }
+
+        if (turn.MaxDuplicateToolCallSignatures.HasValue) {
+            var maxAllowed = Math.Max(0, turn.MaxDuplicateToolCallSignatures.Value);
+            var duplicates = toolCallSignatureCounts
+                .Where(pair => pair.Value > maxAllowed)
+                .OrderByDescending(static pair => pair.Value)
+                .ThenBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(pair => $"{pair.Key} x{pair.Value}")
+                .ToArray();
+            if (duplicates.Length > 0) {
+                failures.Add(
+                    $"Expected each tool call signature to appear at most {maxAllowed} time(s), but observed duplicates: "
+                    + FormatValuesForAssertion(duplicates) + ".");
+            }
+        }
+
         return failures;
+    }
+
+    private static bool ContainsPartialCompletionMarker(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        var value = text.Trim();
+        for (var i = 0; i < PartialCompletionMarkers.Length; i++) {
+            if (value.IndexOf(PartialCompletionMarkers[i], StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Dictionary<string, int> BuildToolCallIdCounts(IReadOnlyList<ToolCall> toolCalls) {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < toolCalls.Count; i++) {
+            var callId = (toolCalls[i].CallId ?? string.Empty).Trim();
+            if (!counts.TryGetValue(callId, out var count)) {
+                counts[callId] = 1;
+                continue;
+            }
+
+            counts[callId] = count + 1;
+        }
+
+        return counts;
+    }
+
+    private static Dictionary<string, int> BuildToolOutputCallIdCounts(IReadOnlyList<ToolOutput> toolOutputs) {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            var callId = (toolOutputs[i].CallId ?? string.Empty).Trim();
+            if (!counts.TryGetValue(callId, out var count)) {
+                counts[callId] = 1;
+                continue;
+            }
+
+            counts[callId] = count + 1;
+        }
+
+        return counts;
+    }
+
+    private static Dictionary<string, int> BuildToolCallSignatureCounts(IReadOnlyList<ToolCall> toolCalls) {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < toolCalls.Count; i++) {
+            var signature = BuildToolCallSignature(toolCalls[i]);
+            if (signature.Length == 0) {
+                continue;
+            }
+
+            if (!counts.TryGetValue(signature, out var count)) {
+                counts[signature] = 1;
+                continue;
+            }
+
+            counts[signature] = count + 1;
+        }
+
+        return counts;
+    }
+
+    private static string BuildToolCallSignature(ToolCall call) {
+        var toolName = (call.Name ?? string.Empty).Trim();
+        if (toolName.Length == 0) {
+            return string.Empty;
+        }
+
+        var args = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments);
+        return toolName + " " + args;
+    }
+
+    private static string FormatValuesForAssertion(IReadOnlyList<string> values, int maxItems = 6) {
+        if (values.Count == 0) {
+            return "-";
+        }
+
+        var capped = values
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Take(Math.Max(1, maxItems))
+            .ToArray();
+        if (capped.Length == 0) {
+            return "-";
+        }
+
+        var suffix = values.Count > capped.Length ? ", ..." : string.Empty;
+        return string.Join(", ", capped) + suffix;
     }
 
     private static bool ToolNameSetContains(IReadOnlyCollection<string> toolNames, string expectedNameOrPattern) {
@@ -797,6 +1041,7 @@ internal static partial class Program {
                 sb.AppendLine($"- TTFT ms: {(turn.Result.Metrics.TtftMs.HasValue ? turn.Result.Metrics.TtftMs.Value.ToString() : "-")}");
                 sb.AppendLine($"- Tool calls: {turn.Result.Metrics.ToolCallsCount}");
                 sb.AppendLine($"- Tool rounds: {turn.Result.Metrics.ToolRounds}");
+                sb.AppendLine($"- No-tool retries: {turn.Result.Metrics.NoToolExecutionRetries}");
                 var toolNames = turn.Result.Result.ToolCalls
                     .Select(static c => (c.Name ?? string.Empty).Trim())
                     .Where(static n => n.Length > 0)
@@ -881,7 +1126,13 @@ internal static partial class Program {
             IReadOnlyList<string> assertToolOutputContains,
             IReadOnlyList<string> assertToolOutputNotContains,
             bool assertNoToolErrors,
-            IReadOnlyList<string> forbidToolErrorCodes) {
+            IReadOnlyList<string> forbidToolErrorCodes,
+            bool assertCleanCompletion,
+            bool assertToolCallOutputPairing,
+            bool assertNoDuplicateToolCallIds,
+            bool assertNoDuplicateToolOutputCallIds,
+            int? maxNoToolExecutionRetries,
+            int? maxDuplicateToolCallSignatures) {
             Name = name;
             User = user ?? string.Empty;
             AssertContains = assertContains ?? Array.Empty<string>();
@@ -897,6 +1148,12 @@ internal static partial class Program {
             AssertToolOutputNotContains = assertToolOutputNotContains ?? Array.Empty<string>();
             AssertNoToolErrors = assertNoToolErrors;
             ForbidToolErrorCodes = forbidToolErrorCodes ?? Array.Empty<string>();
+            AssertCleanCompletion = assertCleanCompletion;
+            AssertToolCallOutputPairing = assertToolCallOutputPairing;
+            AssertNoDuplicateToolCallIds = assertNoDuplicateToolCallIds;
+            AssertNoDuplicateToolOutputCallIds = assertNoDuplicateToolOutputCallIds;
+            MaxNoToolExecutionRetries = maxNoToolExecutionRetries;
+            MaxDuplicateToolCallSignatures = maxDuplicateToolCallSignatures;
         }
 
         public string? Name { get; }
@@ -914,6 +1171,12 @@ internal static partial class Program {
         public IReadOnlyList<string> AssertToolOutputNotContains { get; }
         public bool AssertNoToolErrors { get; }
         public IReadOnlyList<string> ForbidToolErrorCodes { get; }
+        public bool AssertCleanCompletion { get; }
+        public bool AssertToolCallOutputPairing { get; }
+        public bool AssertNoDuplicateToolCallIds { get; }
+        public bool AssertNoDuplicateToolOutputCallIds { get; }
+        public int? MaxNoToolExecutionRetries { get; }
+        public int? MaxDuplicateToolCallSignatures { get; }
     }
 
     private sealed class ScenarioTurnRun {
