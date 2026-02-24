@@ -282,26 +282,28 @@ internal static partial class Program {
         AssertEqual("742", prSpec, "PR spec should resolve from event payload pull_request.number");
     }
 
-    private static void TestPrWatchMonitorComposeSourceTagUsesEventNameWhenSourceEmpty() {
-        var originalEventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
-        try {
-            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", "pull_request");
-            var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag(string.Empty, "edited");
-            AssertEqual("pull_request:edited", source, "empty source should fall back to GITHUB_EVENT_NAME before appending action");
-        } finally {
-            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", originalEventName);
-        }
+    private static void TestPrWatchMonitorResolveSourceWithEventDefaultsKeepsExplicitSource() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"action\":\"edited\"}") as global::System.Text.Json.Nodes.JsonObject;
+        var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveSourceWithEventDefaults("workflow_dispatch", true, payload, "pull_request");
+        AssertEqual("workflow_dispatch", source, "explicit source should bypass action suffix auto-append");
     }
 
-    private static void TestPrWatchMonitorComposeSourceTagUsesManualCliWhenSourceAndEventNameEmpty() {
-        var originalEventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
-        try {
-            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", null);
-            var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag(string.Empty, "edited");
-            AssertEqual("manual_cli:edited", source, "empty source should fall back to manual_cli when event name is unavailable");
-        } finally {
-            Environment.SetEnvironmentVariable("GITHUB_EVENT_NAME", originalEventName);
-        }
+    private static void TestPrWatchMonitorResolveSourceWithEventDefaultsUsesEventNameWhenSourceEmpty() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"action\":\"edited\"}") as global::System.Text.Json.Nodes.JsonObject;
+        var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveSourceWithEventDefaults(string.Empty, false, payload, "pull_request");
+        AssertEqual("pull_request:edited", source, "empty source should fall back to event name before appending action");
+    }
+
+    private static void TestPrWatchMonitorResolveSourceWithEventDefaultsUsesManualCliWhenSourceAndEventNameEmpty() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"action\":\"edited\"}") as global::System.Text.Json.Nodes.JsonObject;
+        var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolveSourceWithEventDefaults(string.Empty, false, payload, null);
+        AssertEqual("manual_cli:edited", source, "empty source should fall back to manual_cli when event name is unavailable");
+    }
+
+    private static void TestPrWatchMonitorResolvePrSpecWithEventDefaultsKeepsExplicitPr() {
+        var payload = global::System.Text.Json.Nodes.JsonNode.Parse("{\"pull_request\":{\"number\":742}}") as global::System.Text.Json.Nodes.JsonObject;
+        var prSpec = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ResolvePrSpecWithEventDefaults("123", payload);
+        AssertEqual("123", prSpec, "explicit PR should be preserved even when payload contains pull_request.number");
     }
 #endif
 }
