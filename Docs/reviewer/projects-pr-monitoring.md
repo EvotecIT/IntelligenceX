@@ -16,6 +16,7 @@ These commands are assistive. They are not an autonomous production decision sys
 - Backlog indexing and duplicate clustering across open PRs/issues (`build-triage-index`).
 - Scope alignment checks against `VISION.md` (`vision-check`).
 - Issue applicability review for stale/no-longer-applicable infra blockers (`issue-review`).
+- Observe-mode PR babysitter snapshots and action recommendations (`pr-watch`).
 - Issue applicability proposed actions (`close`, `keep-open`, `needs-human-review`) with confidence scoring and safety signals.
 - GitHub Project field sync for triage at scale (`project-init`, `project-sync`, `project-bootstrap`).
 - Maintainer-assist view checklist and apply plan generation (`project-view-checklist`, `project-view-apply`).
@@ -64,6 +65,7 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
 | `sync-bot-feedback` | Extract explicit bot checklist tasks and keep them tracked in `TODO.md` | Updated `TODO.md` (optional GitHub issues) |
 | `build-triage-index` | Build PR/issue inventory, duplicate clusters, and best PR ranking | `artifacts/triage/ix-triage-index.json`, `.md` |
 | `issue-review` | Detect stale/no-longer-applicable infra blocker issues and optionally auto-close | `artifacts/triage/ix-issue-review.json`, `.md` |
+| `pr-watch` | Observe PR CI/review/mergeability state and emit deterministic action recommendations | JSON snapshot + watcher state in `artifacts/pr-watch/` |
 | `vision-check` | Compare backlog against `VISION.md` scope | `artifacts/triage/ix-vision-check.json`, `.md` |
 | `project-init` | Create/initialize GitHub Project fields + metadata | `artifacts/triage/ix-project-config.json` |
 | `project-sync` | Push triage/issue-review/vision signals to project items and optional labels/comments | Project field updates, optional comment/label updates |
@@ -80,6 +82,13 @@ intelligencex todo project-view-checklist --config artifacts/triage/ix-project-c
   - `confirm_apply_close=CLOSE_ISSUES`
   - `min_auto_close_confidence` (default `80`)
   - optional label policy (`allow_labels`, `deny_labels`)
+
+Observe-mode babysitter automation:
+
+- Workflow: `.github/workflows/ix-pr-babysit-monitor.yml`
+- Schedule: hourly observe-mode sweep
+- Manual targeted run: `workflow_dispatch` with optional `pr` and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
+- Outputs: per-PR snapshots + rollup summary in `artifacts/pr-watch/`
 
 ### Issue-review confidence signals
 

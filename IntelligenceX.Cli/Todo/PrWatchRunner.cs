@@ -152,6 +152,7 @@ internal static class PrWatchRunner {
         public bool ParseFailed { get; set; }
         public HashSet<string> ApprovedBots { get; } = new(StringComparer.OrdinalIgnoreCase) {
             "intelligencex-review",
+            "intelligencex-review[bot]",
             "chatgpt-codex-connector[bot]"
         };
     }

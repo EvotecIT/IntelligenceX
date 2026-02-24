@@ -98,6 +98,45 @@ Workflow automation:
   - `confirm_apply_close=CLOSE_ISSUES`
   - `min_auto_close_confidence` tune threshold for mutation runs
 
+## PR Watch (Observe Mode Babysitter Snapshot)
+
+Capture deterministic PR babysitter snapshots for a single PR:
+
+```bash
+intelligencex todo pr-watch --repo EvotecIT/IntelligenceX --pr 744
+```
+
+Options:
+- `--repo <owner/name>` (default `EvotecIT/IntelligenceX`)
+- `--pr <auto|number|url>` (default `auto`; current branch PR)
+- `--once` (default; capture one snapshot and exit)
+- `--watch` (continuous snapshots with adaptive backoff until terminal stop reason)
+- `--poll-seconds <n>` (watch mode base interval; default `60`)
+- `--max-flaky-retries <n>` (classification budget ceiling; default `3`)
+- `--state-file <path>` (override watcher-state file path)
+- `--approved-bot <login>` (repeatable approved bot allow-list extension)
+
+Default approved bots include `intelligencex-review`, `intelligencex-review[bot]`, and `chatgpt-codex-connector[bot]`.
+
+Default outputs:
+- JSON snapshot on stdout with:
+  - `pr`, `checks`, `failedRuns`, `newReviewItems`, `retryState`, `actions`, `stopReason`
+- Stateful tracker file at:
+  - `artifacts/pr-watch/ix-pr-watch-<owner>-<repo>-pr<Number>.json`
+
+Workflow automation:
+- `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode on an hourly schedule.
+- Manual targeted run via `workflow_dispatch` supports:
+  - `pr` (specific PR number/URL),
+  - `max_prs`,
+  - `max_flaky_retries`,
+  - `include_drafts`,
+  - `approved_bots`.
+- Workflow artifacts:
+  - per-PR snapshots under `artifacts/pr-watch/snapshots/`,
+  - rollup JSON `artifacts/pr-watch/ix-pr-watch-rollup.json`,
+  - markdown summary `artifacts/pr-watch/ix-pr-watch-summary.md`.
+
 ## Vision Check (Assistive)
 
 Evaluate PR backlog alignment against `VISION.md`:
