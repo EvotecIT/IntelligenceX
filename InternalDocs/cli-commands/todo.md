@@ -156,6 +156,7 @@ Workflow automation:
   - `include_drafts`,
   - `approved_bots`,
   - `source`.
+  - empty/omitted workflow inputs are normalized by CLI defaults (including source fallback from `GITHUB_EVENT_NAME`).
 - Optional tracker issue controls:
   - `publish_tracking_issue`,
   - `tracker_issue_title`,
