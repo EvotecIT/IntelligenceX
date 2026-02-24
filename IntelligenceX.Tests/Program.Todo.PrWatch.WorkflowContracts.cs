@@ -20,6 +20,26 @@ internal static partial class Program {
             "monitor workflow should not define pull_request_review_comment trigger");
     }
 
+    private static void TestPrWatchNightlyConsolidationWorkflowUsesDirectCliInvocation() {
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "ix-pr-babysit-nightly-consolidation.yml");
+        var content = File.ReadAllText(workflowPath);
+
+        AssertContainsText(content, "todo pr-watch-consolidate", "nightly workflow should invoke consolidation CLI command");
+        AssertEqual(false, content.Contains("set -euo pipefail", StringComparison.Ordinal),
+            "nightly workflow should avoid shell wrapper logic");
+        AssertEqual(false, content.Contains("if [ -z \"${MAX_PRS}\" ]", StringComparison.Ordinal),
+            "nightly workflow should keep defaulting logic in CLI, not YAML shell conditionals");
+    }
+
+    private static void TestPrWatchAssistRetryWorkflowUsesDirectCliInvocation() {
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "ix-pr-babysit-assist-retry.yml");
+        var content = File.ReadAllText(workflowPath);
+
+        AssertContainsText(content, "todo pr-watch-assist-retry", "assist workflow should invoke assist CLI command");
+        AssertEqual(false, content.Contains("set -euo pipefail", StringComparison.Ordinal),
+            "assist workflow should avoid shell wrapper logic");
+    }
+
     private static void TestPrWatchWorkflowParserSupportsScalarTypesValue() {
         var tempDir = Path.Combine(Path.GetTempPath(), "ix-prwatch-workflow-scalar-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);

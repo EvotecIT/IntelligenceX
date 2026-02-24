@@ -260,6 +260,21 @@ internal static partial class Program {
         }
     }
 
+    private static void TestPrWatchConsolidationResolveSourceWithDefaultKeepsTrimmedExplicitSource() {
+        var source = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.ResolveSourceWithDefault("  workflow_dispatch  ", "schedule");
+        AssertEqual("workflow_dispatch", source, "explicit source should be trimmed and preserved");
+    }
+
+    private static void TestPrWatchConsolidationResolveSourceWithDefaultUsesEventNameWhenSourceEmpty() {
+        var source = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.ResolveSourceWithDefault(string.Empty, "schedule");
+        AssertEqual("schedule", source, "empty source should use event name fallback");
+    }
+
+    private static void TestPrWatchConsolidationResolveSourceWithDefaultUsesManualCliWhenSourceAndEventEmpty() {
+        var source = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.ResolveSourceWithDefault(" ", null);
+        AssertEqual("manual_cli", source, "empty source and event name should fall back to manual_cli");
+    }
+
     private static void TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent() {
         var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag("pull_request_review", "submitted");
         AssertEqual("pull_request_review:submitted", source, "source tag should append action");

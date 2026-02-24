@@ -232,6 +232,9 @@ internal static partial class Program {
         failed += Run("Todo pr-watch authenticated login fallback uses actor env", TestPrWatchResolveAuthenticatedLoginFallbackUsesActorEnv);
         failed += Run("Todo pr-watch authenticated login fallback prefers actor over triggering actor", TestPrWatchResolveAuthenticatedLoginFallbackPrefersActorOverTriggeringActor);
         failed += Run("Todo pr-watch authenticated login fallback empty when unset", TestPrWatchResolveAuthenticatedLoginFallbackReturnsEmptyWhenUnset);
+        failed += Run("Todo pr-watch consolidation source default keeps trimmed explicit source", TestPrWatchConsolidationResolveSourceWithDefaultKeepsTrimmedExplicitSource);
+        failed += Run("Todo pr-watch consolidation source default uses event name when source empty", TestPrWatchConsolidationResolveSourceWithDefaultUsesEventNameWhenSourceEmpty);
+        failed += Run("Todo pr-watch consolidation source default uses manual_cli when source and event name empty", TestPrWatchConsolidationResolveSourceWithDefaultUsesManualCliWhenSourceAndEventEmpty);
         failed += Run("Todo pr-watch monitor compose source tag appends action", TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent);
         failed += Run("Todo pr-watch monitor compose source tag skips empty action", TestPrWatchMonitorComposeSourceTagSkipsEmptyAction);
         failed += Run("Todo pr-watch monitor resolves event action from payload", TestPrWatchMonitorResolveEventActionFromPayload);
@@ -246,6 +249,10 @@ internal static partial class Program {
             TestPrWatchMonitorWorkflowReviewTriggersIncludeSubmittedAndEdited);
         failed += Run("Todo pr-watch monitor workflow excludes review comment trigger",
             TestPrWatchMonitorWorkflowExcludesReviewCommentTrigger);
+        failed += Run("Todo pr-watch nightly workflow uses direct CLI invocation",
+            TestPrWatchNightlyConsolidationWorkflowUsesDirectCliInvocation);
+        failed += Run("Todo pr-watch assist workflow uses direct CLI invocation",
+            TestPrWatchAssistRetryWorkflowUsesDirectCliInvocation);
         failed += Run("Todo pr-watch workflow parser supports scalar types value",
             TestPrWatchWorkflowParserSupportsScalarTypesValue);
         failed += Run("Todo pr-watch workflow parser supports flow sequence types value",
