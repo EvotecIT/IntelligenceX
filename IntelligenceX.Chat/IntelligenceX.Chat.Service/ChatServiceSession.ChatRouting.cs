@@ -179,11 +179,13 @@ internal sealed partial class ChatServiceSession {
                     message: "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
                 .ConfigureAwait(false);
 
+            var clarificationText = BuildDomainIntentClarificationText();
+            RememberPendingActions(threadId, clarificationText);
             var clarificationResult = new ChatResultMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
                 ThreadId = threadId,
-                Text = BuildDomainIntentClarificationText(),
+                Text = clarificationText,
                 Tools = null,
                 TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
             };

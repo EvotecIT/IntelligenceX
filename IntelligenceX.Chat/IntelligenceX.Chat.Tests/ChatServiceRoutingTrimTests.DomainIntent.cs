@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Tools;
@@ -133,5 +134,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("Active Directory domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Public DNS/domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Reply with `1` or `2`", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesDomainIntentClarificationOrdinalSelection() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var clarificationText = Assert.IsType<string>(BuildDomainIntentClarificationTextMethod.Invoke(null, Array.Empty<object?>()));
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-domain-intent", clarificationText });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-domain-intent", "2" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Contains("choice_002", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Public DNS/domain scope", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_action_selection", expanded, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -198,8 +198,8 @@ internal sealed partial class ChatServiceSession {
     private static string BuildDomainIntentClarificationText() {
         return "I can help with either scope, and I want to avoid running the wrong tool family.\n\n"
                + "Do you want:\n"
-               + "1. Active Directory domain scope (DCs, LDAP, replication, GPO, AD security)\n"
-               + "2. Public DNS/domain scope (records, MX/SPF/DMARC, name servers, public resolution)\n\n"
+               + "1. Active Directory domain scope (DCs, LDAP, replication, GPO)\n"
+               + "2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)\n\n"
                + "Reply with `1` or `2`.";
     }
 
