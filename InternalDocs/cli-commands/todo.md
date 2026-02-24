@@ -135,9 +135,10 @@ Default outputs:
 
 Workflow automation:
 - `.github/workflows/ix-pr-babysit-monitor.yml` runs in observe mode with hybrid triggering using `todo pr-watch-monitor`:
-  - event-driven on `pull_request`, `pull_request_review`, and `pull_request_review_comment`,
+  - event-driven on `pull_request` and submitted `pull_request_review`,
   - hourly scheduled sweep as a safety-net.
   - PR-triggered runs are forced to GitHub-hosted runners for untrusted-code safety.
+  - `pull_request_review_comment` is intentionally excluded to avoid duplicate paired runs with review submission events.
 - Manual targeted run via `workflow_dispatch` supports:
   - `pr` (specific PR number/URL),
   - `max_prs`,
