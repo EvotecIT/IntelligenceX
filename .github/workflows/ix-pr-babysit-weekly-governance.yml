@@ -1,0 +1,23 @@
+name: IX PR Babysit Weekly Governance
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  weekly-consolidation:
+    uses: ./.github/workflows/ix-pr-babysit-nightly-consolidation.yml
+    with:
+      max_prs: "300"
+      stale_days: "14"
+      include_drafts: false
+      approved_bots: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
+      source: "weekly-governance"
+    secrets: inherit
