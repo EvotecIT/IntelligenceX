@@ -57,7 +57,7 @@ jobs:
   monitor:
     concurrency:
       group: ix-pr-babysit-monitor-${{ github.repository }}-${{ github.event.pull_request.number || github.ref_name || github.run_id }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     # While private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
     # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
     # When public, use GitHub-hosted runners by default.
