@@ -24,6 +24,7 @@ Last validated: 2026-02-24
   - `Build/Run-ChatQualityPreflight.ps1`
 - Existing AD scenarios were made strict by default and one new cross-DC continuation scenario was added.
 - Added catalog-level strictness test coverage for `ad-*-10-turn.json` to enforce strict defaults and 10-turn shape.
+- Expanded catalog-level strictness coverage to all `*-10-turn.json` scenarios, including DNS/open-source domain paths.
 - Scenario suite now supports scenario-tag filtering (`-Tags`) and preflight forwards tags via `-ScenarioTags`.
 - Added live-suite runner (`Build/Run-ChatLiveConversationSuite.ps1`) so local live validation can run tag-driven batches without hardcoded single-scenario defaults.
 - Preflight now supports `-RunLiveHarnessSuite` for the same tag-driven live validation path.
@@ -36,6 +37,8 @@ Last validated: 2026-02-24
 - `ad-identity-correlation-przemyslaw-10-turn.json`: identity-centric AD correlation.
 - `ad-ldap-adws-health-10-turn.json`: LDAP/ADWS service health.
 - `ad-user-last-logon-przemyslaw-10-turn.json`: cross-DC user last-logon evidence.
+- `dns-public-health-followthrough-10-turn.json`: public DNS + Domain Detective follow-through with no AD/eventlog tool path.
+- `dns-resolver-fallback-recovery-10-turn.json`: resolver divergence/fallback recovery with bounded retries and no AD/eventlog tool path.
 
 ## Confirmed Gaps / Risks
 - High: missing explicit end-to-end tests for transport break right after tool call plus delayed/replayed tool output across service and app message handling.
@@ -131,6 +134,13 @@ Progress:
 - Added live harness suite runner (tag-driven, repeatable) for real auth/tool runs without hardcoded single-scenario selection.
 - Hardened scenario duplicate-call detection by canonicalizing tool argument JSON before signature comparison
   (so key-order-only differences still count as duplicate signatures).
+- Added DNS/open-source scenario coverage:
+  - `dns-public-health-followthrough-10-turn.json`
+  - `dns-resolver-fallback-recovery-10-turn.json`
+- Tightened scenario catalog tests for DNS routing safety:
+  - DNS scenarios must include strict/live tags and 10 turns
+  - DNS scenarios must include both `dnsclientx_*` and `domaindetective_*` tool contracts
+  - DNS scenarios must include `forbid_tools` guards for `ad_*` and `eventlog_*`
 
 ### WS3: UI Debug Visibility Modes
 Status: mostly_done  

@@ -1,0 +1,80 @@
+{
+  "name": "dns-public-health-followthrough-10-turn",
+  "tags": ["dns", "domaindetective", "continuation", "strict", "live", "open-source"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Set scope to public DNS",
+      "user": "Treat this as a public DNS/domain troubleshooting task for contoso.com, not an AD DS domain-controller task.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_pack_info", "domaindetective_pack_info", "dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Resolver baseline",
+      "user": "Collect baseline A/AAAA/NS evidence for contoso.com using explicit resolvers 1.1.1.1 and 8.8.8.8.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Mail records",
+      "user": "Collect MX plus SPF and DMARC evidence for contoso.com and note gaps.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Reachability probes",
+      "user": "Ping all discovered MX or authoritative DNS hosts in this same turn and do not stop after the first host.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["dnsclientx_ping"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "DomainDetective posture",
+      "user": "Run a broad Domain Detective domain summary for contoso.com and surface highest-risk findings.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Resolver divergence",
+      "user": "Highlight resolver-to-resolver differences and likely caching/TTL causes.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"]
+    },
+    {
+      "name": "Continue unresolved hosts",
+      "user": "If any hosts were unresolved or unreachable, continue with remaining hosts and return concrete blockers instead of stopping.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "dnsclientx_ping"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Root cause families",
+      "user": "Classify likely root-cause families with confidence and strongest supporting evidence."
+    },
+    {
+      "name": "Immediate checklist",
+      "user": "Give a prioritized 30-minute DNS/domain validation checklist with no follow-up questions.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final findings in 6 bullets with impacted records, affected hosts, and unresolved blockers.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
