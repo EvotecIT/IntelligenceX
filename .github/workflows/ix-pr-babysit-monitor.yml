@@ -88,11 +88,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          PR_SPEC="${{ inputs.pr }}"
-          MAX_PRS="${{ inputs.max_prs }}"
-          MAX_FLAKY_RETRIES="${{ inputs.max_flaky_retries }}"
-          INCLUDE_DRAFTS="${{ inputs.include_drafts }}"
-          APPROVED_BOTS="${{ inputs.approved_bots }}"
+          PR_SPEC="${{ github.event.inputs.pr }}"
+          MAX_PRS="${{ github.event.inputs.max_prs }}"
+          MAX_FLAKY_RETRIES="${{ github.event.inputs.max_flaky_retries }}"
+          INCLUDE_DRAFTS="${{ github.event.inputs.include_drafts }}"
+          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
           SOURCE_TAG="${{ github.event_name }}"
           EVENT_ACTION="${{ github.event.action }}"
 
