@@ -122,7 +122,7 @@ public class EventLogToolBaseHelperTests {
     }
 
     [Fact]
-    public void BuildAutoTableResponse_ShouldReturnInvalidArgumentEnvelopeForUnsupportedColumns() {
+    public void BuildAutoTableResponse_ShouldDropUnsupportedProjectionArgumentsAndReturnOkEnvelope() {
         var rows = new[] { new AutoRow(1, "alpha") };
         var model = new AutoModel { Items = rows };
 
@@ -134,8 +134,32 @@ public class EventLogToolBaseHelperTests {
         using var doc = JsonDocument.Parse(response);
         var root = doc.RootElement;
 
-        Assert.False(root.GetProperty("ok").GetBoolean());
-        Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+        Assert.True(root.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildAutoTableResponse_ShouldMapCommonEventLogColumnAliases() {
+        var rows = new[] { new EventAutoRow("2026-02-24T08:20:10Z", 4624, "AD0.ad.evotec.xyz") };
+        var model = new EventAutoModel { Events = rows };
+
+        var response = HarnessTool.BuildAutoEventResponse(
+            arguments: new JsonObject()
+                .Add("columns", new JsonArray().Add("time_created").Add("computer").Add("event_id"))
+                .Add("sort_by", "time_created")
+                .Add("sort_direction", "asc"),
+            model: model,
+            rows: rows);
+
+        using var doc = JsonDocument.Parse(response);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        var viewRows = root.GetProperty("events_view");
+        Assert.True(viewRows.GetArrayLength() > 0);
+        var first = viewRows[0];
+        Assert.True(first.TryGetProperty("time_created_utc", out _));
+        Assert.True(first.TryGetProperty("machine_name", out _));
+        Assert.True(first.TryGetProperty("id", out _));
     }
 
     [Fact]
@@ -228,6 +252,12 @@ public class EventLogToolBaseHelperTests {
         public IReadOnlyList<AutoRow> Items { get; init; } = Array.Empty<AutoRow>();
     }
 
+    private sealed record EventAutoRow(string TimeCreatedUtc, int Id, string MachineName);
+
+    private sealed class EventAutoModel {
+        public IReadOnlyList<EventAutoRow> Events { get; init; } = Array.Empty<EventAutoRow>();
+    }
+
     private sealed class HarnessTool : EventLogToolBase {
         private static readonly ToolDefinition DefinitionValue = new(
             "eventlog_test_harness",
@@ -299,6 +329,18 @@ public class EventLogToolBaseHelperTests {
                 sourceRows: rows,
                 viewRowsPath: "items_view",
                 title: "Items",
+                baseTruncated: false,
+                scanned: rows.Count,
+                maxTop: 100);
+        }
+
+        public static string BuildAutoEventResponse(JsonObject? arguments, EventAutoModel model, IReadOnlyList<EventAutoRow> rows) {
+            return BuildAutoTableResponse(
+                arguments: arguments,
+                model: model,
+                sourceRows: rows,
+                viewRowsPath: "events_view",
+                title: "Events",
                 baseTruncated: false,
                 scanned: rows.Count,
                 maxTop: 100);

@@ -22,6 +22,8 @@ namespace IntelligenceX.Chat.Host;
 internal static partial class Program {
 
     private sealed class ReplSession {
+        private const int MaxNoToolExecutionRetries = 2;
+        private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private readonly IntelligenceXClient _client;
         private readonly ToolRegistry _registry;
         private readonly ReplOptions _options;
@@ -94,7 +96,7 @@ internal static partial class Program {
             var calls = new List<ToolCall>();
             var outputs = new List<ToolOutput>();
             var toolRounds = 0;
-            var noToolExecutionRetryUsed = false;
+            var noToolExecutionRetryCount = 0;
 
             var input = ChatInput.FromText(text);
             var toolDefs = _registry.GetDefinitions();
@@ -123,14 +125,14 @@ internal static partial class Program {
                 if (extracted.Count == 0) {
                     var finalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
 
-                    var shouldRetryNoToolExecution = !noToolExecutionRetryUsed
+                    var shouldRetryNoToolExecution = noToolExecutionRetryCount < MaxNoToolExecutionRetries
                                                      && calls.Count == 0
                                                      && outputs.Count == 0
                                                      && toolDefs.Count > 0
-                                                     && LooksLikeExecutionIntentPlaceholderDraft(text, finalText);
+                                                     && ShouldRetryNoToolExecution(text, finalText);
                     if (shouldRetryNoToolExecution) {
-                        noToolExecutionRetryUsed = true;
-                        var retryPrompt = BuildNoToolExecutionRetryPrompt(text, finalText);
+                        noToolExecutionRetryCount++;
+                        var retryPrompt = BuildNoToolExecutionRetryPrompt(text, finalText, noToolExecutionRetryCount);
                         chatOptions.NewThread = false;
                         chatOptions.PreviousResponseId = TryGetResponseId(turn);
                         if (_options.LiveProgress) {
@@ -174,20 +176,20 @@ internal static partial class Program {
         }
 
         private static bool LooksLikeExecutionIntentPlaceholderDraft(string userRequest, string assistantDraft) {
-            var requestTokens = ExtractMeaningfulTokens(userRequest, maxTokens: 24);
-            var draftTokens = ExtractMeaningfulTokens(assistantDraft, maxTokens: 48);
+            var requestText = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+            var normalizedDraft = CollapseWhitespace((assistantDraft ?? string.Empty).Trim());
+
+            var requestTokens = ExtractMeaningfulTokens(requestText, maxTokens: 24);
+            var draftTokens = ExtractMeaningfulTokens(normalizedDraft, maxTokens: 48);
             if (requestTokens.Count < 4 || draftTokens.Count < 4) {
                 return false;
             }
 
-            var normalizedDraft = (assistantDraft ?? string.Empty).Trim();
             if (normalizedDraft.Length < 24 || normalizedDraft.Length > 560) {
                 return false;
             }
 
-            if (normalizedDraft.Contains('\n', StringComparison.Ordinal)
-                || normalizedDraft.Contains('\r', StringComparison.Ordinal)
-                || normalizedDraft.Contains('?', StringComparison.Ordinal)
+            if (normalizedDraft.Contains('?', StringComparison.Ordinal)
                 || normalizedDraft.Contains('？', StringComparison.Ordinal)
                 || normalizedDraft.Contains('¿', StringComparison.Ordinal)
                 || normalizedDraft.Contains('؟', StringComparison.Ordinal)) {
@@ -244,6 +246,103 @@ internal static partial class Program {
             return longDigitRunCount == 0;
         }
 
+        private static string CollapseWhitespace(string value) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder(value.Length);
+            var inSpace = false;
+            for (var i = 0; i < value.Length; i++) {
+                var ch = value[i];
+                if (char.IsWhiteSpace(ch)) {
+                    if (!inSpace) {
+                        sb.Append(' ');
+                        inSpace = true;
+                    }
+
+                    continue;
+                }
+
+                inSpace = false;
+                sb.Append(ch);
+            }
+
+            return sb.ToString().Trim();
+        }
+
+        private static bool ShouldRetryNoToolExecution(string userRequest, string assistantDraft) {
+            var draft = (assistantDraft ?? string.Empty).Trim();
+            if (draft.Length == 0) {
+                return !string.IsNullOrWhiteSpace(userRequest);
+            }
+
+            if ((userRequest ?? string.Empty).IndexOf(ScenarioExecutionContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+
+            var request = userRequest ?? string.Empty;
+            if (LooksLikeExecutionIntentPlaceholderDraft(request, draft)) {
+                return true;
+            }
+
+            return LooksLikeLinkedFollowUpQuestionWithoutExecution(request, draft);
+        }
+
+        private static bool ContainsQuestionSignal(string text) {
+            var value = text ?? string.Empty;
+            return value.IndexOf('?', StringComparison.Ordinal) >= 0
+                   || value.IndexOf('？', StringComparison.Ordinal) >= 0
+                   || value.IndexOf('¿', StringComparison.Ordinal) >= 0
+                   || value.IndexOf('؟', StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool LooksLikeLinkedFollowUpQuestionWithoutExecution(string userRequest, string assistantDraft) {
+            var request = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+            var draft = CollapseWhitespace((assistantDraft ?? string.Empty).Trim());
+
+            if (request.Length < 18 || draft.Length < 24 || draft.Length > 1800) {
+                return false;
+            }
+
+            if (!ContainsQuestionSignal(draft)) {
+                return false;
+            }
+
+            if (draft.Contains('|', StringComparison.Ordinal)
+                || draft.Contains('{', StringComparison.Ordinal)
+                || draft.Contains('}', StringComparison.Ordinal)
+                || draft.Contains('[', StringComparison.Ordinal)
+                || draft.Contains(']', StringComparison.Ordinal)
+                || draft.Contains('<', StringComparison.Ordinal)
+                || draft.Contains('>', StringComparison.Ordinal)
+                || draft.Contains('=', StringComparison.Ordinal)) {
+                return false;
+            }
+
+            var requestTokens = ExtractMeaningfulTokens(request, maxTokens: 32);
+            var draftTokens = ExtractMeaningfulTokens(draft, maxTokens: 48);
+            if (requestTokens.Count < 4 || draftTokens.Count < 4) {
+                return false;
+            }
+
+            var requestUnique = new HashSet<string>(requestTokens, StringComparer.OrdinalIgnoreCase);
+            var draftUnique = new HashSet<string>(draftTokens, StringComparer.OrdinalIgnoreCase);
+            var sharedCount = 0;
+            foreach (var token in requestUnique) {
+                if (draftUnique.Contains(token)) {
+                    sharedCount++;
+                }
+            }
+
+            if (sharedCount < 1) {
+                return false;
+            }
+
+            var overlapRatio = requestUnique.Count == 0 ? 0d : (double)sharedCount / requestUnique.Count;
+            return overlapRatio >= 0.1d;
+        }
+
         private static List<string> ExtractMeaningfulTokens(string text, int maxTokens) {
             var value = (text ?? string.Empty).Trim();
             var tokens = new List<string>();
@@ -296,12 +395,14 @@ internal static partial class Program {
             return tokens;
         }
 
-        private static string BuildNoToolExecutionRetryPrompt(string userRequest, string assistantDraft) {
+        private static string BuildNoToolExecutionRetryPrompt(string userRequest, string assistantDraft, int retryAttempt) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
+            var attempt = Math.Max(1, retryAttempt);
             return $$"""
                 [Execution correction]
-                The previous assistant draft implied execution but no tool calls were emitted.
+                The previous assistant draft implied execution (or returned empty output) but no tool calls were emitted.
+                Retry attempt: {{attempt}}/{{MaxNoToolExecutionRetries}}.
 
                 User request:
                 {{request}}
@@ -309,8 +410,10 @@ internal static partial class Program {
                 Previous assistant draft:
                 {{draft}}
 
-                If tools can satisfy this request, call them now in this turn.
-                If tools cannot satisfy this request, state the exact blocker and the minimal missing input.
+                If tools can satisfy this request, execute at least one relevant tool call now in this turn.
+                For read-only requests, infer missing inputs from prior tool outputs where possible and do not ask for confirmation before the first tool call.
+                If Event Log source input is missing, default machine_name to the first discovered/source DC from prior turns.
+                If tools still cannot satisfy this request after a best-effort tool attempt, state the exact blocker and the minimal missing input once.
                 """;
         }
 

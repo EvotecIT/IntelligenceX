@@ -61,7 +61,8 @@ internal static partial class Program {
             ReplTurnMetricsResult? metricsResult = null;
             Exception? failure = null;
             try {
-                metricsResult = await session.AskWithMetricsAsync(turn.User, cancellationToken).ConfigureAwait(false);
+                var prompt = BuildScenarioTurnPrompt(turn);
+                metricsResult = await session.AskWithMetricsAsync(prompt, cancellationToken).ConfigureAwait(false);
                 WriteTurnResult(metricsResult.Result, options);
             } catch (Exception ex) {
                 failure = ex;
@@ -117,6 +118,93 @@ internal static partial class Program {
         var total = turnRuns.Count;
         Console.WriteLine($"Scenario summary: {passed}/{total} turns passed.");
         return failed ? 1 : 0;
+    }
+
+    private static string BuildScenarioTurnPrompt(ChatScenarioTurn turn) {
+        if (turn is null) {
+            return string.Empty;
+        }
+
+        var minToolCalls = Math.Max(0, turn.MinToolCalls ?? 0);
+        var minToolRounds = Math.Max(0, turn.MinToolRounds ?? 0);
+        var requiresToolExecution = minToolCalls > 0
+                                    || minToolRounds > 0
+                                    || turn.RequireTools.Count > 0
+                                    || turn.RequireAnyTools.Count > 0;
+        var requiresEventLogTool = TurnRequiresToolPrefix(turn, "eventlog_");
+        if (!requiresToolExecution) {
+            return turn.User;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("[Scenario execution contract]");
+        sb.AppendLine("This scenario turn requires tool execution before the final response.");
+
+        if (minToolCalls > 0) {
+            sb.AppendLine($"- Minimum tool calls in this turn: {minToolCalls}.");
+        }
+
+        if (minToolRounds > 0) {
+            sb.AppendLine($"- Minimum tool rounds in this turn: {minToolRounds}.");
+        }
+
+        if (turn.RequireTools.Count > 0) {
+            sb.AppendLine("- Required tool calls (all): " + string.Join(", ", turn.RequireTools) + ".");
+        }
+
+        if (turn.RequireAnyTools.Count > 0) {
+            sb.AppendLine("- Required tool calls (at least one): " + string.Join(", ", turn.RequireAnyTools) + ".");
+        }
+
+        if (turn.ForbidTools.Count > 0) {
+            sb.AppendLine("- Forbidden tool calls: " + string.Join(", ", turn.ForbidTools) + ".");
+        }
+
+        sb.AppendLine("- Do not ask for permission/confirmation before the first required tool call.");
+        sb.AppendLine("- Make at least one best-effort qualifying tool call in this turn, then summarize results.");
+        sb.AppendLine("- Infer missing read-only inputs from prior tool outputs when reasonably available.");
+        sb.AppendLine("- If time window is missing and needed for read-only evidence correlation, default to last_24_hours_utc.");
+        if (requiresEventLogTool) {
+            sb.AppendLine("- If Event Log machine_name is missing, default to the first discovered/source DC from prior turns.");
+            sb.AppendLine("- eventlog_pack_info alone is insufficient; execute at least one eventlog_*query* or eventlog_*stats* call in this turn.");
+        }
+        if (turn.AssertContains.Count > 0) {
+            sb.AppendLine("- Final response must include these literals: " + string.Join(", ", turn.AssertContains) + ".");
+        }
+        sb.AppendLine("If a best-effort tool call fails, include the exact blocker/error and minimal missing input once.");
+        sb.AppendLine();
+        sb.AppendLine("User request:");
+        sb.AppendLine(turn.User);
+        return sb.ToString();
+    }
+
+    private static bool TurnRequiresToolPrefix(ChatScenarioTurn turn, string prefix) {
+        if (turn is null || string.IsNullOrWhiteSpace(prefix)) {
+            return false;
+        }
+
+        static bool MatchesPrefix(IReadOnlyList<string> values, string expectedPrefix) {
+            for (var i = 0; i < values.Count; i++) {
+                var value = (values[i] ?? string.Empty).Trim();
+                if (value.Length == 0) {
+                    continue;
+                }
+
+                var normalized = value;
+                if (normalized.EndsWith("*", StringComparison.Ordinal)) {
+                    normalized = normalized.Substring(0, normalized.Length - 1);
+                }
+
+                if (normalized.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return MatchesPrefix(turn.RequireTools, prefix)
+               || MatchesPrefix(turn.RequireAnyTools, prefix);
     }
 
     private static ChatScenarioDefinition LoadChatScenarioDefinition(string scenarioPath) {

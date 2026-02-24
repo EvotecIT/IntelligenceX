@@ -96,7 +96,9 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
             result.IsTruncated,
             result.Results
         };
-        var shapedArguments = SanitizeProjectionArguments(arguments, result.Results);
+        var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
+            arguments,
+            BuildAvailableProjectionColumns(result.Results));
 
         AdDynamicTableView.TryBuildResponseFromQueryRows(
             arguments: shapedArguments,
@@ -109,13 +111,8 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 
-    private static JsonObject? SanitizeProjectionArguments(JsonObject? arguments, IReadOnlyList<LdapToolQueryRow> rows) {
-        if (arguments is null || arguments.Count == 0) {
-            return arguments;
-        }
-
+    private static IReadOnlyList<string> BuildAvailableProjectionColumns(IReadOnlyList<LdapToolQueryRow> rows) {
         var availableColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var availableCanonicalColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < rows.Count; i++) {
             var attrs = rows[i]?.Attributes;
             if (attrs is null) {
@@ -129,122 +126,9 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 availableColumns.Add(key);
-                availableCanonicalColumns.Add(CanonicalizeColumnKey(key));
             }
         }
 
-        var removeColumns = false;
-        var removeSortBy = false;
-        if (TryGetColumnsArgument(arguments, out var requestedColumns) && requestedColumns.Count > 0) {
-            for (var i = 0; i < requestedColumns.Count; i++) {
-                var requested = requestedColumns[i];
-                if (requested.Length == 0) {
-                    continue;
-                }
-
-                var canonical = CanonicalizeColumnKey(requested);
-                if (!availableColumns.Contains(requested)
-                    && (canonical.Length == 0 || !availableCanonicalColumns.Contains(canonical))) {
-                    removeColumns = true;
-                    break;
-                }
-            }
-        }
-
-        if (TryGetSortByArgument(arguments, out var sortBy) && sortBy.Length > 0) {
-            var canonical = CanonicalizeColumnKey(sortBy);
-            if (!availableColumns.Contains(sortBy)
-                && (canonical.Length == 0 || !availableCanonicalColumns.Contains(canonical))) {
-                removeSortBy = true;
-            }
-        }
-
-        if (!removeColumns && !removeSortBy) {
-            return arguments;
-        }
-
-        var clone = new JsonObject(StringComparer.Ordinal);
-        foreach (var pair in arguments) {
-            var key = (pair.Key ?? string.Empty).Trim();
-            if (key.Length == 0) {
-                continue;
-            }
-
-            if (removeColumns && string.Equals(key, "columns", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            if ((removeColumns || removeSortBy) && string.Equals(key, "sort_by", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            if ((removeColumns || removeSortBy) && string.Equals(key, "sort_direction", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            clone.Add(key, pair.Value);
-        }
-
-        return clone;
-    }
-
-    private static bool TryGetColumnsArgument(JsonObject arguments, out IReadOnlyList<string> columns) {
-        columns = Array.Empty<string>();
-        if (arguments is null) {
-            return false;
-        }
-
-        foreach (var pair in arguments) {
-            if (!string.Equals((pair.Key ?? string.Empty).Trim(), "columns", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            if (pair.Value?.AsArray() is not JsonArray array || array.Count == 0) {
-                return false;
-            }
-
-            columns = ToolArgs.ReadDistinctStringArray(array)
-                .Select(static x => (x ?? string.Empty).Trim())
-                .Where(static x => x.Length > 0)
-                .ToArray();
-            return columns.Count > 0;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetSortByArgument(JsonObject arguments, out string sortBy) {
-        sortBy = string.Empty;
-        if (arguments is null) {
-            return false;
-        }
-
-        foreach (var pair in arguments) {
-            if (!string.Equals((pair.Key ?? string.Empty).Trim(), "sort_by", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            sortBy = (pair.Value?.AsString() ?? string.Empty).Trim();
-            return sortBy.Length > 0;
-        }
-
-        return false;
-    }
-
-    private static string CanonicalizeColumnKey(string value) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return string.Empty;
-        }
-
-        var buffer = new char[value.Length];
-        var index = 0;
-        for (var i = 0; i < value.Length; i++) {
-            var ch = value[i];
-            if (!char.IsLetterOrDigit(ch)) {
-                continue;
-            }
-
-            buffer[index++] = char.ToLowerInvariant(ch);
-        }
-
-        return index == 0 ? string.Empty : new string(buffer, 0, index);
+        return availableColumns.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 }

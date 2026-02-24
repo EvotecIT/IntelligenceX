@@ -157,8 +157,8 @@ internal sealed partial class ChatServiceSession {
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
-            reason = "empty_assistant_draft";
-            return false;
+            reason = "empty_assistant_draft_watchdog_retry";
+            return true;
         }
 
         // Avoid correction/watchdog feedback loops if a previous retry prompt is echoed back into the draft.
@@ -317,7 +317,18 @@ internal sealed partial class ChatServiceSession {
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0 || draft.Length > 2400) {
-            reason = draft.Length == 0 ? "empty_assistant_draft" : "assistant_draft_too_long";
+            if (draft.Length == 0) {
+                var requestTokenCount = CountLetterDigitTokens(request, maxTokens: 64);
+                if (requestTokenCount >= 4) {
+                    reason = "empty_assistant_draft_retry";
+                    return true;
+                }
+
+                reason = "empty_assistant_draft";
+                return false;
+            }
+
+            reason = "assistant_draft_too_long";
             return false;
         }
 
@@ -752,8 +763,8 @@ internal sealed partial class ChatServiceSession {
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
-            reason = "empty_assistant_draft";
-            return false;
+            reason = "empty_assistant_draft_watchdog_retry";
+            return true;
         }
 
         if (draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)

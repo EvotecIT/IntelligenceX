@@ -193,6 +193,34 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForEmptyAssistantDraftWithSubstantialRequest() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = string.Empty;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("empty_assistant_draft_retry", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForEmptyAssistantDraftWithShortRequest() {
+        var userRequest = "hi";
+        var assistantDraft = string.Empty;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("empty_assistant_draft", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForExecutionAckDraftReferencingRequestWithContinuationSubset() {
         var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
         var assistantDraft = "I’ll query all relevant DCs and return the max authoritative lastLogon timestamp with source DC.";
@@ -1201,6 +1229,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.True(Assert.IsType<bool>(result));
         Assert.Equal("contextual_follow_up_watchdog_retry", Assert.IsType<string>(args[11]));
+    }
+
+    [Fact]
+    public void ShouldAttemptNoToolExecutionWatchdog_TriggersForEmptyAssistantDraftAfterNudge() {
+        var args = new object?[] {
+            "please continue",
+            string.Empty,
+            true,
+            0,
+            0,
+            0,
+            false,
+            false,
+            true,
+            false,
+            false,
+            null
+        };
+
+        var result = ShouldAttemptNoToolExecutionWatchdogMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("empty_assistant_draft_watchdog_retry", Assert.IsType<string>(args[11]));
     }
 
     [Fact]

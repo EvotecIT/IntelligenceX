@@ -11,6 +11,9 @@ public sealed class AdEnvironmentDiscoverToolTests {
     private static readonly MethodInfo BuildReadOnlyEnvironmentNextActionsMethod =
         typeof(AdEnvironmentDiscoverTool).GetMethod("BuildReadOnlyEnvironmentNextActions", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildReadOnlyEnvironmentNextActions not found.");
+    private static readonly MethodInfo TryExtractDomainNameFromDistinguishedNameMethod =
+        typeof(AdEnvironmentDiscoverTool).GetMethod("TryExtractDomainNameFromDistinguishedName", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryExtractDomainNameFromDistinguishedName not found.");
 
     [Fact]
     public void BuildReadOnlyEnvironmentNextActions_WhenNotLimited_ReturnsEmpty() {
@@ -45,5 +48,23 @@ public sealed class AdEnvironmentDiscoverToolTests {
 
         var diagnosticsAction = Assert.Single(actions, static action => string.Equals(action.Tool, "ad_directory_discovery_diagnostics", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("2000", diagnosticsAction.SuggestedArguments["max_issues"]);
+    }
+
+    [Fact]
+    public void TryExtractDomainNameFromDistinguishedName_WhenDnContainsDcLabels_ReturnsDomain() {
+        var args = new object?[] { "CN=User,OU=Ops,DC=ad,DC=evotec,DC=xyz", string.Empty };
+        var result = TryExtractDomainNameFromDistinguishedNameMethod.Invoke(null, args);
+
+        Assert.True(result is bool value && value);
+        Assert.Equal("ad.evotec.xyz", args[1] as string);
+    }
+
+    [Fact]
+    public void TryExtractDomainNameFromDistinguishedName_WhenDnHasNoDcLabels_ReturnsFalse() {
+        var args = new object?[] { "CN=User,OU=Ops", string.Empty };
+        var result = TryExtractDomainNameFromDistinguishedNameMethod.Invoke(null, args);
+
+        Assert.True(result is bool value && !value);
+        Assert.Equal(string.Empty, args[1] as string);
     }
 }

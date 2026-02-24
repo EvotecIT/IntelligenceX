@@ -85,6 +85,80 @@ Check AD0 reboot
         Assert.Equal("Check AD1 reboot", ReadStringProperty(turns[1], "User"));
     }
 
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithoutToolRequirements_ReturnsRawUserText() {
+        const string json = """
+{
+  "name": "simple",
+  "turns": [
+    {
+      "user": "Check AD status"
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "simple");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Equal("Check AD status", prompt);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithToolRequirements_EmbedsExecutionContract() {
+        const string json = """
+{
+  "name": "required-tools",
+  "turns": [
+    {
+      "user": "Compare lastLogon across DCs.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_ldap_query*", "ad_*discover*"]
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "required-tools");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("[Scenario execution contract]", prompt, StringComparison.Ordinal);
+        Assert.Contains("Minimum tool calls in this turn: 1.", prompt, StringComparison.Ordinal);
+        Assert.Contains("ad_ldap_query*", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not ask for permission/confirmation before the first required tool call.", prompt, StringComparison.Ordinal);
+        Assert.Contains("Make at least one best-effort qualifying tool call in this turn, then summarize results.", prompt, StringComparison.Ordinal);
+        Assert.Contains("User request:", prompt, StringComparison.Ordinal);
+        Assert.Contains("Compare lastLogon across DCs.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithEventLogRequirements_AddsEventLogFallbackAndLiteralHints() {
+        const string json = """
+{
+  "name": "eventlog-contract",
+  "turns": [
+    {
+      "user": "Correlate recent security evidence.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"],
+      "assert_contains": ["UTC"]
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "eventlog-contract");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("machine_name is missing", prompt, StringComparison.Ordinal);
+        Assert.Contains("first discovered/source DC", prompt, StringComparison.Ordinal);
+        Assert.Contains("eventlog_pack_info alone is insufficient", prompt, StringComparison.Ordinal);
+        Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
+    }
+
     private static object InvokeParseScenarioDefinition(string raw, string fallbackName) {
         var programType = ResolveHostProgramType();
         var parseMethod = programType.GetMethod("ParseChatScenarioDefinition", BindingFlags.NonPublic | BindingFlags.Static);
@@ -92,6 +166,18 @@ Check AD0 reboot
         var result = parseMethod!.Invoke(null, new object?[] { raw, fallbackName });
         Assert.NotNull(result);
         return result!;
+    }
+
+    private static string InvokeBuildScenarioTurnPrompt(object turn) {
+        var programType = ResolveHostProgramType();
+        var turnType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ChatScenarioTurn", throwOnError: true);
+        Assert.NotNull(turnType);
+        Assert.True(turnType!.IsInstanceOfType(turn));
+
+        var promptMethod = programType.GetMethod("BuildScenarioTurnPrompt", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(promptMethod);
+        var result = promptMethod!.Invoke(null, new[] { turn });
+        return Assert.IsType<string>(result);
     }
 
     private static Type ResolveHostProgramType() {
