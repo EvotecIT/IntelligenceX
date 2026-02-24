@@ -1398,7 +1398,8 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (!existingOutput.MatchedRawCallId && candidateOutput.MatchedRawCallId) {
+            if ((!existingOutput.MatchedRawCallId && candidateOutput.MatchedRawCallId)
+                || (existingOutput.MatchedRawCallId && candidateOutput.MatchedRawCallId)) {
                 selectedOutputsByCallId[normalizedOutputCallId] = candidateOutput;
             }
         }
