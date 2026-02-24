@@ -222,7 +222,7 @@ internal static class PrWatchRunner {
 
         var authenticatedLogin = await GetAuthenticatedLoginAsync().ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(authenticatedLogin)) {
-            Console.Error.WriteLine("Unable to determine authenticated GitHub user from `gh api user`.");
+            Console.Error.WriteLine("Unable to determine authenticated GitHub user from `gh api user` or `GITHUB_ACTOR`.");
             return 1;
         }
 
@@ -850,16 +850,26 @@ internal static class PrWatchRunner {
 
     private static async Task<string> GetAuthenticatedLoginAsync() {
         var (code, stdout, _) = await GhCli.RunAsync("api", "user").ConfigureAwait(false);
-        if (code != 0 || string.IsNullOrWhiteSpace(stdout)) {
-            return string.Empty;
+        if (code == 0 && !string.IsNullOrWhiteSpace(stdout)) {
+            try {
+                using var doc = JsonDocument.Parse(stdout);
+                var login = ReadString(doc.RootElement, "login");
+                if (!string.IsNullOrWhiteSpace(login)) {
+                    return login;
+                }
+            } catch {
+                // Fall back to actor-derived login below.
+            }
         }
+        return ResolveAuthenticatedLoginFallback();
+    }
 
-        try {
-            using var doc = JsonDocument.Parse(stdout);
-            return ReadString(doc.RootElement, "login");
-        } catch {
-            return string.Empty;
+    internal static string ResolveAuthenticatedLoginFallback() {
+        var actor = Environment.GetEnvironmentVariable("GITHUB_ACTOR");
+        if (string.IsNullOrWhiteSpace(actor)) {
+            actor = Environment.GetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR");
         }
+        return actor?.Trim() ?? string.Empty;
     }
 
     private static async Task<PrState> ResolvePrAsync(Options options) {
