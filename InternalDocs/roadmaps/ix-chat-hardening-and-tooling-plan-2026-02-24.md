@@ -93,6 +93,11 @@ Progress:
 - Refined replay fallback behavior:
   - when only fallback matches are available, replay now uses the latest fallback output
   - later fallback entries cannot overwrite an already selected explicit `call_id` match
+- Added additional transport-break replay and retry regression coverage:
+  - `BuildToolRoundReplayInput_DropAfterToolCall_ReplaysOnlyCompletedPair`
+  - `BuildToolRoundReplayInput_DelayedMixedReplay_EmitsSingleLatestOutputPerCall`
+  - `ServiceShouldRetryModelPhaseAttempt_RetriesOnNestedUnexpectedEndOfStreamAfterToolCall`
+  - `ServiceShouldRetryModelPhaseAttempt_DoesNotRetryWhenCancellationAlreadyRequested`
 - Extended preflight recovery unit tests to include app duplicate-bubble guards:
   - `MainWindowNoTextWarningHandlingTests`
 

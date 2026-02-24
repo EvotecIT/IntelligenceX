@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Reflection;
 using System.Threading;
 using IntelligenceX.Chat.Tooling;
@@ -252,6 +253,40 @@ public sealed class ChatSchemaRecoveryFallbackTests {
             attempt: 1,
             maxAttempts: 2,
             cancellationToken: CancellationToken.None);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_RetriesOnNestedUnexpectedEndOfStreamAfterToolCall() {
+        var ex = new InvalidOperationException(
+            "model phase failed after tool call",
+            new InvalidOperationException(
+                "tool replay failed",
+                new IOException("unexpected end of stream while reading tool output payload")));
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ServiceShouldRetryModelPhaseAttempt_DoesNotRetryWhenCancellationAlreadyRequested() {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var ex = new InvalidOperationException("connection reset by peer");
+
+        var shouldRetry = InvokeShouldRetryModelPhaseAttempt(
+            ServiceShouldRetryModelPhaseAttemptMethod,
+            ex,
+            attempt: 0,
+            maxAttempts: 2,
+            cancellationToken: cts.Token);
 
         Assert.False(shouldRetry);
     }
