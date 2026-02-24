@@ -73,7 +73,8 @@ internal static class PrWatchRunner {
         "repair"
     };
     private static readonly JsonSerializerOptions JsonOptions = new() {
-        WriteIndented = false
+        WriteIndented = false,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     internal sealed record PrState(
