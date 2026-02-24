@@ -308,5 +308,81 @@ internal static partial class Program {
         AssertEqual(1, callCount, "exactly one replay call retained");
         AssertEqual(1, outputCount, "exactly one replay output retained");
         AssertEqual(1, diagnosticCount, "diagnostic item retained");
+    private static void TestNativeInputNormalizationConvertsFunctionCallToCustomToolCall() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var normalizeMethod = transportType.GetMethod(
+            "NormalizeInputItemForResponsesRequest",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(normalizeMethod, "NormalizeInputItemForResponsesRequest method");
+
+        var source = new JsonObject()
+            .Add("type", "function_call")
+            .Add("id", "call_123")
+            .Add("function", new JsonObject()
+                .Add("name", "ad_replication_summary")
+                .Add("arguments", "{\"scope\":\"forest\"}"))
+            .Add("arguments", "{\"scope\":\"forest\"}");
+
+        var normalized = (JsonObject)normalizeMethod!.Invoke(null, new object?[] { source })!;
+        AssertEqual("custom_tool_call", normalized.GetString("type") ?? string.Empty, "normalized type");
+        AssertEqual("call_123", normalized.GetString("call_id") ?? string.Empty, "normalized call id");
+        AssertEqual("ad_replication_summary", normalized.GetString("name") ?? string.Empty, "normalized name");
+        AssertEqual("{\"scope\":\"forest\"}", normalized.GetString("input") ?? string.Empty, "normalized input");
+        AssertEqual(false, normalized.TryGetValue("arguments", out _), "arguments removed");
+    }
+
+    private static void TestNativeInputNormalizationConvertsFunctionCallOutputToCustomOutput() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var normalizeMethod = transportType.GetMethod(
+            "NormalizeInputItemForResponsesRequest",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(normalizeMethod, "NormalizeInputItemForResponsesRequest method");
+
+        var source = new JsonObject()
+            .Add("type", "function_call_output")
+            .Add("call_id", "call_200")
+            .Add("output", "{\"ok\":true}");
+
+        var normalized = (JsonObject)normalizeMethod!.Invoke(null, new object?[] { source })!;
+        AssertEqual("custom_tool_call_output", normalized.GetString("type") ?? string.Empty, "normalized output type");
+        AssertEqual("call_200", normalized.GetString("call_id") ?? string.Empty, "normalized output call id");
+        AssertEqual("{\"ok\":true}", normalized.GetString("output") ?? string.Empty, "normalized output payload");
+    }
+
+    private static void TestNativeBuildCanonicalRequestMessagesNormalizesHistoryToolCalls() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var buildMethod = transportType.GetMethod(
+            "BuildCanonicalRequestMessages",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(buildMethod, "BuildCanonicalRequestMessages method");
+
+        var history = new List<JsonObject> {
+            new JsonObject()
+                .Add("type", "function_call")
+                .Add("call_id", "call_hist")
+                .Add("function", new JsonObject()
+                    .Add("name", "ad_scope_discovery")
+                    .Add("arguments", "{\"include_trusts\":true}"))
+        };
+        var inputItems = new List<JsonObject> {
+            new JsonObject()
+                .Add("type", "custom_tool_call_output")
+                .Add("call_id", "call_hist")
+                .Add("output", "{\"ok\":true}")
+        };
+
+        var canonical = (IReadOnlyList<JsonObject>)buildMethod!.Invoke(null, new object?[] { history, inputItems })!;
+        AssertEqual(2, canonical.Count, "canonical message count");
+
+        var first = canonical[0];
+        AssertEqual("custom_tool_call", first.GetString("type") ?? string.Empty, "canonical tool call type");
+        AssertEqual(false, first.TryGetValue("arguments", out _), "canonical tool call omits arguments");
+
+        var second = canonical[1];
+        AssertEqual("custom_tool_call_output", second.GetString("type") ?? string.Empty, "canonical tool output type");
+        AssertEqual("call_hist", second.GetString("call_id") ?? string.Empty, "canonical tool output call id");
     }
 }

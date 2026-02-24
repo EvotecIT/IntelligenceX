@@ -465,6 +465,22 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private void ClearUsageLimitDispatchBlockForActiveAccount() {
+        var identity = ResolveActiveUsageIdentity();
+        lock (_turnDiagnosticsSync) {
+            if (!_accountUsageByKey.TryGetValue(identity.Key, out var snapshot)) {
+                return;
+            }
+
+            _accountUsageByKey[identity.Key] = snapshot with {
+                UsageLimitHitUtc = null,
+                UsageLimitRetryAfterUtc = null,
+                RateLimitReached = false
+            };
+            SyncAccountUsageToAppStateLocked();
+        }
+    }
+
     internal static bool IsUsageLimitDispatchBlocked(
         DateTime nowUtc,
         DateTime? usageLimitHitUtc,

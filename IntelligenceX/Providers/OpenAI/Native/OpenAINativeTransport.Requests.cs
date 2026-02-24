@@ -276,6 +276,115 @@ internal sealed partial class OpenAINativeTransport {
         return slash >= 0 && slash + 1 < value.Length ? value.Substring(slash + 1) : value;
     }
 
+    private static List<JsonObject> BuildCanonicalRequestMessages(IReadOnlyList<JsonObject> historyMessages,
+        IReadOnlyList<JsonObject> inputItems) {
+        var messages = new List<JsonObject>((historyMessages?.Count ?? 0) + (inputItems?.Count ?? 0));
+        if (historyMessages is not null) {
+            for (var i = 0; i < historyMessages.Count; i++) {
+                AddCanonicalRequestMessage(messages, historyMessages[i]);
+            }
+        }
+        if (inputItems is not null) {
+            for (var i = 0; i < inputItems.Count; i++) {
+                AddCanonicalRequestMessage(messages, inputItems[i]);
+            }
+        }
+        return messages;
+    }
+
+    private static void AddCanonicalRequestMessage(List<JsonObject> target, JsonObject? source) {
+        if (target is null || source is null) {
+            return;
+        }
+
+        target.Add(NormalizeInputItemForResponsesRequest(source));
+    }
+
+    private static JsonObject NormalizeInputItemForResponsesRequest(JsonObject source) {
+        if (source is null) {
+            return new JsonObject();
+        }
+
+        var type = source.GetString("type");
+        if (IsToolCallInputType(type)) {
+            return NormalizeToolCallInputForResponses(source);
+        }
+
+        if (IsToolCallOutputInputType(type)) {
+            var callId = source.GetString("call_id") ?? source.GetString("tool_call_id") ?? source.GetString("id");
+            if (!string.IsNullOrWhiteSpace(callId)) {
+                var output = source.GetString("output");
+                if (string.IsNullOrWhiteSpace(output)) {
+                    output = source.GetString("content");
+                }
+
+                return new JsonObject()
+                    .Add("type", "custom_tool_call_output")
+                    .Add("call_id", callId!.Trim())
+                    .Add("output", output ?? string.Empty);
+            }
+        }
+
+        return source;
+    }
+
+    private static bool IsToolCallInputType(string? type) {
+        return string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsToolCallOutputInputType(string? type) {
+        return string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "tool_call_output", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(type, "function_call_output", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonObject NormalizeToolCallInputForResponses(JsonObject source) {
+        var callId = source.GetString("call_id") ?? source.GetString("tool_call_id") ?? source.GetString("id");
+        var name = ResolveToolCallName(source);
+        if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(name)) {
+            return source;
+        }
+
+        return new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("call_id", callId!.Trim())
+            .Add("name", name)
+            .Add("input", ResolveToolCallInputJson(source));
+    }
+
+    private static string ResolveToolCallName(JsonObject source) {
+        var name = source.GetString("name")
+                   ?? source.GetObject("function")?.GetString("name")
+                   ?? source.GetObject("tool")?.GetString("name");
+        return string.IsNullOrWhiteSpace(name) ? string.Empty : name!.Trim();
+    }
+
+    private static string ResolveToolCallInputJson(JsonObject source) {
+        var raw = source.GetString("input");
+        if (string.IsNullOrWhiteSpace(raw)) {
+            raw = source.GetString("arguments");
+        }
+        var function = source.GetObject("function");
+        if (string.IsNullOrWhiteSpace(raw) && function is not null) {
+            raw = function.GetString("input") ?? function.GetString("arguments");
+        }
+        if (!string.IsNullOrWhiteSpace(raw)) {
+            return raw!;
+        }
+
+        var inputObj = source.GetObject("input") ?? source.GetObject("arguments");
+        if (inputObj is null && function is not null) {
+            inputObj = function.GetObject("input") ?? function.GetObject("arguments");
+        }
+        if (inputObj is not null) {
+            return JsonLite.Serialize(JsonValue.From(inputObj));
+        }
+
+        return "{}";
+    }
+
     private async Task<IReadOnlyList<JsonObject>> BuildInputItemsAsync(ChatInput input, CancellationToken cancellationToken) {
         var content = new JsonArray();
         var extras = new List<JsonObject>();
@@ -313,7 +422,7 @@ internal sealed partial class OpenAINativeTransport {
             }
 
             // Non-message items (tool outputs, custom items) are sent as-is.
-            extras.Add(obj);
+            extras.Add(NormalizeInputItemForResponsesRequest(obj));
         }
 
         var items = new List<JsonObject>();

@@ -156,6 +156,7 @@ public sealed partial class MainWindow : Window {
                     _isAuthenticated = done.Ok;
                     if (!done.Ok) {
                         _authenticatedAccountId = null;
+                        ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
                     }
                     _isConnected = _client is not null;
                     _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
@@ -422,12 +423,36 @@ public sealed partial class MainWindow : Window {
         }
 
         if (RequiresInteractiveSignInForCurrentTransport() && !refreshSucceeded) {
+            if (ShouldAttemptQueuedPromptDispatchAfterVerificationFailure(
+                    requiresInteractiveSignIn: true,
+                    queuedPromptCount: queuedPromptCount,
+                    loginInProgress: _loginInProgress)) {
+                _isAuthenticated = true;
+                await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
+                await SetActivityAsync("Sign-in callback succeeded. Retrying queued prompt while account verification catches up.").ConfigureAwait(false);
+                await HandlePostLoginCompletionAsync().ConfigureAwait(false);
+                return;
+            }
+
             await SetStatusAsync(SessionStatus.SignInRequired()).ConfigureAwait(false);
             await SetActivityAsync("Post-login verification did not confirm account state. Use Sign In or Switch Account.").ConfigureAwait(false);
             return;
         }
 
+        if (queuedPromptCount == 0) {
+            ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
+        }
+
         await HandlePostLoginCompletionAsync().ConfigureAwait(false);
+    }
+
+    internal static bool ShouldAttemptQueuedPromptDispatchAfterVerificationFailure(
+        bool requiresInteractiveSignIn,
+        int queuedPromptCount,
+        bool loginInProgress) {
+        return requiresInteractiveSignIn
+               && queuedPromptCount > 0
+               && !loginInProgress;
     }
 
     private static string SummarizeErrorForStatus(string? message) {

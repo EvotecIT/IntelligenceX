@@ -167,9 +167,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var inputItems = await BuildInputItemsAsync(input, cancellationToken).ConfigureAwait(false);
         // ChatGPT-native transport maintains history client-side; always include thread messages.
         var trackMessages = true;
-        var requestMessages = new List<JsonObject>(state.Messages.Count + inputItems.Count);
-        requestMessages.AddRange(state.Messages);
-        requestMessages.AddRange(inputItems);
+        var requestMessages = BuildCanonicalRequestMessages(state.Messages, inputItems);
 
         var body = BuildRequestBody(resolvedModel, requestMessages, state.SessionId, options);
         var turnId = Guid.NewGuid().ToString("N");
@@ -292,7 +290,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
         if (trackMessages) {
             if (inputItems.Count > 0) {
-                state.Messages.AddRange(inputItems);
+                for (var i = 0; i < inputItems.Count; i++) {
+                    state.Messages.Add(NormalizeInputItemForResponsesRequest(inputItems[i]));
+                }
             }
             // Preserve assistant tool calls in history so tool outputs can be sent without previous_response_id.
             if (completedResponse is not null && completedResponse.GetArray("output") is { Count: > 0 } historyOutputs) {
@@ -306,7 +306,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                         string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
-                        state.Messages.Add(item);
+                        state.Messages.Add(NormalizeInputItemForResponsesRequest(item));
                     }
                 }
             } else {
