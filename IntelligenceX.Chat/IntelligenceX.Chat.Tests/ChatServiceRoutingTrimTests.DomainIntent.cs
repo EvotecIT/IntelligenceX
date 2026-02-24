@@ -110,6 +110,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldRequestDomainIntentClarification_FalseWhenSelectedToolsIsNull() {
+        var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
+            null,
+            new object?[] {
+                true,
+                false,
+                false,
+                3,
+                20,
+                null
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void BuildDomainIntentClarificationText_IncludesBothScopesAndChoicePrompt() {
         var text = BuildDomainIntentClarificationTextMethod.Invoke(null, Array.Empty<object?>());
         var clarification = Assert.IsType<string>(text);

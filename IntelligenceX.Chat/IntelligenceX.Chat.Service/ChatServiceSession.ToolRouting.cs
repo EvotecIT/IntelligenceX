@@ -149,6 +149,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (selectedTools is null) {
+            return false;
+        }
+
         var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         if (selected <= 0 || total <= 0 || selected >= total || selectedTools.Count == 0) {
             return false;
