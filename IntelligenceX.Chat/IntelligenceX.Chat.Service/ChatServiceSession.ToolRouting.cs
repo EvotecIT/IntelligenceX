@@ -138,6 +138,71 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
+    private static bool ShouldRequestDomainIntentClarification(
+        bool weightedToolRouting,
+        bool executionContractApplies,
+        bool usedContinuationSubset,
+        int selectedToolCount,
+        int totalToolCount,
+        IReadOnlyList<ToolDefinition> selectedTools) {
+        if (!weightedToolRouting || executionContractApplies || usedContinuationSubset) {
+            return false;
+        }
+
+        if (selectedTools is null) {
+            return false;
+        }
+
+        var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
+        if (selected <= 0 || total <= 0 || selected >= total || selectedTools.Count == 0) {
+            return false;
+        }
+
+        var adCandidates = 0;
+        var publicDomainCandidates = 0;
+        for (var i = 0; i < selectedTools.Count; i++) {
+            var toolName = (selectedTools[i].Name ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            if (IsAdDomainIntentTool(toolName)) {
+                adCandidates++;
+            } else if (IsPublicDomainIntentTool(toolName)) {
+                publicDomainCandidates++;
+            }
+        }
+
+        if (adCandidates <= 0 || publicDomainCandidates <= 0) {
+            return false;
+        }
+
+        var relevantCandidates = adCandidates + publicDomainCandidates;
+        if (relevantCandidates < 3) {
+            return false;
+        }
+
+        var dominantShare = Math.Max(adCandidates, publicDomainCandidates) / (double)relevantCandidates;
+        return dominantShare <= 0.80d;
+    }
+
+    private static bool IsAdDomainIntentTool(string toolName) {
+        return toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicDomainIntentTool(string toolName) {
+        return toolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
+               || toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildDomainIntentClarificationText() {
+        return "I can help with either scope, and I want to avoid running the wrong tool family.\n\n"
+               + "Do you want:\n"
+               + "1. Active Directory domain scope (DCs, LDAP, replication, GPO)\n"
+               + "2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)\n\n"
+               + "Reply with `1` or `2`.";
+    }
+
     private static string BuildRoutingMetaPayload(
         string strategy,
         bool weightedToolRouting,

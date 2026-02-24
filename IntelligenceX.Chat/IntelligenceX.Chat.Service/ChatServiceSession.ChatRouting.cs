@@ -111,71 +111,11 @@ internal sealed partial class ChatServiceSession {
         var toolTimeoutSeconds = request.Options?.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
         using var turnCts = CreateTimeoutCts(cancellationToken, turnTimeoutSeconds);
         var turnToken = turnCts?.Token ?? cancellationToken;
-        var resolvedModel = await ResolveTurnModelAsync(client, request, turnToken).ConfigureAwait(false);
-
-        var options = new ChatOptions {
-            Model = resolvedModel,
-            Instructions = BuildTurnInstructionsWithRuntimeIdentity(resolvedModel),
-            ReasoningEffort = ResolveReasoningEffort(request.Options?.ReasoningEffort, _options.ReasoningEffort),
-            ReasoningSummary = ResolveReasoningSummary(request.Options?.ReasoningSummary, _options.ReasoningSummary),
-            TextVerbosity = ResolveTextVerbosity(request.Options?.TextVerbosity, _options.TextVerbosity),
-            Temperature = request.Options?.Temperature ?? _options.Temperature,
-            ParallelToolCalls = parallelTools,
-            Tools = toolDefs.Count == 0 ? null : toolDefs,
-            ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
-        };
         var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? false;
         var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
         var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
         var requestedReviewPasses = request.Options?.MaxReviewPasses;
         var requestedModelHeartbeatSeconds = request.Options?.ModelHeartbeatSeconds;
-        await TryWriteStatusAsync(
-                writer,
-                request.RequestId,
-                threadId,
-                status: ChatStatusCodes.ModelSelected,
-                message: "Using model: " + resolvedModel)
-            .ConfigureAwait(false);
-
-        if (requestedReviewPasses.HasValue && requestedReviewPasses.Value != maxReviewPasses) {
-            await TryWriteStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    status: ChatStatusCodes.ReviewPassesClamped,
-                    message: BuildReviewPassClampMessage(requestedReviewPasses.Value, maxReviewPasses))
-                .ConfigureAwait(false);
-        }
-
-        if (requestedModelHeartbeatSeconds.HasValue && requestedModelHeartbeatSeconds.Value != modelHeartbeatSeconds) {
-            await TryWriteStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    status: ChatStatusCodes.ModelHeartbeatClamped,
-                    message: BuildModelHeartbeatClampMessage(requestedModelHeartbeatSeconds.Value, modelHeartbeatSeconds))
-                .ConfigureAwait(false);
-        }
-
-        if (requestedMaxRounds > maxRounds) {
-            await TryWriteStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    status: ChatStatusCodes.ToolRoundCapApplied,
-                    message: BuildToolRoundCapAppliedMessage(requestedMaxRounds, maxRounds))
-                .ConfigureAwait(false);
-        }
-
-        if (!string.Equals(parallelToolMode, ParallelToolModeAuto, StringComparison.Ordinal)) {
-            await TryWriteStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    status: ChatStatusCodes.ToolParallelMode,
-                    message: $"Tool parallel mode: {parallelToolMode}.")
-                .ConfigureAwait(false);
-        }
 
         var (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
         if (ShouldEmitRoutingTransparency(routingSelectedToolCount, routingTotalToolCount)) {
@@ -221,6 +161,102 @@ internal sealed partial class ChatServiceSession {
                     routingStrategy,
                     routingSelectedToolCount,
                     routingTotalToolCount)
+                .ConfigureAwait(false);
+        }
+
+        if (ShouldRequestDomainIntentClarification(
+                weightedToolRouting: weightedToolRouting,
+                executionContractApplies: executionContractApplies,
+                usedContinuationSubset: usedContinuationSubset,
+                selectedToolCount: routingSelectedToolCount,
+                totalToolCount: routingTotalToolCount,
+                selectedTools: toolDefs)) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
+                .ConfigureAwait(false);
+
+            var clarificationText = BuildDomainIntentClarificationText();
+            RememberPendingActions(threadId, clarificationText);
+            var clarificationResult = new ChatResultMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                ThreadId = threadId,
+                Text = clarificationText,
+                Tools = null,
+                TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
+            };
+            return new ChatTurnRunResult(
+                Result: clarificationResult,
+                Usage: null,
+                ToolCallsCount: 0,
+                ToolRounds: 0,
+                ProjectionFallbackCount: 0,
+                ToolErrors: Array.Empty<ToolErrorMetricDto>(),
+                ResolvedModel: null);
+        }
+
+        var resolvedModel = await ResolveTurnModelAsync(client, request, turnToken).ConfigureAwait(false);
+
+        var options = new ChatOptions {
+            Model = resolvedModel,
+            Instructions = BuildTurnInstructionsWithRuntimeIdentity(resolvedModel),
+            ReasoningEffort = ResolveReasoningEffort(request.Options?.ReasoningEffort, _options.ReasoningEffort),
+            ReasoningSummary = ResolveReasoningSummary(request.Options?.ReasoningSummary, _options.ReasoningSummary),
+            TextVerbosity = ResolveTextVerbosity(request.Options?.TextVerbosity, _options.TextVerbosity),
+            Temperature = request.Options?.Temperature ?? _options.Temperature,
+            ParallelToolCalls = parallelTools,
+            Tools = toolDefs.Count == 0 ? null : toolDefs,
+            ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
+        };
+        await TryWriteStatusAsync(
+                writer,
+                request.RequestId,
+                threadId,
+                status: ChatStatusCodes.ModelSelected,
+                message: "Using model: " + resolvedModel)
+            .ConfigureAwait(false);
+
+        if (requestedReviewPasses.HasValue && requestedReviewPasses.Value != maxReviewPasses) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.ReviewPassesClamped,
+                    message: BuildReviewPassClampMessage(requestedReviewPasses.Value, maxReviewPasses))
+                .ConfigureAwait(false);
+        }
+
+        if (requestedModelHeartbeatSeconds.HasValue && requestedModelHeartbeatSeconds.Value != modelHeartbeatSeconds) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.ModelHeartbeatClamped,
+                    message: BuildModelHeartbeatClampMessage(requestedModelHeartbeatSeconds.Value, modelHeartbeatSeconds))
+                .ConfigureAwait(false);
+        }
+
+        if (requestedMaxRounds > maxRounds) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.ToolRoundCapApplied,
+                    message: BuildToolRoundCapAppliedMessage(requestedMaxRounds, maxRounds))
+                .ConfigureAwait(false);
+        }
+
+        if (!string.Equals(parallelToolMode, ParallelToolModeAuto, StringComparison.Ordinal)) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.ToolParallelMode,
+                    message: $"Tool parallel mode: {parallelToolMode}.")
                 .ConfigureAwait(false);
         }
 
