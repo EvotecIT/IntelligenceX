@@ -99,12 +99,44 @@ Action priority (highest first):
 
 Key rule: if actionable review changes and flaky retry are both possible, process review feedback first to avoid rerunning old SHA checks.
 
+Normative requirements:
+- The action planner MUST be idempotent for the same `(pr, headSha, stateVersion)` input.
+- The action planner MUST emit a stable dedupe key for mutating actions (`retry_failed_checks`, future `repair` actions) so concurrent event-driven + scheduled runs do not duplicate execution.
+- If an action with the same dedupe key was already executed successfully, repeated planners SHOULD emit `idle_wait` (or equivalent no-op) unless state materially changed.
+- Review-source precedence MUST be deterministic:
+  - trusted human maintainer feedback overrides approved bot feedback when they conflict,
+  - approved bot feedback overrides untrusted/unknown noisy sources by default.
+
 ### 3) Durable State
 
 Persist per-PR watcher state under `artifacts/pr-watch/`:
 - seen review item ids,
 - retry counts per SHA,
 - last change key for backoff/heartbeat behavior.
+
+### 3.1) Retry Budget and Cooldown Semantics
+
+- Flaky retry budget MUST be enforced per head SHA.
+- Default budget SHOULD be `max 3` rerun cycles per SHA.
+- Babysitter MUST NOT rerun failed checks while non-terminal checks are still pending for the same SHA.
+- Babysitter SHOULD enforce a cooldown between reruns (recommended: 10-15 minutes) to avoid rerun storms.
+- On new SHA, retry budget resets unless maintainers explicitly lock retries for that PR.
+- Exhausted retry budget MUST transition to `stop_user_help_required` with explicit `retry_budget_exhausted` reason.
+
+### 3.2) Minimal Audit Log Contract
+
+Each watcher cycle MUST emit or persist an audit record with:
+- `timestampUtc`
+- `prNumber`
+- `repo`
+- `headSha`
+- `phase` (`observe`, `assist`, `repair`)
+- `action` (planned/executed)
+- `dedupeKey` (for mutating actions)
+- `source` (scheduler, event, manual dispatch)
+- `reason` (human-readable deterministic reason)
+- `result` (`success`, `no-op`, `failed`, `skipped`)
+- `runLink` (workflow/job URL when available)
 
 ### 4) Stop Conditions (Strict)
 
@@ -117,6 +149,12 @@ Stop only when one is true:
   - mergeability not conflict/blocked,
 - user-help-required blocker (infra, permissions, ambiguous product decision, retry budget exhausted).
 
+Terminal-state examples:
+- `ready_to_merge`: checks passing + mergeable + no blocking review decision + no unresolved trusted blockers.
+- `blocked_and_escalated/infra`: required checks unavailable due to runner/billing/provider outage.
+- `blocked_and_escalated/policy`: conflicting trusted maintainer requests requiring human product/priority decision.
+- `blocked_and_escalated/retry_budget`: rerun budget exhausted for current SHA with persistent failures.
+
 ## Review Comments From "Other" Sources
 
 Babysitter should handle review feedback from multiple sources, not only IntelligenceX reviewer output.
@@ -126,6 +164,16 @@ Babysitter should handle review feedback from multiple sources, not only Intelli
 - Maintainer/human trusted authors (OWNER, MEMBER, COLLABORATOR, configured operator accounts): blocking-capable and actionable.
 - Approved automation bots (for example IntelligenceX reviewer, Codex reviewer, configured allow-list bots): actionable when items are concrete and reproducible.
 - Untrusted/unknown external authors or noisy bots: informational by default, non-blocking unless maintainers explicitly escalate.
+
+### Conflict Precedence (Source of Truth)
+
+When review guidance conflicts, babysitter resolves by this precedence order:
+1. trusted human maintainers,
+2. explicit maintainer override comments/labels,
+3. approved bot checklist/critical findings,
+4. untrusted/unknown/noisy automated feedback.
+
+If two trusted humans conflict and no explicit override exists, babysitter MUST stop with `needs-human-review` and avoid unilateral mutation.
 
 ### Handling Policy
 
