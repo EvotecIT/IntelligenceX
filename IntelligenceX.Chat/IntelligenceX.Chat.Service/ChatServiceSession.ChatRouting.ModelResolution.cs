@@ -249,21 +249,40 @@ internal sealed partial class ChatServiceSession {
     }
 
     private int? ResolveMaxCandidateToolsForTurn(int? requestedLimit, OpenAITransportKind transportKind, string? selectedModel) {
+        return ResolveMaxCandidateToolsDiagnosticsForTurn(requestedLimit, transportKind, selectedModel).EffectiveMaxCandidateTools;
+    }
+
+    private ToolCandidateBudgetDiagnostics ResolveMaxCandidateToolsDiagnosticsForTurn(
+        int? requestedLimit,
+        OpenAITransportKind transportKind,
+        string? selectedModel) {
         var resolved = ResolveMaxCandidateToolsSetting(requestedLimit, transportKind);
         if (transportKind != OpenAITransportKind.CompatibleHttp) {
-            return resolved;
+            return new ToolCandidateBudgetDiagnostics(
+                EffectiveMaxCandidateTools: resolved,
+                EffectiveContextLength: null,
+                ContextAwareBudgetApplied: false);
         }
 
         if (requestedLimit is > 0) {
-            return resolved;
+            return new ToolCandidateBudgetDiagnostics(
+                EffectiveMaxCandidateTools: resolved,
+                EffectiveContextLength: null,
+                ContextAwareBudgetApplied: false);
         }
 
         var effectiveContextLength = ResolveEffectiveModelContextLength(selectedModel);
         if (!effectiveContextLength.HasValue) {
-            return resolved;
+            return new ToolCandidateBudgetDiagnostics(
+                EffectiveMaxCandidateTools: resolved,
+                EffectiveContextLength: null,
+                ContextAwareBudgetApplied: false);
         }
 
-        return ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools(effectiveContextLength.Value);
+        return new ToolCandidateBudgetDiagnostics(
+            EffectiveMaxCandidateTools: ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools(effectiveContextLength.Value),
+            EffectiveContextLength: effectiveContextLength.Value,
+            ContextAwareBudgetApplied: true);
     }
 
     private long? ResolveEffectiveModelContextLength(string? selectedModel) {
@@ -337,6 +356,11 @@ internal sealed partial class ChatServiceSession {
 
         return null;
     }
+
+    private readonly record struct ToolCandidateBudgetDiagnostics(
+        int? EffectiveMaxCandidateTools,
+        long? EffectiveContextLength,
+        bool ContextAwareBudgetApplied);
 
     private bool ShouldDisableToolsForSelectedModel(OpenAITransportKind transportKind, string? selectedModel) {
         if (transportKind != OpenAITransportKind.CompatibleHttp) {

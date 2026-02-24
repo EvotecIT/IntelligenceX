@@ -202,6 +202,10 @@ Progress:
   - explicit override precedence
   - matched model loaded/max context selection
   - single-model fallback and unknown-model multi-model fallback
+- Added routing-meta budget diagnostics so turn trace can expose budget decisions:
+  - requested vs effective `maxCandidateTools`
+  - context-aware budget application flag
+  - effective model context length when available
 
 ### WS6: Merge Gates
 Status: in_progress  
