@@ -423,6 +423,7 @@ internal sealed partial class ChatServiceSession {
                     isLocalCompatibleLoopback: isLocalCompatibleLoopback,
                     executionContractApplies: executionContractApplies,
                     compactFollowUpTurn: compactFollowUpTurn,
+                    toolsAvailable: toolDefs.Count > 0 || fullToolDefs.Length > 0,
                     priorToolCalls: toolCalls.Count,
                     priorToolOutputs: toolOutputs.Count,
                     userRequest: routedUserRequest,
@@ -1083,6 +1084,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (ShouldForceExecutionContractBlockerAtFinalize(
+                        userRequest: routedUserRequest,
                         executionContractApplies: executionContractApplies,
                         autoPendingActionReplayUsed: autoPendingActionReplayUsed,
                         executionNudgeUsed: executionNudgeUsed,

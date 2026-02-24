@@ -337,6 +337,85 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private static bool LooksLikeExecutionIntentPlaceholderDraft(string userRequest, string assistantDraft) {
+        var request = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+        var draft = CollapseWhitespace((assistantDraft ?? string.Empty).Trim());
+        if (request.Length == 0 || draft.Length < 24 || draft.Length > 560) {
+            return false;
+        }
+
+        if (draft.Contains('\n', StringComparison.Ordinal) || draft.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (ContainsQuestionSignal(draft)) {
+            return false;
+        }
+
+        if (draft.Contains("ix:action:v1", StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionWatchdogMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionCorrectionMarker, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (draft.Contains('|', StringComparison.Ordinal)
+            || draft.Contains('{', StringComparison.Ordinal)
+            || draft.Contains('}', StringComparison.Ordinal)
+            || draft.Contains('[', StringComparison.Ordinal)
+            || draft.Contains(']', StringComparison.Ordinal)
+            || draft.Contains('<', StringComparison.Ordinal)
+            || draft.Contains('>', StringComparison.Ordinal)
+            || draft.Contains('=', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 24);
+        var draftTokens = ExtractMeaningfulTokensForContext(draft, maxTokens: 48);
+        if (requestTokens.Count < 4 || draftTokens.Count < 4) {
+            return false;
+        }
+
+        var requestUnique = new HashSet<string>(requestTokens, StringComparer.OrdinalIgnoreCase);
+        var draftUnique = new HashSet<string>(draftTokens, StringComparer.OrdinalIgnoreCase);
+        var sharedCount = 0;
+        foreach (var token in requestUnique) {
+            if (draftUnique.Contains(token)) {
+                sharedCount++;
+            }
+        }
+
+        if (sharedCount < 3) {
+            return false;
+        }
+
+        var overlapRatio = requestUnique.Count == 0 ? 0d : (double)sharedCount / requestUnique.Count;
+        if (overlapRatio < 0.35d) {
+            return false;
+        }
+
+        // Placeholder drafts are usually request paraphrases without concrete evidence/timestamps.
+        // If the draft contains multiple long digit runs, treat it as likely-result-bearing text.
+        var longDigitRunCount = 0;
+        var currentDigitRun = 0;
+        for (var i = 0; i < draft.Length; i++) {
+            if (char.IsDigit(draft[i])) {
+                currentDigitRun++;
+                continue;
+            }
+
+            if (currentDigitRun >= 4) {
+                longDigitRunCount++;
+            }
+            currentDigitRun = 0;
+        }
+        if (currentDigitRun >= 4) {
+            longDigitRunCount++;
+        }
+
+        return longDigitRunCount == 0;
+    }
+
     private static int CountLetterDigitTokens(string text, int maxTokens) {
         var tokenCount = 0;
         var inToken = false;

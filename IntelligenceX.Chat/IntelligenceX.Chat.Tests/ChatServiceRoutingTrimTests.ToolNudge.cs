@@ -225,7 +225,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var value = Assert.IsType<bool>(result);
         Assert.True(value);
-        Assert.Equal("structured_contextual_blocker_draft", Assert.IsType<string>(args[7]));
+        var reason = Assert.IsType<string>(args[7]);
+        Assert.True(
+            string.Equals(reason, "structured_contextual_blocker_draft", StringComparison.Ordinal)
+            || string.Equals(reason, "execution_intent_placeholder_draft", StringComparison.Ordinal),
+            "Unexpected reason: " + reason);
     }
 
     [Fact]
@@ -302,6 +306,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldAttemptToolExecutionNudge_TriggersForExecutionAckWithMarkdownEmphasis() {
         var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
         var assistantDraft = "Got it — I’ll query the user on each relevant writable DC and return the **latest authoritative `lastLogon`** with the exact UTC time and source DC.";
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForRuntimeObservedExecutionAckDraft() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var assistantDraft = "I’ll query the user across domain controllers and return the **latest authoritative `lastLogon`** (non-replicated) with the exact UTC timestamp and source DC.";
 
         var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
         var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
@@ -1023,7 +1041,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_TriggersWhenExecutionPathHadNoToolEvidence() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { false, false, true, false, false, false, false, "On it." });
+            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, "On it." });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -1032,7 +1050,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { true, false, false, false, false, false, true, "Completed." });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, true, "Completed." });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -1049,7 +1067,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { true, false, false, false, false, false, false, structuredBlocker });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, false, structuredBlocker });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -1059,7 +1077,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var draft = "On it. Running the all-DC reboot baseline now and returning the side-by-side matrix.";
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { false, false, false, false, true, true, false, draft });
+            new object?[] { "Run the baseline now.", false, false, false, false, true, true, false, draft });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -1069,9 +1087,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var draft = "Should I run this now across all domain controllers?";
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { false, false, false, false, true, true, false, draft });
+            new object?[] { "Run the baseline now.", false, false, false, false, true, true, false, draft });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldForceExecutionContractBlockerAtFinalize_TriggersForExecutionIntentPlaceholderWithoutPriorRecoveryFlags() {
+        var userRequest = "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.";
+        var draft = "I’ll query the user across domain controllers and return the latest authoritative lastLogon timestamp with source DC.";
+        var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
+            null,
+            new object?[] { userRequest, false, false, false, false, false, false, false, draft });
+
+        Assert.True(Assert.IsType<bool>(result));
     }
 
     [Fact]
@@ -1202,13 +1231,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldSuppressLocalToolRecoveryRetries_SuppressesNonFollowUpLocalReadOnlyFirstPass() {
+    public void ShouldSuppressLocalToolRecoveryRetries_DoesNotSuppressWhenToolsAreAvailable() {
         var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
             null,
             new object?[] {
                 true,  // isLocalCompatibleLoopback
                 false, // executionContractApplies
                 false, // compactFollowUpTurn
+                true,  // toolsAvailable
+                0,     // priorToolCalls
+                0,     // priorToolOutputs
+                "Check AD status", // userRequest
+                "Working on it."   // assistantDraft
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSuppressLocalToolRecoveryRetries_SuppressesNonFollowUpToollessLocalReadOnlyFirstPass() {
+        var result = ShouldSuppressLocalToolRecoveryRetriesMethod.Invoke(
+            null,
+            new object?[] {
+                true,  // isLocalCompatibleLoopback
+                false, // executionContractApplies
+                false, // compactFollowUpTurn
+                false, // toolsAvailable
                 0,     // priorToolCalls
                 0,     // priorToolOutputs
                 "Check AD status", // userRequest
@@ -1226,6 +1274,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,  // isLocalCompatibleLoopback
                 false, // executionContractApplies
                 true,  // compactFollowUpTurn
+                true,  // toolsAvailable
                 0,     // priorToolCalls
                 0,     // priorToolOutputs
                 "go ahead", // userRequest
@@ -1243,6 +1292,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,  // isLocalCompatibleLoopback
                 false, // executionContractApplies
                 false, // compactFollowUpTurn
+                true,  // toolsAvailable
                 0,     // priorToolCalls
                 0,     // priorToolOutputs
                 "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.",
@@ -1260,6 +1310,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,  // isLocalCompatibleLoopback
                 false, // executionContractApplies
                 false, // compactFollowUpTurn
+                true,  // toolsAvailable
                 0,     // priorToolCalls
                 0,     // priorToolOutputs
                 "Find the user's latest authoritative lastLogon value by checking relevant DCs and return exact UTC timestamp plus source DC.",

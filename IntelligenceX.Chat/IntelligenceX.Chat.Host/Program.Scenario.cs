@@ -41,6 +41,7 @@ internal static partial class Program {
 
         Console.WriteLine($"Scenario mode: {scenario.Name} ({scenario.Turns.Count} turn{(scenario.Turns.Count == 1 ? string.Empty : "s")})");
         Console.WriteLine($"Scenario source: {scenarioPath}");
+        Console.WriteLine("Runtime path: host-repl (direct chat loop, not Chat.Service sidecar).");
         Console.WriteLine($"Continue on error: {(options.ScenarioContinueOnError ? "on" : "off")}");
         Console.WriteLine();
 

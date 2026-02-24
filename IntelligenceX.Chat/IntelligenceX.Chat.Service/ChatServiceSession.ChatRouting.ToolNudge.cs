@@ -61,6 +61,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldForceExecutionContractBlockerAtFinalize(
+        string userRequest,
         bool executionContractApplies,
         bool autoPendingActionReplayUsed,
         bool executionNudgeUsed,
@@ -73,17 +74,20 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        var looksLikeExecutionIntentPlaceholder = LooksLikeExecutionIntentPlaceholderDraft(userRequest, draft);
+
         // Only force the blocker when this turn entered an execution-required path.
         if (!executionContractApplies
             && !autoPendingActionReplayUsed
             && !executionNudgeUsed
             && !noToolExecutionWatchdogUsed
             && !continuationFollowUpTurn
-            && !compactFollowUpTurn) {
+            && !compactFollowUpTurn
+            && !looksLikeExecutionIntentPlaceholder) {
             return false;
         }
 
-        var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
             return true;
         }
@@ -189,6 +193,7 @@ internal sealed partial class ChatServiceSession {
         bool isLocalCompatibleLoopback,
         bool executionContractApplies,
         bool compactFollowUpTurn,
+        bool toolsAvailable,
         int priorToolCalls,
         int priorToolOutputs,
         string userRequest,
@@ -205,6 +210,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // If tools are available, allow retry logic to decide. Local suppression should only guard
+        // truly toolless paths in compatible loopback mode.
+        if (toolsAvailable) {
+            return false;
+        }
+
         if (priorToolCalls != 0 || priorToolOutputs != 0) {
             return false;
         }
@@ -218,7 +229,8 @@ internal sealed partial class ChatServiceSession {
         // can converge instead of silently stopping with zero tool calls.
         if (LooksLikeExecutionAcknowledgeDraft(draft)
             || LooksLikeMultilineFollowUpBlockerDraft(draft)
-            || LooksLikeStructuredScopeChoiceDraft(draft)) {
+            || LooksLikeStructuredScopeChoiceDraft(draft)
+            || LooksLikeExecutionIntentPlaceholderDraft(userRequest, draft)) {
             return false;
         }
 
@@ -340,6 +352,11 @@ internal sealed partial class ChatServiceSession {
                                              && AssistantDraftReferencesUserRequest(request, draft);
         if (hasExecutionAckReference) {
             reason = "execution_ack_draft_references_request";
+            return true;
+        }
+
+        if (LooksLikeExecutionIntentPlaceholderDraft(request, draft)) {
+            reason = "execution_intent_placeholder_draft";
             return true;
         }
 
