@@ -2196,7 +2196,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Equal(2, toolCalls);
         Assert.Equal(2, toolOutputs);
-        Assert.Equal("out-a-first", callAOutput);
+        Assert.Equal("out-a-duplicate", callAOutput);
     }
 
     [Fact]
@@ -2296,6 +2296,96 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         Assert.Equal("out-a-direct-delayed", outputByCallId["call_a"]);
+        Assert.Equal("out-b-indexed-fallback", outputByCallId["call_b"]);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInput_PrefersLatestExplicitOutputWhenSameCallIdRepeats() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "call_a", Output = "out-a-direct-first", Ok = true },
+            new() { CallId = "call_a", Output = "out-a-direct-latest", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(2, items.Count);
+        var outputPayload = string.Empty;
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            outputPayload = item.GetString("output") ?? string.Empty;
+            break;
+        }
+
+        Assert.Equal("out-a-direct-latest", outputPayload);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInput_UsesLatestExplicitOutputAfterFallbackAndDirectDuplicates() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var callB = new ToolCall(
+            callId: "call_b",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD1\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA, callB };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA,
+            ["call_b"] = callB
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "mismatch_0", Output = "out-a-indexed-fallback", Ok = true },
+            new() { CallId = "mismatch_1", Output = "out-b-indexed-fallback", Ok = true },
+            new() { CallId = "call_a", Output = "out-a-direct-first", Ok = true },
+            new() { CallId = "call_a", Output = "out-a-direct-latest", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(4, items.Count);
+        var outputByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var callId = item.GetString("call_id");
+            if (string.IsNullOrWhiteSpace(callId)) {
+                continue;
+            }
+
+            outputByCallId[callId!] = item.GetString("output") ?? string.Empty;
+        }
+
+        Assert.Equal("out-a-direct-latest", outputByCallId["call_a"]);
         Assert.Equal("out-b-indexed-fallback", outputByCallId["call_b"]);
     }
 

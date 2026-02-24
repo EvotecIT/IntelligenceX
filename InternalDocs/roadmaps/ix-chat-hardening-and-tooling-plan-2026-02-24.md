@@ -87,6 +87,11 @@ Progress:
 - Added reconnect/final overlap boundary tests:
   - short suffix-only provisional/final differences stay replace-only (no duplicate bubble)
   - long suffix synthesized finals still append as a new final bubble
+- Hardened tool replay output selection for delayed/replayed duplicates:
+  - when multiple explicit outputs for the same `call_id` arrive, replay now uses the latest explicit output
+  - direct `call_id` matches still outrank indexed fallback matches
+- Extended preflight recovery unit tests to include app duplicate-bubble guards:
+  - `MainWindowNoTextWarningHandlingTests`
 
 ### WS2: Live Scenario Expansion (No Hardcoding)
 Status: in_progress  

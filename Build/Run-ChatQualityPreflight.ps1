@@ -160,11 +160,15 @@ if ($RunTransportRecoveryProfile) {
 
 if ($RunRecoveryUnitTests) {
     Write-Step "Strict scenario suite passed."
-    Write-Step "Running recovery unit tests (transport/tool-pairing guards)..."
+    Write-Step "Running recovery unit tests (transport/tool-pairing + duplicate-bubble guards)..."
 
     $chatTestsProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Tests\IntelligenceX.Chat.Tests.csproj'
     if (-not (Test-Path $chatTestsProject)) {
         throw "Chat tests project not found: $chatTestsProject"
+    }
+    $chatAppTestsProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App.Tests\IntelligenceX.Chat.App.Tests.csproj'
+    if (-not (Test-Path $chatAppTestsProject)) {
+        throw "Chat app tests project not found: $chatAppTestsProject"
     }
 
     $testArgs = @(
@@ -180,6 +184,21 @@ if ($RunRecoveryUnitTests) {
     & dotnet @testArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Recovery unit tests failed."
+    }
+
+    $appTestArgs = @(
+        'test',
+        $chatAppTestsProject,
+        '-c', 'Release',
+        '--filter', 'FullyQualifiedName~MainWindowNoTextWarningHandlingTests'
+    )
+    if ($NoBuild) {
+        $appTestArgs += '--no-build'
+    }
+
+    & dotnet @appTestArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Recovery unit tests failed (app duplicate-bubble guards)."
     }
 
     Write-Step "Recovery unit tests passed."
