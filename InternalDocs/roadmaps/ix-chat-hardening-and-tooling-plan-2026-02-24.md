@@ -177,6 +177,10 @@ Progress:
 - Added metadata regression test coverage for disabled-by-configuration behavior and source-kind classification.
 - Added a routing ambiguity guard for mixed AD-domain and public DNS/domain candidate sets:
   - when weighted routing yields a mixed, non-dominant subset across `ad_*` and `dnsclientx_*`/`domaindetective_*`, Chat asks one clarifying turn before execution.
+- Tightened ambiguity threshold behavior to reduce over-clarification:
+  - extracted named constants for minimum relevant candidates and dominant-share threshold
+  - clarification now triggers only for strictly non-dominant mixes (not at the 80% dominance boundary)
+  - added targeted regression tests for mixed-positive and boundary-negative cases
 
 ### WS5: Tool Count, Context Budget, Compaction
 Status: in_progress  

@@ -25,6 +25,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int DomainIntentClarificationMinRelevantCandidates = 3;
+    private const double DomainIntentClarificationMaxDominantShare = 0.80d;
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -178,12 +180,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         var relevantCandidates = adCandidates + publicDomainCandidates;
-        if (relevantCandidates < 3) {
+        if (relevantCandidates < DomainIntentClarificationMinRelevantCandidates) {
             return false;
         }
 
         var dominantShare = Math.Max(adCandidates, publicDomainCandidates) / (double)relevantCandidates;
-        return dominantShare <= 0.80d;
+        return dominantShare < DomainIntentClarificationMaxDominantShare;
     }
 
     private static bool IsAdDomainIntentTool(string toolName) {
