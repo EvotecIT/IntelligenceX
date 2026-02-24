@@ -55,9 +55,6 @@ env:
 
 jobs:
   monitor:
-    concurrency:
-      group: ix-pr-babysit-monitor-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
-      cancel-in-progress: false
     # Security hardening: monitor runs on GitHub-hosted runners only.
     runs-on: ubuntu-latest
     timeout-minutes: 25
