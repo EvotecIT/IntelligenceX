@@ -64,6 +64,16 @@ public sealed record ToolPackBootstrapOptions {
     public bool EnableOfficeImoPack { get; init; } = true;
 
     /// <summary>
+    /// Enables IX.DnsClientX open-source DNS query tools when available.
+    /// </summary>
+    public bool EnableDnsClientXPack { get; init; } = true;
+
+    /// <summary>
+    /// Enables IX.DomainDetective open-source domain diagnostics tools when available.
+    /// </summary>
+    public bool EnableDomainDetectivePack { get; init; } = true;
+
+    /// <summary>
     /// Enables reviewer setup guidance pack.
     /// </summary>
     public bool EnableReviewerSetupPack { get; init; } = true;
@@ -279,6 +289,10 @@ public static partial class ToolPackBootstrap {
     private const string TestimoXOptionsTypeName = "IntelligenceX.Tools.TestimoX.TestimoXToolOptions, IntelligenceX.Tools.TestimoX";
     private const string OfficeImoPackTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolPack, IntelligenceX.Tools.OfficeIMO";
     private const string OfficeImoOptionsTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolOptions, IntelligenceX.Tools.OfficeIMO";
+    private const string DnsClientXPackTypeName = "IntelligenceX.Tools.DnsClientX.DnsClientXToolPack, IntelligenceX.Tools.DnsClientX";
+    private const string DnsClientXOptionsTypeName = "IntelligenceX.Tools.DnsClientX.DnsClientXToolOptions, IntelligenceX.Tools.DnsClientX";
+    private const string DomainDetectivePackTypeName = "IntelligenceX.Tools.DomainDetective.DomainDetectiveToolPack, IntelligenceX.Tools.DomainDetective";
+    private const string DomainDetectiveOptionsTypeName = "IntelligenceX.Tools.DomainDetective.DomainDetectiveToolOptions, IntelligenceX.Tools.DomainDetective";
     private const string EmailPackTypeName = "IntelligenceX.Tools.Email.EmailToolPack, IntelligenceX.Tools.Email";
     private const string EmailOptionsTypeName = "IntelligenceX.Tools.Email.EmailToolOptions, IntelligenceX.Tools.Email";
     private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
@@ -332,6 +346,22 @@ public static partial class ToolPackBootstrap {
         "officeimo",
         "Office Documents (OfficeIMO)",
         "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceOpenSource);
+
+    private static readonly KnownPackDefinition DnsClientXPackDefinition = new(
+        "dnsclientx",
+        "DnsClientX",
+        "Open-source DNS query and record inspection tools.",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceOpenSource);
+
+    private static readonly KnownPackDefinition DomainDetectivePackDefinition = new(
+        "domaindetective",
+        "DomainDetective",
+        "Open-source domain/server diagnostics and posture analysis tools.",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
         PackSourceOpenSource);
@@ -514,6 +544,28 @@ public static partial class ToolPackBootstrap {
             configureOptions: officeImoOptions => {
                 AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
             },
+            onWarning: options.OnBootstrapWarning);
+
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableDnsClientXPack,
+            definition: DnsClientXPackDefinition,
+            packLabel: "IX.DnsClientX",
+            packTypeName: DnsClientXPackTypeName,
+            optionsTypeName: DnsClientXOptionsTypeName,
+            configureOptions: null,
+            onWarning: options.OnBootstrapWarning);
+
+        AddOptionalReflectionPack(
+            packs: packs,
+            availabilityById: availabilityById,
+            enabledByConfiguration: options.EnableDomainDetectivePack,
+            definition: DomainDetectivePackDefinition,
+            packLabel: "IX.DomainDetective",
+            packTypeName: DomainDetectivePackTypeName,
+            optionsTypeName: DomainDetectiveOptionsTypeName,
+            configureOptions: null,
             onWarning: options.OnBootstrapWarning);
 
         AddOptionalBuiltInPack(

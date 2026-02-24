@@ -833,6 +833,8 @@ internal static class PluginFolderToolPackLoader {
             "powershell" => options.EnablePowerShellPack,
             "testimox" => options.EnableTestimoXPack,
             "officeimo" => options.EnableOfficeImoPack,
+            "dnsclientx" => options.EnableDnsClientXPack,
+            "domaindetective" => options.EnableDomainDetectivePack,
             "reviewersetup" => options.EnableReviewerSetupPack,
             "email" => options.EnableEmailPack,
             _ => true

@@ -153,6 +153,35 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDisabledReason_ForDnsOpenSourcePacksWhenDisabledByConfiguration() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false,
+            EnableDnsClientXPack = false,
+            EnableDomainDetectivePack = false,
+            EnableEmailPack = false,
+            EnableReviewerSetupPack = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        var dnsClientX = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "dnsclientx", StringComparison.OrdinalIgnoreCase));
+        Assert.False(dnsClientX.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", dnsClientX.DisabledReason);
+        Assert.Equal("open_source", dnsClientX.SourceKind);
+
+        var domainDetective = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "domaindetective", StringComparison.OrdinalIgnoreCase));
+        Assert.False(domainDetective.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", domainDetective.DisabledReason);
+        Assert.Equal("open_source", domainDetective.SourceKind);
+    }
+
+    [Fact]
     public void RegisterAll_AssignsPackIds_ForRegisteredTools() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             EnableFileSystemPack = false,

@@ -122,7 +122,7 @@ Acceptance:
 - Keep distinct styling per bubble channel.
 
 ### WS4: Open-Source DNS/Domain Packs
-Status: pending  
+Status: in_progress  
 Effort: L  
 Risk: Medium
 
@@ -131,6 +131,13 @@ Acceptance:
 - Add dedicated `domaindetective` pack with domain health + network diagnostics (including ping/traceroute).
 - Add pack-info routing hints that disambiguate AD-domain vs public-domain tasks.
 - Keep pack IDs and metadata normalized and collision-safe.
+
+Progress:
+- Added `dnsclientx` and `domaindetective` as first-class known pack IDs in bootstrap metadata (open-source source-kind, reflection-loaded when assemblies are present).
+- Added bootstrap/plugin gating support for these IDs through `ToolPackBootstrapOptions`:
+  - `EnableDnsClientXPack`
+  - `EnableDomainDetectivePack`
+- Added metadata regression test coverage for disabled-by-configuration behavior and source-kind classification.
 
 ### WS5: Tool Count, Context Budget, Compaction
 Status: pending  
