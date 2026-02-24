@@ -371,6 +371,13 @@ build/*
 !Build/
 !Build/Build-Installer.ps1
 !Build/Build-Release.ps1
+!Build/Run-Chat.ps1
+!Build/Run-ChatApp.ps1
+!Build/Run-ChatScenarioSuite.ps1
+!Build/Run-ChatLiveConversation.ps1
+!Build/Run-ChatQualityPreflight.ps1
+!Build/Compare-ChatScenarioReports.ps1
+!Build/Get-ChatScenarioCoverage.ps1
 
 # Allow release command sources under IntelligenceX.Cli/Release
 !IntelligenceX.Cli/Release/

@@ -89,6 +89,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ResolveToolOutputCallIdMethod =
         typeof(ChatServiceSession).GetMethod("ResolveToolOutputCallId", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ResolveToolOutputCallId not found.");
+    private static readonly MethodInfo BuildToolRoundReplayInputMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolRoundReplayInput", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolRoundReplayInput not found.");
     private static readonly MethodInfo BuildNativeHostReplayReviewPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildNativeHostReplayReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildNativeHostReplayReviewPrompt not found.");

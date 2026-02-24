@@ -29,6 +29,8 @@ public sealed class ToolPackBootstrapMetadataTests {
                 PowerShellAllowWrite = true,
                 EnableTestimoXPack = false,
                 EnableOfficeImoPack = false,
+                EnableDnsClientXPack = false,
+                EnableDomainDetectivePack = false,
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" }
             },
@@ -42,6 +44,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.True(options.PowerShellAllowWrite);
         Assert.False(options.EnableTestimoXPack);
         Assert.False(options.EnableOfficeImoPack);
+        Assert.False(options.EnableDnsClientXPack);
+        Assert.False(options.EnableDomainDetectivePack);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
         Assert.Same(runtimePolicyContext.AuthenticationProbeStore, options.AuthenticationProbeStore);
@@ -153,6 +157,35 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDisabledReason_ForDnsOpenSourcePacksWhenDisabledByConfiguration() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableFileSystemPack = false,
+            EnableSystemPack = false,
+            EnableActiveDirectoryPack = false,
+            EnablePowerShellPack = false,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false,
+            EnableDnsClientXPack = false,
+            EnableDomainDetectivePack = false,
+            EnableEmailPack = false,
+            EnableReviewerSetupPack = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        var dnsClientX = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "dnsclientx", StringComparison.OrdinalIgnoreCase));
+        Assert.False(dnsClientX.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", dnsClientX.DisabledReason);
+        Assert.Equal("open_source", dnsClientX.SourceKind);
+
+        var domainDetective = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "domaindetective", StringComparison.OrdinalIgnoreCase));
+        Assert.False(domainDetective.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", domainDetective.DisabledReason);
+        Assert.Equal("open_source", domainDetective.SourceKind);
+    }
+
+    [Fact]
     public void RegisterAll_AssignsPackIds_ForRegisteredTools() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             EnableFileSystemPack = false,
@@ -214,6 +247,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         public bool PowerShellAllowWrite { get; init; }
         public bool EnableTestimoXPack { get; init; } = true;
         public bool EnableOfficeImoPack { get; init; } = true;
+        public bool EnableDnsClientXPack { get; init; } = true;
+        public bool EnableDomainDetectivePack { get; init; } = true;
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
     }

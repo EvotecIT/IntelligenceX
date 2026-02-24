@@ -2138,6 +2138,168 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildToolRoundReplayInput_DeduplicatesByCallId_AndSkipsOrphanOutputs() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var callB = new ToolCall(
+            callId: "call_b",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD1\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA, callB };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA,
+            ["call_b"] = callB
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "call_a", Output = "out-a-first", Ok = true },
+            new() { CallId = "call_b", Output = "out-b-first", Ok = true },
+            new() { CallId = "call_a", Output = "out-a-duplicate", Ok = true },
+            new() { CallId = "orphan_call", Output = "out-orphan", Ok = true },
+            new() { CallId = string.Empty, Output = "out-empty-id", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(4, items.Count);
+
+        var toolCalls = 0;
+        var toolOutputs = 0;
+        string? callAOutput = null;
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            var type = item.GetString("type");
+            if (string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase)) {
+                toolCalls++;
+                continue;
+            }
+
+            if (!string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            toolOutputs++;
+            var callId = item.GetString("call_id");
+            if (string.Equals(callId, "call_a", StringComparison.OrdinalIgnoreCase)) {
+                callAOutput = item.GetString("output");
+            }
+        }
+
+        Assert.Equal(2, toolCalls);
+        Assert.Equal(2, toolOutputs);
+        Assert.Equal("out-a-first", callAOutput);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInput_UsesIndexedFallbackWhenRawCallIdIsMismatched() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var callB = new ToolCall(
+            callId: "call_b",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD1\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA, callB };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA,
+            ["call_b"] = callB
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "mismatch_0", Output = "out-a", Ok = true },
+            new() { CallId = "mismatch_1", Output = "out-b", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(4, items.Count);
+
+        var outputCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var callId = item.GetString("call_id");
+            if (!string.IsNullOrWhiteSpace(callId)) {
+                outputCallIds.Add(callId!);
+            }
+        }
+
+        Assert.Contains("call_a", outputCallIds);
+        Assert.Contains("call_b", outputCallIds);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInput_PrefersExplicitCallIdMatchOverIndexedFallbackForDelayedOutput() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var callB = new ToolCall(
+            callId: "call_b",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD1\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA, callB };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA,
+            ["call_b"] = callB
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "mismatch_0", Output = "out-a-indexed-fallback", Ok = true },
+            new() { CallId = "mismatch_1", Output = "out-b-indexed-fallback", Ok = true },
+            new() { CallId = "call_a", Output = "out-a-direct-delayed", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(4, items.Count);
+        var outputByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var callId = item.GetString("call_id");
+            if (string.IsNullOrWhiteSpace(callId)) {
+                continue;
+            }
+
+            outputByCallId[callId!] = item.GetString("output") ?? string.Empty;
+        }
+
+        Assert.Equal("out-a-direct-delayed", outputByCallId["call_a"]);
+        Assert.Equal("out-b-indexed-fallback", outputByCallId["call_b"]);
+    }
+
+    [Fact]
     public void BuildNativeHostReplayReviewPrompt_IncludesToolIdentityAndEvidence() {
         var call = new ToolCall(
             callId: "host_carryover_next_action_123",

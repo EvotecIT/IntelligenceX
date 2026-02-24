@@ -1,0 +1,71 @@
+{
+  "name": "ad-long-continuation-no-partials-10-turn",
+  "tags": ["ad", "cross-dc", "continuation", "partial-recovery", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover scope and anchors",
+      "user": "Discover AD scope and identify primary anchor DC for this run.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "Baseline anchor DC",
+      "user": "Start on AD0 if available, otherwise first discovered DC. Collect reboot and directory-service evidence with UTC timestamps.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Continue all remaining DCs",
+      "user": "Continue now with all remaining discovered DCs in this same turn and keep results grouped per host.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Retry one failed host once",
+      "user": "If any host failed, retry exactly once with narrower scope and continue with the rest.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC status table",
+      "user": "Return cross-DC table with evidence present/missing, earliest UTC, latest UTC, and confidence.",
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Replication tie-in",
+      "user": "Correlate findings with replication health signals for same DC set.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "Unreachable hosts handling",
+      "user": "If a host is unreachable, state exact blocker and continue analysis instead of stopping."
+    },
+    {
+      "name": "Top likely causes",
+      "user": "List top likely cause categories with confidence and strongest evidence per category."
+    },
+    {
+      "name": "Execute-now checklist",
+      "user": "Provide short execute-now checklist for next 30 minutes. No questions.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final compact summary",
+      "user": "Provide final 6-bullet summary with UTC markers, DC coverage count, unresolved blockers, and rerun trigger.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}

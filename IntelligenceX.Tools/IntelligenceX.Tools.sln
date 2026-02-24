@@ -25,6 +25,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.Reviewe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.OfficeIMO", "IntelligenceX.Tools.OfficeIMO\IntelligenceX.Tools.OfficeIMO.csproj", "{F7D6C3A2-E40E-4258-900E-8891EDD528CF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.DnsClientX", "IntelligenceX.Tools.DnsClientX\IntelligenceX.Tools.DnsClientX.csproj", "{DA267A8B-A258-4203-A48A-E1E77D43F52B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.DomainDetective", "IntelligenceX.Tools.DomainDetective\IntelligenceX.Tools.DomainDetective.csproj", "{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -167,6 +171,30 @@ Global
 		{F7D6C3A2-E40E-4258-900E-8891EDD528CF}.Release|x64.Build.0 = Release|Any CPU
 		{F7D6C3A2-E40E-4258-900E-8891EDD528CF}.Release|x86.ActiveCfg = Release|Any CPU
 		{F7D6C3A2-E40E-4258-900E-8891EDD528CF}.Release|x86.Build.0 = Release|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Debug|x64.Build.0 = Debug|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Debug|x86.Build.0 = Debug|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Release|x64.ActiveCfg = Release|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Release|x64.Build.0 = Release|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Release|x86.ActiveCfg = Release|Any CPU
+		{DA267A8B-A258-4203-A48A-E1E77D43F52B}.Release|x86.Build.0 = Release|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Debug|x64.Build.0 = Debug|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Debug|x86.Build.0 = Debug|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Release|x64.ActiveCfg = Release|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Release|x64.Build.0 = Release|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Release|x86.ActiveCfg = Release|Any CPU
+		{C8DDC50E-CE20-49AF-855F-C058FC98CCFC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

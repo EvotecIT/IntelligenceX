@@ -27,6 +27,8 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal(0, options.MaxTableRows);
         Assert.Equal(0, options.MaxSample);
         Assert.True(options.EnableOfficeImoPack);
+        Assert.True(options.EnableDnsClientXPack);
+        Assert.True(options.EnableDomainDetectivePack);
         Assert.False(options.AllowMutatingParallelToolCalls);
     }
 
@@ -135,6 +137,27 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         var enabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack", "--enable-officeimo-pack" }, out var enabledError);
         Assert.True(string.IsNullOrWhiteSpace(enabledError));
         Assert.True(enabled.EnableOfficeImoPack);
+    }
+
+    [Fact]
+    public void Parse_Allows_Disabling_And_Enabling_DnsAndDomainDetectivePacks() {
+        var disabledDns = ServiceOptions.Parse(new[] { "--disable-dnsclientx-pack" }, out var disabledDnsError);
+        Assert.True(string.IsNullOrWhiteSpace(disabledDnsError));
+        Assert.False(disabledDns.EnableDnsClientXPack);
+
+        var enabledDns = ServiceOptions.Parse(new[] { "--disable-dnsclientx-pack", "--enable-dnsclientx-pack" }, out var enabledDnsError);
+        Assert.True(string.IsNullOrWhiteSpace(enabledDnsError));
+        Assert.True(enabledDns.EnableDnsClientXPack);
+
+        var disabledDomainDetective = ServiceOptions.Parse(new[] { "--disable-domaindetective-pack" }, out var disabledDomainDetectiveError);
+        Assert.True(string.IsNullOrWhiteSpace(disabledDomainDetectiveError));
+        Assert.False(disabledDomainDetective.EnableDomainDetectivePack);
+
+        var enabledDomainDetective = ServiceOptions.Parse(
+            new[] { "--disable-domaindetective-pack", "--enable-domaindetective-pack" },
+            out var enabledDomainDetectiveError);
+        Assert.True(string.IsNullOrWhiteSpace(enabledDomainDetectiveError));
+        Assert.True(enabledDomainDetective.EnableDomainDetectivePack);
     }
 
     [Fact]

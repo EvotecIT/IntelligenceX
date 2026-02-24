@@ -145,7 +145,10 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (message.Contains("No tool call found for custom tool call output", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("custom tool call output with call_id", StringComparison.OrdinalIgnoreCase)) {
+                || message.Contains("custom tool call output with call_id", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("No tool output found for function call", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("No tool output found for custom tool call", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("No tool call found for function call output", StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }

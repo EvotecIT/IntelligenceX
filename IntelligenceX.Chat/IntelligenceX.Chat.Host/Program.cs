@@ -61,6 +61,8 @@ internal static partial class Program {
         Console.WriteLine($"IX.PowerShell allow write: {(options.PowerShellAllowWrite ? "on" : "off")}");
         Console.WriteLine($"IX.TestimoX pack: {(options.EnableTestimoXPack ? "enabled" : "disabled")}");
         Console.WriteLine($"IX.OfficeIMO pack: {(options.EnableOfficeImoPack ? "enabled" : "disabled")}");
+        Console.WriteLine($"IX.DnsClientX pack: {(options.EnableDnsClientXPack ? "enabled" : "disabled")}");
+        Console.WriteLine($"IX.DomainDetective pack: {(options.EnableDomainDetectivePack ? "enabled" : "disabled")}");
         Console.WriteLine($"Write governance mode: {ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(options.WriteGovernanceMode)}");
         Console.WriteLine($"Write audit sink mode: {ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(options.WriteAuditSinkMode)}");
         Console.WriteLine($"Auth runtime preset: {ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(options.AuthenticationRuntimePreset)}");
@@ -524,6 +526,10 @@ internal static partial class Program {
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
         Console.WriteLine("  --enable-officeimo-pack  Enable IX.OfficeIMO document ingestion tools (default: on).");
         Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
+        Console.WriteLine("  --enable-dnsclientx-pack  Enable IX.DnsClientX DNS tools (default: on).");
+        Console.WriteLine("  --disable-dnsclientx-pack Disable IX.DnsClientX DNS tools.");
+        Console.WriteLine("  --enable-domaindetective-pack  Enable IX.DomainDetective diagnostics tools (default: on).");
+        Console.WriteLine("  --disable-domaindetective-pack Disable IX.DomainDetective diagnostics tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);

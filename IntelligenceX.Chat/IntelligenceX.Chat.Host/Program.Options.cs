@@ -69,6 +69,8 @@ internal static partial class Program {
         public bool PowerShellAllowWrite { get; set; }
         public bool EnableTestimoXPack { get; set; } = true;
         public bool EnableOfficeImoPack { get; set; } = true;
+        public bool EnableDnsClientXPack { get; set; } = true;
+        public bool EnableDomainDetectivePack { get; set; } = true;
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
         public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
@@ -305,6 +307,18 @@ internal static partial class Program {
                         break;
                     case "--disable-officeimo-pack":
                         options.EnableOfficeImoPack = false;
+                        break;
+                    case "--enable-dnsclientx-pack":
+                        options.EnableDnsClientXPack = true;
+                        break;
+                    case "--disable-dnsclientx-pack":
+                        options.EnableDnsClientXPack = false;
+                        break;
+                    case "--enable-domaindetective-pack":
+                        options.EnableDomainDetectivePack = true;
+                        break;
+                    case "--disable-domaindetective-pack":
+                        options.EnableDomainDetectivePack = false;
                         break;
                     case "--plugin-path":
                         if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
@@ -587,6 +601,8 @@ internal static partial class Program {
                 PowerShellAllowWrite = PowerShellAllowWrite,
                 EnableTestimoXPack = EnableTestimoXPack,
                 EnableOfficeImoPack = EnableOfficeImoPack,
+                EnableDnsClientXPack = EnableDnsClientXPack,
+                EnableDomainDetectivePack = EnableDomainDetectivePack,
                 EnableDefaultPluginPaths = EnableDefaultPluginPaths,
                 WriteGovernanceMode = WriteGovernanceMode,
                 RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,

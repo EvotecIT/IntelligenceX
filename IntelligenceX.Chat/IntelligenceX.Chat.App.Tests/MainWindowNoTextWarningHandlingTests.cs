@@ -116,6 +116,34 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures short suffix-only final updates are treated as near-duplicates after streamed drafts.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_DoesNotAppendWhenOnlyShortSuffixDiffers() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: false,
+            finalAssistantText: "Running checks now. Confirmed.",
+            streamedAssistantText: "Running checks now.");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures long synthesized final summaries still append after streamed drafts.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_AppendsWhenSuffixExceedsNearDuplicateThreshold() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: false,
+            finalAssistantText: "Running checks now. Confirmed replication lag on AD0, AD1, and AD2.",
+            streamedAssistantText: "Running checks now.");
+
+        Assert.True(append);
+    }
+
+    /// <summary>
     /// Ensures streamed-draft append path is disabled once interim snapshots are already in play.
     /// </summary>
     [Fact]
@@ -151,5 +179,75 @@ public sealed class MainWindowNoTextWarningHandlingTests {
             activeTurnBoundToConversation: true);
 
         Assert.True(append);
+    }
+
+    /// <summary>
+    /// Ensures reconnect/interim snapshots that only restate existing assistant text do not append duplicate bubbles.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_DoesNotAppendWhenInterimMatchesLatestAssistantText() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: false,
+            activeTurnBoundToConversation: true,
+            interimAssistantText: "Running checks now!",
+            latestAssistantText: "running checks now");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures reconnect interim updates with short suffix-only differences do not append duplicate bubbles.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_DoesNotAppendWhenInterimOnlyAddsShortSuffix() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: false,
+            activeTurnBoundToConversation: true,
+            interimAssistantText: "Running checks now. Confirmed.",
+            latestAssistantText: "Running checks now.");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures reconnect interim updates remain replace-only when latest text carries a short suffix.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_DoesNotAppendWhenLatestOnlyAddsShortSuffix() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: false,
+            activeTurnBoundToConversation: true,
+            interimAssistantText: "Running checks now.",
+            latestAssistantText: "Running checks now. Confirmed.");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures materially different interim snapshots are still appended when no streaming delta exists.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_AppendsWhenInterimDiffersFromLatestAssistantText() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: false,
+            activeTurnBoundToConversation: true,
+            interimAssistantText: "Running checks now. Found AD0 and AD1 evidence.",
+            latestAssistantText: "Running checks now.");
+
+        Assert.True(append);
+    }
+
+    /// <summary>
+    /// Ensures streamed-turn interim snapshots stay replace-only even when interim text differs.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendInterimAssistantResult_DoesNotAppendWhenStreamingDraftExists_WithTextAwarePath() {
+        var append = MainWindow.ShouldAppendInterimAssistantResult(
+            activeTurnReceivedDelta: true,
+            activeTurnBoundToConversation: true,
+            interimAssistantText: "Interim summary after reconnect.",
+            latestAssistantText: "Initial streamed draft.");
+
+        Assert.False(append);
     }
 }

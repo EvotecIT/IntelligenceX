@@ -24,6 +24,8 @@
     <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.OfficeIMO\IntelligenceX.Tools.OfficeIMO.csproj" />
     <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj" />
     <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.DnsClientX\IntelligenceX.Tools.DnsClientX.csproj" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.DomainDetective\IntelligenceX.Tools.DomainDetective.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -80,6 +80,46 @@ public sealed class HostScenarioAssertionTests {
         Assert.Contains(failures, value => value.Contains("clean completion", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void EvaluateScenarioAssertions_FailsOnDuplicateSignature_WhenArgumentsOnlyDifferByKeyOrder() {
+        const string json = """
+{
+  "name": "signature-normalization",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Query reboot evidence.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0\",\"window\":\"last_24_hours_utc\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"window\":\"last_24_hours_utc\",\"machine_name\":\"AD0\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("tool call signature", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(failures, value => value.Contains("unique tool call IDs", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(failures, value => value.Contains("orphan output", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static object ParseSingleTurn(string json) {
         var programType = ResolveHostProgramType();
         var parseMethod = programType.GetMethod("ParseChatScenarioDefinition", BindingFlags.NonPublic | BindingFlags.Static);

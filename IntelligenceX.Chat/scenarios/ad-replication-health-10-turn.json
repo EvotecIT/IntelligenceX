@@ -1,5 +1,14 @@
 {
   "name": "ad-replication-health-10-turn",
+  "tags": ["ad", "replication", "eventlog", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
   "turns": [
     {
       "name": "Discover DC scope",

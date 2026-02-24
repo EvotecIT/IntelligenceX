@@ -1,0 +1,77 @@
+{
+  "name": "ad-transport-recovery-no-duplicate-replay-10-turn",
+  "tags": ["ad", "eventlog", "transport-recovery", "continuation", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover DC scope",
+      "user": "Discover domain controllers in scope and list which hosts are reachable for this run.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "Anchor reboot evidence",
+      "user": "Start with AD0 if available, otherwise first discovered DC. Collect reboot evidence with exact UTC markers.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Continue all remaining DCs",
+      "user": "Continue with all remaining discovered DCs in this same turn. Do not stop after first host.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Recovery continuation contract",
+      "user": "If the previous pass was interrupted, continue from already collected evidence first and avoid rerunning identical completed queries unless evidence is missing.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Retry failed targets once",
+      "user": "Retry only failed/unreachable targets once with narrower scope, then continue without duplicating successful host queries.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC matrix",
+      "user": "Return per-DC matrix: evidence present/missing, earliest UTC, latest UTC, confidence, and unresolved blockers.",
+      "assert_contains": ["UTC"],
+      "assert_not_contains": ["Partial response shown above"]
+    },
+    {
+      "name": "Replication tie-in",
+      "user": "Correlate reboot spread with replication or topology health for the same DC set.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_run", "eventlog_*query*"]
+    },
+    {
+      "name": "Root cause classes",
+      "user": "Classify likely root-cause families with confidence and strongest supporting evidence."
+    },
+    {
+      "name": "Execute-now checklist",
+      "user": "Provide a 30-minute execute-now checklist with no follow-up questions.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Compact final summary",
+      "user": "Summarize in 6 bullets with UTC markers, DC coverage count, unresolved blockers, and rerun trigger.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
