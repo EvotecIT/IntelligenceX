@@ -62,11 +62,11 @@ internal sealed partial class ChatServiceSession {
         var originalToolCount = toolDefs.Count;
         var routingInsights = new List<ToolRoutingInsight>();
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
-        var maxCandidateTools = ResolveMaxCandidateToolsSetting(request.Options?.MaxCandidateTools, client.TransportKind);
         var userRequest = ExtractPrimaryUserRequest(request.Text);
         var userIntent = ExtractIntentUserText(request.Text);
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
+        var maxCandidateTools = ResolveMaxCandidateToolsForTurn(request.Options?.MaxCandidateTools, client.TransportKind, selectedModel);
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
         var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);

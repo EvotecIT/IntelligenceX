@@ -29,6 +29,9 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo ResolveMaxCandidateToolsSettingMethod =
         typeof(ChatServiceSession).GetMethod("ResolveMaxCandidateToolsSetting", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ResolveMaxCandidateToolsSetting not found.");
+    private static readonly MethodInfo ResolveContextAwareCompatibleHttpDefaultMaxCandidateToolsMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools not found.");
 
     [Fact]
     public void BuildModelPlannerPrompt_IncludesSchemaArgumentsRequiredAndTableViewTrait() {
@@ -154,5 +157,17 @@ public sealed class ChatServicePlannerPromptTests {
         var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { 999, OpenAITransportKind.CompatibleHttp });
         var value = Assert.IsType<int>(result);
         Assert.Equal(256, value);
+    }
+
+    [Theory]
+    [InlineData(4096L, 4)]
+    [InlineData(8192L, 4)]
+    [InlineData(12000L, 6)]
+    [InlineData(16384L, 6)]
+    [InlineData(32768L, 8)]
+    public void ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools_UsesContextBands(long effectiveContextLength, int expected) {
+        var result = ResolveContextAwareCompatibleHttpDefaultMaxCandidateToolsMethod.Invoke(null, new object?[] { effectiveContextLength });
+        var value = Assert.IsType<int>(result);
+        Assert.Equal(expected, value);
     }
 }
