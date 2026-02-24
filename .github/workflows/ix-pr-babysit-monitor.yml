@@ -1,4 +1,4 @@
-name: IX PR Babysit Monitor
+name: IX PR Babysit Monitor (PR + Submitted Review Signals)
 
 on:
   schedule:
