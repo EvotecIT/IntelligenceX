@@ -232,6 +232,10 @@ internal static partial class Program {
         failed += Run("Todo pr-watch authenticated login fallback uses actor env", TestPrWatchResolveAuthenticatedLoginFallbackUsesActorEnv);
         failed += Run("Todo pr-watch authenticated login fallback prefers actor over triggering actor", TestPrWatchResolveAuthenticatedLoginFallbackPrefersActorOverTriggeringActor);
         failed += Run("Todo pr-watch authenticated login fallback empty when unset", TestPrWatchResolveAuthenticatedLoginFallbackReturnsEmptyWhenUnset);
+        failed += Run("Todo pr-watch monitor workflow review triggers include submitted and edited",
+            TestPrWatchMonitorWorkflowReviewTriggersIncludeSubmittedAndEdited);
+        failed += Run("Todo pr-watch monitor workflow excludes review comment trigger",
+            TestPrWatchMonitorWorkflowExcludesReviewCommentTrigger);
         failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
         failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);

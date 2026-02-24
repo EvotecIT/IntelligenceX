@@ -87,7 +87,7 @@ Observe-mode babysitter automation:
 
 - Workflow: `.github/workflows/ix-pr-babysit-monitor.yml`
 - Triggers:
-  - event-driven on PR lifecycle and submitted reviews (`pull_request`, `pull_request_review`)
+  - event-driven on PR lifecycle and submitted/edited reviews (`pull_request`, `pull_request_review`)
   - hourly observe-mode safety-net sweep
 - Engine command: `intelligencex todo pr-watch-monitor`
 - Behavior:
@@ -140,7 +140,7 @@ Weekly governance automation:
 
 | Cadence | Workflow | Phase | Purpose | Expected maintainer action |
 | --- | --- | --- | --- | --- |
-| Event-driven | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Immediate reaction to PR updates and submitted reviews | Validate newest blocker classification quickly and decide whether targeted assist is needed |
+| Event-driven | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Immediate reaction to PR updates and submitted/edited reviews | Validate newest blocker classification quickly and decide whether targeted assist is needed |
 | Hourly | `.github/workflows/ix-pr-babysit-monitor.yml` | `observe` | Fast detection of CI/review/mergeability drift on open PRs | Triage fresh blockers and decide whether to run assist retry on specific PRs |
 | Daily | `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` | `observe` | Portfolio-level no-progress and stale-blocker rollup | Prioritize next-day unblock queue, review metrics deltas, and maintain source tracker issue |
 | Weekly | `.github/workflows/ix-pr-babysit-weekly-governance.yml` | `observe` | Wider-window governance snapshot (older stalls/churn classes) | Review systemic patterns, validate stale/no-progress trend direction, and adjust operational ownership |
