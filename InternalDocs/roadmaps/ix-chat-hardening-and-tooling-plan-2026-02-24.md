@@ -44,7 +44,7 @@ Last validated: 2026-02-24
 - `dns-resolver-fallback-recovery-10-turn.json`: resolver divergence/fallback recovery with bounded retries and no AD/eventlog tool path.
 
 ## Confirmed Gaps / Risks
-- High: missing explicit end-to-end tests for transport break right after tool call plus delayed/replayed tool output across service and app message handling.
+- High: remaining end-to-end transport-break gaps are delayed/replayed output mismatch paths across service and app message handling.
 - High: no merge gate yet for strict scenario suite plus live-harness smoke run.
 - Medium: routing ambiguity for "domain" tasks between AD directory intent and public DNS/domain intent.
 - Medium: no explicit per-model tool-candidate/context budget strategy, which risks degraded routing on long runs.
@@ -104,6 +104,10 @@ Progress:
   - `BuildToolRoundReplayInput_DelayedMixedReplay_EmitsSingleLatestOutputPerCall`
   - `ServiceShouldRetryModelPhaseAttempt_RetriesOnNestedUnexpectedEndOfStreamAfterToolCall`
   - `ServiceShouldRetryModelPhaseAttempt_DoesNotRetryWhenCancellationAlreadyRequested`
+- Added end-to-end transport-drop coverage in the deterministic chat-loop harness:
+  - `RunChatOnCurrentThreadAsync_RetriesAfterTransportDropPostToolRound_WithoutReexecutingTool` (PR #780)
+  - `RunChatOnCurrentThreadAsync_RetriesAfterTransportDropBeforeFinalResponse_WithoutExtraToolRounds` (PR #782)
+  - Both tests assert clean completion with no duplicate/orphan tool call-output artifacts.
 - Tightened replay and reconnect quality checks:
   - replay test now asserts stable `call -> output` sequencing for mixed delayed-output paths
   - added negative retry-control test for nested non-transport failures
@@ -238,7 +242,7 @@ Progress:
   - `.github/workflows/test-dotnet-hosted.yml`
 
 ## Assignable Backlog (Parallel Branch Ready)
-- `A1` (WS1, `ix-chat-transport-recovery-<id>`, Effort M, Risk High): add transport-break E2E tests for drop-after-tool-call, delayed output, replay mismatch; assert one recovery path, no duplicate bubbles, no orphan outputs, clean final answer.
+- `A1` (WS1, `ix-chat-transport-recovery-<id>`, Effort M, Risk High): finish transport-break E2E tests for delayed output and replay mismatch (drop-after-tool-call and drop-before-final now covered); assert one recovery path, no duplicate bubbles, no orphan outputs, clean final answer.
 - `A2` (WS2, `ix-chat-live-scenarios-<id>`, Effort M, Risk Medium): add 3 more 10-turn live scenarios for AD0-first follow-through, mixed AD+EventLog retry recovery, and long continuation with strict no-partials.
 - `A3` (WS4, `ix-tools-dns-open-packs-<id>`, Effort L, Risk Medium): onboard `DnsClientX` pack as standalone OSS DNS tools and `DomainDetective` pack as standalone OSS domain diagnostics with explicit pack-info hints.
 - `A4` (WS4, `ix-tools-dns-open-packs-<id>`, Effort S-M, Risk Medium): add router disambiguation contract for "domain" ambiguity (AD domain vs public DNS/domain) with one clarifying turn on ambiguous intent.
@@ -258,7 +262,7 @@ Progress:
 
 ## Immediate TODO (Execution Order)
 - 1. Land strict scenario + harness branch changes (already prepared).
-- 2. Add transport-break E2E coverage and duplicate/orphan bubble prevention assertions.
+- 2. Complete remaining transport-break E2E coverage for delayed output + replay mismatch and keep duplicate/orphan bubble prevention assertions.
 - 3. Add DNS/domain open-source packs and routing disambiguation metadata.
 - 4. Add context budget + compaction controls with long-run tests.
 - 5. Add merge gate wiring for scenario suite + live smoke.
