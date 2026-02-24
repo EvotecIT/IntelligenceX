@@ -2,8 +2,8 @@
 
 [CmdletBinding()] param(
     [string] $ScenarioDir = '.\IntelligenceX.Chat\scenarios',
-    [string] $Filter = 'ad-*-10-turn.json',
-    [string[]] $Tags = @('ad', 'strict', 'live'),
+    [string] $Filter = '*-10-turn.json',
+    [string[]] $Tags = @('strict', 'live'),
     [int] $ExpectedTurns = 10,
     [string] $OutDir = '.\artifacts\chat-live',
     [string[]] $AllowRoot,

@@ -5,7 +5,7 @@
 
 [CmdletBinding()] param(
     [string] $ScenarioDir = '.\IntelligenceX.Chat\scenarios',
-    [string] $ScenarioFilter = 'ad-*-10-turn.json',
+    [string] $ScenarioFilter = '*-10-turn.json',
     [string[]] $ScenarioTags,
     [string] $ScenarioOutDir = '.\artifacts\chat-scenarios',
     [switch] $RunTransportRecoveryProfile,
@@ -19,8 +19,8 @@
     [string] $LiveOutDir = '.\artifacts\chat-live',
     [switch] $RunLiveHarnessSuite,
     [string] $LiveSuiteScenarioDir = '.\IntelligenceX.Chat\scenarios',
-    [string] $LiveSuiteFilter = 'ad-*-10-turn.json',
-    [string[]] $LiveSuiteTags = @('ad', 'strict', 'live'),
+    [string] $LiveSuiteFilter = '*-10-turn.json',
+    [string[]] $LiveSuiteTags = @('strict', 'live'),
     [int] $LiveSuiteExpectedTurns = 10,
     [string] $LiveSuiteOutDir = '.\artifacts\chat-live-suite',
     [string[]] $AllowRoot,
