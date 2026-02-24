@@ -139,7 +139,9 @@ internal static class PrWatchMonitorRunner {
     }
 
     internal static string ComposeSourceTag(string source, string action) {
-        var normalizedSource = string.IsNullOrWhiteSpace(source) ? "manual_cli" : source.Trim();
+        var normalizedSource = string.IsNullOrWhiteSpace(source)
+            ? (Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "manual_cli")
+            : source.Trim();
         var normalizedAction = string.IsNullOrWhiteSpace(action) ? string.Empty : action.Trim();
         return string.IsNullOrWhiteSpace(normalizedAction) ? normalizedSource : $"{normalizedSource}:{normalizedAction}";
     }
