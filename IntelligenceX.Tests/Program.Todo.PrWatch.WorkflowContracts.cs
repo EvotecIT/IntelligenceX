@@ -65,6 +65,7 @@ internal static partial class Program {
             var eventTypes = ParseWorkflowOnEventTypes(workflowPath);
             AssertEqual(true, eventTypes.TryGetValue("pull_request_review", out var reviewTypes),
                 "flow sequence parser event key");
+            AssertEqual(2, reviewTypes!.Count, "flow sequence parser type count");
             AssertContains(reviewTypes!, "submitted", "flow sequence parser submitted");
             AssertContains(reviewTypes!, "edited", "flow sequence parser edited");
         } finally {
