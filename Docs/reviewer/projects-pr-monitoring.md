@@ -90,6 +90,13 @@ Observe-mode babysitter automation:
 - Manual targeted run: `workflow_dispatch` with optional `pr` and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
 - Outputs: per-PR snapshots + rollup summary in `artifacts/pr-watch/`
 
+Guarded retry assist automation:
+
+- Workflow: `.github/workflows/ix-pr-babysit-assist-retry.yml`
+- Trigger: manual `workflow_dispatch` only (single PR target)
+- Safety: requires explicit confirmation token `RETRY_CHECKS`
+- Scope: retries failed checks only when `pr-watch` plans an eligible `retry_failed_checks` action (dedupe + cooldown aware)
+
 ### Issue-review confidence signals
 
 `issue-review` now emits a proposed action and confidence score for each issue:

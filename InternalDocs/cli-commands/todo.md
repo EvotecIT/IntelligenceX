@@ -113,8 +113,11 @@ Options:
 - `--watch` (continuous snapshots with adaptive backoff until terminal stop reason)
 - `--poll-seconds <n>` (watch mode base interval; default `60`)
 - `--max-flaky-retries <n>` (classification budget ceiling; default `3`)
+- `--retry-cooldown-minutes <n>` (suppress repeat retry recommendation during cooldown; default `15`)
 - `--state-file <path>` (override watcher-state file path)
 - `--approved-bot <login>` (repeatable approved bot allow-list extension)
+- `--apply-retry` (once mode only; executes `retry_failed_checks` if eligible)
+- `--confirm-apply-retry RETRY_CHECKS` (required with `--apply-retry`)
 
 Default approved bots include `intelligencex-review`, `intelligencex-review[bot]`, and `chatgpt-codex-connector[bot]`.
 
@@ -132,6 +135,10 @@ Workflow automation:
   - `max_flaky_retries`,
   - `include_drafts`,
   - `approved_bots`.
+- `.github/workflows/ix-pr-babysit-assist-retry.yml` provides manual guarded retry assist for one PR:
+  - requires `confirm_apply_retries=RETRY_CHECKS`,
+  - executes `pr-watch --apply-retry` in once mode,
+  - persists retry state and cooldown metadata in `artifacts/pr-watch/ix-pr-watch-*.json`.
 - Workflow artifacts:
   - per-PR snapshots under `artifacts/pr-watch/snapshots/`,
   - rollup JSON `artifacts/pr-watch/ix-pr-watch-rollup.json`,
