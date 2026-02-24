@@ -156,6 +156,8 @@ Progress:
   - `-Enable/-DisableDnsClientXPack`
   - `-Enable/-DisableDomainDetectivePack`
 - Added metadata regression test coverage for disabled-by-configuration behavior and source-kind classification.
+- Added a routing ambiguity guard for mixed AD-domain and public DNS/domain candidate sets:
+  - when weighted routing yields a mixed, non-dominant subset across `ad_*` and `dnsclientx_*`/`domaindetective_*`, Chat asks one clarifying turn before execution.
 
 ### WS5: Tool Count, Context Budget, Compaction
 Status: pending  
