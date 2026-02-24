@@ -248,6 +248,74 @@ internal sealed partial class ChatServiceSession {
                && candidate.Contains("<|constrain|>", StringComparison.OrdinalIgnoreCase);
     }
 
+    private int? ResolveMaxCandidateToolsForTurn(int? requestedLimit, OpenAITransportKind transportKind, string? selectedModel) {
+        var resolved = ResolveMaxCandidateToolsSetting(requestedLimit, transportKind);
+        if (transportKind != OpenAITransportKind.CompatibleHttp) {
+            return resolved;
+        }
+
+        if (requestedLimit is > 0) {
+            return resolved;
+        }
+
+        var effectiveContextLength = ResolveEffectiveModelContextLength(selectedModel);
+        if (!effectiveContextLength.HasValue) {
+            return resolved;
+        }
+
+        return ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools(effectiveContextLength.Value);
+    }
+
+    private long? ResolveEffectiveModelContextLength(string? selectedModel) {
+        ModelListResult? modelList = null;
+        lock (_modelListCacheLock) {
+            modelList = _modelListCache?.Result;
+        }
+
+        if (modelList is null || modelList.Models.Count == 0) {
+            return null;
+        }
+
+        var requestedModel = (selectedModel ?? string.Empty).Trim();
+        if (requestedModel.Length > 0) {
+            var modelInfo = FindModelInfo(modelList.Models, requestedModel);
+            if (modelInfo is not null) {
+                if (modelInfo.LoadedContextLength is > 0) {
+                    return modelInfo.LoadedContextLength.Value;
+                }
+
+                if (modelInfo.MaxContextLength is > 0) {
+                    return modelInfo.MaxContextLength.Value;
+                }
+            }
+        }
+
+        if (modelList.Models.Count == 1) {
+            var onlyModel = modelList.Models[0];
+            if (onlyModel.LoadedContextLength is > 0) {
+                return onlyModel.LoadedContextLength.Value;
+            }
+
+            if (onlyModel.MaxContextLength is > 0) {
+                return onlyModel.MaxContextLength.Value;
+            }
+        }
+
+        return null;
+    }
+
+    private static int ResolveContextAwareCompatibleHttpDefaultMaxCandidateTools(long effectiveContextLength) {
+        if (effectiveContextLength <= 8_192) {
+            return 4;
+        }
+
+        if (effectiveContextLength <= 16_384) {
+            return 6;
+        }
+
+        return 8;
+    }
+
     private static int? ResolveMaxCandidateToolsSetting(int? requestedLimit, OpenAITransportKind transportKind) {
         if (requestedLimit.HasValue) {
             var requested = requestedLimit.Value;

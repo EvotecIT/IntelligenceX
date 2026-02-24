@@ -160,7 +160,7 @@ Progress:
   - when weighted routing yields a mixed, non-dominant subset across `ad_*` and `dnsclientx_*`/`domaindetective_*`, Chat asks one clarifying turn before execution.
 
 ### WS5: Tool Count, Context Budget, Compaction
-Status: pending  
+Status: in_progress  
 Effort: L  
 Risk: High
 
@@ -171,6 +171,14 @@ Acceptance:
   - max retained tool rounds before compaction
 - Add deterministic compaction preserving `call_id`, failure/error envelopes, and evidence receipts.
 - Add long-run tests validating no partial endings under compaction.
+
+Progress:
+- Added context-aware default tool-candidate budgeting for compatible-http runtimes:
+  - loaded/max context `<= 8k` defaults to `4` candidates
+  - loaded/max context `<= 16k` defaults to `6` candidates
+  - larger contexts keep the `8` candidate default
+- Preserved explicit `maxCandidateTools` overrides and safety clamping.
+- Added regression tests for context-band budget selection logic.
 
 ### WS6: Merge Gates
 Status: in_progress  
