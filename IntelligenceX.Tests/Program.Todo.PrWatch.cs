@@ -231,5 +231,33 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", originalTriggeringActor);
         }
     }
+
+    private static void TestPrWatchResolveAuthenticatedLoginFallbackPrefersActorOverTriggeringActor() {
+        var originalActor = Environment.GetEnvironmentVariable("GITHUB_ACTOR");
+        var originalTriggeringActor = Environment.GetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_ACTOR", "primary-actor");
+            Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", "secondary-actor");
+            var login = IntelligenceX.Cli.Todo.PrWatchRunner.ResolveAuthenticatedLoginFallback();
+            AssertEqual("primary-actor", login, "fallback should prefer GITHUB_ACTOR over GITHUB_TRIGGERING_ACTOR");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_ACTOR", originalActor);
+            Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", originalTriggeringActor);
+        }
+    }
+
+    private static void TestPrWatchResolveAuthenticatedLoginFallbackReturnsEmptyWhenUnset() {
+        var originalActor = Environment.GetEnvironmentVariable("GITHUB_ACTOR");
+        var originalTriggeringActor = Environment.GetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_ACTOR", null);
+            Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", null);
+            var login = IntelligenceX.Cli.Todo.PrWatchRunner.ResolveAuthenticatedLoginFallback();
+            AssertEqual(string.Empty, login, "fallback should return empty string when actor env vars are missing");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_ACTOR", originalActor);
+            Environment.SetEnvironmentVariable("GITHUB_TRIGGERING_ACTOR", originalTriggeringActor);
+        }
+    }
 #endif
 }

@@ -230,6 +230,8 @@ internal static partial class Program {
         failed += Run("Todo pr-watch normalize source sanitizes unsafe chars", TestPrWatchNormalizeSourceSanitizesUnsafeChars);
         failed += Run("Todo pr-watch planned audit includes dedupe and reason", TestPrWatchBuildPlannedAuditRecordsIncludesDedupeAndReason);
         failed += Run("Todo pr-watch authenticated login fallback uses actor env", TestPrWatchResolveAuthenticatedLoginFallbackUsesActorEnv);
+        failed += Run("Todo pr-watch authenticated login fallback prefers actor over triggering actor", TestPrWatchResolveAuthenticatedLoginFallbackPrefersActorOverTriggeringActor);
+        failed += Run("Todo pr-watch authenticated login fallback empty when unset", TestPrWatchResolveAuthenticatedLoginFallbackReturnsEmptyWhenUnset);
         failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
         failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);

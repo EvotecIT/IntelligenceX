@@ -109,19 +109,24 @@ jobs:
             SOURCE_TAG="${SOURCE_TAG}:${EVENT_ACTION}"
           fi
 
-          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll \
-            todo pr-watch-monitor \
-            --repo "${{ github.repository }}" \
-            --pr "${PR_SPEC}" \
-            --max-prs "${MAX_PRS}" \
-            --max-flaky-retries "${MAX_FLAKY_RETRIES}" \
-            --include-drafts "${INCLUDE_DRAFTS}" \
-            --approved-bots "${APPROVED_BOTS}" \
-            --source "${SOURCE_TAG}" \
-            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --snapshot-dir "${PR_WATCH_SNAPSHOT_DIR}" \
-            --rollup-path "${PR_WATCH_ROLLUP_PATH}" \
-            --summary-path "${PR_WATCH_SUMMARY_PATH}"
+          ARGS=(
+            "todo" "pr-watch-monitor"
+            "--repo" "${{ github.repository }}"
+            "--max-prs" "${MAX_PRS}"
+            "--max-flaky-retries" "${MAX_FLAKY_RETRIES}"
+            "--include-drafts" "${INCLUDE_DRAFTS}"
+            "--approved-bots" "${APPROVED_BOTS}"
+            "--source" "${SOURCE_TAG}"
+            "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            "--snapshot-dir" "${PR_WATCH_SNAPSHOT_DIR}"
+            "--rollup-path" "${PR_WATCH_ROLLUP_PATH}"
+            "--summary-path" "${PR_WATCH_SUMMARY_PATH}"
+          )
+          if [ -n "${PR_SPEC}" ]; then
+            ARGS+=("--pr" "${PR_SPEC}")
+          fi
+
+          dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll "${ARGS[@]}"
 
       - name: Upload pr-watch artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
