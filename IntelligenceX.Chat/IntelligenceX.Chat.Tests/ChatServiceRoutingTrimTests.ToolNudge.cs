@@ -2390,6 +2390,82 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildToolRoundReplayInput_PrefersLatestFallbackOutputWhenOnlyFallbackMatchesExist() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "mismatch_0", Output = "out-a-fallback-first", Ok = true },
+            new() { CallId = "mismatch_1", Output = "out-a-fallback-latest", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(2, items.Count);
+        var outputPayload = string.Empty;
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            outputPayload = item.GetString("output") ?? string.Empty;
+            break;
+        }
+
+        Assert.Equal("out-a-fallback-latest", outputPayload);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInput_DoesNotDowngradeExplicitOutputWhenLaterFallbackArrives() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "call_a", Output = "out-a-direct", Ok = true },
+            new() { CallId = "mismatch_1", Output = "out-a-fallback-later", Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(2, items.Count);
+        var outputPayload = string.Empty;
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            outputPayload = item.GetString("output") ?? string.Empty;
+            break;
+        }
+
+        Assert.Equal("out-a-direct", outputPayload);
+    }
+
+    [Fact]
     public void BuildNativeHostReplayReviewPrompt_IncludesToolIdentityAndEvidence() {
         var call = new ToolCall(
             callId: "host_carryover_next_action_123",

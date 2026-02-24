@@ -90,6 +90,9 @@ Progress:
 - Hardened tool replay output selection for delayed/replayed duplicates:
   - when multiple explicit outputs for the same `call_id` arrive, replay now uses the latest explicit output
   - direct `call_id` matches still outrank indexed fallback matches
+- Refined replay fallback behavior:
+  - when only fallback matches are available, replay now uses the latest fallback output
+  - later fallback entries cannot overwrite an already selected explicit `call_id` match
 - Extended preflight recovery unit tests to include app duplicate-bubble guards:
   - `MainWindowNoTextWarningHandlingTests`
 
