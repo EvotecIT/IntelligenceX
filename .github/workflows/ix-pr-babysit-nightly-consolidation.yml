@@ -1,0 +1,336 @@
+name: IX PR Babysit Nightly Consolidation
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      max_prs:
+        description: "Max open PRs to scan"
+        required: false
+        default: "200"
+      stale_days:
+        description: "Age threshold (days) used for stale/no-progress buckets"
+        required: false
+        default: "7"
+      include_drafts:
+        description: "Include draft PRs in nightly scan"
+        required: false
+        default: false
+        type: boolean
+      approved_bots:
+        description: "Comma-separated approved bot logins for source classification"
+        required: false
+        default: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+env:
+  PR_WATCH_STATE_DIR: artifacts/pr-watch
+  PR_WATCH_NIGHTLY_DIR: artifacts/pr-watch/nightly
+  PR_WATCH_NIGHTLY_SUMMARY_PATH: artifacts/pr-watch/ix-pr-watch-nightly-summary.md
+  PR_WATCH_NIGHTLY_ROLLUP_PATH: artifacts/pr-watch/ix-pr-watch-nightly-rollup.json
+  PR_WATCH_STATE_CACHE_PREFIX: ix-pr-watch-state-${{ github.repository }}-${{ github.ref_name }}
+  PR_WATCH_STATE_CACHE_KEY: ix-pr-watch-state-${{ github.repository }}-${{ github.ref_name }}-${{ github.run_id }}
+
+jobs:
+  consolidate:
+    # While private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+    # Set repository variable IX_FORCE_GITHUB_HOSTED=true to bypass self-hosted runners temporarily.
+    # When public, use GitHub-hosted runners by default.
+    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore pr-watch state cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.PR_WATCH_STATE_DIR }}/ix-pr-watch-*.json
+          key: ${{ env.PR_WATCH_STATE_CACHE_KEY }}
+          restore-keys: |
+            ${{ env.PR_WATCH_STATE_CACHE_PREFIX }}-
+
+      - name: Build CLI once
+        run: dotnet build IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -c Release /m:1
+
+      - name: Run nightly PR babysit consolidation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required for ix-pr-babysit-nightly-consolidation workflow."
+            exit 1
+          fi
+
+          mkdir -p "${PR_WATCH_STATE_DIR}"
+          rm -rf "${PR_WATCH_NIGHTLY_DIR}"
+          mkdir -p "${PR_WATCH_NIGHTLY_DIR}"
+
+          TARGETS_FILE="${PR_WATCH_STATE_DIR}/ix-pr-watch-nightly-targets.txt"
+          META_FILE="${PR_WATCH_STATE_DIR}/ix-pr-watch-nightly-meta.json"
+          FAILED_TARGETS_FILE="${PR_WATCH_STATE_DIR}/ix-pr-watch-nightly-failed-targets.txt"
+          : > "${TARGETS_FILE}"
+          : > "${FAILED_TARGETS_FILE}"
+
+          MAX_PRS="${{ github.event.inputs.max_prs }}"
+          STALE_DAYS="${{ github.event.inputs.stale_days }}"
+          INCLUDE_DRAFTS="${{ github.event.inputs.include_drafts }}"
+          APPROVED_BOTS="${{ github.event.inputs.approved_bots }}"
+
+          if [ -z "${MAX_PRS}" ]; then MAX_PRS="200"; fi
+          if [ -z "${STALE_DAYS}" ]; then STALE_DAYS="7"; fi
+          if [ -z "${INCLUDE_DRAFTS}" ]; then INCLUDE_DRAFTS="false"; fi
+          if [ -z "${APPROVED_BOTS}" ]; then APPROVED_BOTS="intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"; fi
+
+          if [ "${INCLUDE_DRAFTS}" = "true" ]; then
+            gh pr list \
+              --repo "${{ github.repository }}" \
+              --state open \
+              --limit "${MAX_PRS}" \
+              --json number,updatedAt,isDraft > "${META_FILE}"
+          else
+            gh pr list \
+              --repo "${{ github.repository }}" \
+              --state open \
+              --limit "${MAX_PRS}" \
+              --json number,updatedAt,isDraft \
+              --jq '[.[] | select(.isDraft == false)]' > "${META_FILE}"
+          fi
+
+          jq -r '.[].number' "${META_FILE}" > "${TARGETS_FILE}"
+          sort -u "${TARGETS_FILE}" -o "${TARGETS_FILE}"
+          TOTAL_TARGETS="$(wc -l < "${TARGETS_FILE}" | tr -d ' ')"
+
+          if [ "${TOTAL_TARGETS}" -eq 0 ]; then
+            jq -n \
+              --arg repo "${{ github.repository }}" \
+              --arg generatedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+              --argjson staleDays "${STALE_DAYS}" \
+              '{
+                schema: "intelligencex.pr-watch.nightly.v1",
+                repo: $repo,
+                generatedAtUtc: $generatedAt,
+                staleDaysThreshold: $staleDays,
+                totalTargets: 0,
+                totalSnapshots: 0,
+                failedTargets: [],
+                staleInfraBlocked: [],
+                reviewRequired: [],
+                retryBudgetExhausted: [],
+                noProgressByAgeClass: [],
+                prs: []
+              }' > "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+          else
+            while IFS= read -r pr_spec; do
+              [ -z "${pr_spec}" ] && continue
+
+              output_path="${PR_WATCH_NIGHTLY_DIR}/pr-${pr_spec}.json"
+              ARGS=(
+                "todo" "pr-watch"
+                "--repo" "${{ github.repository }}"
+                "--pr" "${pr_spec}"
+                "--max-flaky-retries" "3"
+                "--phase" "observe"
+                "--source" "${{ github.event_name }}"
+                "--run-link" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              )
+
+              IFS=',' read -r -a bot_parts <<< "${APPROVED_BOTS}"
+              for raw in "${bot_parts[@]}"; do
+                bot="$(echo "${raw}" | xargs)"
+                if [ -n "${bot}" ]; then
+                  ARGS+=("--approved-bot" "${bot}")
+                fi
+              done
+
+              if ! dotnet ./IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll "${ARGS[@]}" > "${output_path}"; then
+                echo "${pr_spec}" >> "${FAILED_TARGETS_FILE}"
+                rm -f "${output_path}"
+              fi
+            done < "${TARGETS_FILE}"
+
+            shopt -s nullglob
+            snapshot_files=("${PR_WATCH_NIGHTLY_DIR}"/pr-*.json)
+            failed_targets_json="$(jq -Rn '[inputs | select(length > 0)]' < "${FAILED_TARGETS_FILE}")"
+
+            if [ ${#snapshot_files[@]} -eq 0 ]; then
+              jq -n \
+                --arg repo "${{ github.repository }}" \
+                --arg generatedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+                --argjson staleDays "${STALE_DAYS}" \
+                --argjson totalTargets "${TOTAL_TARGETS}" \
+                --argjson failedTargets "${failed_targets_json}" \
+                '{
+                  schema: "intelligencex.pr-watch.nightly.v1",
+                  repo: $repo,
+                  generatedAtUtc: $generatedAt,
+                  staleDaysThreshold: $staleDays,
+                  totalTargets: $totalTargets,
+                  totalSnapshots: 0,
+                  failedTargets: $failedTargets,
+                  staleInfraBlocked: [],
+                  reviewRequired: [],
+                  retryBudgetExhausted: [],
+                  noProgressByAgeClass: [],
+                  prs: []
+                }' > "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+            else
+              jq -s \
+                --arg repo "${{ github.repository }}" \
+                --arg generatedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+                --argjson staleDays "${STALE_DAYS}" \
+                --argjson totalTargets "${TOTAL_TARGETS}" \
+                --argjson failedTargets "${failed_targets_json}" \
+                --slurpfile meta "${META_FILE}" \
+                '
+                  def age_class(days):
+                    if days >= 30 then "30d_plus"
+                    elif days >= 14 then "14_29d"
+                    elif days >= 7 then "7_13d"
+                    else "under_7d"
+                    end;
+                  def progress_class(item):
+                    if item.stopReason == "retry_budget_exhausted" then "retry_budget_exhausted"
+                    elif (item.pr.reviewDecision == "REVIEW_REQUIRED" or item.pr.reviewDecision == "CHANGES_REQUESTED") then "review_required"
+                    elif ((item.actions | map(.name) | index("idle_wait")) != null) then "idle_wait"
+                    elif ((item.actions | map(.name) | index("diagnose_ci_failure")) != null) then "ci_failure"
+                    else "other"
+                    end;
+                  def pr_row(item):
+                    {
+                      number: item.pr.number,
+                      url: item.pr.url,
+                      daysSinceUpdate: item.daysSinceUpdate,
+                      stopReason: (item.stopReason // ""),
+                      reviewDecision: item.pr.reviewDecision,
+                      mergeStateStatus: item.pr.mergeStateStatus,
+                      actions: (item.actions | map(.name)),
+                      checks: {
+                        passedCount: item.checks.passedCount,
+                        failedCount: item.checks.failedCount,
+                        pendingCount: item.checks.pendingCount
+                      }
+                    };
+                  ($meta[0] // [] | map({ key: (.number | tostring), value: .updatedAt }) | from_entries) as $updatedMap
+                  | map(
+                      . + {
+                        updatedAt: ($updatedMap[(.pr.number | tostring)] // null),
+                        daysSinceUpdate: (
+                          if (($updatedMap[(.pr.number | tostring)] // null) == null) then null
+                          else (((now - (($updatedMap[(.pr.number | tostring)] | fromdateiso8601))) / 86400) | floor)
+                          end
+                        )
+                      }
+                    ) as $rows
+                  | ($rows | map(select(
+                      .pr.state == "OPEN"
+                      and ((.daysSinceUpdate // -1) >= $staleDays)
+                      and .checks.pendingCount > 0
+                      and ((.actions | map(.name) | index("idle_wait")) != null)
+                    ))) as $staleInfra
+                  | ($rows | map(select(
+                      .pr.state == "OPEN"
+                      and (.pr.reviewDecision == "REVIEW_REQUIRED" or .pr.reviewDecision == "CHANGES_REQUESTED")
+                    ))) as $reviewRequired
+                  | ($rows | map(select(.stopReason == "retry_budget_exhausted"))) as $retryBudgetExhausted
+                  | ($rows | map(select(
+                      .pr.state == "OPEN"
+                      and ((.daysSinceUpdate // -1) >= $staleDays)
+                      and (
+                        ((.actions | map(.name) | index("idle_wait")) != null)
+                        or .stopReason == "retry_budget_exhausted"
+                        or .pr.reviewDecision == "REVIEW_REQUIRED"
+                        or .pr.reviewDecision == "CHANGES_REQUESTED"
+                      )
+                    ))) as $noProgress
+                  | {
+                      schema: "intelligencex.pr-watch.nightly.v1",
+                      repo: $repo,
+                      generatedAtUtc: $generatedAt,
+                      staleDaysThreshold: $staleDays,
+                      totalTargets: $totalTargets,
+                      totalSnapshots: ($rows | length),
+                      failedTargets: $failedTargets,
+                      staleInfraBlocked: ($staleInfra | map(pr_row(.)) | sort_by(.number)),
+                      reviewRequired: ($reviewRequired | map(pr_row(.)) | sort_by(.number)),
+                      retryBudgetExhausted: ($retryBudgetExhausted | map(pr_row(.)) | sort_by(.number)),
+                      noProgressByAgeClass: (
+                        $noProgress
+                        | map({ ageClass: age_class(.daysSinceUpdate), progressClass: progress_class(.), number: .pr.number })
+                        | group_by(.ageClass + ":" + .progressClass)
+                        | map({
+                            ageClass: .[0].ageClass,
+                            progressClass: .[0].progressClass,
+                            count: length,
+                            prs: (map(.number) | sort)
+                          })
+                        | sort_by(.ageClass, .progressClass)
+                      ),
+                      prs: ($rows | map(pr_row(.)) | sort_by(.number))
+                    }
+                ' "${snapshot_files[@]}" > "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+            fi
+          fi
+
+          {
+            echo "# IX PR Babysit Nightly Consolidation"
+            echo
+            echo "- Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "- Repo: \`${{ github.repository }}\`"
+            echo "- Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "## Totals"
+            jq -r '"- Targets scanned: \(.totalTargets)"; "- Snapshots captured: \(.totalSnapshots)"; "- Failed targets: \(.failedTargets | length)"' "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+            echo
+            echo "## Buckets"
+            jq -r '"- Stale infra blockers: \(.staleInfraBlocked | length)"; "- Stuck review-required: \(.reviewRequired | length)"; "- Retry budget exhausted: \(.retryBudgetExhausted | length)"' "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+            echo
+            echo "## No-progress by age/churn class"
+            jq -r '
+              if (.noProgressByAgeClass | length) == 0 then
+                "- none"
+              else
+                .noProgressByAgeClass
+                | map("- `\(.ageClass)` + `\(.progressClass)`: \(.count) PR(s) [#\(.prs | join(", #"))]")
+                | .[]
+              end
+            ' "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+            echo
+            echo "## Failed target scans"
+            jq -r '
+              if (.failedTargets | length) == 0 then
+                "- none"
+              else
+                .failedTargets | map("- #\(.)") | .[]
+              end
+            ' "${PR_WATCH_NIGHTLY_ROLLUP_PATH}"
+          } > "${PR_WATCH_NIGHTLY_SUMMARY_PATH}"
+
+          cat "${PR_WATCH_NIGHTLY_SUMMARY_PATH}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload nightly pr-watch artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ix-pr-watch-nightly
+          path: artifacts/pr-watch
+
+      - name: Save pr-watch state cache
+        if: ${{ always() && hashFiles('artifacts/pr-watch/ix-pr-watch-*.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.PR_WATCH_STATE_DIR }}/ix-pr-watch-*.json
+          key: ${{ env.PR_WATCH_STATE_CACHE_KEY }}

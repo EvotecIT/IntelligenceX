@@ -98,6 +98,20 @@ Guarded retry assist automation:
 - Scope: retries failed checks only when `pr-watch` plans an eligible `retry_failed_checks` action (dedupe + cooldown aware)
 - Audit: emits execution outcomes (`success`/`skipped`/`failed`) into `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
 
+Nightly consolidation automation:
+
+- Workflow: `.github/workflows/ix-pr-babysit-nightly-consolidation.yml`
+- Schedule: daily consolidation sweep (plus `workflow_dispatch`)
+- Inputs: `max_prs`, `stale_days`, `include_drafts`, `approved_bots`
+- Outputs:
+  - rollup JSON: `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`
+  - markdown summary: `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`
+- Consolidation buckets include:
+  - stale infra-like blockers,
+  - review-required/stuck PRs,
+  - retry-budget-exhausted PRs,
+  - no-progress PRs grouped by age/churn class.
+
 ### Issue-review confidence signals
 
 `issue-review` now emits a proposed action and confidence score for each issue:

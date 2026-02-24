@@ -145,11 +145,18 @@ Workflow automation:
   - requires `confirm_apply_retries=RETRY_CHECKS`,
   - executes `pr-watch --apply-retry` in once mode,
   - persists retry state and cooldown metadata in `artifacts/pr-watch/ix-pr-watch-*.json`.
+- `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` runs daily consolidation (and supports `workflow_dispatch`) with:
+  - `max_prs`,
+  - `stale_days`,
+  - `include_drafts`,
+  - `approved_bots`.
 - Workflow artifacts:
   - per-PR snapshots under `artifacts/pr-watch/snapshots/`,
   - rollup JSON `artifacts/pr-watch/ix-pr-watch-rollup.json`,
   - markdown summary `artifacts/pr-watch/ix-pr-watch-summary.md`,
-  - audit log JSONL `artifacts/pr-watch/ix-pr-watch-audit.jsonl`.
+  - audit log JSONL `artifacts/pr-watch/ix-pr-watch-audit.jsonl`,
+  - nightly rollup JSON `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`,
+  - nightly markdown summary `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`.
 
 ## Vision Check (Assistive)
 
