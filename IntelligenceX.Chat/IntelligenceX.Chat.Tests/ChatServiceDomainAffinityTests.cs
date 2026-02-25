@@ -204,6 +204,40 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_RehydratesPersistedClarificationContextAcrossSessionRestart() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-domain-clarify-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+
+        try {
+            var writerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            writerSession.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-restart");
+
+            var readerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var resolved = readerSession.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+                "thread-clarify-restart",
+                "1",
+                out var family);
+
+            Assert.True(resolved);
+            Assert.Equal("ad_domain", family);
+            Assert.Equal("ad_domain", readerSession.GetPreferredDomainIntentFamilyForTesting("thread-clarify-restart"));
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesStructuredPayload() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-structured");

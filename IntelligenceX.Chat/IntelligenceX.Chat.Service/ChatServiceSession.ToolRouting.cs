@@ -261,6 +261,7 @@ internal sealed partial class ChatServiceSession {
     private static string BuildDomainIntentClarificationText() {
         return """
                I can help with either scope, and I want to avoid running the wrong tool family.
+               You can respond in any language, or use the structured selections below.
 
                Do you want:
                1. Active Directory domain scope (DCs, LDAP, replication, GPO)
@@ -269,6 +270,11 @@ internal sealed partial class ChatServiceSession {
                Reply with `1` or `2`, or run one of these follow-up actions:
                1. Active Directory domain scope (`/act act_domain_scope_ad`)
                2. Public DNS/domain scope (`/act act_domain_scope_public`)
+
+               [DomainIntent]
+               ix:domain-intent-choice:v1
+               option_1: ad_domain
+               option_2: public_domain
 
                [Action]
                ix:action:v1
@@ -304,10 +310,12 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        var seenUtcTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
-            _pendingDomainIntentClarificationSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            _pendingDomainIntentClarificationSeenUtcTicks[normalizedThreadId] = seenUtcTicks;
             TrimWeightedRoutingContextsNoLock();
         }
+        PersistPendingDomainIntentClarificationSnapshot(normalizedThreadId, seenUtcTicks);
     }
 
     private bool TryResolvePendingDomainIntentClarificationSelection(string threadId, string userRequest, out string family) {
@@ -324,12 +332,28 @@ internal sealed partial class ChatServiceSession {
 
         long clarificationSeenTicks;
         lock (_toolRoutingContextLock) {
-            if (!_pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(normalizedThreadId, out clarificationSeenTicks)
-                || !TryGetUtcDateTimeFromTicks(clarificationSeenTicks, out var seenUtc)
-                || DateTime.UtcNow - seenUtc > DomainIntentClarificationContextMaxAge) {
-                _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
+            _pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(normalizedThreadId, out clarificationSeenTicks);
+        }
+
+        if (clarificationSeenTicks <= 0) {
+            if (!TryLoadPendingDomainIntentClarificationSnapshot(normalizedThreadId, out clarificationSeenTicks)) {
                 return false;
             }
+
+            lock (_toolRoutingContextLock) {
+                _pendingDomainIntentClarificationSeenUtcTicks[normalizedThreadId] = clarificationSeenTicks;
+                TrimWeightedRoutingContextsNoLock();
+            }
+        }
+
+        if (!TryGetUtcDateTimeFromTicks(clarificationSeenTicks, out var clarificationSeenUtc)
+            || clarificationSeenUtc > DateTime.UtcNow
+            || DateTime.UtcNow - clarificationSeenUtc > DomainIntentClarificationContextMaxAge) {
+            lock (_toolRoutingContextLock) {
+                _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
+            }
+            RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
+            return false;
         }
 
         if (!TryParsePendingDomainIntentClarificationSelection(normalizedRequest, out var selectedFamily)) {
@@ -344,6 +368,7 @@ internal sealed partial class ChatServiceSession {
             TrimWeightedRoutingContextsNoLock();
         }
 
+        RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
         PersistDomainIntentFamilySnapshot(normalizedThreadId, selectedFamily, nowTicks);
         family = selectedFamily;
         return true;
@@ -649,6 +674,7 @@ internal sealed partial class ChatServiceSession {
             TrimWeightedRoutingContextsNoLock();
         }
 
+        RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
         PersistDomainIntentFamilySnapshot(normalizedThreadId, nextFamily, seenUtcTicks);
     }
 
@@ -659,17 +685,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         var removed = false;
+        var removedClarification = false;
         lock (_toolRoutingContextLock) {
-            _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
+            removedClarification = _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
             removed = _domainIntentFamilyByThreadId.Remove(normalizedThreadId) || removed;
             removed = _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId) || removed;
-            if (removed) {
+            if (removed || removedClarification) {
                 TrimWeightedRoutingContextsNoLock();
             }
         }
 
         if (removed) {
             RemoveDomainIntentFamilySnapshot(normalizedThreadId);
+        }
+        if (removedClarification) {
+            RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
         }
     }
 
