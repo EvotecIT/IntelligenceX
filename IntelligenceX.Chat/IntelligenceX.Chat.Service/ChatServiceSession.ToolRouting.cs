@@ -32,6 +32,8 @@ internal sealed partial class ChatServiceSession {
     private const string DomainIntentFamilyPublic = "public_domain";
     private const string DomainIntentActionIdAd = "act_domain_scope_ad";
     private const string DomainIntentActionIdPublic = "act_domain_scope_public";
+    private static readonly string[] DomainIntentAdTechnicalSignals = new[] { "ad", "dc", "ldap", "gpo", "kerberos" };
+    private static readonly string[] DomainIntentPublicTechnicalSignals = new[] { "dns", "mx", "spf", "dmarc", "dkim", "ns" };
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -262,6 +264,7 @@ internal sealed partial class ChatServiceSession {
         return """
                I can help with either scope, and I want to avoid running the wrong tool family.
                You can respond in any language, or use the structured selections below.
+               You can also answer with technical signals such as `AD`, `LDAP`, `DNS`, `MX`, `SPF`, or `DMARC`.
 
                Do you want:
                1. Active Directory domain scope (DCs, LDAP, replication, GPO)
@@ -412,6 +415,10 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (TryParseDomainIntentFamilyFromTechnicalSignals(normalized, out family)) {
+            return true;
+        }
+
         if (!TryExtractActionSelectionPayloadJson(normalized, out var payload)) {
             return false;
         }
@@ -462,6 +469,81 @@ internal sealed partial class ChatServiceSession {
             }
         } catch (JsonException) {
             return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseDomainIntentFamilyFromTechnicalSignals(string text, out string family) {
+        family = string.Empty;
+        var normalized = NormalizeCompactText(text);
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
+        if (hasAdSignals == hasPublicSignals) {
+            return false;
+        }
+
+        family = hasAdSignals ? DomainIntentFamilyAd : DomainIntentFamilyPublic;
+        return true;
+    }
+
+    private static bool ContainsAnyDomainSignalToken(string text, IReadOnlyList<string> signals) {
+        if (signals is null || signals.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < signals.Count; i++) {
+            var signal = (signals[i] ?? string.Empty).Trim();
+            if (signal.Length == 0) {
+                continue;
+            }
+
+            if (ContainsDomainSignalToken(text, signal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsDomainSignalToken(string text, string token) {
+        var normalizedText = (text ?? string.Empty).Trim();
+        var normalizedToken = (token ?? string.Empty).Trim();
+        if (normalizedText.Length == 0 || normalizedToken.Length == 0) {
+            return false;
+        }
+
+        var index = 0;
+        while (index < normalizedText.Length) {
+            while (index < normalizedText.Length && !char.IsLetterOrDigit(normalizedText[index])) {
+                index++;
+            }
+
+            if (index >= normalizedText.Length) {
+                break;
+            }
+
+            var start = index;
+            while (index < normalizedText.Length && char.IsLetterOrDigit(normalizedText[index])) {
+                index++;
+            }
+
+            var length = index - start;
+            if (length <= 0) {
+                continue;
+            }
+
+            if (length != normalizedToken.Length) {
+                continue;
+            }
+
+            if (string.Compare(normalizedText, start, normalizedToken, 0, normalizedToken.Length, StringComparison.OrdinalIgnoreCase) == 0) {
+                return true;
+            }
         }
 
         return false;

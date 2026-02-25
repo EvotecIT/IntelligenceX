@@ -311,4 +311,42 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.Equal("public_domain", family);
         Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action"));
     }
+
+    [Theory]
+    [InlineData("AD", "ad_domain")]
+    [InlineData("LDAP", "ad_domain")]
+    [InlineData("DC", "ad_domain")]
+    [InlineData("DNS", "public_domain")]
+    [InlineData("MX", "public_domain")]
+    [InlineData("SPF", "public_domain")]
+    [InlineData("DMARC", "public_domain")]
+    [InlineData("نتيجة DNS", "public_domain")]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
+        string input,
+        string expectedFamily) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-signal");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-signal",
+            input,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal(expectedFamily, family);
+        Assert.Equal(expectedFamily, session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-signal"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotResolveWhenTechnicalSignalsConflict() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-conflict");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-conflict",
+            "AD and DNS",
+            out _);
+
+        Assert.False(resolved);
+    }
 }
