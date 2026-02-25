@@ -215,6 +215,25 @@ internal static partial class Program {
         AssertEqual(0, CountOccurrences(updated, "<summary>PR #"), "all PR blocks removed");
     }
 
+    private static void TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNonPrDetailsBlocks() {
+        var section =
+            "## Review Feedback Backlog (Bots)\n" +
+            "<details>\n" +
+            "<summary>General Notes</summary>\n" +
+            "\n" +
+            "- [ ] Keep this note\n" +
+            "</details>\n\n";
+
+        var updated = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.UpdateSection(
+            section,
+            Array.Empty<IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.PrTasks>(),
+            "\n",
+            out var changed);
+        AssertEqual(false, changed, "section should not change when only non-PR details blocks exist");
+        AssertContainsText(updated, "<summary>General Notes</summary>\n", "non-PR details summary preserved");
+        AssertContainsText(updated, "Keep this note", "non-PR details content preserved");
+    }
+
     private static void TestBotFeedbackParseTasksUsesMergeBlockerSections() {
         var body = string.Join("\n", new[] {
             "## Summary",

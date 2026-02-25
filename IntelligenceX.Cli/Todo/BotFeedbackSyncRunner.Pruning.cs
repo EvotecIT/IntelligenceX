@@ -40,8 +40,10 @@ internal static partial class BotFeedbackSyncRunner {
             }
 
             var blockEndExclusive = ConsumeFollowingLineBreak(section, detailsEndExclusive);
-            if (TryReadPrNumberFromDetailsBlock(section, detailsStart, detailsEndExclusive, out var prNumber) &&
-                !keepPrNumbers.Contains(prNumber)) {
+            var isPrBlock = TryReadPrNumberFromDetailsBlock(section, detailsStart, detailsEndExclusive, out var prNumber);
+            // Only prune recognized PR blocks. Non-PR <details> blocks must be preserved as-is.
+            var shouldRemoveBlock = isPrBlock && !keepPrNumbers.Contains(prNumber);
+            if (shouldRemoveBlock) {
                 changedLocal = true;
             } else {
                 sb.Append(section, detailsStart, blockEndExclusive - detailsStart);
