@@ -2595,6 +2595,113 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildToolRoundReplayInput_CompactsOversizedOutput_WithReplayCompactionMarker() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA
+        };
+        var oversized = new string('X', 20_000);
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "call_a", Output = oversized, Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(2, items.Count);
+        string? outputPayload = null;
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            outputPayload = item.GetString("output");
+            break;
+        }
+
+        var compacted = Assert.IsType<string>(outputPayload);
+        Assert.Contains("ix:replay-output-compacted:v1", compacted, StringComparison.OrdinalIgnoreCase);
+        Assert.True(compacted.Length <= 6000);
+        Assert.True(compacted.Length < oversized.Length);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInput_EnforcesTotalReplayOutputBudgetAcrossCalls() {
+        static ToolCall BuildCall(string callId, string machineName) {
+            return new ToolCall(
+                callId: callId,
+                name: "eventlog_live_query",
+                input: "{\"machine_name\":\"" + machineName + "\"}",
+                arguments: null,
+                raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        }
+
+        var callA = BuildCall("call_a", "AD0");
+        var callB = BuildCall("call_b", "AD1");
+        var callC = BuildCall("call_c", "AD2");
+        var callD = BuildCall("call_d", "AD3");
+        var extracted = new List<ToolCall> { callA, callB, callC, callD };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA,
+            ["call_b"] = callB,
+            ["call_c"] = callC,
+            ["call_d"] = callD
+        };
+        var oversized = new string('Y', 20_000);
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "call_a", Output = oversized, Ok = true },
+            new() { CallId = "call_b", Output = oversized, Ok = true },
+            new() { CallId = "call_c", Output = oversized, Ok = true },
+            new() { CallId = "call_d", Output = oversized, Ok = true }
+        };
+
+        var inputObj = BuildToolRoundReplayInputMethod.Invoke(
+            null,
+            new object?[] { extracted, byId, outputs });
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(8, items.Count);
+        var totalReplayOutputChars = 0;
+        var outputsByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var callId = item.GetString("call_id");
+            if (string.IsNullOrWhiteSpace(callId)) {
+                continue;
+            }
+
+            var outputPayload = item.GetString("output") ?? string.Empty;
+            outputsByCallId[callId!] = outputPayload;
+            totalReplayOutputChars += outputPayload.Length;
+        }
+
+        Assert.Equal(4, outputsByCallId.Count);
+        Assert.True(outputsByCallId["call_a"].Length <= 6000);
+        Assert.True(outputsByCallId["call_b"].Length <= 6000);
+        Assert.True(outputsByCallId["call_c"].Length <= 6000);
+        Assert.Equal(string.Empty, outputsByCallId["call_d"]);
+        Assert.True(totalReplayOutputChars <= 16_000);
+        Assert.Contains("ix:replay-output-compacted:v1", outputsByCallId["call_a"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:replay-output-compacted:v1", outputsByCallId["call_b"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:replay-output-compacted:v1", outputsByCallId["call_c"], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildNativeHostReplayReviewPrompt_IncludesToolIdentityAndEvidence() {
         var call = new ToolCall(
             callId: "host_carryover_next_action_123",
