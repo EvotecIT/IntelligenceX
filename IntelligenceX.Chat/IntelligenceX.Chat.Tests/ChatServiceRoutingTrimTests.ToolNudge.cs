@@ -2702,6 +2702,104 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveContextAwareReplayOutputCharBudgets_AdjustsByContextWindow() {
+        var smallObj = ResolveContextAwareReplayOutputCharBudgetsMethod.Invoke(null, new object?[] { 8_192L });
+        var mediumObj = ResolveContextAwareReplayOutputCharBudgetsMethod.Invoke(null, new object?[] { 16_384L });
+        var defaultObj = ResolveContextAwareReplayOutputCharBudgetsMethod.Invoke(null, new object?[] { 32_768L });
+        var largeObj = ResolveContextAwareReplayOutputCharBudgetsMethod.Invoke(null, new object?[] { 65_536L });
+        var unknownObj = ResolveContextAwareReplayOutputCharBudgetsMethod.Invoke(null, new object?[] { 0L });
+
+        var small = Assert.IsType<ValueTuple<int, int>>(smallObj);
+        var medium = Assert.IsType<ValueTuple<int, int>>(mediumObj);
+        var @default = Assert.IsType<ValueTuple<int, int>>(defaultObj);
+        var large = Assert.IsType<ValueTuple<int, int>>(largeObj);
+        var unknown = Assert.IsType<ValueTuple<int, int>>(unknownObj);
+
+        Assert.Equal((2_500, 7_000), small);
+        Assert.Equal((4_000, 11_000), medium);
+        Assert.Equal((6_000, 16_000), @default);
+        Assert.Equal((8_000, 22_000), large);
+        Assert.Equal((6_000, 16_000), unknown);
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInputWithBudget_AppliesProvidedBudgetAndTracksStats() {
+        var callA = new ToolCall(
+            callId: "call_a",
+            name: "eventlog_live_query",
+            input: "{\"machine_name\":\"AD0\"}",
+            arguments: null,
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+        var extracted = new List<ToolCall> { callA };
+        var byId = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase) {
+            ["call_a"] = callA
+        };
+        var oversized = new string('Z', 12_000);
+        var outputs = new List<ToolOutputDto> {
+            new() { CallId = "call_a", Output = oversized, Ok = true }
+        };
+        var smallBudget = CreateReplayOutputCompactionBudget(
+            maxOutputCharsPerCall: 2_500,
+            maxOutputCharsTotal: 7_000,
+            effectiveContextLength: 8_192L,
+            contextAwareBudgetApplied: true);
+
+        var invokeArgs = new object?[] { extracted, byId, outputs, smallBudget, null };
+        var inputObj = BuildToolRoundReplayInputWithBudgetMethod.Invoke(null, invokeArgs);
+        var input = Assert.IsType<ChatInput>(inputObj);
+        var items = GetChatInputItems(input);
+
+        Assert.Equal(2, items.Count);
+        string? outputPayload = null;
+        for (var i = 0; i < items.Count; i++) {
+            var item = Assert.IsType<JsonObject>(items[i].AsObject());
+            if (!string.Equals(item.GetString("type"), "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            outputPayload = item.GetString("output");
+            break;
+        }
+
+        var compacted = Assert.IsType<string>(outputPayload);
+        Assert.Contains("ix:replay-output-compacted:v1", compacted, StringComparison.OrdinalIgnoreCase);
+        Assert.True(compacted.Length <= 2_500);
+        Assert.True(compacted.Length < oversized.Length);
+
+        Assert.NotNull(invokeArgs[4]);
+        var statsObj = invokeArgs[4]!;
+        Assert.Equal(1, ReadIntRecordProperty(statsObj, "ReplayedCallCount"));
+        Assert.Equal(12_000, ReadIntRecordProperty(statsObj, "OriginalTotalChars"));
+        Assert.Equal(compacted.Length, ReadIntRecordProperty(statsObj, "CompactedTotalChars"));
+        Assert.Equal(1, ReadIntRecordProperty(statsObj, "CompactedCallCount"));
+    }
+
+    [Fact]
+    public void BuildReplayOutputCompactionStatusMessage_EmitsMarkerAndBudgetDetails() {
+        var budget = CreateReplayOutputCompactionBudget(
+            maxOutputCharsPerCall: 2_500,
+            maxOutputCharsTotal: 7_000,
+            effectiveContextLength: 8_192L,
+            contextAwareBudgetApplied: true);
+        var stats = CreateReplayOutputCompactionStats(
+            replayedCallCount: 2,
+            originalTotalChars: 24_000,
+            compactedTotalChars: 5_000,
+            compactedCallCount: 1);
+
+        var messageObj = BuildReplayOutputCompactionStatusMessageMethod.Invoke(null, new[] { budget, stats });
+        var message = Assert.IsType<string>(messageObj);
+
+        Assert.Contains("ix:replay-output-budget:v1", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("compacted_calls=1", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replayed_calls=2", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("per_call_budget=2500", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("total_budget=7000", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("context_aware=true", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("context_length=8192", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildNativeHostReplayReviewPrompt_IncludesToolIdentityAndEvidence() {
         var call = new ToolCall(
             callId: "host_carryover_next_action_123",
@@ -2748,6 +2846,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "Show failed logons across all domain controllers for the last 24 hours with source IP breakdown." });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    private static object CreateReplayOutputCompactionBudget(
+        int maxOutputCharsPerCall,
+        int maxOutputCharsTotal,
+        long? effectiveContextLength,
+        bool contextAwareBudgetApplied) {
+        var budgetType = BuildToolRoundReplayInputWithBudgetMethod.GetParameters()[3].ParameterType;
+        var value = Activator.CreateInstance(
+            budgetType,
+            maxOutputCharsPerCall,
+            maxOutputCharsTotal,
+            effectiveContextLength,
+            contextAwareBudgetApplied);
+        return value ?? throw new InvalidOperationException("ReplayOutputCompactionBudget instance could not be created.");
+    }
+
+    private static object CreateReplayOutputCompactionStats(
+        int replayedCallCount,
+        int originalTotalChars,
+        int compactedTotalChars,
+        int compactedCallCount) {
+        var statsType = BuildReplayOutputCompactionStatusMessageMethod.GetParameters()[1].ParameterType;
+        var value = Activator.CreateInstance(
+            statsType,
+            replayedCallCount,
+            originalTotalChars,
+            compactedTotalChars,
+            compactedCallCount);
+        return value ?? throw new InvalidOperationException("ReplayOutputCompactionStats instance could not be created.");
+    }
+
+    private static int ReadIntRecordProperty(object value, string propertyName) {
+        var property = value.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public)
+                       ?? throw new InvalidOperationException($"Property '{propertyName}' not found.");
+        var raw = property.GetValue(value);
+        return Assert.IsType<int>(raw);
     }
 
     private static JsonArray GetChatInputItems(ChatInput input) {

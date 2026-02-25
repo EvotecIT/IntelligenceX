@@ -140,6 +140,7 @@ internal sealed partial class ChatServiceSession {
                     || string.Equals(status, ChatStatusCodes.ToolCompleted, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(status, ChatStatusCodes.ToolRoundStarted, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(status, ChatStatusCodes.ToolRoundCompleted, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, ChatStatusCodes.ToolReplayCompacted, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(status, ChatStatusCodes.PhaseExecute, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(status, ChatStatusCodes.ToolBatchStarted, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(status, ChatStatusCodes.ToolBatchProgress, StringComparison.OrdinalIgnoreCase)

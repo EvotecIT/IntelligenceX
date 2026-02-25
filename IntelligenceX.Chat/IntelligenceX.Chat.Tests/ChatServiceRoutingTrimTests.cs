@@ -92,6 +92,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildToolRoundReplayInputMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolRoundReplayInput", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolRoundReplayInput not found.");
+    private static readonly MethodInfo BuildToolRoundReplayInputWithBudgetMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolRoundReplayInputWithBudget", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolRoundReplayInputWithBudget not found.");
+    private static readonly MethodInfo ResolveContextAwareReplayOutputCharBudgetsMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveContextAwareReplayOutputCharBudgets", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveContextAwareReplayOutputCharBudgets not found.");
+    private static readonly MethodInfo BuildReplayOutputCompactionStatusMessageMethod =
+        typeof(ChatServiceSession).GetMethod("BuildReplayOutputCompactionStatusMessage", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildReplayOutputCompactionStatusMessage not found.");
     private static readonly MethodInfo BuildNativeHostReplayReviewPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildNativeHostReplayReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildNativeHostReplayReviewPrompt not found.");
