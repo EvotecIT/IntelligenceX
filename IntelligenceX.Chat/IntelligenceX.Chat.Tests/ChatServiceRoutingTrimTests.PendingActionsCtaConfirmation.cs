@@ -546,6 +546,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("١")]
     [InlineData("١)")]
     [InlineData("١：")]
+    [InlineData("①")]
+    [InlineData("⑴")]
+    [InlineData("❶")]
     public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesUnicodeOrdinalSelection(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """

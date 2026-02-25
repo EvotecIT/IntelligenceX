@@ -208,8 +208,12 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("２", "public_domain")]
     [InlineData("２）", "public_domain")]
     [InlineData("٢", "public_domain")]
+    [InlineData("②", "public_domain")]
+    [InlineData("❷", "public_domain")]
     [InlineData("١", "ad_domain")]
     [InlineData("١：", "ad_domain")]
+    [InlineData("①", "ad_domain")]
+    [InlineData("❶", "ad_domain")]
     public void TryResolvePendingDomainIntentClarificationSelection_MapsUnicodeNumericChoiceToDomainFamily(
         string input,
         string expectedFamily) {

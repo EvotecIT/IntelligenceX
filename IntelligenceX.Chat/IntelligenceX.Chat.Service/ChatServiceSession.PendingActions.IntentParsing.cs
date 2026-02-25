@@ -282,7 +282,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var i = 0;
+        var startIndex = IsOrdinalLeadingWrapper(normalized[0]) ? 1 : 0;
+        if (startIndex >= normalized.Length) {
+            return false;
+        }
+
+        var i = startIndex;
         var parsed = 0;
         while (i < normalized.Length) {
             var digit = CharUnicodeInfo.GetDecimalDigitValue(normalized, i);
@@ -297,8 +302,11 @@ internal sealed partial class ChatServiceSession {
             parsed = (parsed * 10) + digit;
             i++;
         }
-        if (i == 0) {
-            return false;
+        if (i == startIndex) {
+            if (!TryParseDecoratedUnicodeOrdinalPrefix(normalized[startIndex..], out parsed, out var consumedChars)) {
+                return false;
+            }
+            i = startIndex + consumedChars;
         }
 
         value = parsed;
@@ -308,7 +316,79 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // Allow simple punctuation variants like "2.", "2)", "２）", or "٢：".
+        if (startIndex > 0 && IsOrdinalClosingWrapper(rest[0])) {
+            rest = rest[1..].Trim();
+            if (rest.Length == 0) {
+                return true;
+            }
+        }
+
+        // Allow simple punctuation variants like "2.", "2)", "２）", "٢：", "①。", or "(1).".
+        return IsAllowedOrdinalTrailingPunctuation(rest);
+    }
+
+    private static bool TryParseDecoratedUnicodeOrdinalPrefix(string text, out int value, out int consumedChars) {
+        value = 0;
+        consumedChars = 0;
+        if (string.IsNullOrEmpty(text)) {
+            return false;
+        }
+
+        if (!TryMapDecoratedUnicodeOrdinal(text[0], out value)) {
+            return false;
+        }
+
+        consumedChars = 1;
+        return true;
+    }
+
+    private static bool TryMapDecoratedUnicodeOrdinal(char ch, out int value) {
+        value = 0;
+
+        // Circled digits ①..⑳
+        if (ch >= '\u2460' && ch <= '\u2473') {
+            value = (ch - '\u2460') + 1;
+            return true;
+        }
+
+        // Parenthesized digits ⑴..⒇
+        if (ch >= '\u2474' && ch <= '\u2487') {
+            value = (ch - '\u2474') + 1;
+            return true;
+        }
+
+        // Digits with full stop ⒈..⒛
+        if (ch >= '\u2488' && ch <= '\u249B') {
+            value = (ch - '\u2488') + 1;
+            return true;
+        }
+
+        // Dingbat circled/negative/sans-serif one..ten variants.
+        if (ch >= '\u2776' && ch <= '\u277F') {
+            value = (ch - '\u2776') + 1;
+            return true;
+        }
+        if (ch >= '\u2780' && ch <= '\u2789') {
+            value = (ch - '\u2780') + 1;
+            return true;
+        }
+        if (ch >= '\u278A' && ch <= '\u2793') {
+            value = (ch - '\u278A') + 1;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsOrdinalLeadingWrapper(char ch) {
+        return ch is '(' or '[' or '\uFF08' or '\uFF3B';
+    }
+
+    private static bool IsOrdinalClosingWrapper(char ch) {
+        return ch is ')' or ']' or '\uFF09' or '\uFF3D';
+    }
+
+    private static bool IsAllowedOrdinalTrailingPunctuation(string rest) {
         return rest is "." or ")" or "]" or ":" or "．" or "）" or "］" or "：" or "。";
     }
 
