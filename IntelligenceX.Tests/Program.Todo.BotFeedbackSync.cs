@@ -294,5 +294,28 @@ internal static partial class Program {
         AssertEqual("Already addressed", tasks[1].Text, "legacy fallback checked task");
         AssertEqual(true, tasks[1].Checked, "legacy fallback checked state");
     }
+
+    private static void TestBotFeedbackTaskIdUsesLowercaseFixedLengthHexPrefix() {
+        var id = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.BuildTaskIdForTests(
+            123,
+            "https://example/comment/1",
+            "Fix cancellation race");
+        var secondId = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.BuildTaskIdForTests(
+            123,
+            "https://example/comment/1",
+            "Fix cancellation race");
+
+        AssertEqual(12, id.Length, "task id uses 12-character prefix");
+        AssertEqual(id, secondId, "task id generation is deterministic");
+
+        var isLowerHex = true;
+        foreach (var ch in id) {
+            if (!(char.IsDigit(ch) || (ch >= 'a' && ch <= 'f'))) {
+                isLowerHex = false;
+                break;
+            }
+        }
+        AssertEqual(true, isLowerHex, "task id is lowercase hex");
+    }
 #endif
 }

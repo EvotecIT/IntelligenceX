@@ -286,6 +286,8 @@ internal static partial class Program {
             TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNestedNonPrDetailsBlocks);
         failed += Run("Todo bot feedback parse tasks uses merge-blocker sections", TestBotFeedbackParseTasksUsesMergeBlockerSections);
         failed += Run("Todo bot feedback parse tasks legacy fallback", TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders);
+        failed += Run("Todo bot feedback task id uses lowercase fixed-length hex prefix",
+            TestBotFeedbackTaskIdUsesLowercaseFixedLengthHexPrefix);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);

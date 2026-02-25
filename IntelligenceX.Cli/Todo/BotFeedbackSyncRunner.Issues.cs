@@ -11,7 +11,27 @@ internal static partial class BotFeedbackSyncRunner {
     private static string BuildTaskId(int prNumber, string url, string text) {
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes($"{prNumber}|{url}|{text}"));
-        return Convert.ToHexString(bytes).Substring(0, 12).ToLowerInvariant();
+        return BuildLowerHexPrefix(bytes, 6);
+    }
+
+    internal static string BuildTaskIdForTests(int prNumber, string url, string text) {
+        return BuildTaskId(prNumber, url, text);
+    }
+
+    private static string BuildLowerHexPrefix(byte[] bytes, int byteCount) {
+        if (bytes is null || bytes.Length == 0 || byteCount <= 0) {
+            return string.Empty;
+        }
+
+        var count = Math.Min(byteCount, bytes.Length);
+        return string.Create(count * 2, (bytes, count), static (chars, state) => {
+            const string hex = "0123456789abcdef";
+            for (var i = 0; i < state.count; i++) {
+                var value = state.bytes[i];
+                chars[i * 2] = hex[value >> 4];
+                chars[i * 2 + 1] = hex[value & 0x0F];
+            }
+        });
     }
 
     private static string BuildIssueTitle(int prNumber, string taskText) {
