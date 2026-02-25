@@ -29,6 +29,7 @@ internal static partial class Program {
         private const int ModelPhaseRetryBaseDelayMs = 350;
         private const int MaxRecentHostTargets = 24;
         private const int MaxRetryPromptHostTargets = 8;
+        private const int MaxAutoFilledToolTargets = 4;
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
         private readonly IntelligenceXClient _client;
@@ -1304,6 +1305,7 @@ internal static partial class Program {
         }
 
         private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, CancellationToken cancellationToken) {
+            var knownHostTargets = GetRecentHostTargetsSnapshot();
             var runInParallel = ShouldRunParallelToolExecution(calls, out var mutatingToolNames);
             if (_options.LiveProgress
                 && _options.ParallelToolCalls
@@ -1320,14 +1322,14 @@ internal static partial class Program {
             if (!runInParallel || calls.Count <= 1) {
                 var outputs = new List<ToolOutput>(calls.Count);
                 foreach (var call in calls) {
-                    outputs.Add(await ExecuteToolAsync(call, cancellationToken).ConfigureAwait(false));
+                    outputs.Add(await ExecuteToolAsync(call, cancellationToken, knownHostTargets).ConfigureAwait(false));
                 }
                 return outputs;
             }
 
             var tasks = new Task<ToolOutput>[calls.Count];
             for (var i = 0; i < calls.Count; i++) {
-                tasks[i] = ExecuteToolAsync(calls[i], cancellationToken);
+                tasks[i] = ExecuteToolAsync(calls[i], cancellationToken, knownHostTargets);
             }
             return await Task.WhenAll(tasks).ConfigureAwait(false);
         }
@@ -1371,7 +1373,10 @@ internal static partial class Program {
             return false;
         }
 
-        private async Task<ToolOutput> ExecuteToolAsync(ToolCall call, CancellationToken cancellationToken) {
+        private async Task<ToolOutput> ExecuteToolAsync(
+            ToolCall call,
+            CancellationToken cancellationToken,
+            IReadOnlyList<string>? knownHostTargets = null) {
             if (!_registry.TryGet(call.Name, out var tool)) {
                 return new ToolOutput(call.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_not_registered",
@@ -1379,6 +1384,13 @@ internal static partial class Program {
                     hints: new[] { "Run /tools to list available tools.", "Check that the correct packs are enabled." },
                     isTransient: false));
             }
+
+            _registry.TryGetDefinition(call.Name, out var definition);
+            var effectiveCall = ApplyKnownHostTargetFallbacks(call, definition, knownHostTargets);
+            if (_options.LiveProgress && !ReferenceEquals(effectiveCall, call)) {
+                _status?.Invoke($"input-repair: auto-filled host targets for {GetToolDisplayName(call.Name)} from thread context.");
+            }
+
             if (_options.LiveProgress) {
                 var id = _options.ShowToolIds ? $" ({call.Name})" : string.Empty;
                 _status?.Invoke($"running: {GetToolDisplayName(call.Name)}{id}");
@@ -1386,21 +1398,104 @@ internal static partial class Program {
             using var toolCts = CreateTimeoutCts(cancellationToken, _options.ToolTimeoutSeconds);
             var toolToken = toolCts?.Token ?? cancellationToken;
             try {
-                var result = await tool.InvokeAsync(call.Arguments, toolToken).ConfigureAwait(false);
-                return new ToolOutput(call.CallId, result ?? string.Empty);
+                var result = await tool.InvokeAsync(effectiveCall.Arguments, toolToken).ConfigureAwait(false);
+                return new ToolOutput(effectiveCall.CallId, result ?? string.Empty);
             } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
-                return new ToolOutput(call.CallId, ToolOutputEnvelope.Error(
+                return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_timeout",
                     error: $"Tool '{call.Name}' timed out after {_options.ToolTimeoutSeconds}s.",
                     hints: new[] { "Increase --tool-timeout-seconds, or narrow the query (OU scoping, tighter filters)." },
                     isTransient: true));
             } catch (Exception ex) {
-                return new ToolOutput(call.CallId, ToolOutputEnvelope.Error(
+                return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_exception",
                     error: $"{ex.GetType().Name}: {ex.Message}",
                     hints: new[] { "Try again. If it keeps failing, re-run with --echo-tool-outputs to capture details." },
                     isTransient: false));
             }
+        }
+
+        private static ToolCall ApplyKnownHostTargetFallbacks(
+            ToolCall call,
+            ToolDefinition? definition,
+            IReadOnlyList<string>? knownHostTargets) {
+            if (definition is null || knownHostTargets is null || knownHostTargets.Count == 0 || call.Arguments is null) {
+                return call;
+            }
+
+            if (!ToolDefinitionSupportsHostTargetInputs(definition)) {
+                return call;
+            }
+
+            var candidateInputKeys = GetScenarioInputKeyAliases("machine_name");
+            for (var keyIndex = 0; keyIndex < candidateInputKeys.Count; keyIndex++) {
+                if (!TryReadToolInputValuesByKey(call.Arguments, candidateInputKeys[keyIndex], out var values) || values.Count == 0) {
+                    continue;
+                }
+
+                return call;
+            }
+
+            var supportsTarget = ToolDefinitionHasInputProperty(definition, "target");
+            var supportsTargets = ToolDefinitionHasInputProperty(definition, "targets");
+            if (!supportsTarget && !supportsTargets) {
+                return call;
+            }
+
+            var normalizedTargets = new List<string>(Math.Min(MaxAutoFilledToolTargets, knownHostTargets.Count));
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < knownHostTargets.Count && normalizedTargets.Count < MaxAutoFilledToolTargets; i++) {
+                var normalized = NormalizeHostTargetCandidate(knownHostTargets[i]);
+                if (normalized.Length == 0 || !seen.Add(normalized)) {
+                    continue;
+                }
+
+                normalizedTargets.Add(normalized);
+            }
+
+            if (normalizedTargets.Count == 0) {
+                return call;
+            }
+
+            var patchedArguments = new JsonObject(StringComparer.Ordinal);
+            foreach (var pair in call.Arguments) {
+                patchedArguments.Add(pair.Key, pair.Value);
+            }
+
+            if (supportsTarget) {
+                patchedArguments.Add("target", normalizedTargets[0]);
+            }
+
+            if (supportsTargets) {
+                var targetsArray = new JsonArray();
+                for (var i = 0; i < normalizedTargets.Count; i++) {
+                    targetsArray.Add(normalizedTargets[i]);
+                }
+
+                patchedArguments.Add("targets", targetsArray);
+            }
+
+            var patchedInput = JsonLite.Serialize(JsonValue.From(patchedArguments));
+            return new ToolCall(call.CallId, call.Name, patchedInput, patchedArguments, call.Raw);
+        }
+
+        private static bool ToolDefinitionHasInputProperty(ToolDefinition definition, string key) {
+            if (definition is null || string.IsNullOrWhiteSpace(key)) {
+                return false;
+            }
+
+            var properties = definition.Parameters?.GetObject("properties");
+            if (properties is null) {
+                return false;
+            }
+
+            foreach (var pair in properties) {
+                if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string? TryGetResponseId(TurnInfo turn) {

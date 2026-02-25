@@ -348,6 +348,52 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void ApplyKnownHostTargetFallbacks_FillsTargetAndTargetsWhenMissing() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("target", new JsonObject().Add("type", "string"))
+                .Add("targets", new JsonObject().Add("type", "array")));
+        var definition = new ToolDefinition("dnsclientx_ping", parameters: schema);
+        var call = BuildToolCall("call_1", "dnsclientx_ping", "{}");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("target"));
+        var targets = repaired.Arguments?.GetArray("targets");
+        Assert.NotNull(targets);
+        Assert.Equal(2, targets!.Count);
+        Assert.Equal("AD0.ad.evotec.xyz", targets[0].AsString());
+        Assert.Equal("AD1.ad.evotec.xyz", targets[1].AsString());
+    }
+
+    [Fact]
+    public void ApplyKnownHostTargetFallbacks_DoesNotOverrideExplicitTargetInputs() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("target", new JsonObject().Add("type", "string"))
+                .Add("targets", new JsonObject().Add("type", "array")));
+        var definition = new ToolDefinition("dnsclientx_ping", parameters: schema);
+        var call = BuildToolCall("call_1", "dnsclientx_ping", """{"target":"explicit.dc","targets":["explicit.dc"]}""");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.Same(call, repaired);
+        Assert.Equal("explicit.dc", repaired.Arguments?.GetString("target"));
+        var targets = repaired.Arguments?.GetArray("targets");
+        Assert.NotNull(targets);
+        Assert.Single(targets!);
+        Assert.Equal("explicit.dc", targets[0].AsString());
+    }
+
+    [Fact]
     public void ShouldRetryModelPhaseAttempt_RetriesOnProviderServerErrorMessage() {
         var ex = new InvalidOperationException(
             "The server had an error processing your request. Please include the request ID 123.");
@@ -468,6 +514,23 @@ Continue recurring-error analysis across all remaining DCs in this turn.
 
         var value = method!.Invoke(null, new object?[] { ex, attempt, maxAttempts, cancellationToken });
         return value is bool b && b;
+    }
+
+    private static ToolCall InvokeApplyKnownHostTargetFallbacks(
+        ToolCall call,
+        ToolDefinition definition,
+        IReadOnlyList<string> knownHostTargets) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ApplyKnownHostTargetFallbacks",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { call, definition, knownHostTargets });
+        return Assert.IsType<ToolCall>(value);
     }
 
     private static ToolCall BuildToolCall(string callId, string name, string jsonArgs) {
