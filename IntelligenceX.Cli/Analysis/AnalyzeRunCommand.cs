@@ -107,7 +107,7 @@ internal static partial class AnalyzeRunCommand {
         var pythonRules = policy.SelectByLanguage("python", "py");
         var internalRules = policy.SelectByLanguage("internal");
         WorkspaceSourceInventory? sourceInventory = null;
-        if (javascriptRules.Count > 0 || pythonRules.Count > 0) {
+        if (javascriptRules.Count > 0 && pythonRules.Count > 0) {
             sourceInventory = DiscoverWorkspaceSourceInventory(workspace);
         }
         var runWarnings = new List<string>();

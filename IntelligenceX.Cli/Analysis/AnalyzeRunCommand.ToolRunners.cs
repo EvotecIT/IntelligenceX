@@ -262,7 +262,11 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        if (!WorkspaceContainsAnySourceFile(sourceInventory, out var skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")) {
+        var skippedSourceEnumerations = 0;
+        var hasJavaScriptSources = sourceInventory is null
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx");
+        if (!hasJavaScriptSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
             }
@@ -307,7 +311,11 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        if (!WorkspaceContainsAnySourceFile(sourceInventory, out var skippedSourceEnumerations, ".py")) {
+        var skippedSourceEnumerations = 0;
+        var hasPythonSources = sourceInventory is null
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, ".py")
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, ".py");
+        if (!hasPythonSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
             }
