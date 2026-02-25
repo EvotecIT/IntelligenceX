@@ -30,6 +30,7 @@ internal static partial class Program {
         private const int MaxRecentHostTargets = 24;
         private const int MaxRetryPromptHostTargets = 8;
         private const int MaxAutoFilledToolTargets = 4;
+        private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
         private readonly IntelligenceXClient _client;
@@ -1408,6 +1409,18 @@ internal static partial class Program {
             var toolToken = toolCts?.Token ?? cancellationToken;
             try {
                 var result = await tool.InvokeAsync(effectiveCall.Arguments, toolToken).ConfigureAwait(false);
+                var repairedCall = ApplyAdDiscoveryRootDseFallback(effectiveCall, result);
+                if (!ReferenceEquals(repairedCall, effectiveCall)) {
+                    if (_options.LiveProgress) {
+                        _status?.Invoke("input-repair: retrying AD discovery without pinned domain_controller after RootDSE failure.");
+                    }
+
+                    var repairedResult = await tool.InvokeAsync(repairedCall.Arguments, toolToken).ConfigureAwait(false);
+                    if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
+                        return new ToolOutput(repairedCall.CallId, repairedResult ?? string.Empty);
+                    }
+                }
+
                 return new ToolOutput(effectiveCall.CallId, result ?? string.Empty);
             } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
                 return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
@@ -1422,6 +1435,101 @@ internal static partial class Program {
                     hints: new[] { "Try again. If it keeps failing, re-run with --echo-tool-outputs to capture details." },
                     isTransient: false));
             }
+        }
+
+        private static ToolCall ApplyAdDiscoveryRootDseFallback(ToolCall call, string toolOutput) {
+            if (call.Arguments is null || !IsAdDiscoveryToolName(call.Name)) {
+                return call;
+            }
+
+            if (!TryReadToolInputValuesByKey(call.Arguments, "domain_controller", out var configuredDomainControllers)
+                || configuredDomainControllers.Count == 0) {
+                return call;
+            }
+
+            var pinnedDomainController = configuredDomainControllers
+                .Select(NormalizeHostTargetCandidate)
+                .FirstOrDefault(static value => value.Length > 0);
+            if (string.IsNullOrWhiteSpace(pinnedDomainController)
+                || !LooksLikePinnedDomainControllerRootDseFailure(toolOutput, pinnedDomainController)) {
+                return call;
+            }
+
+            var rewrittenArguments = new JsonObject(StringComparer.Ordinal);
+            var replacedDomainController = false;
+            foreach (var pair in call.Arguments) {
+                if (!string.Equals(pair.Key, "domain_controller", StringComparison.OrdinalIgnoreCase)) {
+                    rewrittenArguments.Add(pair.Key, pair.Value);
+                    continue;
+                }
+
+                if (replacedDomainController) {
+                    continue;
+                }
+
+                rewrittenArguments.Add(pair.Key, string.Empty);
+                replacedDomainController = true;
+            }
+
+            if (!replacedDomainController) {
+                rewrittenArguments.Add("domain_controller", string.Empty);
+            }
+
+            var patchedInput = JsonLite.Serialize(JsonValue.From(rewrittenArguments));
+            return new ToolCall(call.CallId, call.Name, patchedInput, rewrittenArguments, call.Raw);
+        }
+
+        private static bool IsAdDiscoveryToolName(string toolName) {
+            var normalized = (toolName ?? string.Empty).Trim();
+            return string.Equals(normalized, "ad_environment_discover", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalized, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalized, "ad_forest_discover", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool LooksLikePinnedDomainControllerRootDseFailure(string toolOutput, string pinnedDomainController) {
+            if (string.IsNullOrWhiteSpace(toolOutput) || string.IsNullOrWhiteSpace(pinnedDomainController)) {
+                return false;
+            }
+
+            JsonObject? envelope;
+            try {
+                envelope = JsonLite.Parse(toolOutput)?.AsObject();
+            } catch {
+                return false;
+            }
+
+            if (envelope is null) {
+                return false;
+            }
+
+            bool ok;
+            try {
+                ok = envelope.GetBoolean("ok", defaultValue: false);
+            } catch {
+                ok = false;
+            }
+
+            if (ok) {
+                return false;
+            }
+
+            var errorCode = envelope.GetString("error_code") ?? string.Empty;
+            var errorMessage = envelope.GetString("error") ?? string.Empty;
+            var failure = envelope.GetObject("failure");
+            if (errorCode.Length == 0) {
+                errorCode = failure?.GetString("code") ?? string.Empty;
+            }
+            if (errorMessage.Length == 0) {
+                errorMessage = failure?.GetString("message") ?? string.Empty;
+            }
+
+            if (!string.Equals(errorCode, AdDiscoveryRootDseFailureErrorCode, StringComparison.OrdinalIgnoreCase)
+                || errorMessage.Length == 0) {
+                return false;
+            }
+
+            return errorMessage.Contains("RootDSE", StringComparison.OrdinalIgnoreCase)
+                   && errorMessage.Contains(pinnedDomainController, StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyList<ToolCall> ApplyScenarioDistinctHostCoverageFallbacks(

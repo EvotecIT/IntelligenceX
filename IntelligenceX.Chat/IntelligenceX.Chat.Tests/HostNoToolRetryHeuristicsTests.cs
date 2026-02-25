@@ -394,6 +394,47 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void ApplyAdDiscoveryRootDseFallback_UnpinsDomainControllerAfterRootDseFailure() {
+        var call = BuildToolCall(
+            "call_1",
+            "ad_environment_discover",
+            """{"domain_controller":"AD0.ad.evotec.xyz","search_base_dn":"DC=ad,DC=evotec,DC=xyz","include_domain_controllers":true}""");
+        const string output = """{"ok":false,"error_code":"not_configured","error":"Failed to read RootDSE from 'AD0.ad.evotec.xyz'."}""";
+
+        var repaired = InvokeApplyAdDiscoveryRootDseFallback(call, output);
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal(string.Empty, repaired.Arguments?.GetString("domain_controller"));
+        Assert.Equal("DC=ad,DC=evotec,DC=xyz", repaired.Arguments?.GetString("search_base_dn"));
+    }
+
+    [Fact]
+    public void ApplyAdDiscoveryRootDseFallback_DoesNotPatchWhenFailureIsUnrelated() {
+        var call = BuildToolCall(
+            "call_1",
+            "ad_environment_discover",
+            """{"domain_controller":"AD0.ad.evotec.xyz","search_base_dn":"DC=ad,DC=evotec,DC=xyz","include_domain_controllers":true}""");
+        const string output = """{"ok":false,"error_code":"timeout","error":"Replication query timed out after 0:00:07."}""";
+
+        var repaired = InvokeApplyAdDiscoveryRootDseFallback(call, output);
+
+        Assert.Same(call, repaired);
+    }
+
+    [Fact]
+    public void ApplyAdDiscoveryRootDseFallback_DoesNotPatchForNonAdDiscoveryTools() {
+        var call = BuildToolCall(
+            "call_1",
+            "eventlog_live_query",
+            """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""");
+        const string output = """{"ok":false,"error_code":"not_configured","error":"Failed to read RootDSE from 'AD0.ad.evotec.xyz'."}""";
+
+        var repaired = InvokeApplyAdDiscoveryRootDseFallback(call, output);
+
+        Assert.Same(call, repaired);
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
         const string request = """
 [Scenario execution contract]
@@ -611,6 +652,20 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.NotNull(method);
 
         var value = method!.Invoke(null, new object?[] { call, definition, knownHostTargets });
+        return Assert.IsType<ToolCall>(value);
+    }
+
+    private static ToolCall InvokeApplyAdDiscoveryRootDseFallback(ToolCall call, string output) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ApplyAdDiscoveryRootDseFallback",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { call, output });
         return Assert.IsType<ToolCall>(value);
     }
 
