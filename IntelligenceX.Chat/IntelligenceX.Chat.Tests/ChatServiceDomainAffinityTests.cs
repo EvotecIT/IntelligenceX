@@ -366,6 +366,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Theory]
     [InlineData("AD", "ad_domain")]
+    [InlineData("ad", "ad_domain")]
     [InlineData("LDAP", "ad_domain")]
     [InlineData("DC", "ad_domain")]
     [InlineData("DNS", "public_domain")]
