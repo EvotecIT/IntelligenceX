@@ -34,6 +34,11 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static bool WorkspaceContainsAnySourceFile(string workspace, params string[] extensions) {
+        return WorkspaceContainsAnySourceFile(workspace, out _, extensions);
+    }
+
+    private static bool WorkspaceContainsAnySourceFile(string workspace, out int skippedEnumerations, params string[] extensions) {
+        skippedEnumerations = 0;
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace)) {
             return false;
         }
@@ -54,8 +59,44 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
 
-        try {
-            foreach (var path in Directory.EnumerateFiles(workspace, "*", SearchOption.AllDirectories)) {
+        var pending = new Stack<string>();
+        pending.Push(workspace);
+
+        while (pending.Count > 0) {
+            var directory = pending.Pop();
+
+            IEnumerable<string>? subdirectories = null;
+            try {
+                subdirectories = Directory.EnumerateDirectories(directory);
+            } catch (IOException) {
+                skippedEnumerations++;
+            } catch (UnauthorizedAccessException) {
+                skippedEnumerations++;
+            }
+
+            if (subdirectories is not null) {
+                foreach (var subdirectory in subdirectories) {
+                    if (IsPathUnderExcludedDirectorySegment(workspace, subdirectory)) {
+                        continue;
+                    }
+                    pending.Push(subdirectory);
+                }
+            }
+
+            IEnumerable<string>? files = null;
+            try {
+                files = Directory.EnumerateFiles(directory);
+            } catch (IOException) {
+                skippedEnumerations++;
+            } catch (UnauthorizedAccessException) {
+                skippedEnumerations++;
+            }
+
+            if (files is null) {
+                continue;
+            }
+
+            foreach (var path in files) {
                 if (IsPathUnderExcludedDirectorySegment(workspace, path)) {
                     continue;
                 }
@@ -65,10 +106,6 @@ internal static partial class AnalyzeRunCommand {
                     return true;
                 }
             }
-        } catch (IOException) {
-            return false;
-        } catch (UnauthorizedAccessException) {
-            return false;
         }
 
         return false;

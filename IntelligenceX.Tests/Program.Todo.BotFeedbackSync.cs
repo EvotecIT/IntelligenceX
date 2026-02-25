@@ -329,5 +329,25 @@ internal static partial class Program {
         AssertContainsText(joined, "--search ix-bot-feedback-id:abc123def456",
             "issue-exists command searches by exact bot feedback id");
     }
+
+    private static void TestBotFeedbackIssueLookupInterpretationHandlesUnknownState() {
+        var exists = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretIssueExistsLookupResultForTests(
+            0,
+            "[{\"number\":123}]");
+        var notFound = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretIssueExistsLookupResultForTests(
+            0,
+            "[]");
+        var unknownFromExitCode = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretIssueExistsLookupResultForTests(
+            1,
+            "[]");
+        var unknownFromMalformedJson = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretIssueExistsLookupResultForTests(
+            0,
+            "{not-json");
+
+        AssertEqual("Exists", exists, "issue lookup interpretation resolves existing open issue");
+        AssertEqual("NotFound", notFound, "issue lookup interpretation resolves missing open issue");
+        AssertEqual("Unknown", unknownFromExitCode, "issue lookup interpretation marks non-zero exit as unknown");
+        AssertEqual("Unknown", unknownFromMalformedJson, "issue lookup interpretation marks malformed json as unknown");
+    }
 #endif
 }

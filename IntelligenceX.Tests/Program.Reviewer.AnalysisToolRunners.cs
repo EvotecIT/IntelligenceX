@@ -168,5 +168,27 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAnalyzeRunWorkspaceSourceDetectionDiagnosticsDefaultToZeroSkipped() {
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-detect-diag-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            var src = Path.Combine(workspace, "src");
+            Directory.CreateDirectory(src);
+            File.WriteAllText(Path.Combine(src, "main.py"), "answer = 42");
+
+            var result = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.WorkspaceContainsAnySourceFileWithDiagnosticsForTests(
+                workspace,
+                ".py");
+            AssertEqual(true, result.Found, "source detection diagnostics reports found status");
+            AssertEqual(0, result.SkippedEnumerations, "source detection diagnostics has zero skipped paths in healthy workspace");
+        } finally {
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
 }
 #endif

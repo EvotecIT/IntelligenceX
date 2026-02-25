@@ -262,7 +262,10 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        if (!WorkspaceContainsAnySourceFile(workspace, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")) {
+        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
             warnings.Add("No JavaScript/TypeScript source files detected; skipping ESLint analysis.");
             return new RunnerResult(true, string.Empty);
         }
@@ -304,7 +307,10 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        if (!WorkspaceContainsAnySourceFile(workspace, ".py")) {
+        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations, ".py")) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
             warnings.Add("No Python source files detected; skipping Ruff analysis.");
             return new RunnerResult(true, string.Empty);
         }
@@ -499,6 +505,13 @@ internal static partial class AnalyzeRunCommand {
 
     internal static bool WorkspaceContainsAnySourceFileForTests(string workspace, params string[] extensions) {
         return WorkspaceContainsAnySourceFile(workspace, extensions);
+    }
+
+    internal static (bool Found, int SkippedEnumerations) WorkspaceContainsAnySourceFileWithDiagnosticsForTests(
+        string workspace,
+        params string[] extensions) {
+        var found = WorkspaceContainsAnySourceFile(workspace, out var skippedEnumerations, extensions);
+        return (found, skippedEnumerations);
     }
 
     internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(

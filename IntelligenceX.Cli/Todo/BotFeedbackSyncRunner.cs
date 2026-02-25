@@ -103,7 +103,12 @@ internal static partial class BotFeedbackSyncRunner {
                 break;
             }
             var id = BuildTaskId(pr.Number, task.Url, task.Text);
-            if (await IssueExistsAsync(options.Repo, id).ConfigureAwait(false)) {
+            var issueLookupState = await IssueExistsAsync(options.Repo, id).ConfigureAwait(false);
+            if (issueLookupState == IssueLookupState.Exists) {
+                continue;
+            }
+            if (issueLookupState == IssueLookupState.Unknown) {
+                Console.Error.WriteLine($"Skipping issue creation for PR #{pr.Number} task '{task.Text}' because existing-issue lookup failed.");
                 continue;
             }
             var title = BuildIssueTitle(pr.Number, task.Text);

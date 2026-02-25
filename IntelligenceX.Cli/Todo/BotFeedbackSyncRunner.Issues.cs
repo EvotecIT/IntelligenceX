@@ -8,6 +8,12 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Cli.Todo;
 
 internal static partial class BotFeedbackSyncRunner {
+    private enum IssueLookupState {
+        NotFound,
+        Exists,
+        Unknown
+    }
+
     private static string BuildTaskId(int prNumber, string url, string text) {
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes($"{prNumber}|{url}|{text}"));
@@ -59,21 +65,17 @@ internal static partial class BotFeedbackSyncRunner {
         return sb.ToString();
     }
 
-    private static async Task<bool> IssueExistsAsync(string repo, string id) {
+    private static async Task<IssueLookupState> IssueExistsAsync(string repo, string id) {
         var (code, stdout, _) = await GhCli.RunAsync(BuildIssueExistsArgs(repo, id)).ConfigureAwait(false);
-        if (code != 0) {
-            return false;
-        }
-        try {
-            using var doc = JsonDocument.Parse(stdout);
-            return doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0;
-        } catch {
-            return false;
-        }
+        return InterpretIssueExistsLookupResult(code, stdout);
     }
 
     internal static IReadOnlyList<string> BuildIssueExistsArgsForTests(string repo, string id) {
         return BuildIssueExistsArgs(repo, id);
+    }
+
+    internal static string InterpretIssueExistsLookupResultForTests(int exitCode, string stdout) {
+        return InterpretIssueExistsLookupResult(exitCode, stdout).ToString();
     }
 
     private static string[] BuildIssueExistsArgs(string repo, string id) {
@@ -86,6 +88,22 @@ internal static partial class BotFeedbackSyncRunner {
             "--limit", "1",
             "--json", "number"
         };
+    }
+
+    private static IssueLookupState InterpretIssueExistsLookupResult(int exitCode, string stdout) {
+        if (exitCode != 0) {
+            return IssueLookupState.Unknown;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(stdout);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) {
+                return IssueLookupState.Unknown;
+            }
+            return doc.RootElement.GetArrayLength() > 0 ? IssueLookupState.Exists : IssueLookupState.NotFound;
+        } catch {
+            return IssueLookupState.Unknown;
+        }
     }
 
     private static async Task EnsureLabelAsync(string repo, string label) {

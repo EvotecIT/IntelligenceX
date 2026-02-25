@@ -290,6 +290,8 @@ internal static partial class Program {
             TestBotFeedbackTaskIdUsesLowercaseFixedLengthHexPrefix);
         failed += Run("Todo bot feedback issue exists query scopes open issues",
             TestBotFeedbackIssueExistsQueryScopesOpenIssues);
+        failed += Run("Todo bot feedback issue lookup interpretation handles unknown state",
+            TestBotFeedbackIssueLookupInterpretationHandlesUnknownState);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
@@ -388,6 +390,8 @@ internal static partial class Program {
             TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
         failed += Run("Analyze run workspace source detection skips excluded directories",
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
+        failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
+            TestAnalyzeRunWorkspaceSourceDetectionDiagnosticsDefaultToZeroSkipped);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
         failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);
