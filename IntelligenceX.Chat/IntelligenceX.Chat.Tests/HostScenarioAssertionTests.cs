@@ -81,6 +81,37 @@ public sealed class HostScenarioAssertionTests {
     }
 
     [Fact]
+    public void EvaluateScenarioAssertions_DoesNotEnforceNoToolRetryCap_WhenTurnHasNoToolContract() {
+        const string json = """
+{
+  "name": "no-tool-retries-clarify",
+  "defaults": {
+    "max_no_tool_execution_retries": 0
+  },
+  "turns": [
+    {
+      "name": "Clarify only",
+      "user": "Clarify AD vs DNS without running tools.",
+      "forbid_tools": ["*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Clarify first.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 2);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("no-tool execution retry", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void EvaluateScenarioAssertions_FailsOnDuplicateSignature_WhenArgumentsOnlyDifferByKeyOrder() {
         const string json = """
 {
@@ -157,6 +188,57 @@ public sealed class HostScenarioAssertionTests {
         var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
 
         Assert.Contains(failures, value => value.Contains("distinct 'machine_name' tool input value", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_EnforcesNoToolsContract_ForClarificationTurns() {
+        const string json = """
+{
+  "name": "no-tools-clarify",
+  "turns": [
+    {
+      "name": "Clarify turn",
+      "user": "Clarify whether this is AD or public DNS scope.",
+      "forbid_tools": ["*"],
+      "assert_contains": ["AD", "DNS"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("[Scenario execution contract]", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("without tool execution", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not execute any tools", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DNS", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_AddsDomainDetectiveCheckNameGuidance() {
+        const string json = """
+{
+  "name": "domaindetective-check-guidance",
+  "turns": [
+    {
+      "name": "DomainDetective turn",
+      "user": "Run DomainDetective summary and continue.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["domaindetective_domain_summary"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("supported check names", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DNSHEALTH", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NameServers", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("use NS", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -273,6 +355,15 @@ public sealed class HostScenarioAssertionTests {
         var result = method!.Invoke(null, new[] { turn, metricsResult });
         var enumerable = Assert.IsAssignableFrom<IEnumerable>(result);
         return enumerable.Cast<object>().Select(value => value?.ToString() ?? string.Empty).ToList();
+    }
+
+    private static string InvokeBuildScenarioTurnPrompt(object turn) {
+        var programType = ResolveHostProgramType();
+        var method = programType.GetMethod("BuildScenarioTurnPrompt", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new[] { turn });
+        return Assert.IsType<string>(value);
     }
 
     private static Type ResolveHostProgramType() {

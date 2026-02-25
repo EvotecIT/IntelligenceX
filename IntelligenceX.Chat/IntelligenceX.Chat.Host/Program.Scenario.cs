@@ -145,20 +145,39 @@ internal static partial class Program {
 
         var minToolCalls = Math.Max(0, turn.MinToolCalls ?? 0);
         var minToolRounds = Math.Max(0, turn.MinToolRounds ?? 0);
+        var forbidsAllTools = turn.ForbidTools.Any(static value => string.Equals((value ?? string.Empty).Trim(), "*", StringComparison.Ordinal));
         var requiresToolExecution = minToolCalls > 0
                                     || minToolRounds > 0
                                     || turn.RequireTools.Count > 0
                                     || turn.RequireAnyTools.Count > 0
                                     || turn.MinDistinctToolInputValues.Count > 0;
+        var requiresNoToolExecution = forbidsAllTools && !requiresToolExecution;
         var requiresTimestampShape = turn.AssertContains.Any(static value => value.Contains("UTC", StringComparison.OrdinalIgnoreCase))
                                      || turn.AssertMatchesRegex.Any(static value => value.Contains(@"\d{4}-\d{2}-\d{2}", StringComparison.Ordinal));
         var requiresEventLogTool = TurnRequiresToolPrefix(turn, "eventlog_");
-        if (!requiresToolExecution) {
+        var requiresDomainDetectiveTool = TurnRequiresToolPrefix(turn, "domaindetective_");
+        if (!requiresToolExecution && !requiresNoToolExecution) {
             return turn.User;
         }
 
         var sb = new StringBuilder();
         sb.AppendLine("[Scenario execution contract]");
+        if (requiresNoToolExecution) {
+            sb.AppendLine("This scenario turn requires a response without tool execution.");
+            sb.AppendLine("- Do not execute any tools in this turn.");
+            sb.AppendLine("- Resolve ambiguity or provide the requested summary directly from current context.");
+            if (turn.AssertNoQuestions) {
+                sb.AppendLine("- Do not ask any follow-up questions in the final response for this turn.");
+            }
+            if (turn.AssertContains.Count > 0) {
+                sb.AppendLine("- Final response must include these literals: " + string.Join(", ", turn.AssertContains) + ".");
+            }
+            sb.AppendLine();
+            sb.AppendLine("User request:");
+            sb.AppendLine(turn.User);
+            return sb.ToString();
+        }
+
         sb.AppendLine("This scenario turn requires tool execution before the final response.");
 
         if (minToolCalls > 0) {
@@ -210,6 +229,10 @@ internal static partial class Program {
         if (requiresEventLogTool) {
             sb.AppendLine("- If Event Log machine_name is missing, default to the first discovered/source DC from prior turns.");
             sb.AppendLine("- eventlog_pack_info alone is insufficient; execute at least one eventlog_*query* or eventlog_*stats* call in this turn.");
+        }
+        if (requiresDomainDetectiveTool) {
+            sb.AppendLine("- For domaindetective_domain_summary checks[], use only supported check names (for example DNSHEALTH, SOA, NS, MX, SPF, DMARC, DKIM, DNSSEC, TTL, CAA).");
+            sb.AppendLine("- Do not invent check names like NameServers; use NS.");
         }
         if (turn.AssertContains.Count > 0) {
             sb.AppendLine("- Final response must include these literals: " + string.Join(", ", turn.AssertContains) + ".");
@@ -701,6 +724,16 @@ internal static partial class Program {
         var toolCalls = turnResult?.Result.ToolCalls ?? Array.Empty<ToolCall>();
         var toolOutputs = turnResult?.Result.ToolOutputs ?? Array.Empty<ToolOutput>();
         var noToolExecutionRetries = turnResult?.Result.NoToolExecutionRetries ?? 0;
+        var hasToolContract = TurnHasToolContract(
+            turn.MinToolCalls,
+            turn.MinToolRounds,
+            turn.RequireTools,
+            turn.RequireAnyTools,
+            turn.MinDistinctToolInputValues,
+            turn.AssertToolOutputContains,
+            turn.AssertToolOutputNotContains,
+            turn.AssertNoToolErrors,
+            turn.ForbidToolErrorCodes);
         var toolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolCalls.Count; i++) {
             var toolName = (toolCalls[i].Name ?? string.Empty).Trim();
@@ -777,7 +810,9 @@ internal static partial class Program {
             }
         }
 
-        if (turn.MaxNoToolExecutionRetries.HasValue && noToolExecutionRetries > turn.MaxNoToolExecutionRetries.Value) {
+        if (hasToolContract
+            && turn.MaxNoToolExecutionRetries.HasValue
+            && noToolExecutionRetries > turn.MaxNoToolExecutionRetries.Value) {
             failures.Add(
                 $"Expected at most {turn.MaxNoToolExecutionRetries.Value} no-tool execution retry attempt(s); observed {noToolExecutionRetries}.");
         }
