@@ -349,5 +349,38 @@ internal static partial class Program {
         AssertEqual("Unknown", unknownFromExitCode, "issue lookup interpretation marks non-zero exit as unknown");
         AssertEqual("Unknown", unknownFromMalformedJson, "issue lookup interpretation marks malformed json as unknown");
     }
+
+    private static void TestBotFeedbackIssueTitleTruncatesByTextElements() {
+        var taskText = new string('a', 89) + "\uD83D\uDE00" + "Z";
+        var title = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.BuildIssueTitleForTests(7, taskText);
+
+        var prefix = "Bot feedback (PR #7): ";
+        AssertContainsText(title, prefix, "issue title includes expected prefix");
+        var payload = title.Substring(prefix.Length);
+        AssertEqual(true, payload.EndsWith("…", StringComparison.Ordinal), "issue title adds ellipsis when truncated");
+
+        var withoutEllipsis = payload.Substring(0, payload.Length - 1);
+        AssertEqual(false, withoutEllipsis.EndsWith("Z", StringComparison.Ordinal),
+            "issue title truncation excludes characters beyond text-element limit");
+        AssertEqual(true, IsValidUtf16(withoutEllipsis),
+            "issue title truncation preserves valid UTF-16 boundaries");
+    }
+
+    private static bool IsValidUtf16(string value) {
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsHighSurrogate(ch)) {
+                if (i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1])) {
+                    return false;
+                }
+                i++;
+                continue;
+            }
+            if (char.IsLowSurrogate(ch)) {
+                return false;
+            }
+        }
+        return true;
+    }
 #endif
 }

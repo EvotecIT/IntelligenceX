@@ -292,6 +292,8 @@ internal static partial class Program {
             TestBotFeedbackIssueExistsQueryScopesOpenIssues);
         failed += Run("Todo bot feedback issue lookup interpretation handles unknown state",
             TestBotFeedbackIssueLookupInterpretationHandlesUnknownState);
+        failed += Run("Todo bot feedback issue title truncates by text elements",
+            TestBotFeedbackIssueTitleTruncatesByTextElements);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);

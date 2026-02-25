@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -43,10 +44,14 @@ internal static partial class BotFeedbackSyncRunner {
     private static string BuildIssueTitle(int prNumber, string taskText) {
         var prefix = $"Bot feedback (PR #{prNumber})";
         var trimmedTask = taskText.Trim();
-        if (trimmedTask.Length > 90) {
-            trimmedTask = trimmedTask.Substring(0, 90) + "…";
+        if (GetTextElementCount(trimmedTask) > 90) {
+            trimmedTask = TruncateToTextElements(trimmedTask, 90) + "…";
         }
         return $"{prefix}: {trimmedTask}";
+    }
+
+    internal static string BuildIssueTitleForTests(int prNumber, string taskText) {
+        return BuildIssueTitle(prNumber, taskText);
     }
 
     private static string BuildIssueBody(PrTasks pr, TaskItem task, string id) {
@@ -104,6 +109,28 @@ internal static partial class BotFeedbackSyncRunner {
         } catch {
             return IssueLookupState.Unknown;
         }
+    }
+
+    private static int GetTextElementCount(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return 0;
+        }
+        return new StringInfo(value).LengthInTextElements;
+    }
+
+    private static string TruncateToTextElements(string value, int maxTextElements) {
+        if (string.IsNullOrEmpty(value) || maxTextElements <= 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        var enumerator = StringInfo.GetTextElementEnumerator(value);
+        var taken = 0;
+        while (taken < maxTextElements && enumerator.MoveNext()) {
+            sb.Append(enumerator.GetTextElement());
+            taken++;
+        }
+        return sb.ToString();
     }
 
     private static async Task EnsureLabelAsync(string repo, string label) {

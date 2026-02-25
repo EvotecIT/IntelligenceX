@@ -133,7 +133,13 @@ internal static partial class AnalyzeRunCommand {
                     }
                 }
             }
-        } catch {
+        } catch (ArgumentException) {
+            return false;
+        } catch (IOException) {
+            return false;
+        } catch (UnauthorizedAccessException) {
+            return false;
+        } catch (NotSupportedException) {
             return false;
         }
 
