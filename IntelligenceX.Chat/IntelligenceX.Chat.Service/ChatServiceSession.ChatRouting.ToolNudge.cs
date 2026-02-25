@@ -1515,27 +1515,36 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (normalized[0] != '{') {
+        if (!TryExtractActionSelectionPayloadJson(normalized, out var payload)) {
             return false;
         }
 
-        // Cheap pre-check to avoid parsing arbitrary small JSON blobs on every request.
-        // We intentionally keep this case-sensitive: System.Text.Json property matching is case-sensitive by default.
-        if (normalized.IndexOf("\"ix_action_selection\"", StringComparison.Ordinal) < 0 || normalized.IndexOf("\"id\"", StringComparison.Ordinal) < 0) {
+        // Cheap structural pre-check to avoid parsing arbitrary blobs on every request.
+        var hasSupportedIdField = payload.IndexOf("\"id\"", StringComparison.OrdinalIgnoreCase) >= 0
+                                  || payload.IndexOf("\"action_id\"", StringComparison.OrdinalIgnoreCase) >= 0
+                                  || payload.IndexOf("\"actionid\"", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!hasSupportedIdField) {
             return false;
         }
 
         try {
-            using var doc = JsonDocument.Parse(normalized, ActionSelectionJsonOptions);
+            using var doc = JsonDocument.Parse(payload, ActionSelectionJsonOptions);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) {
                 return false;
             }
 
-            if (!doc.RootElement.TryGetProperty("ix_action_selection", out var selection) || selection.ValueKind != JsonValueKind.Object) {
+            if (!TryGetObjectPropertyCaseInsensitive(
+                    doc.RootElement,
+                    out var selection,
+                    "ix_action_selection",
+                    "ixActionSelection",
+                    "action_selection",
+                    "actionSelection")
+                || selection.ValueKind != JsonValueKind.Object) {
                 return false;
             }
 
-            if (!selection.TryGetProperty("id", out var id)) {
+            if (!TryGetObjectPropertyCaseInsensitive(selection, out var id, "id", "action_id", "actionId")) {
                 return false;
             }
 
@@ -1558,6 +1567,41 @@ internal sealed partial class ChatServiceSession {
         } catch (JsonException) {
             return false;
         }
+    }
+
+    private static bool TryExtractActionSelectionPayloadJson(string text, out string payload) {
+        payload = string.Empty;
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized[0] == '{') {
+            payload = normalized;
+            return true;
+        }
+
+        if (!normalized.StartsWith("```", StringComparison.Ordinal) || !normalized.EndsWith("```", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var firstNewline = normalized.IndexOf('\n');
+        if (firstNewline < 0 || firstNewline + 1 >= normalized.Length) {
+            return false;
+        }
+
+        var closingFenceStart = normalized.LastIndexOf("```", StringComparison.Ordinal);
+        if (closingFenceStart <= firstNewline) {
+            return false;
+        }
+
+        var extracted = normalized[(firstNewline + 1)..closingFenceStart].Trim();
+        if (extracted.Length == 0 || extracted[0] != '{') {
+            return false;
+        }
+
+        payload = extracted;
+        return true;
     }
 
     private static ActionMutability ResolveActionSelectionMutability(JsonElement selection) {
@@ -1595,7 +1639,7 @@ internal sealed partial class ChatServiceSession {
 
     private static bool TryReadSelectionBoolean(JsonElement element, string propertyName, out bool value) {
         value = false;
-        if (!element.TryGetProperty(propertyName, out var node)) {
+        if (!TryGetObjectPropertyCaseInsensitive(element, out var node, propertyName)) {
             return false;
         }
 
@@ -1625,6 +1669,31 @@ internal sealed partial class ChatServiceSession {
             default:
                 return false;
         }
+    }
+
+    private static bool TryGetObjectPropertyCaseInsensitive(JsonElement element, out JsonElement value, params string[] names) {
+        value = default;
+        if (element.ValueKind != JsonValueKind.Object || names is null || names.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < names.Length; i++) {
+            var name = (names[i] ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            foreach (var property in element.EnumerateObject()) {
+                if (!string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                value = property.Value;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryParseProtocolBoolean(string value, out bool parsed) {

@@ -30,6 +30,36 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForActionSelectionJsonWithCaseVariantKeys() {
+        var userRequest = "{\"IX_Action_Selection\":{\"ActionId\":\"act_001\",\"Title\":\"Run forest probe\",\"Request\":\"Run it.\"}}";
+        var assistantDraft = "Ok, doing it now.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForFencedActionSelectionJsonPayload() {
+        var userRequest = """
+                          ```ix_action_selection
+                          {"ix_action_selection":{"id":"act_001","title":"Run forest probe","request":"Run it."}}
+                          ```
+                          """;
+        var assistantDraft = "Ok, doing it now.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForNumericActionSelectionId() {
         var userRequest = "{\"ix_action_selection\":{\"id\":1,\"title\":\"Run\",\"request\":\"Run it.\"}}";
         var assistantDraft = "Ok, doing it now.";
@@ -1067,6 +1097,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldEnforceExecuteOrExplainContract_TriggersForMutatingActionSelectionPayloadWithNumericBoolean() {
         var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Disable account\",\"request\":\"Disable user evotec\\\\john and return confirmation.\",\"mutating\":1}}";
+        var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldEnforceExecuteOrExplainContract_TriggersForMutatingActionSelectionPayloadWithCaseVariantKeys() {
+        var userRequest = "{\"IX_Action_Selection\":{\"ActionId\":\"act_001\",\"title\":\"Disable account\",\"request\":\"Disable user evotec\\\\john and return confirmation.\",\"Mutating\":\"true\"}}";
         var result = ShouldEnforceExecuteOrExplainContractMethod.Invoke(null, new object?[] { userRequest });
 
         Assert.True(Assert.IsType<bool>(result));
