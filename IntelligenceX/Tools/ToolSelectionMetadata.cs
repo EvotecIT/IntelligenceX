@@ -89,7 +89,9 @@ public static class ToolSelectionMetadata {
             ["powershell"] = "powershell",
             ["testimox"] = "testimox",
             ["officeimo"] = "officeimo",
-            ["reviewer"] = "reviewer_setup"
+            ["reviewer"] = "reviewer_setup",
+            ["dnsclientx"] = "dns",
+            ["domaindetective"] = "dns"
         };
 
     private static readonly IReadOnlyDictionary<string, ExplicitSelectionOverride> ExplicitOverrides =
@@ -165,7 +167,43 @@ public static class ToolSelectionMetadata {
                 risk: "high",
                 tags: new[] { "smtp", "send" },
                 isHighTraffic: false,
-                isHighRisk: true)
+                isHighRisk: true),
+            ["dnsclientx_query"] = new ExplicitSelectionOverride(
+                category: "dns",
+                scope: "domain",
+                operation: "query",
+                entity: "dns",
+                risk: ToolRoutingTaxonomy.RiskLow,
+                tags: new[] { "resolver", "dns" },
+                isHighTraffic: false,
+                isHighRisk: false),
+            ["dnsclientx_ping"] = new ExplicitSelectionOverride(
+                category: "dns",
+                scope: "host",
+                operation: "probe",
+                entity: "host",
+                risk: ToolRoutingTaxonomy.RiskLow,
+                tags: new[] { "reachability", "dns" },
+                isHighTraffic: false,
+                isHighRisk: false),
+            ["domaindetective_domain_summary"] = new ExplicitSelectionOverride(
+                category: "dns",
+                scope: "domain",
+                operation: "summarize",
+                entity: "dns",
+                risk: ToolRoutingTaxonomy.RiskLow,
+                tags: new[] { "domain_posture", "dns" },
+                isHighTraffic: false,
+                isHighRisk: false),
+            ["domaindetective_network_probe"] = new ExplicitSelectionOverride(
+                category: "dns",
+                scope: "host",
+                operation: "probe",
+                entity: "host",
+                risk: ToolRoutingTaxonomy.RiskLow,
+                tags: new[] { "reachability", "dns" },
+                isHighTraffic: false,
+                isHighRisk: false)
         };
 
     private static readonly string[] RequiredExplicitOverrideToolNames =
@@ -379,6 +417,10 @@ public static class ToolSelectionMetadata {
         if (ns.IndexOf(".OfficeIMO", StringComparison.OrdinalIgnoreCase) >= 0) {
             return "officeimo";
         }
+        if (ns.IndexOf(".DnsClientX", StringComparison.OrdinalIgnoreCase) >= 0
+            || ns.IndexOf(".DomainDetective", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "dns";
+        }
         if (ns.IndexOf(".ReviewerSetup", StringComparison.OrdinalIgnoreCase) >= 0) {
             return "reviewer_setup";
         }
@@ -411,6 +453,9 @@ public static class ToolSelectionMetadata {
 
         if (string.Equals(category, "email", StringComparison.OrdinalIgnoreCase)) {
             return "message";
+        }
+        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)) {
+            return "domain";
         }
 
         if (string.Equals(category, "reviewer_setup", StringComparison.OrdinalIgnoreCase)) {
@@ -507,6 +552,9 @@ public static class ToolSelectionMetadata {
         }
         if (string.Equals(category, "email", StringComparison.OrdinalIgnoreCase)) {
             return "message";
+        }
+        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)) {
+            return "dns";
         }
 
         return ToolRoutingTaxonomy.EntityResource;

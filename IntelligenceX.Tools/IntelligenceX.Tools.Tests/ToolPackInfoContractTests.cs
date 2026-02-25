@@ -216,10 +216,37 @@ public class ToolPackInfoContractTests {
             }
 
             if (string.Equals(@case.Pack, "active_directory", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(@case.Pack, "eventlog", StringComparison.OrdinalIgnoreCase)) {
+                || string.Equals(@case.Pack, "eventlog", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(@case.Pack, "domaindetective", StringComparison.OrdinalIgnoreCase)) {
                 Assert.True(entityHandoffs.GetArrayLength() > 0);
             }
         }
+    }
+
+    [Fact]
+    public async Task DomainDetectivePackInfo_ShouldExposeStructuredAdHandoffContract() {
+        var tool = new DomainDetectivePackInfoTool(new DomainDetectiveToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("domaindetective", root.GetProperty("pack").GetString());
+
+        var entityHandoffs = root.GetProperty("entity_handoffs");
+        Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+        Assert.True(entityHandoffs.GetArrayLength() > 0);
+
+        var handoff = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "domain_context_to_ad_scope", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, handoff.ValueKind);
+
+        var sourceTools = ReadStringArray(handoff.GetProperty("source_tools"));
+        Assert.Contains("domaindetective_domain_summary", sourceTools, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domaindetective_network_probe", sourceTools, StringComparer.OrdinalIgnoreCase);
+
+        var targetTools = ReadStringArray(handoff.GetProperty("target_tools"));
+        Assert.Contains("ad_scope_discovery", targetTools, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_directory_discovery_diagnostics", targetTools, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
