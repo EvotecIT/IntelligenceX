@@ -530,12 +530,16 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
         failed += Run("Analyze run internal duplication tokenized javascript",
             TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
+        failed += Run("Analyze run internal duplication tokenized mts",
+            TestAnalyzeRunInternalDuplicationTokenizesTypeScriptModuleExtension);
         failed += Run("Analyze run internal duplication ignores javascript imports",
             TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports);
         failed += Run("Analyze run internal duplication ignores PowerShell using statements",
             TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements);
         failed += Run("Analyze run internal duplication tokenized python",
             TestAnalyzeRunInternalDuplicationTokenizesPython);
+        failed += Run("Analyze run internal duplication tokenized pyi",
+            TestAnalyzeRunInternalDuplicationTokenizesPythonStubExtension);
         failed += Run("Analyze run internal duplication ignores python imports",
             TestAnalyzeRunInternalDuplicationIgnoresPythonImports);
         failed += Run("Analyze run internal duplication python triple-quote comment handling",
@@ -544,8 +548,14 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
         failed += Run("Analyze run duplication language threshold",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThreshold);
+        failed += Run("Analyze run duplication language threshold mts",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesTypeScriptModuleExtension);
+        failed += Run("Analyze run duplication language threshold pyi",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesPythonStubExtension);
         failed += Run("Analyze run duplication language-only tag activates rule",
             TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
+        failed += Run("Duplication metrics store modern extension language inference",
+            TestDuplicationMetricsStoreInfersLanguageForModernExtensions);
         failed += RunAnalysisPolicyReportingTests();
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);

@@ -37,8 +37,11 @@ internal static partial class AnalyzeRunCommand {
         ".mjs",
         ".cjs",
         ".ts",
+        ".mts",
+        ".cts",
         ".tsx",
-        ".py"
+        ".py",
+        ".pyi"
     };
     private static readonly string[] MaxLinesSupportedTagPrefixes = {
         MaxLinesTagPrefix,

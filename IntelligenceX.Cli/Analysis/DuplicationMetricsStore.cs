@@ -88,8 +88,11 @@ internal static class DuplicationMetricsStore {
             ".mjs" => "javascript",
             ".cjs" => "javascript",
             ".ts" => "typescript",
+            ".mts" => "typescript",
+            ".cts" => "typescript",
             ".tsx" => "typescript",
             ".py" => "python",
+            ".pyi" => "python",
             _ => "unknown"
         };
     }

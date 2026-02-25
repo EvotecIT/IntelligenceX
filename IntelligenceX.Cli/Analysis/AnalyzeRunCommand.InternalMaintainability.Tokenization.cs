@@ -29,10 +29,13 @@ internal static partial class AnalyzeRunCommand {
                 extension.Equals(".mjs", StringComparison.OrdinalIgnoreCase) ||
                 extension.Equals(".cjs", StringComparison.OrdinalIgnoreCase) ||
                 extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".mts", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".cts", StringComparison.OrdinalIgnoreCase) ||
                 extension.Equals(".tsx", StringComparison.OrdinalIgnoreCase)) {
                 return BuildSignificantLinesFromJavaScriptTokens(content);
             }
-            if (extension.Equals(".py", StringComparison.OrdinalIgnoreCase)) {
+            if (extension.Equals(".py", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".pyi", StringComparison.OrdinalIgnoreCase)) {
                 return BuildSignificantLinesFromPythonTokens(content);
             }
             return BuildSignificantLinesFallback(content);
