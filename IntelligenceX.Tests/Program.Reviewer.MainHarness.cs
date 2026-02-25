@@ -275,6 +275,8 @@ internal static partial class Program {
         failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndDropsStaleTasks);
         failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
         failed += Run("Todo bot feedback update section removes closed PR blocks", TestBotFeedbackUpdateSectionRemovesClosedPrBlocks);
+        failed += Run("Todo bot feedback update section pruning preserves neighboring details blocks",
+            TestBotFeedbackUpdateSectionPruningDoesNotDeleteNeighboringDetailsBlocks);
         failed += Run("Todo bot feedback update section clears when no open PR tasks", TestBotFeedbackUpdateSectionWithNoOpenPrsClearsBlocks);
         failed += Run("Todo bot feedback parse tasks uses merge-blocker sections", TestBotFeedbackParseTasksUsesMergeBlockerSections);
         failed += Run("Todo bot feedback parse tasks legacy fallback", TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders);

@@ -146,6 +146,57 @@ internal static partial class Program {
         AssertEqual(0, CountOccurrences(updated, "PR #99"), "closed PR block removed");
     }
 
+    private static void TestBotFeedbackUpdateSectionPruningDoesNotDeleteNeighboringDetailsBlocks() {
+        var section =
+            "## Review Feedback Backlog (Bots)\n" +
+            "<details>\n" +
+            "<summary>PR #1 One</summary>\n" +
+            "\n" +
+            "- [ ] Keep one\n" +
+            "</details>\n\n" +
+            "<details>\n" +
+            "<summary>PR #99 Closed</summary>\n" +
+            "\n" +
+            "- [ ] Remove this\n" +
+            "<details>\n" +
+            "<summary>Internal note</summary>\n" +
+            "\n" +
+            "- [ ] Nested detail\n" +
+            "</details>\n" +
+            "</details>\n\n" +
+            "<details>\n" +
+            "<summary>PR #2 Two</summary>\n" +
+            "\n" +
+            "- [ ] Keep two\n" +
+            "</details>\n\n" +
+            "<details>\n" +
+            "<summary>General Notes</summary>\n" +
+            "\n" +
+            "- [ ] Keep notes block\n" +
+            "</details>\n\n";
+
+        var prs = new[] {
+            new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.PrTasks(
+                1,
+                "One",
+                "https://example/pr/1",
+                new[] { new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.TaskItem(false, "Keep one", string.Empty) }),
+            new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.PrTasks(
+                2,
+                "Two",
+                "https://example/pr/2",
+                new[] { new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.TaskItem(false, "Keep two", string.Empty) })
+        };
+
+        var updated = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.UpdateSection(section, prs, "\n", out var changed);
+        AssertEqual(true, changed, "section changed");
+        AssertEqual(0, CountOccurrences(updated, "PR #99"), "closed PR removed");
+        AssertContainsText(updated, "<summary>PR #1 One</summary>\n", "pr1 preserved");
+        AssertContainsText(updated, "<summary>PR #2 Two</summary>\n", "pr2 preserved");
+        AssertContainsText(updated, "<summary>General Notes</summary>\n", "non-PR details preserved");
+        AssertContainsText(updated, "Keep notes block", "non-PR details content preserved");
+    }
+
     private static void TestBotFeedbackUpdateSectionWithNoOpenPrsClearsBlocks() {
         var section =
             "## Review Feedback Backlog (Bots)\n" +
