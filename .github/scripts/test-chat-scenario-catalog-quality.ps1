@@ -115,6 +115,13 @@ if ($files.Count -eq 0) {
     throw "No scenario files matched '$Filter' in '$resolvedScenarioDir'."
 }
 
+$usedDefaultFilter = -not $PSBoundParameters.ContainsKey('Filter')
+$selectedMixedDomainAmbiguityScenarioCount = @(
+    $files | Where-Object {
+        $_.Name.StartsWith("mixed-domain-ambiguity-", [StringComparison]::OrdinalIgnoreCase)
+    }
+).Count
+
 $failures = New-Object System.Collections.Generic.List[string]
 $summaries = New-Object System.Collections.Generic.List[string]
 $mixedDomainAmbiguityScenarioCount = 0
@@ -313,7 +320,7 @@ foreach ($file in $files) {
     $summaries.Add(("{0}: turns={1}, tool_contract_turns={2}" -f $file.Name, $turns.Count, $toolContractTurns)) | Out-Null
 }
 
-if ($mixedDomainAmbiguityScenarioCount -lt 2) {
+if (($usedDefaultFilter -or $selectedMixedDomainAmbiguityScenarioCount -gt 0) -and $mixedDomainAmbiguityScenarioCount -lt 2) {
     $failures.Add("Expected at least two mixed-domain ambiguity scenarios (`mixed-domain-ambiguity-*-10-turn.json`) for routing resilience coverage.") | Out-Null
 }
 
