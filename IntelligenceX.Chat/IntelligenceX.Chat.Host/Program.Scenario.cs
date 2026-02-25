@@ -148,7 +148,8 @@ internal static partial class Program {
         var requiresToolExecution = minToolCalls > 0
                                     || minToolRounds > 0
                                     || turn.RequireTools.Count > 0
-                                    || turn.RequireAnyTools.Count > 0;
+                                    || turn.RequireAnyTools.Count > 0
+                                    || turn.MinDistinctToolInputValues.Count > 0;
         var requiresTimestampShape = turn.AssertContains.Any(static value => value.Contains("UTC", StringComparison.OrdinalIgnoreCase))
                                      || turn.AssertMatchesRegex.Any(static value => value.Contains(@"\d{4}-\d{2}-\d{2}", StringComparison.Ordinal));
         var requiresEventLogTool = TurnRequiresToolPrefix(turn, "eventlog_");
@@ -178,6 +179,14 @@ internal static partial class Program {
 
         if (turn.ForbidTools.Count > 0) {
             sb.AppendLine("- Forbidden tool calls: " + string.Join(", ", turn.ForbidTools) + ".");
+        }
+
+        if (turn.MinDistinctToolInputValues.Count > 0) {
+            var requirements = turn.MinDistinctToolInputValues
+                .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(static pair => pair.Key + ">=" + Math.Max(0, pair.Value))
+                .ToArray();
+            sb.AppendLine("- Distinct tool input value requirements: " + string.Join(", ", requirements) + ".");
         }
 
         sb.AppendLine("- Do not ask for permission/confirmation before the first required tool call.");
@@ -246,6 +255,7 @@ internal static partial class Program {
         int? minToolRounds,
         IReadOnlyList<string> requireTools,
         IReadOnlyList<string> requireAnyTools,
+        IReadOnlyDictionary<string, int> minDistinctToolInputValues,
         IReadOnlyList<string> assertToolOutputContains,
         IReadOnlyList<string> assertToolOutputNotContains,
         bool assertNoToolErrors,
@@ -254,6 +264,7 @@ internal static partial class Program {
                || Math.Max(0, minToolRounds ?? 0) > 0
                || requireTools.Count > 0
                || requireAnyTools.Count > 0
+               || minDistinctToolInputValues.Count > 0
                || assertToolOutputContains.Count > 0
                || assertToolOutputNotContains.Count > 0
                || assertNoToolErrors
@@ -357,6 +368,7 @@ internal static partial class Program {
                     requireTools: Array.Empty<string>(),
                     requireAnyTools: Array.Empty<string>(),
                     forbidTools: Array.Empty<string>(),
+                    minDistinctToolInputValues: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                     assertToolOutputContains: Array.Empty<string>(),
                     assertToolOutputNotContains: Array.Empty<string>(),
                     assertNoToolErrors: false,
@@ -386,6 +398,7 @@ internal static partial class Program {
             var requireTools = ReadScenarioStringList(element, "require_tools");
             var requireAnyTools = ReadScenarioStringList(element, "require_any_tools");
             var forbidTools = ReadScenarioStringList(element, "forbid_tools");
+            var minDistinctToolInputValues = ReadScenarioMinDistinctToolInputValues(element, "min_distinct_tool_input_values");
             var assertToolOutputContains = ReadScenarioStringList(element, "assert_tool_output_contains");
             var assertToolOutputNotContains = ReadScenarioStringList(element, "assert_tool_output_not_contains");
             var assertNoToolErrors = ReadScenarioOptionalBoolean(element, "assert_no_tool_errors", defaultValue: false);
@@ -395,6 +408,7 @@ internal static partial class Program {
                 minToolRounds,
                 requireTools,
                 requireAnyTools,
+                minDistinctToolInputValues,
                 assertToolOutputContains,
                 assertToolOutputNotContains,
                 assertNoToolErrors,
@@ -431,6 +445,7 @@ internal static partial class Program {
                 requireTools,
                 requireAnyTools,
                 forbidTools,
+                minDistinctToolInputValues,
                 assertToolOutputContains,
                 assertToolOutputNotContains,
                 assertNoToolErrors,
@@ -475,6 +490,7 @@ internal static partial class Program {
                 requireTools: Array.Empty<string>(),
                 requireAnyTools: Array.Empty<string>(),
                 forbidTools: Array.Empty<string>(),
+                minDistinctToolInputValues: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                 assertToolOutputContains: Array.Empty<string>(),
                 assertToolOutputNotContains: Array.Empty<string>(),
                 assertNoToolErrors: false,
@@ -496,6 +512,7 @@ internal static partial class Program {
         IReadOnlyList<string> requireTools,
         IReadOnlyList<string> requireAnyTools,
         IReadOnlyList<string> forbidTools,
+        IReadOnlyDictionary<string, int> minDistinctToolInputValues,
         IReadOnlyList<string> assertToolOutputContains,
         IReadOnlyList<string> assertToolOutputNotContains,
         bool assertNoToolErrors,
@@ -506,6 +523,7 @@ internal static partial class Program {
             minToolRounds,
             requireTools,
             requireAnyTools,
+            minDistinctToolInputValues,
             assertToolOutputContains,
             assertToolOutputNotContains,
             assertNoToolErrors,
@@ -523,6 +541,7 @@ internal static partial class Program {
             requireTools,
             requireAnyTools,
             forbidTools,
+            minDistinctToolInputValues,
             assertToolOutputContains,
             assertToolOutputNotContains,
             assertNoToolErrors,
@@ -582,6 +601,46 @@ internal static partial class Program {
             }
         }
         return assertions;
+    }
+
+    private static IReadOnlyDictionary<string, int> ReadScenarioMinDistinctToolInputValues(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var valueElement)) {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (valueElement.ValueKind == JsonValueKind.Null || valueElement.ValueKind == JsonValueKind.Undefined) {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (valueElement.ValueKind != JsonValueKind.Object) {
+            throw new InvalidOperationException($"'{propertyName}' must be an object mapping input keys to integers >= 0.");
+        }
+
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in valueElement.EnumerateObject()) {
+            var key = (property.Name ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            int parsed;
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out var numberValue)) {
+                parsed = numberValue;
+            } else if (property.Value.ValueKind == JsonValueKind.String
+                       && int.TryParse(property.Value.GetString(), out var stringValue)) {
+                parsed = stringValue;
+            } else {
+                throw new InvalidOperationException($"'{propertyName}.{key}' must be an integer >= 0.");
+            }
+
+            if (parsed < 0) {
+                throw new InvalidOperationException($"'{propertyName}.{key}' must be >= 0.");
+            }
+
+            result[key] = parsed;
+        }
+
+        return result;
     }
 
     private static int? ReadScenarioOptionalNonNegativeInt(JsonElement element, string propertyName) {
@@ -697,6 +756,25 @@ internal static partial class Program {
         var toolRounds = turnResult?.Metrics.ToolRounds ?? 0;
         if (turn.MinToolRounds.HasValue && toolRounds < turn.MinToolRounds.Value) {
             failures.Add($"Expected at least {turn.MinToolRounds.Value} tool round(s); observed {toolRounds}.");
+        }
+
+        if (turn.MinDistinctToolInputValues.Count > 0) {
+            foreach (var requirement in turn.MinDistinctToolInputValues) {
+                var inputKey = requirement.Key;
+                var minDistinct = Math.Max(0, requirement.Value);
+                if (minDistinct == 0) {
+                    continue;
+                }
+
+                var observedValues = CollectDistinctToolInputValuesByKey(toolCalls, inputKey);
+                if (observedValues.Count >= minDistinct) {
+                    continue;
+                }
+
+                failures.Add(
+                    $"Expected at least {minDistinct} distinct '{inputKey}' tool input value(s); observed {observedValues.Count}."
+                    + " Values: " + FormatValuesForAssertion(observedValues.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray()) + ".");
+            }
         }
 
         if (turn.MaxNoToolExecutionRetries.HasValue && noToolExecutionRetries > turn.MaxNoToolExecutionRetries.Value) {
@@ -897,6 +975,72 @@ internal static partial class Program {
         }
 
         return counts;
+    }
+
+    private static HashSet<string> CollectDistinctToolInputValuesByKey(IReadOnlyList<ToolCall> toolCalls, string inputKey) {
+        var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (toolCalls.Count == 0 || string.IsNullOrWhiteSpace(inputKey)) {
+            return values;
+        }
+
+        var normalizedKey = inputKey.Trim();
+        for (var i = 0; i < toolCalls.Count; i++) {
+            var args = toolCalls[i].Arguments;
+            if (args is null) {
+                continue;
+            }
+
+            if (!TryReadToolInputValueByKey(args, normalizedKey, out var value) || string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            values.Add(value.Trim());
+        }
+
+        return values;
+    }
+
+    private static bool TryReadToolInputValueByKey(IxJsonObject arguments, string inputKey, out string value) {
+        value = string.Empty;
+        if (arguments is null || string.IsNullOrWhiteSpace(inputKey)) {
+            return false;
+        }
+
+        var normalizedKey = inputKey.Trim();
+        if (arguments.TryGetValue(normalizedKey, out var exactValue) && TryNormalizeToolInputValue(exactValue, out value)) {
+            return true;
+        }
+
+        foreach (var pair in arguments) {
+            if (!string.Equals(pair.Key, normalizedKey, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (TryNormalizeToolInputValue(pair.Value, out value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryNormalizeToolInputValue(IxJsonValue? value, out string normalized) {
+        normalized = string.Empty;
+        if (value is null) {
+            return false;
+        }
+
+        switch (value.Kind) {
+            case IxJsonValueKind.String:
+                normalized = (value.AsString() ?? string.Empty).Trim();
+                return normalized.Length > 0;
+            case IxJsonValueKind.Number:
+            case IxJsonValueKind.Boolean:
+                normalized = value.ToString().Trim();
+                return normalized.Length > 0;
+            default:
+                return false;
+        }
     }
 
     private static string BuildToolCallSignature(ToolCall call) {
@@ -1363,6 +1507,7 @@ internal static partial class Program {
             IReadOnlyList<string> requireTools,
             IReadOnlyList<string> requireAnyTools,
             IReadOnlyList<string> forbidTools,
+            IReadOnlyDictionary<string, int> minDistinctToolInputValues,
             IReadOnlyList<string> assertToolOutputContains,
             IReadOnlyList<string> assertToolOutputNotContains,
             bool assertNoToolErrors,
@@ -1384,6 +1529,7 @@ internal static partial class Program {
             RequireTools = requireTools ?? Array.Empty<string>();
             RequireAnyTools = requireAnyTools ?? Array.Empty<string>();
             ForbidTools = forbidTools ?? Array.Empty<string>();
+            MinDistinctToolInputValues = minDistinctToolInputValues ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             AssertToolOutputContains = assertToolOutputContains ?? Array.Empty<string>();
             AssertToolOutputNotContains = assertToolOutputNotContains ?? Array.Empty<string>();
             AssertNoToolErrors = assertNoToolErrors;
@@ -1407,6 +1553,7 @@ internal static partial class Program {
         public IReadOnlyList<string> RequireTools { get; }
         public IReadOnlyList<string> RequireAnyTools { get; }
         public IReadOnlyList<string> ForbidTools { get; }
+        public IReadOnlyDictionary<string, int> MinDistinctToolInputValues { get; }
         public IReadOnlyList<string> AssertToolOutputContains { get; }
         public IReadOnlyList<string> AssertToolOutputNotContains { get; }
         public bool AssertNoToolErrors { get; }

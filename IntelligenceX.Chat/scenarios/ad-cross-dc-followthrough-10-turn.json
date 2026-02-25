@@ -29,6 +29,7 @@
       "name": "Continue across all other DCs",
       "user": "Now continue and run the same check for all other discovered DCs in this turn. Do not stop after the first host.",
       "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
       "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
       "assert_no_questions": true
     },
