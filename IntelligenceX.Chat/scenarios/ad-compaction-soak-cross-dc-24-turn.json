@@ -1,0 +1,173 @@
+{
+  "name": "ad-compaction-soak-cross-dc-24-turn",
+  "tags": ["ad", "strict", "live", "compaction", "soak", "continuation", "cross-dc", "long-run", "eventlog"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Scope and discover DCs",
+      "user": "Discover all domain controllers for corp.fabrikam.com and lock this run to that scope.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "AD0 reboot baseline",
+      "user": "Start on AD0: gather reboot and startup markers (1074, 6008, 41, 6005, 6006) with UTC timestamps.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*", "eventlog_top_events"]
+    },
+    {
+      "name": "Cross-DC reboot continuation",
+      "user": "Continue the same reboot-marker query across all remaining discovered DCs in this turn.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"]
+    },
+    {
+      "name": "Reboot correlation summary",
+      "user": "Summarize which reboot markers are shared across DCs versus host-local."
+    },
+    {
+      "name": "LDAP baseline on AD0",
+      "user": "Validate LDAP bind/search health on AD0 and capture concrete failures.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*ldap*", "ad_ldap_query*"]
+    },
+    {
+      "name": "LDAP continuation on remaining DCs",
+      "user": "Continue the same LDAP validation across all remaining DCs in this turn.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["ad_*ldap*", "ad_ldap_query*"]
+    },
+    {
+      "name": "ADWS baseline on AD0",
+      "user": "Validate ADWS health and responsiveness on AD0.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*adws*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "ADWS continuation on remaining DCs",
+      "user": "Continue ADWS validation across all remaining discovered DCs in this turn.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["ad_*adws*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "Replication baseline snapshot",
+      "user": "Collect replication health baseline and current replication blockers.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*replication*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "Replication continuation across DCs",
+      "user": "Continue replication checks across all remaining DCs in this turn and surface any lag or errors.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["ad_*replication*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "System and Directory Service failures on AD0",
+      "user": "On AD0, gather top System and Directory Service failure signatures for the same analysis window.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_top_events"]
+    },
+    {
+      "name": "System and Directory Service continuation",
+      "user": "Continue that failure-signature collection across all remaining DCs in this turn.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_top_events"]
+    },
+    {
+      "name": "Mid-run evidence ledger",
+      "user": "Return a mid-run evidence ledger grouped by DC and by signal type.",
+      "assert_contains": ["evidence", "DC"]
+    },
+    {
+      "name": "Recurring error baseline",
+      "user": "On AD0, query the top recurring errors over a longer lookback window.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*stats*", "eventlog_top_events", "eventlog_*query*"]
+    },
+    {
+      "name": "Recurring error continuation",
+      "user": "Continue recurring-error analysis across all remaining DCs in this turn.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*stats*", "eventlog_top_events", "eventlog_*query*"]
+    },
+    {
+      "name": "Role and scope refresh",
+      "user": "Refresh domain scope and controller-role context before final correlation.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*scope*", "ad_*discover*"]
+    },
+    {
+      "name": "Long-window baseline on AD0",
+      "user": "On AD0, collect a seven-day baseline for reboot, LDAP, ADWS, and replication-related failures.",
+      "assert_no_questions": true,
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "ad_*replication*", "ad_*ldap*", "ad_*adws*"]
+    },
+    {
+      "name": "Long-window continuation on remaining DCs",
+      "user": "Continue that seven-day baseline collection across all remaining discovered DCs in this turn.",
+      "assert_no_questions": true,
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "ad_*replication*", "ad_*ldap*", "ad_*adws*"]
+    },
+    {
+      "name": "Before-after comparison",
+      "user": "Compare the pre-reboot and post-reboot behavior windows and call out material changes."
+    },
+    {
+      "name": "Top blockers by domain impact",
+      "user": "Rank current blockers by domain impact and confidence."
+    },
+    {
+      "name": "Targeted remediation sequence",
+      "user": "Provide a targeted remediation sequence with one fast validation per blocker.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    },
+    {
+      "name": "Operator handoff draft",
+      "user": "Prepare an operator handoff summary with what was checked and what remains.",
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    },
+    {
+      "name": "Final unresolved blockers",
+      "user": "List unresolved blockers only, with impacted DCs and evidence references.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    },
+    {
+      "name": "Compact final checklist",
+      "user": "Return a compact final checklist and confidence notes with no follow-up questions.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}

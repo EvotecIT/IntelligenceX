@@ -96,6 +96,7 @@ Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-reboot-local-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-replication-health-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-cross-dc-followthrough-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-compaction-soak-cross-dc-24-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-eventlog-correlation-partial-failures-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
@@ -110,6 +111,14 @@ pwsh .\Build\Run-ChatScenarioSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -Filter "ad-*-10-turn.json" `
   -OutDir .\artifacts\chat-scenarios
+```
+
+Run long-run compaction soak scenarios (20+ turns) with strict contracts:
+
+```powershell
+pwsh .\Build\Run-ChatCompactionSoakSuite.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -OutDir .\artifacts\chat-compaction-soak
 ```
 
 Optional flags:
