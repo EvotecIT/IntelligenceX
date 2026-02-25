@@ -174,6 +174,28 @@ internal static partial class Program {
             "external runner generic failure message retains exit code");
     }
 
+    private static void TestAnalyzeRunExternalFailureMessageRecognizesToolSpecificUnavailableMarkers() {
+        var unavailableByToolSpecificMarker = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+            languageLabel: "Python",
+            command: "ruff",
+            optionName: "--ruff-command",
+            exitCode: 2,
+            stdOut: string.Empty,
+            stdErr: "Traceback (most recent call last): ModuleNotFoundError: No module named ruff");
+        AssertContainsText(unavailableByToolSpecificMarker, "analysis command 'ruff' is unavailable",
+            "external runner unavailable message recognizes ruff-specific missing-module marker");
+
+        var genericForDifferentTool = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+            languageLabel: "JavaScript/TypeScript",
+            command: "npx",
+            optionName: "--npx-command",
+            exitCode: 2,
+            stdOut: string.Empty,
+            stdErr: "Traceback (most recent call last): ModuleNotFoundError: No module named ruff");
+        AssertContainsText(genericForDifferentTool, "analysis returned exit code 2",
+            "external runner tool-specific marker does not leak to unrelated command");
+    }
+
     private static void TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories() {
         var workspace = Path.Combine(Path.GetTempPath(), "ix-source-detect-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
@@ -278,6 +300,39 @@ internal static partial class Program {
 
             AssertEqual(true, hasTypeScript, "source inventory captures modern TypeScript module extension");
             AssertEqual(true, hasPython, "source inventory captures Python stub extension");
+        } finally {
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunWorkspaceSourceInventoryKeepsTrackedExtensionsOnly() {
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-filtered-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            var src = Path.Combine(workspace, "src");
+            Directory.CreateDirectory(src);
+            File.WriteAllText(Path.Combine(src, "main.ts"), "export const answer = 42;");
+            File.WriteAllText(Path.Combine(src, "notes.randomext"), "ignored");
+
+            var inventory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.DiscoverWorkspaceSourceInventoryForTests(workspace);
+            AssertEqual(0, inventory.SkippedEnumerations, "source inventory tracked-only diagnostics has zero skipped paths");
+
+            var hasTypeScript = false;
+            var hasRandomExtension = false;
+            foreach (var extension in inventory.Extensions) {
+                if (string.Equals(extension, ".ts", StringComparison.OrdinalIgnoreCase)) {
+                    hasTypeScript = true;
+                } else if (string.Equals(extension, ".randomext", StringComparison.OrdinalIgnoreCase)) {
+                    hasRandomExtension = true;
+                }
+            }
+
+            AssertEqual(true, hasTypeScript, "source inventory retains tracked extension");
+            AssertEqual(false, hasRandomExtension, "source inventory ignores untracked extensions");
         } finally {
             try {
                 Directory.Delete(workspace, recursive: true);

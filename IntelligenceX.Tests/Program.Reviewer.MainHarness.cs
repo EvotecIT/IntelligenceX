@@ -128,6 +128,8 @@ internal static partial class Program {
             TestAnalyzeGateRuleIdsFilterCanNarrowScopeWithoutTypes);
         failed += Run("Analyze gate ruleIds include outside-pack findings",
             TestAnalyzeGateRuleIdsFilterIncludesOutsidePackFindings);
+        failed += Run("Analyze gate outside-pack summary counts explicit ruleIds with type filter",
+            TestAnalyzeGateOutsidePackSummaryCountsRuleIdIncludesWithTypeFilter);
         failed += Run("Analyze gate ruleIds filter adds to type filtering",
             TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering);
         failed += Run("Analyze gate filters normalize whitespace and case",
@@ -398,6 +400,8 @@ internal static partial class Program {
             TestAnalyzeRunPythonOutputFileFallbackDetection);
         failed += Run("Analyze run external runner missing command message classification",
             TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
+        failed += Run("Analyze run external runner recognizes tool-specific unavailable markers",
+            TestAnalyzeRunExternalFailureMessageRecognizesToolSpecificUnavailableMarkers);
         failed += Run("Analyze run workspace source detection skips excluded directories",
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
@@ -406,6 +410,8 @@ internal static partial class Program {
             TestAnalyzeRunWorkspaceSourceDetectionFindsPowerShellModuleFiles);
         failed += Run("Analyze run workspace source inventory captures multiple extensions",
             TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions);
+        failed += Run("Analyze run workspace source inventory keeps tracked extensions only",
+            TestAnalyzeRunWorkspaceSourceInventoryKeepsTrackedExtensionsOnly);
         failed += Run("Analyze run javascript selectors ignore mismatched tools",
             TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
         failed += Run("Analyze run python selected rule ids ignore mismatched tools",

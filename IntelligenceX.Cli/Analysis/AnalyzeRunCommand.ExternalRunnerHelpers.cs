@@ -5,7 +5,7 @@ using System.IO;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
-    private static readonly string[] CommandUnavailableMarkers = {
+    private static readonly string[] CommonCommandUnavailableMarkers = {
         "not recognized as an internal or external command",
         "is not recognized as an internal or external command",
         "no such file or directory",
@@ -14,6 +14,15 @@ internal static partial class AnalyzeRunCommand {
         "command not found",
         "could not determine executable to run"
     };
+    private static readonly Dictionary<string, string[]> CommandUnavailableMarkersByTool =
+        new(StringComparer.OrdinalIgnoreCase) {
+            ["npx"] = new[] {
+                "npm err! could not determine executable to run"
+            },
+            ["ruff"] = new[] {
+                "no module named ruff"
+            }
+        };
     private static readonly char[] PathSeparators = {
         Path.DirectorySeparatorChar,
         Path.AltDirectorySeparatorChar
@@ -30,7 +39,7 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static string BuildExternalRunnerFailureMessage(string languageLabel, string command, string optionName, CommandResult result) {
-        if (IsCommandUnavailable(result)) {
+        if (IsCommandUnavailable(command, result)) {
             return $"{languageLabel} analysis command '{command}' is unavailable (exit code {result.ExitCode}). " +
                    $"Install/configure the tool or override it with {optionName}.";
         }
@@ -38,7 +47,7 @@ internal static partial class AnalyzeRunCommand {
         return $"{languageLabel} analysis returned exit code {result.ExitCode}.";
     }
 
-    private static bool IsCommandUnavailable(CommandResult result) {
+    private static bool IsCommandUnavailable(string command, CommandResult result) {
         if (result.ExitCode == 127) {
             return true;
         }
@@ -48,21 +57,70 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
 
-        return ContainsAnyCommandUnavailableMarker(text);
+        return ContainsAnyCommandUnavailableMarker(command, text);
     }
 
-    private static bool ContainsAnyCommandUnavailableMarker(string text) {
+    private static bool ContainsAnyCommandUnavailableMarker(string command, string text) {
         if (string.IsNullOrWhiteSpace(text)) {
             return false;
         }
 
-        foreach (var marker in CommandUnavailableMarkers) {
+        foreach (var marker in CommonCommandUnavailableMarkers) {
             if (text.Contains(marker, StringComparison.Ordinal)) {
                 return true;
             }
         }
 
+        if (TryGetCommandUnavailableMarkers(command, out var commandSpecificMarkers)) {
+            foreach (var marker in commandSpecificMarkers) {
+                if (text.Contains(marker, StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+        }
+
         return false;
+    }
+
+    private static bool TryGetCommandUnavailableMarkers(string command, out IReadOnlyList<string> markers) {
+        markers = Array.Empty<string>();
+        var commandKey = ResolveCommandKey(command);
+        if (string.IsNullOrWhiteSpace(commandKey)) {
+            return false;
+        }
+
+        if (!CommandUnavailableMarkersByTool.TryGetValue(commandKey, out var configuredMarkers) ||
+            configuredMarkers is null ||
+            configuredMarkers.Length == 0) {
+            return false;
+        }
+
+        markers = configuredMarkers;
+        return true;
+    }
+
+    private static string ResolveCommandKey(string command) {
+        if (string.IsNullOrWhiteSpace(command)) {
+            return string.Empty;
+        }
+
+        var trimmed = command.Trim();
+        if (trimmed.Length == 0) {
+            return string.Empty;
+        }
+
+        var firstToken = trimmed.Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries)[0];
+        var unquoted = firstToken.Trim('\"', '\'');
+        if (string.IsNullOrWhiteSpace(unquoted)) {
+            return string.Empty;
+        }
+
+        var fileName = Path.GetFileName(unquoted);
+        if (string.IsNullOrWhiteSpace(fileName)) {
+            return string.Empty;
+        }
+
+        return Path.GetFileNameWithoutExtension(fileName).Trim().ToLowerInvariant();
     }
 
     private static bool WorkspaceContainsAnySourceFile(string workspace, params string[] extensions) {
@@ -148,7 +206,7 @@ internal static partial class AnalyzeRunCommand {
                 }
 
                 var extension = Path.GetExtension(path);
-                if (!string.IsNullOrWhiteSpace(extension)) {
+                if (SourceLanguageConventions.IsTrackedSourceExtension(extension)) {
                     discoveredExtensions.Add(extension);
                 }
             }

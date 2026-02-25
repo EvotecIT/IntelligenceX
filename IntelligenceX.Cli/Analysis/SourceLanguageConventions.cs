@@ -35,6 +35,7 @@ internal static class SourceLanguageConventions {
         string.Join(",", JavaScriptSourceExtensions);
 
     private static readonly Dictionary<string, string> LanguageByExtension = BuildLanguageByExtension();
+    private static readonly HashSet<string> TrackedSourceExtensions = BuildTrackedSourceExtensions();
 
     internal static string ResolveLanguageFromPath(string? path) {
         var extension = NormalizeExtension(Path.GetExtension(path ?? string.Empty));
@@ -53,6 +54,11 @@ internal static class SourceLanguageConventions {
 
     internal static bool IsPythonExtension(string? extension) {
         return HasExtension(PythonSourceExtensions, extension);
+    }
+
+    internal static bool IsTrackedSourceExtension(string? extension) {
+        var normalized = NormalizeExtension(extension);
+        return !string.IsNullOrWhiteSpace(normalized) && TrackedSourceExtensions.Contains(normalized);
     }
 
     private static bool HasExtension(IReadOnlyList<string> knownExtensions, string? extension) {
@@ -108,5 +114,23 @@ internal static class SourceLanguageConventions {
         }
 
         return map;
+    }
+
+    private static HashSet<string> BuildTrackedSourceExtensions() {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var extension in CSharpSourceExtensions) {
+            set.Add(extension);
+        }
+        foreach (var extension in PowerShellSourceExtensions) {
+            set.Add(extension);
+        }
+        foreach (var extension in JavaScriptSourceExtensions) {
+            set.Add(extension);
+        }
+        foreach (var extension in PythonSourceExtensions) {
+            set.Add(extension);
+        }
+
+        return set;
     }
 }

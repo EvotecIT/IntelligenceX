@@ -152,7 +152,6 @@ internal static partial class AnalyzeGateCommand {
             }
             var isEnabled = enabledRuleIds.Contains(ruleId);
             var isExplicitRuleIdMatch = gateRuleIds.Contains(ruleId);
-            var countAsOutsidePackRuleIdInclude = false;
             if (!isEnabled) {
                 // Track outside-pack findings before type/rule filters so summary reporting reflects
                 // total outside-pack exposure, not only the subset that survives gate filters.
@@ -161,16 +160,15 @@ internal static partial class AnalyzeGateCommand {
                     continue;
                 }
                 if (!analysisSettings.Gate.IncludeOutsidePackRules && isExplicitRuleIdMatch) {
-                    countAsOutsidePackRuleIdInclude = true;
+                    // Count explicit gate ruleId includes even if later type filters suppress the
+                    // violation; this keeps outside-pack summary diagnostics policy-oriented.
+                    outsidePackIncludedByRuleId++;
                 }
             }
 
             var type = ResolveRuleType(ruleId, catalog, fallback: "unknown");
             if (!gateFilters.Matches(ruleId, type)) {
                 continue;
-            }
-            if (countAsOutsidePackRuleIdInclude) {
-                outsidePackIncludedByRuleId++;
             }
             violations.Add(finding);
         }
