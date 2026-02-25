@@ -283,25 +283,33 @@ internal sealed partial class ChatServiceSession {
         }
 
         var i = 0;
-        while (i < normalized.Length && char.IsDigit(normalized[i])) {
+        var parsed = 0;
+        while (i < normalized.Length) {
+            var digit = CharUnicodeInfo.GetDecimalDigitValue(normalized, i);
+            if (digit < 0) {
+                break;
+            }
+
+            if (parsed > (int.MaxValue - digit) / 10) {
+                return false;
+            }
+
+            parsed = (parsed * 10) + digit;
             i++;
         }
         if (i == 0) {
             return false;
         }
 
-        var digits = normalized.Substring(0, i);
-        if (!int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value)) {
-            return false;
-        }
+        value = parsed;
 
         var rest = normalized[i..].Trim();
         if (rest.Length == 0) {
             return true;
         }
 
-        // Allow simple punctuation variants like "2." or "2)".
-        return rest is "." or ")" or "]" or ":";
+        // Allow simple punctuation variants like "2.", "2)", "２）", or "٢：".
+        return rest is "." or ")" or "]" or ":" or "．" or "）" or "］" or "：" or "。";
     }
 
 }

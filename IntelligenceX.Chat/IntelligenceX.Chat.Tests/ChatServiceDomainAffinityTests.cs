@@ -203,6 +203,28 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify"));
     }
 
+    [Theory]
+    [InlineData("２", "public_domain")]
+    [InlineData("２）", "public_domain")]
+    [InlineData("٢", "public_domain")]
+    [InlineData("١", "ad_domain")]
+    [InlineData("١：", "ad_domain")]
+    public void TryResolvePendingDomainIntentClarificationSelection_MapsUnicodeNumericChoiceToDomainFamily(
+        string input,
+        string expectedFamily) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-unicode");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-unicode",
+            input,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal(expectedFamily, family);
+        Assert.Equal(expectedFamily, session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-unicode"));
+    }
+
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_RehydratesPersistedClarificationContextAcrossSessionRestart() {
         var root = Path.Combine(Path.GetTempPath(), "ix-chat-domain-clarify-" + Guid.NewGuid().ToString("N"));

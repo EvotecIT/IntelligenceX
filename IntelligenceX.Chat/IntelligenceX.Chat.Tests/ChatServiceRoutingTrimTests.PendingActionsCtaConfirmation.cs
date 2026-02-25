@@ -539,6 +539,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
     }
 
+    [Theory]
+    [InlineData("１")]
+    [InlineData("１．")]
+    [InlineData("１）")]
+    [InlineData("١")]
+    [InlineData("١)")]
+    [InlineData("١：")]
+    public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesUnicodeOrdinalSelection(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesMutatingSinglePendingActionWhenUserUsesExplicitAct() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
