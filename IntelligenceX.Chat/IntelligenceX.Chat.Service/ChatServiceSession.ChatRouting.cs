@@ -1223,11 +1223,12 @@ internal sealed partial class ChatServiceSession {
             }
 
             var priorOutputsByCallId = BuildLatestToolOutputsByCallId(toolOutputs);
+            var priorToolCallsByCallId = BuildLatestToolCallContractsByCallId(toolCalls);
             var callsToExecute = new List<ToolCall>(extracted.Count);
             var replayRecoveredOutputs = new List<ToolOutputDto>(extracted.Count);
             for (var callIndex = 0; callIndex < extracted.Count; callIndex++) {
                 var call = extracted[callIndex];
-                if (TryGetReplayRecoveredOutputForCall(call, priorOutputsByCallId, out var replayRecoveredOutput)) {
+                if (TryGetReplayRecoveredOutputForCall(call, priorOutputsByCallId, priorToolCallsByCallId, out var replayRecoveredOutput)) {
                     replayRecoveredOutputs.Add(replayRecoveredOutput);
                     continue;
                 }
@@ -1407,6 +1408,7 @@ internal sealed partial class ChatServiceSession {
     private const string ReplayOutputCompactionMarker = "ix:replay-output-compacted:v1";
     private const string ReplayOutputBudgetStatusMarker = "ix:replay-output-budget:v1";
 
+    private readonly record struct PriorToolCallContract(string Name, string ArgumentsJson);
     private readonly record struct ReplayToolOutputSelection(string Output, bool MatchedRawCallId);
     private readonly record struct ReplayOutputCompactionBudget(
         int MaxOutputCharsPerCall,
@@ -1538,10 +1540,61 @@ internal sealed partial class ChatServiceSession {
         return byCallId;
     }
 
+    private static Dictionary<string, PriorToolCallContract> BuildLatestToolCallContractsByCallId(IReadOnlyList<ToolCallDto> calls) {
+        var byCallId = new Dictionary<string, PriorToolCallContract>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < calls.Count; i++) {
+            var callId = (calls[i].CallId ?? string.Empty).Trim();
+            if (callId.Length == 0) {
+                continue;
+            }
+
+            var callName = (calls[i].Name ?? string.Empty).Trim();
+            var argumentsJson = NormalizeArgumentsJsonForReplayContract(calls[i].ArgumentsJson);
+            byCallId[callId] = new PriorToolCallContract(callName, argumentsJson);
+        }
+
+        return byCallId;
+    }
+
+    private static string NormalizeArgumentsJsonForReplayContract(string? argumentsJson) {
+        var value = (argumentsJson ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return "{}";
+        }
+
+        try {
+            var parsed = JsonLite.Parse(value);
+            if (parsed is null) {
+                return "{}";
+            }
+
+            return JsonLite.Serialize(parsed);
+        } catch {
+            return value;
+        }
+    }
+
+    private static bool CallMatchesReplayRecoveredContract(ToolCall call, PriorToolCallContract priorContract) {
+        var currentName = (call.Name ?? string.Empty).Trim();
+        if (priorContract.Name.Length > 0
+            && currentName.Length > 0
+            && !string.Equals(currentName, priorContract.Name, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var currentArgumentsJson = call.Arguments is null
+            ? "{}"
+            : NormalizeArgumentsJsonForReplayContract(JsonLite.Serialize(call.Arguments));
+        return string.Equals(currentArgumentsJson, priorContract.ArgumentsJson, StringComparison.Ordinal);
+    }
+
     private static bool TryGetReplayRecoveredOutputForCall(ToolCall call, IReadOnlyDictionary<string, ToolOutputDto> outputsByCallId,
+        IReadOnlyDictionary<string, PriorToolCallContract> priorCallsByCallId,
         out ToolOutputDto replayRecoveredOutput) {
         var callId = (call.CallId ?? string.Empty).Trim();
-        if (callId.Length > 0 && outputsByCallId.TryGetValue(callId, out var priorOutput)) {
+        if (callId.Length > 0
+            && outputsByCallId.TryGetValue(callId, out var priorOutput)
+            && (!priorCallsByCallId.TryGetValue(callId, out var priorCall) || CallMatchesReplayRecoveredContract(call, priorCall))) {
             replayRecoveredOutput = priorOutput with { CallId = callId };
             return true;
         }
