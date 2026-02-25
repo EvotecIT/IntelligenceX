@@ -30,6 +30,10 @@ internal static partial class Program {
         private const int MaxRecentHostTargets = 96;
         private const int MaxRetryPromptHostTargets = 16;
         private const int MaxAutoFilledToolTargets = 4;
+        private const int HostTargetSpecificityFqdnBonus = 4;
+        private const int HostTargetSpecificityShortNameBonus = 1;
+        private const int HostTargetSpecificityIpLiteralPenalty = 2;
+        private const int HostTargetSpecificityLocalhostPenalty = 3;
         private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
@@ -1314,6 +1318,43 @@ internal static partial class Program {
             return candidate;
         }
 
+        private static List<string> OrderHostTargetCandidatesBySpecificity(IReadOnlyList<string> candidates) {
+            if (candidates.Count <= 1) {
+                return candidates as List<string> ?? candidates.ToList();
+            }
+
+            return candidates
+                .Select(static (value, index) => new {
+                    Value = value,
+                    Index = index,
+                    Score = ComputeHostTargetSpecificity(value)
+                })
+                .OrderByDescending(static candidate => candidate.Score)
+                .ThenBy(static candidate => candidate.Index)
+                .Select(static candidate => candidate.Value)
+                .ToList();
+        }
+
+        private static int ComputeHostTargetSpecificity(string value) {
+            var candidate = NormalizeHostTargetCandidate(value);
+            if (candidate.Length == 0) {
+                return int.MinValue;
+            }
+
+            var score = candidate.Contains('.')
+                ? HostTargetSpecificityFqdnBonus
+                : HostTargetSpecificityShortNameBonus;
+            if (Uri.CheckHostName(candidate) is UriHostNameType.IPv4 or UriHostNameType.IPv6) {
+                score -= HostTargetSpecificityIpLiteralPenalty;
+            }
+
+            if (candidate.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)) {
+                score -= HostTargetSpecificityLocalhostPenalty;
+            }
+
+            return score;
+        }
+
         private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, CancellationToken cancellationToken) {
             var knownHostTargets = GetRecentHostTargetsSnapshot();
             var runInParallel = ShouldRunParallelToolExecution(calls, out var mutatingToolNames);
@@ -1572,6 +1613,7 @@ internal static partial class Program {
                 return calls;
             }
 
+            fallbackTargets = OrderHostTargetCandidatesBySpecificity(fallbackTargets);
             var patchedCalls = calls.ToArray();
             var patchedAny = false;
             for (var i = 0; i < patchedCalls.Length
@@ -1789,6 +1831,7 @@ internal static partial class Program {
                 return call;
             }
 
+            normalizedTargets = OrderHostTargetCandidatesBySpecificity(normalizedTargets);
             var patchedArguments = new JsonObject(StringComparer.Ordinal);
             foreach (var pair in call.Arguments) {
                 patchedArguments.Add(pair.Key, pair.Value);
