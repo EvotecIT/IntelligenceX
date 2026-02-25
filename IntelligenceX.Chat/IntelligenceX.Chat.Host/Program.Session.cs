@@ -455,11 +455,10 @@ internal static partial class Program {
         private static string BuildNoToolExecutionRetryPrompt(string userRequest, string assistantDraft, int retryAttempt) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
-            var attempt = Math.Max(1, retryAttempt);
+            _ = retryAttempt;
             return $$"""
                 [Execution correction]
                 The previous assistant draft implied execution (or returned empty output) but no tool calls were emitted.
-                Retry attempt: {{attempt}}/{{MaxNoToolExecutionRetries}}.
 
                 User request:
                 {{request}}
@@ -477,6 +476,9 @@ internal static partial class Program {
                 For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.
                 For eventlog_named_events_query, use names from eventlog_named_events_catalog; if uncertain, prefer eventlog_live_query with explicit event_ids.
                 If Event Log source input is missing, default machine_name to the first discovered/source DC from prior turns.
+                If this is a continuation request over "remaining discovered DCs/hosts", execute multiple best-effort tool calls using distinct host/DC inputs from thread context.
+                If discovery appears empty in this turn, still use previously seen DC/host targets from thread context rather than stopping at narration.
+                Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy this request after a best-effort tool attempt, state the exact blocker and the minimal missing input once.
                 """;
         }
@@ -488,6 +490,30 @@ internal static partial class Program {
 
             if (requirements.MinToolCalls > 0 && calls.Count < requirements.MinToolCalls) {
                 return true;
+            }
+
+            if (requirements.RequiredTools.Count > 0) {
+                foreach (var requiredPattern in requirements.RequiredTools) {
+                    if (!ToolCallSetContainsPattern(calls, requiredPattern)) {
+                        return true;
+                    }
+                }
+            }
+
+            if (requirements.RequiredAnyTools.Count > 0) {
+                var matchedAnyRequired = false;
+                foreach (var requiredPattern in requirements.RequiredAnyTools) {
+                    if (!ToolCallSetContainsPattern(calls, requiredPattern)) {
+                        continue;
+                    }
+
+                    matchedAnyRequired = true;
+                    break;
+                }
+
+                if (!matchedAnyRequired) {
+                    return true;
+                }
             }
 
             if (requirements.MinDistinctToolInputValues.Count == 0) {
@@ -528,6 +554,12 @@ internal static partial class Program {
             }
 
             var minDistinctToolInputValues = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var requiredTools = ParseScenarioContractToolPatterns(
+                request,
+                @"Required tool calls \(all\):\s*(?<patterns>[^\r\n]+)");
+            var requiredAnyTools = ParseScenarioContractToolPatterns(
+                request,
+                @"Required tool calls \(at least one\):\s*(?<patterns>[^\r\n]+)");
             var distinctMatch = Regex.Match(
                 request,
                 @"Distinct tool input value requirements:\s*(?<requirements>[^\r\n]+)",
@@ -560,12 +592,82 @@ internal static partial class Program {
                 }
             }
 
-            if (minToolCalls <= 0 && minDistinctToolInputValues.Count == 0) {
+            if (minToolCalls <= 0
+                && minDistinctToolInputValues.Count == 0
+                && requiredTools.Count == 0
+                && requiredAnyTools.Count == 0) {
                 return false;
             }
 
-            requirements = new ScenarioExecutionContractRequirements(minToolCalls, minDistinctToolInputValues);
+            requirements = new ScenarioExecutionContractRequirements(
+                minToolCalls,
+                minDistinctToolInputValues,
+                requiredTools,
+                requiredAnyTools);
             return true;
+        }
+
+        private static IReadOnlyList<string> ParseScenarioContractToolPatterns(string request, string pattern) {
+            var match = Regex.Match(request ?? string.Empty, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success) {
+                return Array.Empty<string>();
+            }
+
+            var rawPatterns = (match.Groups["patterns"].Value ?? string.Empty).Trim();
+            if (rawPatterns.EndsWith(".", StringComparison.Ordinal)) {
+                rawPatterns = rawPatterns.Substring(0, rawPatterns.Length - 1).TrimEnd();
+            }
+
+            if (rawPatterns.Length == 0) {
+                return Array.Empty<string>();
+            }
+
+            var parsed = rawPatterns
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            return parsed.Length == 0 ? Array.Empty<string>() : parsed;
+        }
+
+        private static bool ToolCallSetContainsPattern(IReadOnlyList<ToolCall> calls, string pattern) {
+            var candidatePattern = (pattern ?? string.Empty).Trim();
+            if (candidatePattern.Length == 0) {
+                return false;
+            }
+
+            for (var i = 0; i < calls.Count; i++) {
+                var toolName = (calls[i].Name ?? string.Empty).Trim();
+                if (toolName.Length == 0) {
+                    continue;
+                }
+
+                if (PatternMatchesToolName(candidatePattern, toolName)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool PatternMatchesToolName(string pattern, string toolName) {
+            var expected = (pattern ?? string.Empty).Trim();
+            var actual = (toolName ?? string.Empty).Trim();
+            if (expected.Length == 0 || actual.Length == 0) {
+                return false;
+            }
+
+            if (string.Equals(expected, "*", StringComparison.Ordinal)) {
+                return true;
+            }
+
+            var wildcardIndex = expected.IndexOf('*');
+            if (wildcardIndex < 0) {
+                return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
+            }
+
+            var regexPattern = "^" + Regex.Escape(expected).Replace("\\*", ".*") + "$";
+            return Regex.IsMatch(actual, regexPattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
 
         private static string BuildScenarioContractRepairRetryPrompt(
@@ -575,11 +677,12 @@ internal static partial class Program {
             int retryAttempt) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
-            var attempt = Math.Max(1, retryAttempt);
+            _ = retryAttempt;
             var safeCalls = calls ?? Array.Empty<ToolCall>();
             var observedToolCalls = Math.Max(0, safeCalls.Count);
 
             var contractSummary = "unable to parse scenario requirements.";
+            var qualifyingPatternHint = string.Empty;
             if (TryParseScenarioExecutionContractRequirements(userRequest, out var requirements) && requirements is not null) {
                 var minCalls = Math.Max(0, requirements.MinToolCalls);
                 var distinctParts = new List<string>();
@@ -588,19 +691,33 @@ internal static partial class Program {
                     distinctParts.Add(requirement.Key + "=" + observedValues.Count + "/" + Math.Max(0, requirement.Value));
                 }
 
+                var requiredAllCount = requirements.RequiredTools.Count;
+                var requiredAllMatched = requirements.RequiredTools.Count(pattern => ToolCallSetContainsPattern(safeCalls, pattern));
+                var requiredAnyCount = requirements.RequiredAnyTools.Count;
+                var requiredAnyMatched = requirements.RequiredAnyTools.Any(pattern => ToolCallSetContainsPattern(safeCalls, pattern)) ? 1 : 0;
+
                 var distinctSummary = distinctParts.Count == 0
                     ? "none"
                     : string.Join(", ", distinctParts);
                 contractSummary = "min_tool_calls=" + minCalls + ", observed_tool_calls=" + observedToolCalls
+                                  + ", required_all=" + requiredAllMatched + "/" + requiredAllCount
+                                  + ", required_any=" + requiredAnyMatched + "/" + requiredAnyCount
                                   + ", distinct_inputs={" + distinctSummary + "}";
+
+                var qualifyingPatterns = new List<string>();
+                qualifyingPatterns.AddRange(requirements.RequiredTools);
+                qualifyingPatterns.AddRange(requirements.RequiredAnyTools);
+                if (qualifyingPatterns.Count > 0) {
+                    qualifyingPatternHint = string.Join(", ", qualifyingPatterns.Distinct(StringComparer.OrdinalIgnoreCase));
+                }
             }
 
             return $$"""
                 [Execution correction]
                 The previous assistant draft ended with partial tool execution that does not satisfy the scenario execution contract.
-                Retry attempt: {{attempt}}/{{MaxNoToolExecutionRetries}}.
                 Observed tool-call count so far in this turn: {{observedToolCalls}}.
                 Contract progress: {{contractSummary}}.
+                {{(qualifyingPatternHint.Length == 0 ? string.Empty : "Qualifying tool patterns for this turn: " + qualifyingPatternHint + ".")}}
 
                 User request:
                 {{request}}
@@ -614,6 +731,9 @@ internal static partial class Program {
                 If required coverage is >1 (for example min_tool_calls>=2 or machine_name>=2), issue multiple tool calls in this retry.
                 Do not repeat identical tool-call signatures unless there is no alternative; prioritize missing distinct input coverage.
                 Infer missing read-only inputs from prior tool outputs where possible.
+                For continuation requests over remaining discovered DCs/hosts, execute calls across at least two distinct host/DC inputs.
+                If current discovery returns zero hosts, use previously seen DC/host targets from this thread as fallback and proceed with best-effort execution.
+                Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy the missing contract requirements after best effort, state the exact blocker once.
                 """;
         }
@@ -748,14 +868,22 @@ internal static partial class Program {
         }
 
         private sealed class ScenarioExecutionContractRequirements {
-            public ScenarioExecutionContractRequirements(int minToolCalls, IReadOnlyDictionary<string, int> minDistinctToolInputValues) {
+            public ScenarioExecutionContractRequirements(
+                int minToolCalls,
+                IReadOnlyDictionary<string, int> minDistinctToolInputValues,
+                IReadOnlyList<string> requiredTools,
+                IReadOnlyList<string> requiredAnyTools) {
                 MinToolCalls = Math.Max(0, minToolCalls);
                 MinDistinctToolInputValues = minDistinctToolInputValues
                                              ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                RequiredTools = requiredTools ?? Array.Empty<string>();
+                RequiredAnyTools = requiredAnyTools ?? Array.Empty<string>();
             }
 
             public int MinToolCalls { get; }
             public IReadOnlyDictionary<string, int> MinDistinctToolInputValues { get; }
+            public IReadOnlyList<string> RequiredTools { get; }
+            public IReadOnlyList<string> RequiredAnyTools { get; }
         }
     }
 

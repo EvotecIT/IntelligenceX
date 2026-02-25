@@ -111,6 +111,46 @@ Continue recurring-error analysis across all remaining DCs in this turn.
         Assert.False(result);
     }
 
+    [Fact]
+    public void ShouldRetryScenarioContractRepair_TriggersWhenRequiredAnyToolPatternIsMissing() {
+        const string request = """
+[Scenario execution contract]
+This scenario turn requires tool execution before the final response.
+- Minimum tool calls in this turn: 1.
+- Required tool calls (at least one): ad_*replication*, ad_monitoring_probe_run.
+User request:
+Continue replication checks across all remaining DCs in this turn and surface any lag or errors.
+""";
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", "{\"machine_name\":\"AD1\"}")
+        };
+
+        var result = InvokeShouldRetryScenarioContractRepair(request, calls);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldRetryScenarioContractRepair_DoesNotTriggerWhenRequiredAnyToolPatternIsSatisfied() {
+        const string request = """
+[Scenario execution contract]
+This scenario turn requires tool execution before the final response.
+- Minimum tool calls in this turn: 1.
+- Required tool calls (at least one): ad_*replication*, ad_monitoring_probe_run.
+User request:
+Continue replication checks across all remaining DCs in this turn and surface any lag or errors.
+""";
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "ad_replication_summary", "{\"domain_controller\":\"AD1\"}")
+        };
+
+        var result = InvokeShouldRetryScenarioContractRepair(request, calls);
+
+        Assert.False(result);
+    }
+
     private static bool InvokeShouldRetryNoToolExecution(string userRequest, string assistantDraft) {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
