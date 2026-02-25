@@ -129,7 +129,26 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         var answers = MapAnswers(response.Answers, Options.MaxAnswersPerSection, out var answersTruncated);
         var authorities = MapAnswers(response.Authorities, Options.MaxAnswersPerSection, out var authoritiesTruncated);
         var additional = MapAnswers(response.Additional, Options.MaxAnswersPerSection, out var additionalTruncated);
+        var questions = MapQuestions(response.Questions);
         var truncated = answersTruncated || authoritiesTruncated || additionalTruncated;
+
+        if (response.ErrorCode == DnsQueryErrorCode.None
+            && IsSuspiciousEmptyNoErrorResponse(
+                questionCount: questions.Count,
+                answerCount: answers.Count,
+                authorityCount: authorities.Count,
+                additionalCount: additional.Count,
+                isTruncated: response.IsTruncated)) {
+            return ToolResponse.Error(
+                errorCode: "query_failed",
+                error: "Resolver returned an empty response envelope without question/answer sections.",
+                hints: new[] {
+                    $"Resolver status={response.Status}; endpoint={endpoint}.",
+                    "Retry with a different endpoint (for example System or Cloudflare).",
+                    "Retry with a larger timeout_ms when resolver path latency is high."
+                },
+                isTransient: true);
+        }
 
         if (response.ErrorCode != DnsQueryErrorCode.None && answers.Count == 0) {
             var transient = response.ErrorCode is DnsQueryErrorCode.Timeout or DnsQueryErrorCode.Network;
@@ -178,7 +197,7 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
             RoundTripMilliseconds = response.RoundTripTime.TotalMilliseconds,
             TtlMin = response.TtlMin,
             TtlAvg = response.TtlAvg,
-            Questions = MapQuestions(response.Questions),
+            Questions = questions,
             Answers = answers,
             Authorities = authorities,
             Additional = additional,
@@ -254,6 +273,22 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
     }
 #endif
 
+    private static bool IsSuspiciousEmptyNoErrorResponse(
+        int questionCount,
+        int answerCount,
+        int authorityCount,
+        int additionalCount,
+        bool isTruncated) {
+        if (isTruncated) {
+            return false;
+        }
+
+        return questionCount <= 0
+               && answerCount <= 0
+               && authorityCount <= 0
+               && additionalCount <= 0;
+    }
+
     private sealed class DnsClientXQueryResultModel {
         public DnsClientXQueryContextModel Query { get; init; } = new();
         public string Status { get; init; } = string.Empty;
@@ -303,4 +338,3 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         public string DataRaw { get; init; } = string.Empty;
     }
 }
-
