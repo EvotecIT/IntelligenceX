@@ -263,6 +263,64 @@ public sealed class HostScenarioAssertionTests {
     }
 
     [Fact]
+    public void EvaluateScenarioAssertions_PassesWhenAssertContainsAnyMatches() {
+        const string json = """
+{
+  "name": "contains-any-pass",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Summarize AD scope.",
+      "assert_contains": ["DNS"],
+      "assert_contains_any": ["Active Directory", "AD DS", "Directorio Activo"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "AD DS internal findings and DNS summary are ready.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("at least one of", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(failures, value => value.Contains("Expected assistant output to contain 'DNS'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_FailsWhenAssertContainsAnyHasNoMatches() {
+        const string json = """
+{
+  "name": "contains-any-fail",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Summarize AD scope.",
+      "assert_contains_any": ["Active Directory", "AD DS", "Directorio Activo"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Internal domain findings are ready.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("at least one of", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildScenarioTurnPrompt_EnforcesNoToolsContract_ForClarificationTurns() {
         const string json = """
 {

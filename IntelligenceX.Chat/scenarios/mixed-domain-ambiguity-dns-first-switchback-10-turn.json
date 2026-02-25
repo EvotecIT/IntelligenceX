@@ -14,7 +14,8 @@
       "name": "Clarify AD DS vs public DNS intent",
       "user": "Diagnose domain issues for corp.fabrikam.com and fabrikam.com.",
       "forbid_tools": ["*"],
-      "assert_contains": ["Active Directory", "DNS"]
+      "assert_contains": ["DNS"],
+      "assert_contains_any": ["Active Directory", "AD DS", "Directorio Activo", "Annuaire Actif"]
     },
     {
       "name": "User selects public DNS first",
@@ -73,7 +74,8 @@
     {
       "name": "Boundary comparison",
       "user": "Return two bounded sections: AD DS internal findings and public DNS findings.",
-      "assert_contains": ["Active Directory", "DNS"]
+      "assert_contains": ["DNS"],
+      "assert_contains_any": ["Active Directory", "AD DS", "Directorio Activo", "Annuaire Actif"]
     },
     {
       "name": "Final compact checklist",

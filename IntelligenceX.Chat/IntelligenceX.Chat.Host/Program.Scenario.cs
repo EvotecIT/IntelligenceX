@@ -182,6 +182,9 @@ internal static partial class Program {
             if (turn.AssertContains.Count > 0) {
                 sb.AppendLine("- Final response must include these literals: " + string.Join(", ", turn.AssertContains) + ".");
             }
+            if (turn.AssertContainsAny.Count > 0) {
+                sb.AppendLine("- Final response must include at least one of these literals: " + string.Join(", ", turn.AssertContainsAny) + ".");
+            }
             sb.AppendLine();
             sb.AppendLine("User request:");
             sb.AppendLine(turn.User);
@@ -247,6 +250,9 @@ internal static partial class Program {
         }
         if (turn.AssertContains.Count > 0) {
             sb.AppendLine("- Final response must include these literals: " + string.Join(", ", turn.AssertContains) + ".");
+        }
+        if (turn.AssertContainsAny.Count > 0) {
+            sb.AppendLine("- Final response must include at least one of these literals: " + string.Join(", ", turn.AssertContainsAny) + ".");
         }
         sb.AppendLine("If a best-effort tool call fails, include the exact blocker/error and minimal missing input once.");
         sb.AppendLine();
@@ -431,6 +437,7 @@ internal static partial class Program {
                     name: null,
                     user: userText,
                     assertContains: Array.Empty<string>(),
+                    assertContainsAny: Array.Empty<string>(),
                     assertNotContains: Array.Empty<string>(),
                     assertMatchesRegex: Array.Empty<string>(),
                     assertNoQuestions: false,
@@ -461,6 +468,7 @@ internal static partial class Program {
                 ? nameElement.GetString()
                 : null;
             var assertContains = ReadScenarioAssertContains(element);
+            var assertContainsAny = ReadScenarioStringList(element, "assert_contains_any");
             var assertNotContains = ReadScenarioAssertNotContains(element);
             var assertMatchesRegex = ReadScenarioStringList(element, "assert_matches_regex");
             var assertNoQuestions = ReadScenarioOptionalBoolean(element, "assert_no_questions", defaultValue: false);
@@ -508,6 +516,7 @@ internal static partial class Program {
                 name,
                 user.Trim(),
                 assertContains,
+                assertContainsAny,
                 assertNotContains,
                 assertMatchesRegex,
                 assertNoQuestions,
@@ -553,6 +562,7 @@ internal static partial class Program {
                 name: $"Turn {turns.Count + 1}",
                 user: candidate,
                 assertContains: Array.Empty<string>(),
+                assertContainsAny: Array.Empty<string>(),
                 assertNotContains: Array.Empty<string>(),
                 assertMatchesRegex: Array.Empty<string>(),
                 assertNoQuestions: false,
@@ -575,6 +585,7 @@ internal static partial class Program {
         string? name,
         string user,
         IReadOnlyList<string> assertContains,
+        IReadOnlyList<string> assertContainsAny,
         IReadOnlyList<string> assertNotContains,
         IReadOnlyList<string> assertMatchesRegex,
         bool assertNoQuestions,
@@ -604,6 +615,7 @@ internal static partial class Program {
             name,
             user,
             assertContains,
+            assertContainsAny,
             assertNotContains,
             assertMatchesRegex,
             assertNoQuestions,
@@ -803,6 +815,22 @@ internal static partial class Program {
                 continue;
             }
             failures.Add($"Expected assistant output to contain '{expected}'.");
+        }
+
+        if (turn.AssertContainsAny.Count > 0) {
+            var matchedAny = false;
+            foreach (var expectedAny in turn.AssertContainsAny) {
+                if (assistantText.IndexOf(expectedAny, StringComparison.OrdinalIgnoreCase) < 0) {
+                    continue;
+                }
+
+                matchedAny = true;
+                break;
+            }
+
+            if (!matchedAny) {
+                failures.Add("Expected assistant output to contain at least one of: " + string.Join(", ", turn.AssertContainsAny) + ".");
+            }
         }
 
         foreach (var disallowed in turn.AssertNotContains) {
@@ -1658,6 +1686,7 @@ internal static partial class Program {
             string? name,
             string user,
             IReadOnlyList<string> assertContains,
+            IReadOnlyList<string> assertContainsAny,
             IReadOnlyList<string> assertNotContains,
             IReadOnlyList<string> assertMatchesRegex,
             bool assertNoQuestions,
@@ -1680,6 +1709,7 @@ internal static partial class Program {
             Name = name;
             User = user ?? string.Empty;
             AssertContains = assertContains ?? Array.Empty<string>();
+            AssertContainsAny = assertContainsAny ?? Array.Empty<string>();
             AssertNotContains = assertNotContains ?? Array.Empty<string>();
             AssertMatchesRegex = assertMatchesRegex ?? Array.Empty<string>();
             AssertNoQuestions = assertNoQuestions;
@@ -1704,6 +1734,7 @@ internal static partial class Program {
         public string? Name { get; }
         public string User { get; }
         public IReadOnlyList<string> AssertContains { get; }
+        public IReadOnlyList<string> AssertContainsAny { get; }
         public IReadOnlyList<string> AssertNotContains { get; }
         public IReadOnlyList<string> AssertMatchesRegex { get; }
         public bool AssertNoQuestions { get; }

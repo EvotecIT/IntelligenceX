@@ -175,6 +175,7 @@ public sealed class HostScenarioCatalogStrictnessTests {
             Assert.Contains(clarifyForbidden, pattern => string.Equals(pattern, "*", StringComparison.Ordinal));
 
             var clarifyContains = ReadStringList(clarifyTurn, "assert_contains")
+                .Concat(ReadStringList(clarifyTurn, "assert_contains_any"))
                 .Concat(ReadStringList(clarifyTurn, "assert_matches_regex"))
                 .ToArray();
             Assert.Contains(clarifyContains, pattern => pattern.IndexOf("ad", StringComparison.OrdinalIgnoreCase) >= 0 || pattern.IndexOf("directory", StringComparison.OrdinalIgnoreCase) >= 0);

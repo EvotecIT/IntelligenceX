@@ -21,6 +21,7 @@ public sealed class HostScenarioParsingTests {
       "name": "Turn One",
       "user": "Check AD0 reboot",
       "assert_contains": ["6008", "unexpected reboot"],
+      "assert_contains_any": ["Active Directory", "AD DS"],
       "assert_not_contains": ["I can do that, but"],
       "assert_matches_regex": ["\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"],
       "assert_no_questions": true,
@@ -53,6 +54,7 @@ public sealed class HostScenarioParsingTests {
         Assert.Equal("Turn One", ReadStringProperty(turns[0], "Name"));
         Assert.Equal("Check AD0 reboot", ReadStringProperty(turns[0], "User"));
         Assert.Equal(2, ReadStringListProperty(turns[0], "AssertContains").Count);
+        Assert.Equal(2, ReadStringListProperty(turns[0], "AssertContainsAny").Count);
         Assert.Single(ReadStringListProperty(turns[0], "AssertNotContains"));
         Assert.Single(ReadStringListProperty(turns[0], "AssertMatchesRegex"));
         Assert.True(ReadBooleanProperty(turns[0], "AssertNoQuestions"));
@@ -76,6 +78,7 @@ public sealed class HostScenarioParsingTests {
         Assert.Equal(1, ReadNullableIntProperty(turns[0], "MaxDuplicateToolCallSignatures"));
         Assert.Equal("Check peer DCs", ReadStringProperty(turns[1], "User"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertContains"));
+        Assert.Empty(ReadStringListProperty(turns[1], "AssertContainsAny"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertNotContains"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertMatchesRegex"));
         Assert.False(ReadBooleanProperty(turns[1], "AssertNoQuestions"));
@@ -193,6 +196,32 @@ Check AD0 reboot
         Assert.Contains("first discovered/source DC", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_pack_info alone is insufficient", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithAssertContainsAny_AddsAnyLiteralHints() {
+        const string json = """
+{
+  "name": "any-literal-contract",
+  "turns": [
+    {
+      "user": "Summarize AD findings.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*"],
+      "assert_contains_any": ["Active Directory", "AD DS", "Directorio Activo"]
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "any-literal-contract");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains(
+            "Final response must include at least one of these literals: Active Directory, AD DS, Directorio Activo.",
+            prompt,
+            StringComparison.Ordinal);
     }
 
     [Fact]
