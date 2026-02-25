@@ -71,6 +71,19 @@ internal sealed partial class ChatServiceSession {
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
+        if (TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, out var selectedDomainIntentFamily)) {
+            routedUserRequest = routedUserRequest + "\n\n" + BuildDomainIntentSelectionRoutingHint(selectedDomainIntentFamily);
+            var selectedScope = string.Equals(selectedDomainIntentFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+                ? "Active Directory domain scope"
+                : "public DNS/domain scope";
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: $"Applied pending domain scope selection: {selectedScope}.")
+                .ConfigureAwait(false);
+        }
         var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
         var continuationFollowUpTurn = compactFollowUpTurn
                                        && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
@@ -221,6 +234,7 @@ internal sealed partial class ChatServiceSession {
                     .ConfigureAwait(false);
 
                 var clarificationText = BuildDomainIntentClarificationText();
+                RememberPendingDomainIntentClarificationRequest(threadId);
                 RememberPendingActions(threadId, clarificationText);
                 var clarificationResult = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,

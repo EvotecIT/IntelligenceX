@@ -261,7 +261,157 @@ internal sealed partial class ChatServiceSession {
                + "Do you want:\n"
                + "1. Active Directory domain scope (DCs, LDAP, replication, GPO)\n"
                + "2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)\n\n"
-               + "Reply with `1` or `2`.";
+               + "Reply with `1` or `2`.\n\n"
+               + "Structured option:\n"
+               + "```ix_domain_scope\n"
+               + "{\"ix_domain_scope\":{\"family\":\"ad_domain\"}}\n"
+               + "```";
+    }
+
+    private static string BuildDomainIntentSelectionRoutingHint(string family) {
+        var normalizedFamily = string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+            ? DomainIntentFamilyPublic
+            : DomainIntentFamilyAd;
+        return $$"""
+                 ix:domain-intent:v1
+                 family: {{normalizedFamily}}
+                 """;
+    }
+
+    private void RememberPendingDomainIntentClarificationRequest(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _pendingDomainIntentClarificationSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    private bool TryResolvePendingDomainIntentClarificationSelection(string threadId, string userRequest, out string family) {
+        family = string.Empty;
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        if (normalizedRequest.Length == 0) {
+            return false;
+        }
+
+        long clarificationSeenTicks;
+        lock (_toolRoutingContextLock) {
+            if (!_pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(normalizedThreadId, out clarificationSeenTicks)
+                || !TryGetUtcDateTimeFromTicks(clarificationSeenTicks, out var seenUtc)
+                || DateTime.UtcNow - seenUtc > DomainIntentClarificationContextMaxAge) {
+                _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
+                return false;
+            }
+        }
+
+        if (!TryParsePendingDomainIntentClarificationSelection(normalizedRequest, out var selectedFamily)) {
+            return false;
+        }
+
+        var nowTicks = DateTime.UtcNow.Ticks;
+        lock (_toolRoutingContextLock) {
+            _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
+            _domainIntentFamilyByThreadId[normalizedThreadId] = selectedFamily;
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowTicks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        PersistDomainIntentFamilySnapshot(normalizedThreadId, selectedFamily, nowTicks);
+        family = selectedFamily;
+        return true;
+    }
+
+    private static bool TryParsePendingDomainIntentClarificationSelection(string userRequest, out string family) {
+        family = string.Empty;
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (TryParseOrdinalSelection(normalized, out var ordinal)) {
+            if (ordinal == 1) {
+                family = DomainIntentFamilyAd;
+                return true;
+            }
+
+            if (ordinal == 2) {
+                family = DomainIntentFamilyPublic;
+                return true;
+            }
+        }
+
+        var compact = NormalizeCompactText(normalized);
+        if (string.Equals(compact, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
+            family = DomainIntentFamilyAd;
+            return true;
+        }
+
+        if (string.Equals(compact, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
+            family = DomainIntentFamilyPublic;
+            return true;
+        }
+
+        if (!TryExtractActionSelectionPayloadJson(normalized, out var payload)) {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(payload);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!TryGetObjectPropertyCaseInsensitive(
+                    doc.RootElement,
+                    out var scope,
+                    "ix_domain_scope",
+                    "ixDomainScope",
+                    "ix_domain_intent",
+                    "ixDomainIntent")
+                || scope.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (TryGetObjectPropertyCaseInsensitive(scope, out var familyNode, "family", "scope", "domain_family", "domainFamily")
+                && familyNode.ValueKind == JsonValueKind.String) {
+                var parsed = (familyNode.GetString() ?? string.Empty).Trim();
+                if (string.Equals(parsed, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
+                    family = DomainIntentFamilyAd;
+                    return true;
+                }
+
+                if (string.Equals(parsed, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
+                    family = DomainIntentFamilyPublic;
+                    return true;
+                }
+            }
+
+            if (TryGetObjectPropertyCaseInsensitive(scope, out var choiceNode, "choice", "selection")
+                && choiceNode.ValueKind == JsonValueKind.Number
+                && choiceNode.TryGetInt32(out var choiceNumber)) {
+                if (choiceNumber == 1) {
+                    family = DomainIntentFamilyAd;
+                    return true;
+                }
+
+                if (choiceNumber == 2) {
+                    family = DomainIntentFamilyPublic;
+                    return true;
+                }
+            }
+        } catch (JsonException) {
+            return false;
+        }
+
+        return false;
     }
 
     private bool TryApplyDomainIntentAffinity(
@@ -415,6 +565,7 @@ internal sealed partial class ChatServiceSession {
         var nextFamily = adVotes > publicVotes ? DomainIntentFamilyAd : DomainIntentFamilyPublic;
         var seenUtcTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
+            _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
             _domainIntentFamilyByThreadId[normalizedThreadId] = nextFamily;
             _domainIntentFamilySeenUtcTicks[normalizedThreadId] = seenUtcTicks;
             TrimWeightedRoutingContextsNoLock();
@@ -431,6 +582,7 @@ internal sealed partial class ChatServiceSession {
 
         var removed = false;
         lock (_toolRoutingContextLock) {
+            _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
             removed = _domainIntentFamilyByThreadId.Remove(normalizedThreadId) || removed;
             removed = _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId) || removed;
             if (removed) {
@@ -721,7 +873,7 @@ internal sealed partial class ChatServiceSession {
     private void TrimWeightedRoutingContextsNoLock() {
         Debug.Assert(Monitor.IsEntered(_toolRoutingContextLock));
 
-        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, and planner-thread contexts share the same
+        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, planner-thread, and domain-intent contexts share the same
         // key space (active thread id), so trim all when any grows beyond its cap.
         var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
         var intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
@@ -729,10 +881,12 @@ internal sealed partial class ChatServiceSession {
         var structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
         var plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
         var domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
+        var domainClarificationRemoveCount =
+            _pendingDomainIntentClarificationSeenUtcTicks.Count - MaxTrackedDomainIntentClarificationContexts;
         var removeCount = Math.Max(
             Math.Max(
                 Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
-                Math.Max(plannerRemoveCount, domainIntentRemoveCount)),
+                Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, domainClarificationRemoveCount))),
             0);
         if (removeCount <= 0) {
             return;
@@ -810,6 +964,14 @@ internal sealed partial class ChatServiceSession {
                 removedInvalid = true;
             }
         }
+        foreach (var threadId in _pendingDomainIntentClarificationSeenUtcTicks.Keys.ToArray()) {
+            if (!_pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(threadId, out var ticks)
+                || !TryGetUtcDateTimeFromTicks(ticks, out var seenUtc)
+                || DateTime.UtcNow - seenUtc > DomainIntentClarificationContextMaxAge) {
+                _pendingDomainIntentClarificationSeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
         if (removedInvalid) {
             weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
             intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
@@ -817,10 +979,12 @@ internal sealed partial class ChatServiceSession {
             structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
             plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
             domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
+            domainClarificationRemoveCount =
+                _pendingDomainIntentClarificationSeenUtcTicks.Count - MaxTrackedDomainIntentClarificationContexts;
             removeCount = Math.Max(
                 Math.Max(
                     Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
-                    Math.Max(plannerRemoveCount, domainIntentRemoveCount)),
+                    Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, domainClarificationRemoveCount))),
                 0);
             if (removeCount <= 0) {
                 return;
@@ -841,6 +1005,9 @@ internal sealed partial class ChatServiceSession {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _domainIntentFamilyByThreadId.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+        foreach (var threadId in _pendingDomainIntentClarificationSeenUtcTicks.Keys) {
             seenThreadIds.Add(threadId);
         }
 
@@ -866,6 +1033,9 @@ internal sealed partial class ChatServiceSession {
                 if (_domainIntentFamilySeenUtcTicks.TryGetValue(threadId, out var domainIntentTicks) && domainIntentTicks > ticks) {
                     ticks = domainIntentTicks;
                 }
+                if (_pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(threadId, out var clarificationTicks) && clarificationTicks > ticks) {
+                    ticks = clarificationTicks;
+                }
                 return (ThreadId: threadId, Ticks: ticks);
             })
             .OrderBy(item => item.Ticks)
@@ -887,6 +1057,7 @@ internal sealed partial class ChatServiceSession {
             _plannerThreadSeenUtcTicksByActiveThreadId.Remove(threadId);
             _domainIntentFamilyByThreadId.Remove(threadId);
             _domainIntentFamilySeenUtcTicks.Remove(threadId);
+            _pendingDomainIntentClarificationSeenUtcTicks.Remove(threadId);
         }
     }
 
@@ -1010,6 +1181,14 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto> toolOutputs,
         IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
         RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHintsByName);
+    }
+
+    internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {
+        RememberPendingDomainIntentClarificationRequest(threadId);
+    }
+
+    internal bool TryResolvePendingDomainIntentClarificationSelectionForTesting(string threadId, string userRequest, out string family) {
+        return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, out family);
     }
 
     internal IReadOnlyCollection<string> GetTrackedToolRoutingStatNamesForTesting() {

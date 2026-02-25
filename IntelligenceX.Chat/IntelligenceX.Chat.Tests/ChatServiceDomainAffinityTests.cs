@@ -187,4 +187,36 @@ public sealed class ChatServiceDomainAffinityTests {
             }
         }
     }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_MapsNumericChoiceToDomainFamily() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify",
+            "2",
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesStructuredPayload() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-structured");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-structured",
+            """
+            {"ix_domain_scope":{"family":"ad_domain"}}
+            """,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-structured"));
+    }
 }
