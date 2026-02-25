@@ -18,6 +18,9 @@ internal static partial class BotFeedbackSyncRunner {
         RegexOptions.Compiled);
     private static readonly Regex MarkdownHeaderLine = new(@"^\s{0,3}#{2,6}\s+(?<title>.+?)\s*$",
         RegexOptions.Compiled);
+    private static readonly Regex PrBlockDetailsPattern = new(
+        @"(?s)<details>\s*\n<summary>PR\s*#\s*(?<number>\d+)\b.*?\n</details>\s*\n",
+        RegexOptions.Compiled);
     private static readonly IReadOnlyList<string> DefaultBotLogins = new[] {
         "intelligencex-review",
         "chatgpt-codex-connector",
@@ -601,10 +604,7 @@ query($owner: String!, $name: String!, $n: Int!) {
 
     private static string RemovePrBlocksNotInSet(string section, IReadOnlySet<int> keepPrNumbers, out bool changed) {
         var changedLocal = false;
-        var pattern = new Regex(
-            @"(?s)<details>\s*\n<summary>PR\s*#\s*(?<number>\d+)\b.*?\n</details>\s*\n",
-            RegexOptions.Compiled);
-        var updated = pattern.Replace(section, match => {
+        var updated = PrBlockDetailsPattern.Replace(section, match => {
             if (int.TryParse(match.Groups["number"].Value, out var prNumber) &&
                 keepPrNumbers.Contains(prNumber)) {
                 return match.Value;

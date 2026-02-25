@@ -20,9 +20,7 @@ internal static partial class BotFeedbackSyncRunner {
         if (trimmedTask.Length > 90) {
             trimmedTask = trimmedTask.Substring(0, 90) + "…";
         }
-        return string.IsNullOrWhiteSpace(prTitle)
-            ? $"{prefix}: {trimmedTask}"
-            : $"{prefix}: {trimmedTask}";
+        return $"{prefix}: {trimmedTask}";
     }
 
     private static string BuildIssueBody(PrTasks pr, TaskItem task, string id) {
