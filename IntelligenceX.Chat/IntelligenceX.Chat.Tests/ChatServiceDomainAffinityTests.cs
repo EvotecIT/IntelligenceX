@@ -331,6 +331,38 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action"));
     }
 
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesActionSelectionPayloadWithObjectRequest() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-object-request");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-object-request",
+            """
+            {"ix_action_selection":{"id":"act_domain_scope_ad","title":"ad_domain","request":{"ix_domain_scope":{"family":"ad_domain"}},"mutating":false}}
+            """,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-object-request"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesExplicitActSelectionCommand() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-explicit-act");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-explicit-act",
+            "/act act_domain_scope_public",
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-explicit-act"));
+    }
+
     [Theory]
     [InlineData("AD", "ad_domain")]
     [InlineData("LDAP", "ad_domain")]
@@ -344,6 +376,9 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("Verifier annuaire actif du domaine", "ad_domain")]
     [InlineData("Por favor revisar DNS publico", "public_domain")]
     [InlineData("Verifier DNS public du domaine", "public_domain")]
+    [InlineData("Use adplayground for this domain", "ad_domain")]
+    [InlineData("Run domaindetective checks for this zone", "public_domain")]
+    [InlineData("dnsclientx resolver baseline", "public_domain")]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
         string input,
         string expectedFamily) {

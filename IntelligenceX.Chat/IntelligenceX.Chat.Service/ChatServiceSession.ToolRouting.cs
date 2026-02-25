@@ -34,8 +34,8 @@ internal sealed partial class ChatServiceSession {
     private const string DomainIntentActionIdPublic = "act_domain_scope_public";
     private const string DomainIntentMarker = "ix:domain-intent:v1";
     private const string DomainIntentChoiceMarker = "ix:domain-intent-choice:v1";
-    private static readonly string[] DomainIntentAdTechnicalSignals = new[] { "ad", "dc", "ldap", "gpo", "kerberos" };
-    private static readonly string[] DomainIntentPublicTechnicalSignals = new[] { "dns", "mx", "spf", "dmarc", "dkim", "ns" };
+    private static readonly string[] DomainIntentAdTechnicalSignals = new[] { "ad", "dc", "ldap", "gpo", "kerberos", "adplayground" };
+    private static readonly string[] DomainIntentPublicTechnicalSignals = new[] { "dns", "mx", "spf", "dmarc", "dkim", "ns", "dnsclientx", "domaindetective" };
     private static readonly string[] DomainIntentAdTechnicalSignalPhrases = new[] {
         "active directory",
         "domain controller",
@@ -280,14 +280,14 @@ internal sealed partial class ChatServiceSession {
 
     private static string BuildDomainIntentClarificationText() {
         return """
-               Scope selection needed to avoid the wrong tool family.
+               Domain scope selection required to avoid cross-family tool mixing.
                Any language is accepted. Structured selection is preferred.
 
-               Choose one:
-               1. `ad_domain` (Active Directory / Directorio Activo / Annuaire Actif)
-               2. `public_domain` (Public DNS / DNS Publico)
+               Choose one family:
+               1. `ad_domain`
+               2. `public_domain`
 
-               Reply with `1` or `2`, a technical signal (`AD`, `LDAP`, `DNS`, `MX`, `SPF`, `DMARC`), or one action below.
+               Accepted quick replies: `1`, `2`, `ad_domain`, `public_domain`, `AD`, `LDAP`, `DNS`, `MX`, `SPF`, `DMARC`.
 
                [DomainIntent]
                ix:domain-intent-choice:v1
@@ -301,7 +301,7 @@ internal sealed partial class ChatServiceSession {
                [Action]
                ix:action:v1
                id: act_domain_scope_ad
-               title: Active Directory domain scope
+               title: ad_domain
                request: {"ix_domain_scope":{"family":"ad_domain"}}
                reply: /act act_domain_scope_ad
                mutating: false
@@ -309,7 +309,7 @@ internal sealed partial class ChatServiceSession {
                [Action]
                ix:action:v1
                id: act_domain_scope_public
-               title: Public DNS/domain scope
+               title: public_domain
                request: {"ix_domain_scope":{"family":"public_domain"}}
                reply: /act act_domain_scope_public
                mutating: false
@@ -317,13 +317,19 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildDomainIntentSelectionRoutingHint(string family) {
-        var normalizedFamily = string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
-            ? DomainIntentFamilyPublic
+        var normalizedFamily = TryNormalizeDomainIntentFamily(family, out var parsedFamily)
+            ? parsedFamily
             : DomainIntentFamilyAd;
         return $$"""
                  ix:domain-intent:v1
                  family: {{normalizedFamily}}
                  """;
+    }
+
+    private static string DescribeDomainIntentFamily(string family) {
+        return TryNormalizeDomainIntentFamily(family, out var normalizedFamily)
+            ? normalizedFamily
+            : "unknown";
     }
 
     private void RememberPendingDomainIntentClarificationRequest(string threadId) {
@@ -416,6 +422,18 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (TryParseExplicitActSelection(normalized, out var explicitActionId, out _) && explicitActionId.Length > 0) {
+            if (string.Equals(explicitActionId, DomainIntentActionIdAd, StringComparison.OrdinalIgnoreCase)) {
+                family = DomainIntentFamilyAd;
+                return true;
+            }
+
+            if (string.Equals(explicitActionId, DomainIntentActionIdPublic, StringComparison.OrdinalIgnoreCase)) {
+                family = DomainIntentFamilyPublic;
+                return true;
+            }
+        }
+
         if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, out family)) {
             return true;
         }
@@ -429,13 +447,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var compact = NormalizeCompactText(normalized);
-        if (string.Equals(compact, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
-            family = DomainIntentFamilyAd;
-            return true;
-        }
-
-        if (string.Equals(compact, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
-            family = DomainIntentFamilyPublic;
+        if (TryNormalizeDomainIntentFamily(compact, out family)) {
             return true;
         }
 
@@ -463,6 +475,16 @@ internal sealed partial class ChatServiceSession {
                 return false;
             }
 
+            if (TryParseDomainIntentFamilyProperty(
+                    doc.RootElement,
+                    out family,
+                    "family",
+                    "scope",
+                    "domain_family",
+                    "domainFamily")) {
+                return true;
+            }
+
             if (!TryGetObjectPropertyCaseInsensitive(
                     doc.RootElement,
                     out var scope,
@@ -474,18 +496,14 @@ internal sealed partial class ChatServiceSession {
                 return false;
             }
 
-            if (TryGetObjectPropertyCaseInsensitive(scope, out var familyNode, "family", "scope", "domain_family", "domainFamily")
-                && familyNode.ValueKind == JsonValueKind.String) {
-                var parsed = (familyNode.GetString() ?? string.Empty).Trim();
-                if (string.Equals(parsed, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
-                    family = DomainIntentFamilyAd;
-                    return true;
-                }
-
-                if (string.Equals(parsed, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
-                    family = DomainIntentFamilyPublic;
-                    return true;
-                }
+            if (TryParseDomainIntentFamilyProperty(
+                    scope,
+                    out family,
+                    "family",
+                    "scope",
+                    "domain_family",
+                    "domainFamily")) {
+                return true;
             }
 
             if (TryGetObjectPropertyCaseInsensitive(scope, out var choiceNode, "choice", "selection")
@@ -503,6 +521,40 @@ internal sealed partial class ChatServiceSession {
             }
         } catch (JsonException) {
             return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseDomainIntentFamilyProperty(JsonElement node, out string family, params string[] names) {
+        family = string.Empty;
+        if (node.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        if (!TryGetObjectPropertyCaseInsensitive(node, out var familyNode, names)
+            || familyNode.ValueKind != JsonValueKind.String) {
+            return false;
+        }
+
+        return TryNormalizeDomainIntentFamily(familyNode.GetString(), out family);
+    }
+
+    private static bool TryNormalizeDomainIntentFamily(string? value, out string family) {
+        family = string.Empty;
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (string.Equals(normalized, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
+            family = DomainIntentFamilyAd;
+            return true;
+        }
+
+        if (string.Equals(normalized, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
+            family = DomainIntentFamilyPublic;
+            return true;
         }
 
         return false;
@@ -734,14 +786,53 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            if (TryGetObjectPropertyCaseInsensitive(selection, out var requestNode, "request")
-                && requestNode.ValueKind == JsonValueKind.String) {
-                var nestedRequest = (requestNode.GetString() ?? string.Empty).Trim();
-                if (nestedRequest.Length > 0
-                    && !string.Equals(nestedRequest, text, StringComparison.Ordinal)
-                    && TryResolveDomainIntentFamilyFromUserSignals(nestedRequest, out family)) {
+            if (TryParseDomainIntentFamilyProperty(
+                    selection,
+                    out family,
+                    "family",
+                    "scope",
+                    "domain_family",
+                    "domainFamily")) {
+                return true;
+            }
+
+            if (TryGetObjectPropertyCaseInsensitive(selection, out var titleNode, "title")
+                && titleNode.ValueKind == JsonValueKind.String) {
+                var title = (titleNode.GetString() ?? string.Empty).Trim();
+                var normalizedTitle = NormalizeCompactText(title);
+                if (TryNormalizeDomainIntentFamily(normalizedTitle, out family)
+                    || TryParseDomainIntentFamilyFromTechnicalSignals(normalizedTitle, out family)) {
                     return true;
                 }
+            }
+
+            if (TryGetObjectPropertyCaseInsensitive(selection, out var requestNode, "request")
+                && requestNode.ValueKind != JsonValueKind.Null
+                && requestNode.ValueKind != JsonValueKind.Undefined) {
+                if (requestNode.ValueKind == JsonValueKind.String) {
+                    var nestedRequest = (requestNode.GetString() ?? string.Empty).Trim();
+                    if (nestedRequest.Length > 0
+                        && !string.Equals(nestedRequest, text, StringComparison.Ordinal)
+                        && TryResolveDomainIntentFamilyFromUserSignals(nestedRequest, out family)) {
+                        return true;
+                    }
+                } else if (requestNode.ValueKind == JsonValueKind.Object) {
+                    var nestedPayload = requestNode.GetRawText();
+                    if (TryParseDomainIntentFamilyFromDomainScopePayload(nestedPayload, out family)
+                        || TryParseDomainIntentFamilyProperty(
+                            requestNode,
+                            out family,
+                            "family",
+                            "scope",
+                            "domain_family",
+                            "domainFamily")) {
+                        return true;
+                    }
+                }
+            }
+
+            if (TryParseDomainIntentFamilyFromDomainScopePayload(payload, out family)) {
+                return true;
             }
         } catch (JsonException) {
             return false;

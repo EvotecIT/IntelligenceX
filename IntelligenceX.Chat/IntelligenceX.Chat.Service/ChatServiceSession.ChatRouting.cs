@@ -73,15 +73,12 @@ internal sealed partial class ChatServiceSession {
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
         if (TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, out var selectedDomainIntentFamily)) {
             routedUserRequest = routedUserRequest + "\n\n" + BuildDomainIntentSelectionRoutingHint(selectedDomainIntentFamily);
-            var selectedScope = string.Equals(selectedDomainIntentFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
-                ? "Active Directory domain scope"
-                : "public DNS/domain scope";
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
                     threadId,
                     status: ChatStatusCodes.Routing,
-                    message: $"Applied pending domain scope selection: {selectedScope}.")
+                    message: $"Applied pending domain scope selection: family={DescribeDomainIntentFamily(selectedDomainIntentFamily)}.")
                 .ConfigureAwait(false);
         }
         var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
@@ -204,16 +201,13 @@ internal sealed partial class ChatServiceSession {
                     out var signaledRemovedCount)) {
                 toolDefs = signaledTools;
                 (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
-                var signalScope = string.Equals(signaledFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
-                    ? "Active Directory domain scope"
-                    : "public DNS/domain scope";
                 await TryWriteStatusAsync(
                         writer,
                         request.RequestId,
                         threadId,
                         status: ChatStatusCodes.Routing,
                         message:
-                        $"Tool routing detected explicit {signalScope} signals in your request and removed {signaledRemovedCount} conflicting candidate tool(s).")
+                        $"Tool routing detected explicit domain-scope signals (family={DescribeDomainIntentFamily(signaledFamily)}) and removed {signaledRemovedCount} conflicting candidate tool(s).")
                     .ConfigureAwait(false);
                 var signalRoutingMetaPayload = BuildRoutingMetaPayload(
                     strategy: "domain_signal_hint",
@@ -239,16 +233,13 @@ internal sealed partial class ChatServiceSession {
                        && TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
                 toolDefs = affinedTools;
                 (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
-                var affinityScope = string.Equals(affinityFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
-                    ? "Active Directory domain scope"
-                    : "public DNS/domain scope";
                 await TryWriteStatusAsync(
                         writer,
                         request.RequestId,
                         threadId,
                         status: ChatStatusCodes.Routing,
                         message:
-                        $"Tool routing reused previous {affinityScope} context and removed {affinityRemovedCount} conflicting candidate tool(s).")
+                        $"Tool routing reused previous domain-scope context (family={DescribeDomainIntentFamily(affinityFamily)}) and removed {affinityRemovedCount} conflicting candidate tool(s).")
                     .ConfigureAwait(false);
                 var affinityRoutingMetaPayload = BuildRoutingMetaPayload(
                     strategy: "domain_family_affinity",
@@ -277,8 +268,8 @@ internal sealed partial class ChatServiceSession {
                         threadId,
                         status: ChatStatusCodes.Routing,
                         message: conflictingDomainSignals
-                            ? "Tool routing detected conflicting AD and public DNS/domain signals in your request; requesting scope clarification before execution."
-                            : "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
+                            ? "Tool routing detected conflicting domain-scope signals (multiple families); requesting scope clarification before execution."
+                            : "Tool routing detected mixed cross-family domain candidates; requesting scope clarification before execution.")
                     .ConfigureAwait(false);
 
                 var clarificationText = BuildDomainIntentClarificationText();

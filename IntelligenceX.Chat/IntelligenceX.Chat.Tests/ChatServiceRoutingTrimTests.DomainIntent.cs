@@ -132,11 +132,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var clarification = Assert.IsType<string>(text);
 
         Assert.Contains("Any language is accepted", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Accepted quick replies", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ad_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:domain-intent:v1", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:domain-intent-choice:v1", clarification, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Reply with `1` or `2`", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Active Directory domain scope", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Public DNS/domain scope", clarification, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -148,8 +150,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-domain-intent", "2" });
         var expanded = Assert.IsType<string>(result);
 
-        Assert.Contains("choice_002", expanded, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Public DNS/domain scope", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("act_domain_scope_public", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("public_domain", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix_action_selection", expanded, StringComparison.OrdinalIgnoreCase);
     }
 }
