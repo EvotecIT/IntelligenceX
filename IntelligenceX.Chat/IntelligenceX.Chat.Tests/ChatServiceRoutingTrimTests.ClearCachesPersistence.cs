@@ -32,6 +32,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ResolveStructuredNextActionStorePathMethod =
         typeof(ChatServiceSession).GetMethod("ResolveStructuredNextActionStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ResolveStructuredNextActionStorePath not found.");
+    private static readonly MethodInfo ResolveThreadRecoveryAliasStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveThreadRecoveryAliasStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveThreadRecoveryAliasStorePath not found.");
 
     [Fact]
     public void ClearToolRoutingCaches_RemovesPersistedRoutingSnapshots() {
@@ -95,6 +98,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 session1,
                 new object?[] { threadId, carryoverToolDefinitions, carryoverToolCalls, carryoverToolOutputs, carryoverMutabilityHints });
             session1.RememberPendingDomainIntentClarificationRequestForTesting(threadId);
+            session1.RememberRecoveredThreadAliasForTesting("legacy-thread", threadId);
             session1.RememberPreferredDomainIntentFamilyForTesting(
                 domainThreadId,
                 new[] { new ToolCallDto { CallId = "1", Name = "ad_scope_discovery", ArgumentsJson = "{}" } },
@@ -107,6 +111,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var domainClarificationPath = Assert.IsType<string>(ResolveDomainIntentClarificationStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var weightedSubsetPath = Assert.IsType<string>(ResolveWeightedSubsetStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var structuredNextActionPath = Assert.IsType<string>(ResolveStructuredNextActionStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var threadRecoveryAliasPath = Assert.IsType<string>(ResolveThreadRecoveryAliasStorePathMethod.Invoke(session1, Array.Empty<object>()));
 
             ClearToolRoutingCachesMethod.Invoke(session1, Array.Empty<object>());
 
@@ -116,6 +121,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.False(File.Exists(domainClarificationPath));
             Assert.False(File.Exists(weightedSubsetPath));
             Assert.False(File.Exists(structuredNextActionPath));
+            Assert.False(File.Exists(threadRecoveryAliasPath));
 
             var session2 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
@@ -138,6 +144,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 out _,
                 out _);
             Assert.False(affinityApplied);
+            Assert.Equal("legacy-thread", session2.ResolveRecoveredThreadAliasForTesting("legacy-thread"));
         } finally {
             try {
                 if (Directory.Exists(root)) {

@@ -11,37 +11,51 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
-        lock (_threadRecoveryAliasLock) {
-            var nowUtc = DateTime.UtcNow;
-            var nowTicks = nowUtc.Ticks;
-            TrimRecoveredThreadAliasesNoLock(nowUtc);
+        var nowUtc = DateTime.UtcNow;
+        var nowTicks = nowUtc.Ticks;
+        var current = normalized;
+        // Defensive max hop count to avoid infinite loops in case of accidental cycles.
+        for (var i = 0; i < 8; i++) {
+            string next;
+            var usedSnapshot = false;
 
-            var current = normalized;
-            // Defensive max hop count to avoid infinite loops in case of accidental cycles.
-            for (var i = 0; i < 8; i++) {
-                if (!_recoveredThreadAliasesByThreadId.TryGetValue(current, out var next)) {
-                    break;
+            lock (_threadRecoveryAliasLock) {
+                TrimRecoveredThreadAliasesNoLock(nowUtc);
+                if (_recoveredThreadAliasesByThreadId.TryGetValue(current, out var fromMemory) && !string.IsNullOrWhiteSpace(fromMemory)) {
+                    next = fromMemory.Trim();
+                    _recoveredThreadAliasSeenUtcTicksByThreadId[current] = nowTicks;
+                } else {
+                    next = string.Empty;
                 }
-
-                _recoveredThreadAliasSeenUtcTicksByThreadId[current] = nowTicks;
-                if (string.IsNullOrWhiteSpace(next)) {
-                    _recoveredThreadAliasesByThreadId.Remove(current);
-                    _recoveredThreadAliasSeenUtcTicksByThreadId.Remove(current);
-                    break;
-                }
-
-                next = next.Trim();
-                if (next.Length == 0 || string.Equals(next, current, StringComparison.Ordinal)) {
-                    _recoveredThreadAliasesByThreadId.Remove(current);
-                    _recoveredThreadAliasSeenUtcTicksByThreadId.Remove(current);
-                    break;
-                }
-
-                current = next;
             }
 
-            return current;
+            if (next.Length == 0) {
+                if (!TryLoadRecoveredThreadAliasSnapshot(current, out var recoveredThreadId, out _)) {
+                    break;
+                }
+
+                RememberRecoveredThreadAlias(current, recoveredThreadId, nowTicks);
+                usedSnapshot = true;
+                next = recoveredThreadId.Trim();
+            }
+
+            if (next.Length == 0 || string.Equals(next, current, StringComparison.Ordinal)) {
+                lock (_threadRecoveryAliasLock) {
+                    _recoveredThreadAliasesByThreadId.Remove(current);
+                    _recoveredThreadAliasSeenUtcTicksByThreadId.Remove(current);
+                }
+                RemoveRecoveredThreadAliasSnapshot(current);
+                break;
+            }
+
+            if (!usedSnapshot) {
+                PersistRecoveredThreadAliasSnapshot(current, next, nowTicks);
+            }
+
+            current = next;
         }
+
+        return current;
     }
 
     private void RememberRecoveredThreadAlias(string originalThreadId, string recoveredThreadId, long? seenUtcTicks = null) {
@@ -65,6 +79,7 @@ internal sealed partial class ChatServiceSession {
             _recoveredThreadAliasSeenUtcTicksByThreadId[original] = normalizedTicks;
             TrimRecoveredThreadAliasesNoLock(nowUtc);
         }
+        PersistRecoveredThreadAliasSnapshot(original, recovered, normalizedTicks);
     }
 
     private void TrimRecoveredThreadAliasesNoLock(DateTime nowUtc) {
@@ -112,6 +127,7 @@ internal sealed partial class ChatServiceSession {
             _recoveredThreadAliasesByThreadId.Clear();
             _recoveredThreadAliasSeenUtcTicksByThreadId.Clear();
         }
+        ClearRecoveredThreadAliasSnapshots();
     }
 
     internal string ResolveRecoveredThreadAliasForTesting(string threadId) {
