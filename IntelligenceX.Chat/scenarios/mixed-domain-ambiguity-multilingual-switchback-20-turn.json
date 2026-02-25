@@ -87,7 +87,7 @@
       "name": "Mixed signals again force clarification",
       "user": "Please do AD LDAP + DNS MX together now.",
       "forbid_tools": ["*"],
-      "assert_contains": ["AD", "DNS"]
+      "assert_contains": ["ix:domain-intent-choice:v1", "act_domain_scope_ad", "act_domain_scope_public"]
     },
     {
       "name": "Numeric selection with Arabic-Indic digit",
@@ -134,7 +134,7 @@
       "name": "Third mixed-intent clarification checkpoint",
       "user": "¿Puedes mezclar LDAP y DNS publico en un solo paso?",
       "forbid_tools": ["*"],
-      "assert_contains": ["AD", "DNS"]
+      "assert_contains": ["ix:domain-intent-choice:v1", "act_domain_scope_ad", "act_domain_scope_public"]
     },
     {
       "name": "Explicit public-domain marker selection",

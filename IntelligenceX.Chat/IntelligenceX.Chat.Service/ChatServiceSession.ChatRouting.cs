@@ -180,7 +180,10 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        if (ShouldRequestDomainIntentClarification(
+        var forceDomainIntentClarification = ShouldForceDomainIntentClarificationForConflictingSignals(
+            routedUserRequest,
+            fullToolDefs);
+        if (forceDomainIntentClarification || ShouldRequestDomainIntentClarification(
                 weightedToolRouting: weightedToolRouting,
                 executionContractApplies: executionContractApplies,
                 usedContinuationSubset: usedContinuationSubset,
@@ -268,7 +271,9 @@ internal sealed partial class ChatServiceSession {
                         threadId,
                         status: ChatStatusCodes.Routing,
                         message: conflictingDomainSignals
-                            ? "Tool routing detected conflicting domain-scope signals (multiple families); requesting scope clarification before execution."
+                            ? forceDomainIntentClarification
+                                ? "Tool routing detected conflicting domain-scope signals and forced structured clarification before execution."
+                                : "Tool routing detected conflicting domain-scope signals (multiple families); requesting scope clarification before execution."
                             : "Tool routing detected mixed cross-family domain candidates; requesting scope clarification before execution.")
                     .ConfigureAwait(false);
 

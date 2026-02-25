@@ -495,4 +495,51 @@ public sealed class ChatServiceDomainAffinityTests {
     public void HasConflictingDomainIntentSignalsForTesting_ReturnsFalseWhenSignalsDoNotConflict(string input) {
         Assert.False(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
     }
+
+    [Fact]
+    public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsTrueWhenSignalsConflictAndFamiliesAvailable() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("dnsclientx_query", "DNS query")
+        };
+
+        var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
+            "Please do AD LDAP + DNS MX together now.",
+            tools);
+
+        Assert.True(shouldForce);
+    }
+
+    [Fact]
+    public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsFalseWhenExplicitFamilyMarkerIsPresent() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("dnsclientx_query", "DNS query")
+        };
+
+        var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
+            """
+            [DomainIntent]
+            ix:domain-intent:v1
+            family: public_domain
+            AD LDAP + DNS MX
+            """,
+            tools);
+
+        Assert.False(shouldForce);
+    }
+
+    [Fact]
+    public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsFalseWhenOnlyOneFamilyIsAvailable() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("ad_domain_controllers", "AD DCs")
+        };
+
+        var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
+            "Please do AD LDAP + DNS MX together now.",
+            tools);
+
+        Assert.False(shouldForce);
+    }
 }

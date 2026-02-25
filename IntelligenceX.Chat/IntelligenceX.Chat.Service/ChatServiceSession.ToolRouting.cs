@@ -215,6 +215,43 @@ internal sealed partial class ChatServiceSession {
         return dominantShare < DomainIntentClarificationMaxDominantShare;
     }
 
+    private static bool HasMixedDomainIntentFamilyCoverage(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions is null || definitions.Count == 0) {
+            return false;
+        }
+
+        var hasAd = false;
+        var hasPublic = false;
+
+        for (var i = 0; i < definitions.Count; i++) {
+            var family = ResolveDomainIntentFamily(definitions[i]);
+            if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+                hasAd = true;
+            } else if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+                hasPublic = true;
+            }
+
+            if (hasAd && hasPublic) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ShouldForceDomainIntentClarificationForConflictingSignals(string userRequest, IReadOnlyList<ToolDefinition> allDefinitions) {
+        if (!HasConflictingDomainIntentSignals(userRequest)) {
+            return false;
+        }
+
+        if (!HasMixedDomainIntentFamilyCoverage(allDefinitions)) {
+            return false;
+        }
+
+        // If an explicit structured family selection is present, do not force clarification.
+        return !TryResolveDomainIntentFamilyFromUserSignals(userRequest, out _);
+    }
+
     private static bool IsAdDomainIntentToolName(string toolName) {
         return toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase);
     }
@@ -1767,6 +1804,12 @@ internal sealed partial class ChatServiceSession {
 
     internal static bool HasConflictingDomainIntentSignalsForTesting(string userRequest) {
         return HasConflictingDomainIntentSignals(userRequest);
+    }
+
+    internal static bool ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
+        string userRequest,
+        IReadOnlyList<ToolDefinition> allDefinitions) {
+        return ShouldForceDomainIntentClarificationForConflictingSignals(userRequest, allDefinitions);
     }
 
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {
