@@ -19,7 +19,7 @@ using JsonLite = IntelligenceX.Json.JsonLite;
 namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
-    private const int NoToolExecutionRetryToleranceOnSuccessfulToolTurn = 1;
+    private const int NoToolExecutionRetryToleranceOnSuccessfulToolTurn = 3;
     private static readonly string[] PartialCompletionMarkers = {
         "partial response shown above",
         "turn ended before completion",
@@ -1031,30 +1031,66 @@ internal static partial class Program {
         }
 
         var normalizedKey = inputKey.Trim();
+        var candidateInputKeys = GetScenarioInputKeyAliases(normalizedKey);
         for (var i = 0; i < toolCalls.Count; i++) {
             var args = toolCalls[i].Arguments;
             if (args is null) {
                 continue;
             }
 
-            if (!TryReadToolInputValueByKey(args, normalizedKey, out var value) || string.IsNullOrWhiteSpace(value)) {
-                continue;
-            }
+            foreach (var candidateKey in candidateInputKeys) {
+                if (!TryReadToolInputValuesByKey(args, candidateKey, out var candidateValues) || candidateValues.Count == 0) {
+                    continue;
+                }
 
-            values.Add(value.Trim());
+                foreach (var candidateValue in candidateValues) {
+                    values.Add(candidateValue);
+                }
+            }
         }
 
         return values;
     }
 
-    private static bool TryReadToolInputValueByKey(IxJsonObject arguments, string inputKey, out string value) {
-        value = string.Empty;
+    private static IReadOnlyList<string> GetScenarioInputKeyAliases(string inputKey) {
+        var key = (inputKey ?? string.Empty).Trim();
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (key.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        aliases.Add(key);
+        if (string.Equals(key, "machine_name", StringComparison.OrdinalIgnoreCase)) {
+            aliases.Add("domain_controller");
+            aliases.Add("servers");
+            aliases.Add("targets");
+            aliases.Add("target");
+            aliases.Add("host");
+            aliases.Add("server");
+            aliases.Add("computer_name");
+        } else if (string.Equals(key, "domain_controller", StringComparison.OrdinalIgnoreCase)) {
+            aliases.Add("machine_name");
+            aliases.Add("servers");
+            aliases.Add("targets");
+            aliases.Add("target");
+            aliases.Add("host");
+            aliases.Add("server");
+            aliases.Add("computer_name");
+        }
+
+        return aliases.ToArray();
+    }
+
+    private static bool TryReadToolInputValuesByKey(IxJsonObject arguments, string inputKey, out IReadOnlyList<string> values) {
+        values = Array.Empty<string>();
         if (arguments is null || string.IsNullOrWhiteSpace(inputKey)) {
             return false;
         }
 
         var normalizedKey = inputKey.Trim();
-        if (arguments.TryGetValue(normalizedKey, out var exactValue) && TryNormalizeToolInputValue(exactValue, out value)) {
+        if (arguments.TryGetValue(normalizedKey, out var exactValue)
+            && TryCollectNormalizedToolInputValues(exactValue, out var normalizedValues)) {
+            values = normalizedValues;
             return true;
         }
 
@@ -1063,7 +1099,8 @@ internal static partial class Program {
                 continue;
             }
 
-            if (TryNormalizeToolInputValue(pair.Value, out value)) {
+            if (TryCollectNormalizedToolInputValues(pair.Value, out var aliasNormalizedValues)) {
+                values = aliasNormalizedValues;
                 return true;
             }
         }
@@ -1071,22 +1108,51 @@ internal static partial class Program {
         return false;
     }
 
-    private static bool TryNormalizeToolInputValue(IxJsonValue? value, out string normalized) {
-        normalized = string.Empty;
+    private static bool TryCollectNormalizedToolInputValues(IxJsonValue? value, out IReadOnlyList<string> normalizedValues) {
+        normalizedValues = Array.Empty<string>();
         if (value is null) {
             return false;
         }
 
+        var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectNormalizedToolInputValues(value, values);
+        if (values.Count == 0) {
+            return false;
+        }
+
+        normalizedValues = values.ToArray();
+        return true;
+    }
+
+    private static void CollectNormalizedToolInputValues(IxJsonValue? value, HashSet<string> target) {
+        if (value is null || target is null) {
+            return;
+        }
+
         switch (value.Kind) {
             case IxJsonValueKind.String:
-                normalized = (value.AsString() ?? string.Empty).Trim();
-                return normalized.Length > 0;
+                var stringValue = (value.AsString() ?? string.Empty).Trim();
+                if (stringValue.Length > 0) {
+                    target.Add(stringValue);
+                }
+                break;
             case IxJsonValueKind.Number:
             case IxJsonValueKind.Boolean:
-                normalized = value.ToString().Trim();
-                return normalized.Length > 0;
-            default:
-                return false;
+                var scalarValue = value.ToString().Trim();
+                if (scalarValue.Length > 0) {
+                    target.Add(scalarValue);
+                }
+                break;
+            case IxJsonValueKind.Array:
+                var array = value.AsArray();
+                if (array is null) {
+                    return;
+                }
+
+                foreach (var item in array) {
+                    CollectNormalizedToolInputValues(item, target);
+                }
+                break;
         }
     }
 

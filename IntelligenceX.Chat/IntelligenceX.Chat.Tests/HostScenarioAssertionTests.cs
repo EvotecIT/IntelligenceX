@@ -41,7 +41,7 @@ public sealed class HostScenarioAssertionTests {
             toolCalls: calls,
             toolOutputs: outputs,
             toolRounds: 1,
-            noToolExecutionRetries: 2);
+            noToolExecutionRetries: 4);
 
         var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
 
@@ -141,6 +141,42 @@ public sealed class HostScenarioAssertionTests {
             toolOutputs: outputs,
             toolRounds: 1,
             noToolExecutionRetries: 1);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("no-tool execution retry", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_ToleratesTwoNoToolRetries_WhenToolContractCompletesWithToolCalls() {
+        const string json = """
+{
+  "name": "double-retry-tolerance",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Collect evidence with tools.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 2);
 
         var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
 
@@ -298,6 +334,84 @@ public sealed class HostScenarioAssertionTests {
         var calls = new List<ToolCall> {
             BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD1\"}"),
             BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD2\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("distinct 'machine_name' tool input value", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_PassesWhenDistinctMachineCoverageUsesDomainControllerAlias() {
+        const string json = """
+{
+  "name": "distinct-inputs-ad-alias",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on all remaining DCs.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["ad_*ldap*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "ad_ldap_diagnostics", "{\"domain_controller\":\"AD1\"}"),
+            BuildToolCall("call_2", "ad_ldap_diagnostics", "{\"domain_controller\":\"AD2\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("distinct 'machine_name' tool input value", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_PassesWhenDistinctMachineCoverageUsesArrayTargetsAlias() {
+        const string json = """
+{
+  "name": "distinct-inputs-ad-targets",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on all remaining DCs.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["ad_monitoring_probe_run"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "ad_monitoring_probe_run", "{\"targets\":[\"AD1\"]}"),
+            BuildToolCall("call_2", "ad_monitoring_probe_run", "{\"targets\":[\"AD2\"]}")
         };
         var outputs = new List<ToolOutput> {
             new("call_1", "{\"ok\":true}"),

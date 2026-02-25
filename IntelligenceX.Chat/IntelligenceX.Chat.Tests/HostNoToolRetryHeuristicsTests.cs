@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using System.Reflection;
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -67,6 +70,47 @@ public sealed class HostNoToolRetryHeuristicsTests {
         Assert.True(result);
     }
 
+    [Fact]
+    public void ShouldRetryScenarioContractRepair_TriggersWhenDistinctCoverageIsIncomplete() {
+        const string request = """
+[Scenario execution contract]
+This scenario turn requires tool execution before the final response.
+- Minimum tool calls in this turn: 2.
+- Distinct tool input value requirements: machine_name>=2.
+User request:
+Continue recurring-error analysis across all remaining DCs in this turn.
+""";
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", "{\"machine_name\":\"AD1\"}")
+        };
+
+        var result = InvokeShouldRetryScenarioContractRepair(request, calls);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldRetryScenarioContractRepair_DoesNotTriggerWhenContractCoverageIsMet() {
+        const string request = """
+[Scenario execution contract]
+This scenario turn requires tool execution before the final response.
+- Minimum tool calls in this turn: 2.
+- Distinct tool input value requirements: machine_name>=2.
+User request:
+Continue recurring-error analysis across all remaining DCs in this turn.
+""";
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", "{\"machine_name\":\"AD1\"}"),
+            BuildToolCall("call_2", "eventlog_live_stats", "{\"machine_name\":\"AD2\"}")
+        };
+
+        var result = InvokeShouldRetryScenarioContractRepair(request, calls);
+
+        Assert.False(result);
+    }
+
     private static bool InvokeShouldRetryNoToolExecution(string userRequest, string assistantDraft) {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
@@ -79,5 +123,29 @@ public sealed class HostNoToolRetryHeuristicsTests {
 
         var value = method!.Invoke(null, new object?[] { userRequest, assistantDraft });
         return value is bool b && b;
+    }
+
+    private static bool InvokeShouldRetryScenarioContractRepair(string userRequest, IReadOnlyList<ToolCall> calls) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ShouldRetryScenarioContractRepair",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { userRequest, calls });
+        return value is bool b && b;
+    }
+
+    private static ToolCall BuildToolCall(string callId, string name, string jsonArgs) {
+        var args = JsonLite.Parse(jsonArgs)?.AsObject();
+        var raw = new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("call_id", callId)
+            .Add("name", name)
+            .Add("input", jsonArgs);
+        return new ToolCall(callId, name, jsonArgs, args, raw);
     }
 }

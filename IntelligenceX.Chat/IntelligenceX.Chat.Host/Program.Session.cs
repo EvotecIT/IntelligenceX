@@ -22,7 +22,7 @@ namespace IntelligenceX.Chat.Host;
 internal static partial class Program {
 
     private sealed class ReplSession {
-        private const int MaxNoToolExecutionRetries = 2;
+        private const int MaxNoToolExecutionRetries = 3;
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private readonly IntelligenceXClient _client;
         private readonly ToolRegistry _registry;
@@ -131,13 +131,24 @@ internal static partial class Program {
                                                      && outputs.Count == 0
                                                      && toolDefs.Count > 0
                                                      && ShouldRetryNoToolExecution(text, finalText);
-                    if (shouldRetryNoToolExecution) {
+                    var shouldRetryScenarioContractRepair = noToolExecutionRetryCount < MaxNoToolExecutionRetries
+                                                            && calls.Count > 0
+                                                            && toolDefs.Count > 0
+                                                            && ShouldRetryScenarioContractRepair(text, calls);
+                    if (shouldRetryNoToolExecution || shouldRetryScenarioContractRepair) {
                         noToolExecutionRetryCount++;
-                        var retryPrompt = BuildNoToolExecutionRetryPrompt(text, finalText, noToolExecutionRetryCount);
+                        var hasScenarioContract = TryParseScenarioExecutionContractRequirements(text, out _);
+                        var useScenarioRepairPrompt = shouldRetryScenarioContractRepair
+                                                      || (shouldRetryNoToolExecution && hasScenarioContract);
+                        var retryPrompt = useScenarioRepairPrompt
+                            ? BuildScenarioContractRepairRetryPrompt(text, finalText, calls, noToolExecutionRetryCount)
+                            : BuildNoToolExecutionRetryPrompt(text, finalText, noToolExecutionRetryCount);
                         chatOptions.NewThread = false;
                         chatOptions.PreviousResponseId = TryGetResponseId(turn);
                         if (_options.LiveProgress) {
-                            _status?.Invoke("re-planning tool execution for this turn...");
+                            _status?.Invoke(useScenarioRepairPrompt
+                                ? "repairing partial scenario tool execution..."
+                                : "re-planning tool execution for this turn...");
                         }
                         turn = await ChatWithToolSchemaRecoveryAsync(ChatInput.FromText(retryPrompt), chatOptions, turnToken)
                             .ConfigureAwait(false);
@@ -470,6 +481,143 @@ internal static partial class Program {
                 """;
         }
 
+        private static bool ShouldRetryScenarioContractRepair(string userRequest, IReadOnlyList<ToolCall> calls) {
+            if (!TryParseScenarioExecutionContractRequirements(userRequest, out var requirements) || requirements is null) {
+                return false;
+            }
+
+            if (requirements.MinToolCalls > 0 && calls.Count < requirements.MinToolCalls) {
+                return true;
+            }
+
+            if (requirements.MinDistinctToolInputValues.Count == 0) {
+                return false;
+            }
+
+            foreach (var requirement in requirements.MinDistinctToolInputValues) {
+                var minDistinct = Math.Max(0, requirement.Value);
+                if (minDistinct == 0) {
+                    continue;
+                }
+
+                var observedValues = CollectDistinctToolInputValuesByKey(calls, requirement.Key);
+                if (observedValues.Count < minDistinct) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryParseScenarioExecutionContractRequirements(string userRequest, out ScenarioExecutionContractRequirements? requirements) {
+            requirements = null;
+            var request = userRequest ?? string.Empty;
+            if (request.IndexOf(ScenarioExecutionContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+
+            var minToolCalls = 0;
+            var minToolCallsMatch = Regex.Match(
+                request,
+                @"Minimum tool calls in this turn:\s*(?<count>\d+)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (minToolCallsMatch.Success
+                && int.TryParse(minToolCallsMatch.Groups["count"].Value, out var parsedMinToolCalls)
+                && parsedMinToolCalls > 0) {
+                minToolCalls = parsedMinToolCalls;
+            }
+
+            var minDistinctToolInputValues = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var distinctMatch = Regex.Match(
+                request,
+                @"Distinct tool input value requirements:\s*(?<requirements>[^\r\n]+)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (distinctMatch.Success) {
+                var rawRequirements = (distinctMatch.Groups["requirements"].Value ?? string.Empty).Trim();
+                if (rawRequirements.EndsWith(".", StringComparison.Ordinal)) {
+                    rawRequirements = rawRequirements.Substring(0, rawRequirements.Length - 1).TrimEnd();
+                }
+
+                if (rawRequirements.Length > 0) {
+                    var segments = rawRequirements.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var segment in segments) {
+                        var pair = segment.Split(">=", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        if (pair.Length != 2) {
+                            continue;
+                        }
+
+                        var key = (pair[0] ?? string.Empty).Trim();
+                        if (key.Length == 0) {
+                            continue;
+                        }
+
+                        if (!int.TryParse(pair[1], out var parsedMinDistinct) || parsedMinDistinct < 0) {
+                            continue;
+                        }
+
+                        minDistinctToolInputValues[key] = parsedMinDistinct;
+                    }
+                }
+            }
+
+            if (minToolCalls <= 0 && minDistinctToolInputValues.Count == 0) {
+                return false;
+            }
+
+            requirements = new ScenarioExecutionContractRequirements(minToolCalls, minDistinctToolInputValues);
+            return true;
+        }
+
+        private static string BuildScenarioContractRepairRetryPrompt(
+            string userRequest,
+            string assistantDraft,
+            IReadOnlyList<ToolCall> calls,
+            int retryAttempt) {
+            var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
+            var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
+            var attempt = Math.Max(1, retryAttempt);
+            var safeCalls = calls ?? Array.Empty<ToolCall>();
+            var observedToolCalls = Math.Max(0, safeCalls.Count);
+
+            var contractSummary = "unable to parse scenario requirements.";
+            if (TryParseScenarioExecutionContractRequirements(userRequest, out var requirements) && requirements is not null) {
+                var minCalls = Math.Max(0, requirements.MinToolCalls);
+                var distinctParts = new List<string>();
+                foreach (var requirement in requirements.MinDistinctToolInputValues) {
+                    var observedValues = CollectDistinctToolInputValuesByKey(safeCalls, requirement.Key);
+                    distinctParts.Add(requirement.Key + "=" + observedValues.Count + "/" + Math.Max(0, requirement.Value));
+                }
+
+                var distinctSummary = distinctParts.Count == 0
+                    ? "none"
+                    : string.Join(", ", distinctParts);
+                contractSummary = "min_tool_calls=" + minCalls + ", observed_tool_calls=" + observedToolCalls
+                                  + ", distinct_inputs={" + distinctSummary + "}";
+            }
+
+            return $$"""
+                [Execution correction]
+                The previous assistant draft ended with partial tool execution that does not satisfy the scenario execution contract.
+                Retry attempt: {{attempt}}/{{MaxNoToolExecutionRetries}}.
+                Observed tool-call count so far in this turn: {{observedToolCalls}}.
+                Contract progress: {{contractSummary}}.
+
+                User request:
+                {{request}}
+
+                Previous assistant draft:
+                {{draft}}
+
+                Execute additional qualifying tool calls now in this same turn to satisfy the missing contract requirements.
+                Do not ask follow-up questions before issuing additional tool calls.
+                Emit at least one qualifying tool call before any narrative prose in this retry.
+                If required coverage is >1 (for example min_tool_calls>=2 or machine_name>=2), issue multiple tool calls in this retry.
+                Do not repeat identical tool-call signatures unless there is no alternative; prioritize missing distinct input coverage.
+                Infer missing read-only inputs from prior tool outputs where possible.
+                If tools still cannot satisfy the missing contract requirements after best effort, state the exact blocker once.
+                """;
+        }
+
         private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, CancellationToken cancellationToken) {
             var runInParallel = ShouldRunParallelToolExecution(calls, out var mutatingToolNames);
             if (_options.LiveProgress
@@ -597,6 +745,17 @@ internal static partial class Program {
 
         private static bool ShouldRetryWithoutTools(Exception ex, ChatOptions options) {
             return ToolSchemaRecoveryClassifier.ShouldRetryWithoutTools(ex, options);
+        }
+
+        private sealed class ScenarioExecutionContractRequirements {
+            public ScenarioExecutionContractRequirements(int minToolCalls, IReadOnlyDictionary<string, int> minDistinctToolInputValues) {
+                MinToolCalls = Math.Max(0, minToolCalls);
+                MinDistinctToolInputValues = minDistinctToolInputValues
+                                             ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            public int MinToolCalls { get; }
+            public IReadOnlyDictionary<string, int> MinDistinctToolInputValues { get; }
         }
     }
 
