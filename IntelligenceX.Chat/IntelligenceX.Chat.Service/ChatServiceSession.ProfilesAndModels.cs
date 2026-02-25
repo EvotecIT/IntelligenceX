@@ -606,6 +606,8 @@ internal sealed partial class ChatServiceSession {
             _lastWeightedToolSubsetSeenUtcTicks.Clear();
             _plannerThreadIdByActiveThreadId.Clear();
             _plannerThreadSeenUtcTicksByActiveThreadId.Clear();
+            _domainIntentFamilyByThreadId.Clear();
+            _domainIntentFamilySeenUtcTicks.Clear();
         }
         _lastUserIntentByThreadId.Clear();
         _lastUserIntentSeenUtcTicks.Clear();
@@ -613,6 +615,8 @@ internal sealed partial class ChatServiceSession {
         _pendingActionsSeenUtcTicks.Clear();
         _pendingActionsCallToActionTokensByThreadId.Clear();
         _structuredNextActionByThreadId.Clear();
+        ClearRecoveredThreadAliases();
+        ClearThreadToolEvidence();
     }
 
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(

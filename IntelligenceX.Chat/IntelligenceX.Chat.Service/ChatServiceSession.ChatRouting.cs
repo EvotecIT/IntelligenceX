@@ -177,32 +177,68 @@ internal sealed partial class ChatServiceSession {
                 selectedToolCount: routingSelectedToolCount,
                 totalToolCount: routingTotalToolCount,
                 selectedTools: toolDefs)) {
-            await TryWriteStatusAsync(
-                    writer,
-                    request.RequestId,
-                    threadId,
-                    status: ChatStatusCodes.Routing,
-                    message: "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
-                .ConfigureAwait(false);
+            if (TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
+                toolDefs = affinedTools;
+                (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
+                var affinityScope = string.Equals(affinityFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+                    ? "Active Directory domain scope"
+                    : "public DNS/domain scope";
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.Routing,
+                        message:
+                        $"Tool routing reused previous {affinityScope} context and removed {affinityRemovedCount} conflicting candidate tool(s).")
+                    .ConfigureAwait(false);
+                var affinityRoutingMetaPayload = BuildRoutingMetaPayload(
+                    strategy: "domain_family_affinity",
+                    weightedToolRouting,
+                    executionContractApplies,
+                    usedContinuationSubset,
+                    selectedToolCount: routingSelectedToolCount,
+                    totalToolCount: routingTotalToolCount,
+                    insightCount: routingInsights.Count,
+                    plannerInsightsDetected: false,
+                    requestedMaxCandidateTools: requestedMaxCandidateTools,
+                    effectiveMaxCandidateTools: maxCandidateTools,
+                    effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
+                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied);
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.RoutingMeta,
+                        message: affinityRoutingMetaPayload)
+                    .ConfigureAwait(false);
+            } else {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.Routing,
+                        message: "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
+                    .ConfigureAwait(false);
 
-            var clarificationText = BuildDomainIntentClarificationText();
-            RememberPendingActions(threadId, clarificationText);
-            var clarificationResult = new ChatResultMessage {
-                Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                ThreadId = threadId,
-                Text = clarificationText,
-                Tools = null,
-                TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
-            };
-            return new ChatTurnRunResult(
-                Result: clarificationResult,
-                Usage: null,
-                ToolCallsCount: 0,
-                ToolRounds: 0,
-                ProjectionFallbackCount: 0,
-                ToolErrors: Array.Empty<ToolErrorMetricDto>(),
-                ResolvedModel: null);
+                var clarificationText = BuildDomainIntentClarificationText();
+                RememberPendingActions(threadId, clarificationText);
+                var clarificationResult = new ChatResultMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    ThreadId = threadId,
+                    Text = clarificationText,
+                    Tools = null,
+                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
+                };
+                return new ChatTurnRunResult(
+                    Result: clarificationResult,
+                    Usage: null,
+                    ToolCallsCount: 0,
+                    ToolRounds: 0,
+                    ProjectionFallbackCount: 0,
+                    ToolErrors: Array.Empty<ToolErrorMetricDto>(),
+                    ResolvedModel: null);
+            }
         }
 
         var resolvedModel = await ResolveTurnModelAsync(client, request, turnToken).ConfigureAwait(false);
@@ -1145,10 +1181,14 @@ internal sealed partial class ChatServiceSession {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
                         : "no_tool_evidence_at_finalize";
-                    text = BuildExecutionContractBlockerText(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        reason: blockerReason);
+                    if (!TryBuildToolEvidenceFallbackText(threadId, routedUserRequest, out var cachedEvidenceFallbackText)) {
+                        text = BuildExecutionContractBlockerText(
+                            userRequest: routedUserRequest,
+                            assistantDraft: text,
+                            reason: blockerReason);
+                    } else {
+                        text = cachedEvidenceFallbackText;
+                    }
                 }
 
                 text = AppendTurnCompletionNotice(text, turn);
@@ -1163,6 +1203,8 @@ internal sealed partial class ChatServiceSession {
 
                 // Capture pending actions from the finalized assistant text so confirmation routing stays aligned
                 // with what the user actually sees (including contract fallback substitutions).
+                RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHints);
+                RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHints);
                 RememberPendingActions(threadId, text);
 
                 if (_options.Redact) {

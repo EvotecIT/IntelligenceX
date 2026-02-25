@@ -415,9 +415,25 @@ internal sealed partial class ChatServiceSession {
             return activeThreadId;
         }
 
+        var requestThreadId = ResolveRecoveredThreadAlias(request.ThreadId);
+        var routedActiveThreadId = ResolveRecoveredThreadAlias(activeThreadId);
+
         try {
-            activeThreadId = await EnsureThreadAsync(client, request.ThreadId, activeThreadId, request.Options?.Model, cancellationToken)
+            activeThreadId = await EnsureThreadAsync(client, requestThreadId, routedActiveThreadId, request.Options?.Model, cancellationToken)
                 .ConfigureAwait(false);
+
+            var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
+            if (normalizedActiveThreadId.Length > 0) {
+                if (!string.IsNullOrWhiteSpace(requestThreadId)
+                    && !string.Equals(requestThreadId, normalizedActiveThreadId, StringComparison.Ordinal)) {
+                    RememberRecoveredThreadAlias(requestThreadId, normalizedActiveThreadId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(routedActiveThreadId)
+                    && !string.Equals(routedActiveThreadId, normalizedActiveThreadId, StringComparison.Ordinal)) {
+                    RememberRecoveredThreadAlias(routedActiveThreadId, normalizedActiveThreadId);
+                }
+            }
         } catch (OpenAIAuthenticationRequiredException) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
