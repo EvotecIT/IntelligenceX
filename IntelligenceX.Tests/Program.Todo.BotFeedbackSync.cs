@@ -317,5 +317,17 @@ internal static partial class Program {
         }
         AssertEqual(true, isLowerHex, "task id is lowercase hex");
     }
+
+    private static void TestBotFeedbackIssueExistsQueryScopesOpenIssues() {
+        var args = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.BuildIssueExistsArgsForTests(
+            "EvotecIT/IntelligenceX",
+            "abc123def456");
+        var joined = string.Join(" ", args);
+
+        AssertContainsText(joined, "issue list", "issue-exists command uses issue list");
+        AssertContainsText(joined, "--state open", "issue-exists command filters to open issues");
+        AssertContainsText(joined, "--search ix-bot-feedback-id:abc123def456",
+            "issue-exists command searches by exact bot feedback id");
+    }
 #endif
 }

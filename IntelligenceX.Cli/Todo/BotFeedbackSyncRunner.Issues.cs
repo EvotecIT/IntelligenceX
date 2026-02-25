@@ -60,14 +60,7 @@ internal static partial class BotFeedbackSyncRunner {
     }
 
     private static async Task<bool> IssueExistsAsync(string repo, string id) {
-        var query = $"ix-bot-feedback-id:{id}";
-        var (code, stdout, _) = await GhCli.RunAsync(
-            "issue", "list",
-            "--repo", repo,
-            "--search", query,
-            "--limit", "1",
-            "--json", "number"
-        ).ConfigureAwait(false);
+        var (code, stdout, _) = await GhCli.RunAsync(BuildIssueExistsArgs(repo, id)).ConfigureAwait(false);
         if (code != 0) {
             return false;
         }
@@ -77,6 +70,22 @@ internal static partial class BotFeedbackSyncRunner {
         } catch {
             return false;
         }
+    }
+
+    internal static IReadOnlyList<string> BuildIssueExistsArgsForTests(string repo, string id) {
+        return BuildIssueExistsArgs(repo, id);
+    }
+
+    private static string[] BuildIssueExistsArgs(string repo, string id) {
+        var query = $"ix-bot-feedback-id:{id}";
+        return new[] {
+            "issue", "list",
+            "--repo", repo,
+            "--state", "open",
+            "--search", query,
+            "--limit", "1",
+            "--json", "number"
+        };
     }
 
     private static async Task EnsureLabelAsync(string repo, string label) {
