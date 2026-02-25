@@ -316,9 +316,14 @@ internal static partial class AnalyzeRunCommand {
         }
 
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.ruff.sarif");
-        var args = BuildPythonRunnerArgs(selectedRuleIds);
+        var args = BuildPythonRunnerArgs(sarifPath, selectedRuleIds, includeOutputFile: true);
 
         var result = await RunProcessAsync(options.RuffCommand, args, workspace).ConfigureAwait(false);
+        if (result.ExitCode != 0 && result.ExitCode != 1 && IsUnsupportedRuffOutputFileOption(result)) {
+            warnings.Add("Ruff does not support --output-file; falling back to stdout SARIF capture.");
+            args = BuildPythonRunnerArgs(sarifPath, selectedRuleIds, includeOutputFile: false);
+            result = await RunProcessAsync(options.RuffCommand, args, workspace).ConfigureAwait(false);
+        }
         if (!string.IsNullOrWhiteSpace(result.StdErr)) {
             Console.WriteLine(result.StdErr.Trim());
         }
@@ -431,13 +436,17 @@ internal static partial class AnalyzeRunCommand {
         };
     }
 
-    private static List<string> BuildPythonRunnerArgs(IReadOnlyList<string> selectedRuleIds) {
+    private static List<string> BuildPythonRunnerArgs(string sarifPath, IReadOnlyList<string> selectedRuleIds, bool includeOutputFile) {
         var args = new List<string> {
             "check",
             ".",
             "--output-format",
             "sarif"
         };
+        if (includeOutputFile && !string.IsNullOrWhiteSpace(sarifPath)) {
+            args.Add("--output-file");
+            args.Add(sarifPath);
+        }
         if (selectedRuleIds is { Count: > 0 }) {
             args.Add("--select");
             args.Add(string.Join(",", selectedRuleIds));
@@ -469,6 +478,18 @@ internal static partial class AnalyzeRunCommand {
         return !string.Equals(severity?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsUnsupportedRuffOutputFileOption(CommandResult result) {
+        var text = ((result.StdErr ?? string.Empty) + "\n" + (result.StdOut ?? string.Empty)).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        return text.Contains("unexpected argument '--output-file'", StringComparison.Ordinal) ||
+               text.Contains("unexpected argument \"--output-file\"", StringComparison.Ordinal) ||
+               text.Contains("no such option: --output-file", StringComparison.Ordinal) ||
+               text.Contains("unrecognized arguments: --output-file", StringComparison.Ordinal);
+    }
+
     private static bool IsPolicyRuleCompatibleWithTool(AnalysisPolicyRule? policyRule, string expectedTool) {
         return policyRule?.Rule is not null &&
                !string.IsNullOrWhiteSpace(expectedTool) &&
@@ -496,7 +517,11 @@ internal static partial class AnalyzeRunCommand {
     }
 
     internal static IReadOnlyList<string> BuildPythonRunnerArgsForTests(IReadOnlyList<string> selectedRuleIds) {
-        return BuildPythonRunnerArgs(selectedRuleIds);
+        return BuildPythonRunnerArgs(string.Empty, selectedRuleIds, includeOutputFile: false);
+    }
+
+    internal static IReadOnlyList<string> BuildPythonRunnerArgsWithOutputForTests(string sarifPath, IReadOnlyList<string> selectedRuleIds) {
+        return BuildPythonRunnerArgs(sarifPath, selectedRuleIds, includeOutputFile: true);
     }
 
     internal static IReadOnlyDictionary<string, string> BuildJavaScriptRuleSelectorsForTests(IReadOnlyList<AnalysisPolicyRule> rules) {
@@ -509,6 +534,10 @@ internal static partial class AnalyzeRunCommand {
 
     internal static IReadOnlyList<string> BuildPythonSelectedRuleIdsForTests(IReadOnlyList<AnalysisPolicyRule> rules) {
         return BuildPythonSelectedRuleIds(rules);
+    }
+
+    internal static bool IsUnsupportedRuffOutputFileOptionForTests(int exitCode, string stdOut, string stdErr) {
+        return IsUnsupportedRuffOutputFileOption(new CommandResult(exitCode, stdOut, stdErr));
     }
 
     internal static string BuildExternalRunnerFailureMessageForTests(

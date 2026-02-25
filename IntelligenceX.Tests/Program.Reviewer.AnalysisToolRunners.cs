@@ -113,6 +113,31 @@ internal static partial class Program {
         AssertContainsText(joined, "--select F821,S602", "python args include selected rule ids");
     }
 
+    private static void TestAnalyzeRunPythonArgsIncludeOutputFileWhenConfigured() {
+        var args = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildPythonRunnerArgsWithOutputForTests(
+            "artifacts/intelligencex.ruff.sarif",
+            new[] { "F821" });
+
+        var joined = string.Join(" ", args);
+        AssertContainsText(joined, "--output-file artifacts/intelligencex.ruff.sarif",
+            "python args can request explicit output file");
+        AssertContainsText(joined, "--select F821", "python args preserve select when output file enabled");
+    }
+
+    private static void TestAnalyzeRunPythonOutputFileFallbackDetection() {
+        var unsupported = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsUnsupportedRuffOutputFileOptionForTests(
+            2,
+            string.Empty,
+            "error: unexpected argument '--output-file' found");
+        var otherError = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsUnsupportedRuffOutputFileOptionForTests(
+            2,
+            string.Empty,
+            "error: some other failure");
+
+        AssertEqual(true, unsupported, "python output-file fallback detection matches unsupported-option errors");
+        AssertEqual(false, otherError, "python output-file fallback detection ignores unrelated errors");
+    }
+
     private static void TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand() {
         var unavailableMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
             languageLabel: "Python",

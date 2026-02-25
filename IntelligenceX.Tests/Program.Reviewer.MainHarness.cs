@@ -392,6 +392,10 @@ internal static partial class Program {
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
         failed += Run("Analyze run JavaScript args include configured rules", TestAnalyzeRunJavaScriptArgsIncludeConfiguredRules);
         failed += Run("Analyze run Python args include select rule IDs", TestAnalyzeRunPythonArgsIncludeSelectRuleIds);
+        failed += Run("Analyze run Python args include output file when configured",
+            TestAnalyzeRunPythonArgsIncludeOutputFileWhenConfigured);
+        failed += Run("Analyze run Python output-file fallback detection",
+            TestAnalyzeRunPythonOutputFileFallbackDetection);
         failed += Run("Analyze run external runner missing command message classification",
             TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
         failed += Run("Analyze run workspace source detection skips excluded directories",
