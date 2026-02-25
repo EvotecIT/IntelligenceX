@@ -594,6 +594,47 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void ApplyDomainDetectiveSummaryTimeoutFallback_ExtendsLowTimeoutOnTimeoutFailure() {
+        var call = BuildToolCall(
+            "call_1",
+            "domaindetective_domain_summary",
+            """{"domain":"contoso.com","checks":["NS","MX"],"timeout_ms":8000}""");
+        const string output = """{"ok":false,"error_code":"timeout","error":"DomainDetective run timed out after timeout_ms=8000."}""";
+
+        var repaired = InvokeApplyDomainDetectiveSummaryTimeoutFallback(call, output);
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal(30000L, repaired.Arguments?.GetInt64("timeout_ms"));
+        Assert.Equal("contoso.com", repaired.Arguments?.GetString("domain"));
+    }
+
+    [Fact]
+    public void ApplyDomainDetectiveSummaryTimeoutFallback_DoesNotPatchWhenTimeoutAlreadyHighEnough() {
+        var call = BuildToolCall(
+            "call_1",
+            "domaindetective_domain_summary",
+            """{"domain":"contoso.com","checks":["NS","MX"],"timeout_ms":60000}""");
+        const string output = """{"ok":false,"error_code":"timeout","error":"DomainDetective run timed out after timeout_ms=60000."}""";
+
+        var repaired = InvokeApplyDomainDetectiveSummaryTimeoutFallback(call, output);
+
+        Assert.Same(call, repaired);
+    }
+
+    [Fact]
+    public void ApplyDomainDetectiveSummaryTimeoutFallback_DoesNotPatchNonTimeoutFailures() {
+        var call = BuildToolCall(
+            "call_1",
+            "domaindetective_domain_summary",
+            """{"domain":"contoso.com","checks":["NS","MX"],"timeout_ms":8000}""");
+        const string output = """{"ok":false,"error_code":"tool_exception","error":"Unhandled exception."}""";
+
+        var repaired = InvokeApplyDomainDetectiveSummaryTimeoutFallback(call, output);
+
+        Assert.Same(call, repaired);
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
         const string request = """
 [Scenario execution contract]
@@ -1040,6 +1081,20 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.NotNull(method);
 
         var value = method!.Invoke(null, new object?[] { call, output, knownHostTargets });
+        return Assert.IsType<ToolCall>(value);
+    }
+
+    private static ToolCall InvokeApplyDomainDetectiveSummaryTimeoutFallback(ToolCall call, string output) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ApplyDomainDetectiveSummaryTimeoutFallback",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { call, output });
         return Assert.IsType<ToolCall>(value);
     }
 

@@ -37,6 +37,7 @@ internal static partial class Program {
         private const int HostTargetSpecificityIpLiteralPenalty = 2;
         private const int HostTargetSpecificityLocalhostPenalty = 3;
         private const int MinReplicationProbeTimeoutMs = 10000;
+        private const int MinDomainDetectiveSummaryTimeoutMs = 30000;
         private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
@@ -1613,6 +1614,18 @@ internal static partial class Program {
                     return new ToolOutput(replicationRepairedCall.CallId, failedOutput);
                 }
 
+                var domainDetectiveRepairedCall = ApplyDomainDetectiveSummaryTimeoutFallback(effectiveCall, result);
+                if (!ReferenceEquals(domainDetectiveRepairedCall, effectiveCall)) {
+                    if (_options.LiveProgress) {
+                        _status?.Invoke("input-repair: retrying DomainDetective summary with expanded timeout.");
+                    }
+
+                    var repairedResult = await tool.InvokeAsync(domainDetectiveRepairedCall.Arguments, toolToken).ConfigureAwait(false);
+                    var repairedOutput = repairedResult ?? string.Empty;
+                    TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
+                    return new ToolOutput(domainDetectiveRepairedCall.CallId, repairedOutput);
+                }
+
                 var output = result ?? string.Empty;
                 TryStoreSessionToolOutputCache(sessionCacheKey, output, hasSessionCacheKey);
                 return new ToolOutput(effectiveCall.CallId, output);
@@ -1745,6 +1758,34 @@ internal static partial class Program {
                 return call;
             }
 
+            var patchedInput = JsonLite.Serialize(JsonValue.From(rewrittenArguments));
+            return new ToolCall(call.CallId, call.Name, patchedInput, rewrittenArguments, call.Raw);
+        }
+
+        private static ToolCall ApplyDomainDetectiveSummaryTimeoutFallback(ToolCall call, string toolOutput) {
+            if (call.Arguments is null
+                || !string.Equals(call.Name, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)
+                || !TryReadToolOutputFailure(toolOutput, out var errorCode, out var errorMessage)) {
+                return call;
+            }
+
+            var looksLikeTimeout = string.Equals(errorCode, "timeout", StringComparison.OrdinalIgnoreCase)
+                                   || errorMessage.Contains("timed out", StringComparison.OrdinalIgnoreCase);
+            if (!looksLikeTimeout) {
+                return call;
+            }
+
+            var rewrittenArguments = new JsonObject(StringComparer.Ordinal);
+            foreach (var pair in call.Arguments) {
+                rewrittenArguments.Add(pair.Key, pair.Value ?? JsonValue.Null);
+            }
+
+            var configuredTimeout = rewrittenArguments.GetInt64("timeout_ms") ?? 0;
+            if (configuredTimeout >= MinDomainDetectiveSummaryTimeoutMs) {
+                return call;
+            }
+
+            rewrittenArguments.Add("timeout_ms", MinDomainDetectiveSummaryTimeoutMs);
             var patchedInput = JsonLite.Serialize(JsonValue.From(rewrittenArguments));
             return new ToolCall(call.CallId, call.Name, patchedInput, rewrittenArguments, call.Raw);
         }
