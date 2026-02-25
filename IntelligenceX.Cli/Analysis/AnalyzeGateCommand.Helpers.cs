@@ -355,6 +355,25 @@ internal static partial class AnalyzeGateCommand {
         return string.Join(", ", values.OrderBy(v => v, StringComparer.OrdinalIgnoreCase));
     }
 
+    private static string FormatOutsidePackSummary(AnalysisSettings settings, int outsidePackCount, int outsidePackIncludedByRuleId) {
+        if (outsidePackCount <= 0) {
+            return "0";
+        }
+        if (settings?.Gate?.IncludeOutsidePackRules == true) {
+            return $"{outsidePackCount} (included)";
+        }
+        if (outsidePackIncludedByRuleId <= 0) {
+            return $"{outsidePackCount} (ignored)";
+        }
+
+        var ignoredCount = Math.Max(0, outsidePackCount - outsidePackIncludedByRuleId);
+        if (ignoredCount == 0) {
+            return $"{outsidePackCount} (included via explicit gate ruleIds)";
+        }
+        return
+            $"{outsidePackCount} ({outsidePackIncludedByRuleId} included via explicit gate ruleIds, {ignoredCount} ignored)";
+    }
+
     private static IReadOnlyList<PullRequestFile> LoadChangedFiles(string? path, string workspace, out string? error) {
         error = null;
         if (string.IsNullOrWhiteSpace(path)) {
@@ -423,6 +442,7 @@ internal static partial class AnalyzeGateCommand {
         AnalysisCatalog catalog,
         IReadOnlyList<AnalysisFinding> findings,
         HashSet<string> enabledRuleIds,
+        IReadOnlySet<string> gateRuleIds,
         int minRank,
         GateFindingFilters gateFilters) {
         var list = new List<string>();
@@ -456,7 +476,8 @@ internal static partial class AnalyzeGateCommand {
             }
 
             var isEnabled = enabledRuleIds is not null && enabledRuleIds.Contains(ruleId);
-            if (!isEnabled && settings.Gate.IncludeOutsidePackRules != true) {
+            var isExplicitRuleIdMatch = gateRuleIds is not null && gateRuleIds.Contains(ruleId);
+            if (!isEnabled && settings.Gate.IncludeOutsidePackRules != true && !isExplicitRuleIdMatch) {
                 continue;
             }
 

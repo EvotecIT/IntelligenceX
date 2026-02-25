@@ -81,7 +81,7 @@ Gate behavior is configured by `analysis.gate` in `.intelligencex/reviewer.json`
 - `minSeverity`: minimum severity to consider for gating.
 - `types`: optional type filter (for example `vulnerability`, `bug`).
 - `ruleIds`: optional explicit rule-ID filter (for example `IXTOOL001`). When both `types` and `ruleIds` are set, a finding is in-scope if it matches either filter.
-- `includeOutsidePackRules`: when true, findings outside enabled packs can fail the gate.
+- `includeOutsidePackRules`: when true, findings outside enabled packs can fail the gate. Explicit `ruleIds` remain eligible even when this flag is false.
 - `failOnHotspotsToReview`: when true, security hotspots in `to-review` state can fail the gate.
 - `newIssuesOnly` + `baselinePath`: baseline-aware finding gate mode.
 - `duplication.enabled`: enables duplication gate checks from `artifacts/intelligencex.duplication.json`.

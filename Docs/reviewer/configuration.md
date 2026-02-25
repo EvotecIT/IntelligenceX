@@ -375,9 +375,10 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 `analysis.gate` enables a deterministic CI gate via `intelligencex analyze gate`:
 - `minSeverity`: minimum severity to consider for gating.
 - `types`: optional filter of rule types (when empty, all types are considered).
+- `ruleIds`: optional explicit rule IDs (for example `IXTOOL001`) that should be gated even when `types` would not match.
 - `failOnUnavailable`: fail when no result files match configured inputs or when result parsing fails.
 - `failOnNoEnabledRules`: fail when `analysis.packs` selects zero rules.
-- `includeOutsidePackRules`: when `true`, findings from non-enabled rules can still fail the gate.
+- `includeOutsidePackRules`: when `true`, all findings from non-enabled rules can still fail the gate; explicit `ruleIds` always remain eligible.
 - `failOnHotspotsToReview`: when `true`, security hotspots in `to-review` state can fail the gate (after `minSeverity`/`types` filtering).
 
 `analysis.run.strict` controls `intelligencex analyze run` exit semantics:

@@ -124,6 +124,8 @@ internal static partial class Program {
         failed += Run("Analyze gate minSeverity filters", TestAnalyzeGateMinSeverityFilters);
         failed += Run("Analyze gate ruleIds-only filter narrows scope",
             TestAnalyzeGateRuleIdsFilterCanNarrowScopeWithoutTypes);
+        failed += Run("Analyze gate ruleIds include outside-pack findings",
+            TestAnalyzeGateRuleIdsFilterIncludesOutsidePackFindings);
         failed += Run("Analyze gate ruleIds filter adds to type filtering",
             TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering);
         failed += Run("Analyze gate filters normalize whitespace and case",
@@ -270,8 +272,10 @@ internal static partial class Program {
         failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
         failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
-        failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndOrder);
+        failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndDropsStaleTasks);
         failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
+        failed += Run("Todo bot feedback update section removes closed PR blocks", TestBotFeedbackUpdateSectionRemovesClosedPrBlocks);
+        failed += Run("Todo bot feedback update section clears when no open PR tasks", TestBotFeedbackUpdateSectionWithNoOpenPrsClearsBlocks);
         failed += Run("Todo bot feedback parse tasks uses merge-blocker sections", TestBotFeedbackParseTasksUsesMergeBlockerSections);
         failed += Run("Todo bot feedback parse tasks legacy fallback", TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);

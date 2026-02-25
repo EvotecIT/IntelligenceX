@@ -62,7 +62,7 @@ internal static partial class Program {
         AssertEqual("Already fixed", block.Tasks[1].Text, "existing task 1 text");
     }
 
-    private static void TestBotFeedbackMergePreservesManualCheckedStateAndOrder() {
+    private static void TestBotFeedbackMergePreservesManualCheckedStateAndDropsStaleTasks() {
         var existing = new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.ExistingPrBlock(
             1,
             new[] {
@@ -80,12 +80,11 @@ internal static partial class Program {
             });
 
         var merged = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.MergeTasks(existing, current);
-        AssertEqual(3, merged.Tasks.Count, "merged tasks count");
+        AssertEqual(2, merged.Tasks.Count, "merged tasks count");
         AssertEqual("A", merged.Tasks[0].Text, "merged[0] text");
         AssertEqual(true, merged.Tasks[0].Checked, "merged[0] checked preserved");
         AssertEqual("https://a", merged.Tasks[0].Url, "merged[0] url filled");
-        AssertEqual("B", merged.Tasks[1].Text, "merged[1] order");
-        AssertEqual("C", merged.Tasks[2].Text, "merged[2] new task");
+        AssertEqual("C", merged.Tasks[1].Text, "merged[1] new task");
     }
 
     private static void TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates() {
@@ -116,6 +115,53 @@ internal static partial class Program {
         AssertContainsText(updated, "<summary>PR #1 One</summary>\n", "pr1 summary");
         AssertContainsText(updated, "- [ ] New item\n", "pr1 updated task");
         AssertContainsText(updated, "<summary>PR #2 Two</summary>\n", "pr2 inserted");
+        AssertEqual(0, CountOccurrences(updated, "Old item"), "stale task removed");
+    }
+
+    private static void TestBotFeedbackUpdateSectionRemovesClosedPrBlocks() {
+        var section =
+            "## Review Feedback Backlog (Bots)\n" +
+            "<details>\n" +
+            "<summary>PR #1 One</summary>\n" +
+            "\n" +
+            "- [ ] Keep this\n" +
+            "</details>\n\n" +
+            "<details>\n" +
+            "<summary>PR #99 Closed</summary>\n" +
+            "\n" +
+            "- [ ] Remove this\n" +
+            "</details>\n\n";
+
+        var prs = new[] {
+            new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.PrTasks(
+                1,
+                "One",
+                "https://example/pr/1",
+                new[] { new IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.TaskItem(false, "Keep this", string.Empty) })
+        };
+
+        var updated = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.UpdateSection(section, prs, "\n", out var changed);
+        AssertEqual(true, changed, "section changed");
+        AssertContainsText(updated, "<summary>PR #1 One</summary>\n", "pr1 kept");
+        AssertEqual(0, CountOccurrences(updated, "PR #99"), "closed PR block removed");
+    }
+
+    private static void TestBotFeedbackUpdateSectionWithNoOpenPrsClearsBlocks() {
+        var section =
+            "## Review Feedback Backlog (Bots)\n" +
+            "<details>\n" +
+            "<summary>PR #1 One</summary>\n" +
+            "\n" +
+            "- [ ] Remove this\n" +
+            "</details>\n\n";
+
+        var updated = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.UpdateSection(
+            section,
+            Array.Empty<IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.PrTasks>(),
+            "\n",
+            out var changed);
+        AssertEqual(true, changed, "section changed");
+        AssertEqual(0, CountOccurrences(updated, "<summary>PR #"), "all PR blocks removed");
     }
 
     private static void TestBotFeedbackParseTasksUsesMergeBlockerSections() {
