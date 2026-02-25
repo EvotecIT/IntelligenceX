@@ -114,8 +114,12 @@ internal static partial class Program {
             using var turnCts = CreateTimeoutCts(cancellationToken, _options.TurnTimeoutSeconds);
             var turnToken = turnCts?.Token ?? cancellationToken;
 
-            var calls = new List<ToolCall>();
-            var outputs = new List<ToolOutput>();
+            var protocolCalls = new List<ToolCall>();
+            var protocolOutputs = new List<ToolOutput>();
+            var reportedCalls = new List<ToolCall>();
+            var reportedOutputs = new List<ToolOutput>();
+            var reportedReadOnlySignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var turnReadOnlyOutputBySignature = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var toolRounds = 0;
             var noToolExecutionRetryCount = 0;
 
@@ -147,14 +151,14 @@ internal static partial class Program {
                     var finalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
 
                     var shouldRetryNoToolExecution = noToolExecutionRetryCount < MaxNoToolExecutionRetries
-                                                     && calls.Count == 0
-                                                     && outputs.Count == 0
+                                                     && protocolCalls.Count == 0
+                                                     && protocolOutputs.Count == 0
                                                      && toolDefs.Count > 0
                                                      && ShouldRetryNoToolExecution(text, finalText);
                     var shouldRetryScenarioContractRepair = noToolExecutionRetryCount < MaxNoToolExecutionRetries
-                                                            && calls.Count > 0
+                                                            && protocolCalls.Count > 0
                                                             && toolDefs.Count > 0
-                                                            && ShouldRetryScenarioContractRepair(text, calls);
+                                                            && ShouldRetryScenarioContractRepair(text, protocolCalls);
                     if (shouldRetryNoToolExecution || shouldRetryScenarioContractRepair) {
                         noToolExecutionRetryCount++;
                         var hasScenarioContract = TryParseScenarioExecutionContractRequirements(text, out _);
@@ -164,7 +168,7 @@ internal static partial class Program {
                         var forcedToolName = useScenarioRepairPrompt
                             ? ResolveScenarioRepairForcedToolName(
                                 userRequest: text,
-                                calls: calls,
+                                calls: protocolCalls,
                                 toolDefinitions: toolDefs,
                                 retryAttempt: noToolExecutionRetryCount)
                             : null;
@@ -172,7 +176,7 @@ internal static partial class Program {
                             ? BuildScenarioContractRepairRetryPrompt(
                                 userRequest: text,
                                 assistantDraft: finalText,
-                                calls: calls,
+                                calls: protocolCalls,
                                 retryAttempt: noToolExecutionRetryCount,
                                 knownHostTargets: retryKnownHostTargets,
                                 forcedToolName: forcedToolName)
@@ -198,7 +202,7 @@ internal static partial class Program {
                     }
 
                     _previousResponseId = TryGetResponseId(turn) ?? _previousResponseId;
-                    return new ReplTurnResult(finalText, calls, outputs, turn.Usage, toolRounds, noToolExecutionRetryCount);
+                    return new ReplTurnResult(finalText, reportedCalls, reportedOutputs, turn.Usage, toolRounds, noToolExecutionRetryCount);
                 }
 
                 var effectiveExtracted = ApplyScenarioDistinctHostCoverageFallbacks(
@@ -211,7 +215,7 @@ internal static partial class Program {
                 }
 
                 toolRounds++;
-                calls.AddRange(effectiveExtracted);
+                protocolCalls.AddRange(effectiveExtracted);
                 RememberRecentHostTargets(effectiveExtracted);
                 if (_options.LiveProgress) {
                     foreach (var call in effectiveExtracted) {
@@ -220,8 +224,17 @@ internal static partial class Program {
                         _status?.Invoke($"tool: {GetToolDisplayName(call.Name)}{id} args={args}");
                     }
                 }
-                var executed = await ExecuteToolsAsync(effectiveExtracted, turnToken).ConfigureAwait(false);
-                outputs.AddRange(executed);
+                var executed = await ExecuteToolsWithTurnReadOnlyReplayAsync(
+                    effectiveExtracted,
+                    turnReadOnlyOutputBySignature,
+                    turnToken).ConfigureAwait(false);
+                protocolOutputs.AddRange(executed);
+                AppendReportedToolInteractions(
+                    effectiveExtracted,
+                    executed,
+                    reportedCalls,
+                    reportedOutputs,
+                    reportedReadOnlySignatures);
 
                 var next = new ChatInput();
                 foreach (var output in executed) {
@@ -237,6 +250,103 @@ internal static partial class Program {
             }
 
             throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+        }
+
+        private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsWithTurnReadOnlyReplayAsync(
+            IReadOnlyList<ToolCall> calls,
+            IDictionary<string, string> turnReadOnlyOutputBySignature,
+            CancellationToken cancellationToken) {
+            if (calls.Count == 0) {
+                return Array.Empty<ToolOutput>();
+            }
+
+            var outputs = new ToolOutput?[calls.Count];
+            List<ToolCall>? pendingCalls = null;
+            List<int>? pendingIndices = null;
+            for (var index = 0; index < calls.Count; index++) {
+                var call = calls[index];
+                if (TryBuildReadOnlyTurnReplayKey(call, out var signature)
+                    && turnReadOnlyOutputBySignature.TryGetValue(signature, out var replayOutput)) {
+                    outputs[index] = new ToolOutput(call.CallId, replayOutput);
+                    if (_options.LiveProgress) {
+                        _status?.Invoke($"cache-hit: reused prior turn output for {GetToolDisplayName(call.Name)}.");
+                    }
+
+                    continue;
+                }
+
+                pendingCalls ??= new List<ToolCall>();
+                pendingIndices ??= new List<int>();
+                pendingCalls.Add(call);
+                pendingIndices.Add(index);
+            }
+
+            if (pendingCalls is not null && pendingCalls.Count > 0) {
+                var executed = await ExecuteToolsAsync(pendingCalls, cancellationToken).ConfigureAwait(false);
+                for (var i = 0; i < executed.Count; i++) {
+                    var originalIndex = pendingIndices![i];
+                    outputs[originalIndex] = executed[i];
+                    if (!TryBuildReadOnlyTurnReplayKey(calls[originalIndex], out var signature)) {
+                        continue;
+                    }
+
+                    turnReadOnlyOutputBySignature[signature] = executed[i].Output;
+                }
+            }
+
+            var finalized = new ToolOutput[calls.Count];
+            for (var i = 0; i < outputs.Length; i++) {
+                finalized[i] = outputs[i] ?? new ToolOutput(calls[i].CallId, string.Empty);
+            }
+
+            return finalized;
+        }
+
+        private void AppendReportedToolInteractions(
+            IReadOnlyList<ToolCall> protocolCalls,
+            IReadOnlyList<ToolOutput> protocolOutputs,
+            ICollection<ToolCall> reportedCalls,
+            ICollection<ToolOutput> reportedOutputs,
+            ISet<string> reportedReadOnlySignatures) {
+            var count = Math.Min(protocolCalls.Count, protocolOutputs.Count);
+            for (var index = 0; index < count; index++) {
+                var call = protocolCalls[index];
+                if (ShouldSuppressReportedDuplicateReadOnlySignature(call, reportedReadOnlySignatures)) {
+                    if (_options.LiveProgress) {
+                        _status?.Invoke("input-repair: suppressed duplicate read-only tool call signature from turn report.");
+                    }
+
+                    continue;
+                }
+
+                reportedCalls.Add(call);
+                reportedOutputs.Add(protocolOutputs[index]);
+            }
+        }
+
+        private bool ShouldSuppressReportedDuplicateReadOnlySignature(
+            ToolCall call,
+            ISet<string> reportedReadOnlySignatures) {
+            if (!TryBuildReadOnlyTurnReplayKey(call, out var signature)) {
+                return false;
+            }
+
+            return !reportedReadOnlySignatures.Add(signature);
+        }
+
+        private bool TryBuildReadOnlyTurnReplayKey(ToolCall call, out string signature) {
+            signature = string.Empty;
+            var toolName = (call.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0 || !_registry.TryGetDefinition(toolName, out var definition)) {
+                return false;
+            }
+
+            if (definition.WriteGovernance?.IsWriteCapable == true) {
+                return false;
+            }
+
+            signature = BuildToolCallSignature(call);
+            return signature.Length > 0;
         }
 
         private static bool LooksLikeExecutionIntentPlaceholderDraft(string userRequest, string assistantDraft) {
