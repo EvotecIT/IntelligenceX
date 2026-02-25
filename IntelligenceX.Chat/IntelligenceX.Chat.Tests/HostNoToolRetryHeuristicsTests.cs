@@ -394,6 +394,87 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*stats*
+distinct_tool_inputs: machine_name>=2
+User request:
+Continue that failure-signature collection across all remaining DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", """{"log_name":"System","machine_name":"localhost"}"""),
+            BuildToolCall("call_2", "eventlog_live_stats", """{"log_name":"Directory Service","machine_name":"localhost"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "localhost" });
+
+        Assert.Equal(2, repaired.Count);
+        var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < repaired.Count; i++) {
+            var machineName = repaired[i].Arguments?.GetString("machine_name");
+            if (!string.IsNullOrWhiteSpace(machineName)) {
+                distinct.Add(machineName);
+            }
+        }
+
+        Assert.Equal(2, distinct.Count);
+        Assert.Contains("localhost", distinct);
+        Assert.Contains("AD0", distinct);
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_DoesNotPatchWhenDistinctMachineCoverageIsAlreadyMet() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*stats*
+distinct_tool_inputs: machine_name>=2
+User request:
+Continue that failure-signature collection across all remaining DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", """{"log_name":"System","machine_name":"AD0"}"""),
+            BuildToolCall("call_2", "eventlog_live_stats", """{"log_name":"Directory Service","machine_name":"localhost"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "localhost" });
+
+        Assert.Same(calls, repaired);
+    }
+
+    [Fact]
     public void ShouldRetryModelPhaseAttempt_RetriesOnProviderServerErrorMessage() {
         var ex = new InvalidOperationException(
             "The server had an error processing your request. Please include the request ID 123.");
@@ -531,6 +612,24 @@ Continue recurring-error analysis across all remaining DCs in this turn.
 
         var value = method!.Invoke(null, new object?[] { call, definition, knownHostTargets });
         return Assert.IsType<ToolCall>(value);
+    }
+
+    private static IReadOnlyList<ToolCall> InvokeApplyScenarioDistinctHostCoverageFallbacks(
+        string userRequest,
+        IReadOnlyList<ToolCall> calls,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyList<string> knownHostTargets) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ApplyScenarioDistinctHostCoverageFallbacks",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { userRequest, calls, toolDefinitions, knownHostTargets });
+        return Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(value);
     }
 
     private static ToolCall BuildToolCall(string callId, string name, string jsonArgs) {

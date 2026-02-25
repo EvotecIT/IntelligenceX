@@ -191,17 +191,26 @@ internal static partial class Program {
                     return new ReplTurnResult(finalText, calls, outputs, turn.Usage, toolRounds, noToolExecutionRetryCount);
                 }
 
+                var effectiveExtracted = ApplyScenarioDistinctHostCoverageFallbacks(
+                    userRequest: text,
+                    calls: extracted,
+                    toolDefinitions: toolDefs,
+                    knownHostTargets: GetRecentHostTargetsSnapshot());
+                if (_options.LiveProgress && !ReferenceEquals(effectiveExtracted, extracted)) {
+                    _status?.Invoke("input-repair: enforced distinct host/DC coverage for scenario execution contract.");
+                }
+
                 toolRounds++;
-                calls.AddRange(extracted);
-                RememberRecentHostTargets(extracted);
+                calls.AddRange(effectiveExtracted);
+                RememberRecentHostTargets(effectiveExtracted);
                 if (_options.LiveProgress) {
-                    foreach (var call in extracted) {
+                    foreach (var call in effectiveExtracted) {
                         var args = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments);
                         var id = _options.ShowToolIds ? $" ({call.Name})" : string.Empty;
                         _status?.Invoke($"tool: {GetToolDisplayName(call.Name)}{id} args={args}");
                     }
                 }
-                var executed = await ExecuteToolsAsync(extracted, turnToken).ConfigureAwait(false);
+                var executed = await ExecuteToolsAsync(effectiveExtracted, turnToken).ConfigureAwait(false);
                 outputs.AddRange(executed);
 
                 var next = new ChatInput();
@@ -1413,6 +1422,219 @@ internal static partial class Program {
                     hints: new[] { "Try again. If it keeps failing, re-run with --echo-tool-outputs to capture details." },
                     isTransient: false));
             }
+        }
+
+        private static IReadOnlyList<ToolCall> ApplyScenarioDistinctHostCoverageFallbacks(
+            string userRequest,
+            IReadOnlyList<ToolCall> calls,
+            IReadOnlyList<ToolDefinition> toolDefinitions,
+            IReadOnlyList<string>? knownHostTargets) {
+            if (calls.Count == 0 || toolDefinitions.Count == 0 || knownHostTargets is null || knownHostTargets.Count == 0) {
+                return calls;
+            }
+
+            if (!TryParseScenarioExecutionContractRequirements(userRequest, out var requirements) || requirements is null) {
+                return calls;
+            }
+
+            var requiredDistinctHostCoverage = GetRequiredDistinctHostCoverage(requirements);
+            if (requiredDistinctHostCoverage <= 1) {
+                return calls;
+            }
+
+            var observedDistinctTargets = CollectDistinctToolInputValuesByKey(calls, "machine_name");
+            if (observedDistinctTargets.Count >= requiredDistinctHostCoverage) {
+                return calls;
+            }
+
+            var fallbackTargets = new List<string>();
+            var seenFallbackTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < knownHostTargets.Count; i++) {
+                var normalized = NormalizeHostTargetCandidate(knownHostTargets[i]);
+                if (normalized.Length == 0
+                    || observedDistinctTargets.Contains(normalized)
+                    || !seenFallbackTargets.Add(normalized)) {
+                    continue;
+                }
+
+                fallbackTargets.Add(normalized);
+            }
+
+            if (fallbackTargets.Count == 0) {
+                return calls;
+            }
+
+            var patchedCalls = calls.ToArray();
+            var patchedAny = false;
+            for (var i = 0; i < patchedCalls.Length
+                            && observedDistinctTargets.Count < requiredDistinctHostCoverage
+                            && fallbackTargets.Count > 0; i++) {
+                var originalCall = patchedCalls[i];
+                if (originalCall.Arguments is null) {
+                    continue;
+                }
+
+                ToolDefinition? definition = null;
+                for (var definitionIndex = 0; definitionIndex < toolDefinitions.Count; definitionIndex++) {
+                    var candidateName = (toolDefinitions[definitionIndex].Name ?? string.Empty).Trim();
+                    if (!string.Equals(candidateName, originalCall.Name, StringComparison.OrdinalIgnoreCase)) {
+                        continue;
+                    }
+
+                    definition = toolDefinitions[definitionIndex];
+                    break;
+                }
+
+                var fallbackTarget = fallbackTargets[0];
+                var patchedCall = ApplyHostTargetOverride(originalCall, definition, fallbackTarget);
+                if (ReferenceEquals(patchedCall, originalCall)) {
+                    continue;
+                }
+
+                patchedCalls[i] = patchedCall;
+                patchedAny = true;
+                observedDistinctTargets.Add(fallbackTarget);
+                fallbackTargets.RemoveAt(0);
+            }
+
+            return patchedAny ? patchedCalls : calls;
+        }
+
+        private static int GetRequiredDistinctHostCoverage(ScenarioExecutionContractRequirements requirements) {
+            if (requirements is null || requirements.MinDistinctToolInputValues.Count == 0) {
+                return 0;
+            }
+
+            var requiredDistinctHostCoverage = 0;
+            foreach (var requirement in requirements.MinDistinctToolInputValues) {
+                var requiredDistinct = Math.Max(0, requirement.Value);
+                if (requiredDistinct <= 1) {
+                    continue;
+                }
+
+                var aliases = GetScenarioInputKeyAliases(requirement.Key);
+                if (!aliases.Any(IsHostTargetAlias)) {
+                    continue;
+                }
+
+                requiredDistinctHostCoverage = Math.Max(requiredDistinctHostCoverage, requiredDistinct);
+            }
+
+            return requiredDistinctHostCoverage;
+        }
+
+        private static bool IsHostTargetAlias(string key) {
+            return string.Equals(key, "machine_name", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "domain_controller", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "host", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "server", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "target", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "targets", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "servers", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(key, "computer_name", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static ToolCall ApplyHostTargetOverride(ToolCall call, ToolDefinition? definition, string hostTarget) {
+            if (call.Arguments is null) {
+                return call;
+            }
+
+            var normalizedTarget = NormalizeHostTargetCandidate(hostTarget);
+            if (normalizedTarget.Length == 0) {
+                return call;
+            }
+
+            if (!TryPickHostTargetInputKey(call, definition, out var targetKey, out var keyIsArray)) {
+                return call;
+            }
+
+            var rewrittenArguments = new JsonObject(StringComparer.Ordinal);
+            var replaced = false;
+            foreach (var pair in call.Arguments) {
+                if (!string.Equals(pair.Key, targetKey, StringComparison.OrdinalIgnoreCase)) {
+                    rewrittenArguments.Add(pair.Key, pair.Value);
+                    continue;
+                }
+
+                if (replaced) {
+                    continue;
+                }
+
+                AddHostTargetValue(rewrittenArguments, pair.Key, normalizedTarget, keyIsArray);
+                replaced = true;
+            }
+
+            if (!replaced) {
+                AddHostTargetValue(rewrittenArguments, targetKey, normalizedTarget, keyIsArray);
+            }
+
+            var patchedInput = JsonLite.Serialize(JsonValue.From(rewrittenArguments));
+            return new ToolCall(call.CallId, call.Name, patchedInput, rewrittenArguments, call.Raw);
+        }
+
+        private static bool TryPickHostTargetInputKey(
+            ToolCall call,
+            ToolDefinition? definition,
+            out string key,
+            out bool keyIsArray) {
+            key = string.Empty;
+            keyIsArray = false;
+            if (call.Arguments is null) {
+                return false;
+            }
+
+            var preferredKeys = new[] {
+                "machine_name",
+                "domain_controller",
+                "host",
+                "server",
+                "computer_name",
+                "target",
+                "targets",
+                "servers"
+            };
+
+            for (var preferredKeyIndex = 0; preferredKeyIndex < preferredKeys.Length; preferredKeyIndex++) {
+                var preferredKey = preferredKeys[preferredKeyIndex];
+                foreach (var pair in call.Arguments) {
+                    if (!string.Equals(pair.Key, preferredKey, StringComparison.OrdinalIgnoreCase)) {
+                        continue;
+                    }
+
+                    key = pair.Key;
+                    keyIsArray = pair.Value?.AsArray() is not null;
+                    return true;
+                }
+            }
+
+            if (definition is null) {
+                return false;
+            }
+
+            for (var preferredKeyIndex = 0; preferredKeyIndex < preferredKeys.Length; preferredKeyIndex++) {
+                var preferredKey = preferredKeys[preferredKeyIndex];
+                if (!ToolDefinitionHasInputProperty(definition, preferredKey)) {
+                    continue;
+                }
+
+                key = preferredKey;
+                keyIsArray = string.Equals(preferredKey, "targets", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(preferredKey, "servers", StringComparison.OrdinalIgnoreCase);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void AddHostTargetValue(JsonObject arguments, string key, string value, bool asArray) {
+            if (!asArray) {
+                arguments.Add(key, value);
+                return;
+            }
+
+            var array = new JsonArray();
+            array.Add(value);
+            arguments.Add(key, array);
         }
 
         private static ToolCall ApplyKnownHostTargetFallbacks(
