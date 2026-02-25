@@ -1,0 +1,77 @@
+{
+  "name": "ad-mixed-ad-eventlog-retry-recovery-10-turn",
+  "tags": ["ad", "eventlog", "cross-dc", "transport-recovery", "continuation", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover scope",
+      "user": "Discover AD scope for this run and list reachable DCs.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "AD replication baseline",
+      "user": "Run replication baseline first and identify most impacted DCs with strongest AD evidence.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "EventLog correlation pass",
+      "user": "Correlate impacted DCs with Directory Service/System event evidence in the same UTC window.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Continue all remaining DCs",
+      "user": "Continue AD + EventLog correlation for all remaining discovered DCs in this same turn. Do not stop after first failure.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["ad_replication_*", "eventlog_*query*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Recovery continuation contract",
+      "user": "If this pass was interrupted, continue from already collected evidence and avoid rerunning identical successful host queries.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "eventlog_*query*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Retry only failed targets once",
+      "user": "Retry only failed or unreachable targets once with narrower scope, then continue with remaining hosts.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC AD+Event matrix",
+      "user": "Return per-DC matrix with replication state, event evidence present/missing, earliest UTC, latest UTC, confidence.",
+      "assert_contains": ["UTC"],
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    },
+    {
+      "name": "Root cause families",
+      "user": "Classify likely root-cause families with confidence and strongest supporting AD/Event evidence."
+    },
+    {
+      "name": "Execute-now checklist",
+      "user": "Provide a prioritized 30-minute execute-now validation checklist with no follow-up questions.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final compact summary",
+      "user": "Summarize in 6 bullets with UTC markers, DC coverage count, unresolved blockers, and rerun trigger.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
