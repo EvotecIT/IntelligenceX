@@ -131,14 +131,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var text = BuildDomainIntentClarificationTextMethod.Invoke(null, Array.Empty<object?>());
         var clarification = Assert.IsType<string>(text);
 
-        Assert.Contains("Any language is accepted", clarification, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Accepted quick replies", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Unicode digits supported", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Input forms", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ad_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:domain-intent:v1", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:domain-intent-choice:v1", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Active Directory domain scope", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Public DNS/domain scope", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Accepted quick replies", clarification, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -453,19 +453,19 @@ internal sealed partial class ChatServiceSession {
 
     private static string BuildDomainIntentClarificationText() {
         return """
-               Domain scope selection required to avoid cross-family tool mixing.
-               Any language is accepted. Structured selection is preferred.
-
-               Choose one family:
-               1. `ad_domain`
-               2. `public_domain`
-
-               Accepted quick replies: `1`, `2`, `ad_domain`, `public_domain`, `AD`, `LDAP`, `DNS`, `MX`, `SPF`, `DMARC`.
-
                [DomainIntent]
                ix:domain-intent-choice:v1
                option_1: ad_domain
                option_2: public_domain
+
+               1 -> `ad_domain` (AD, LDAP, DC, GPO)
+               2 -> `public_domain` (DNS, MX, SPF, DMARC, DKIM, NS)
+
+               Input forms:
+               - `1` or `2` (Unicode digits supported)
+               - `ad_domain` or `public_domain`
+               - `ix:domain-intent:v1` marker payload
+               - `/act act_domain_scope_ad` or `/act act_domain_scope_public`
 
                [DomainIntent]
                ix:domain-intent:v1
