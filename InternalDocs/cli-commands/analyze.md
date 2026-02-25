@@ -16,6 +16,7 @@ This command:
 - Runs JS/TS analysis through ESLint (`npx eslint`) when JS/TS rules are selected and emits SARIF
   (`artifacts/intelligencex.eslint.sarif`).
   - JS/TS runner derives ESLint `--rule <toolRuleId>:<severity>` arguments from selected catalog rules.
+  - Severity mapping to ESLint model: `critical|error|high -> error`, `warning|warn|medium|info|information|low|suggestion -> warn`, `none -> off`.
 - Runs Python analysis through Ruff (`ruff check`) when Python rules are selected and emits SARIF
   (`artifacts/intelligencex.ruff.sarif`).
   - Python runner derives Ruff `--select <toolRuleId,...>` from selected catalog rules (excluding `none` severity).

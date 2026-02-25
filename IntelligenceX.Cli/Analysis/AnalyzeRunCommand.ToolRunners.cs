@@ -262,6 +262,10 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
             return new RunnerResult(true, string.Empty);
         }
+        if (!WorkspaceContainsAnySourceFile(workspace, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")) {
+            warnings.Add("No JavaScript/TypeScript source files detected; skipping ESLint analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
 
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.eslint.sarif");
         var args = BuildJavaScriptRunnerArgs(sarifPath, selectors);
@@ -277,7 +281,11 @@ internal static partial class AnalyzeRunCommand {
         // ESLint returns 1 when findings are present; this is not a runner failure.
         if (result.ExitCode != 0 && result.ExitCode != 1) {
             return new RunnerResult(false,
-                $"JavaScript/TypeScript analysis returned exit code {result.ExitCode}.");
+                BuildExternalRunnerFailureMessage(
+                    "JavaScript/TypeScript",
+                    options.NpxCommand,
+                    "--npx-command",
+                    result));
         }
 
         if (!File.Exists(sarifPath)) {
@@ -296,6 +304,10 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
             return new RunnerResult(true, string.Empty);
         }
+        if (!WorkspaceContainsAnySourceFile(workspace, ".py")) {
+            warnings.Add("No Python source files detected; skipping Ruff analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
 
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.ruff.sarif");
         var args = BuildPythonRunnerArgs(selectedRuleIds);
@@ -307,7 +319,12 @@ internal static partial class AnalyzeRunCommand {
 
         // Ruff returns 1 when findings are present; this is not a runner failure.
         if (result.ExitCode != 0 && result.ExitCode != 1) {
-            return new RunnerResult(false, $"Python analysis returned exit code {result.ExitCode}.");
+            return new RunnerResult(false,
+                BuildExternalRunnerFailureMessage(
+                    "Python",
+                    options.RuffCommand,
+                    "--ruff-command",
+                    result));
         }
 
         if (!string.IsNullOrWhiteSpace(result.StdOut)) {
@@ -379,6 +396,7 @@ internal static partial class AnalyzeRunCommand {
         if (string.IsNullOrWhiteSpace(severity)) {
             return "warn";
         }
+        // ESLint has only off|warn|error. We intentionally map all non-blocking IX severities to warn.
         return severity.Trim().ToLowerInvariant() switch {
             "critical" => "error",
             "error" => "error",
@@ -467,6 +485,20 @@ internal static partial class AnalyzeRunCommand {
 
     internal static IReadOnlyList<string> BuildPythonRunnerArgsForTests(IReadOnlyList<string> selectedRuleIds) {
         return BuildPythonRunnerArgs(selectedRuleIds);
+    }
+
+    internal static string BuildExternalRunnerFailureMessageForTests(
+        string languageLabel,
+        string command,
+        string optionName,
+        int exitCode,
+        string stdOut,
+        string stdErr) {
+        return BuildExternalRunnerFailureMessage(languageLabel, command, optionName, new CommandResult(exitCode, stdOut, stdErr));
+    }
+
+    internal static bool WorkspaceContainsAnySourceFileForTests(string workspace, params string[] extensions) {
+        return WorkspaceContainsAnySourceFile(workspace, extensions);
     }
 
     internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(

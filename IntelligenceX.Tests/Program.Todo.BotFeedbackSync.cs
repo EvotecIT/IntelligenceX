@@ -234,6 +234,37 @@ internal static partial class Program {
         AssertContainsText(updated, "Keep this note", "non-PR details content preserved");
     }
 
+    private static void TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNestedNonPrDetailsBlocks() {
+        var section =
+            "## Review Feedback Backlog (Bots)\n" +
+            "<details>\n" +
+            "<summary>General Notes</summary>\n" +
+            "\n" +
+            "- [ ] Keep this note\n" +
+            "<details>\n" +
+            "<summary>Nested Notes</summary>\n" +
+            "\n" +
+            "- [ ] Keep nested note mentioning PR #777 text\n" +
+            "</details>\n" +
+            "</details>\n\n" +
+            "<details>\n" +
+            "<summary>PR #777 Closed</summary>\n" +
+            "\n" +
+            "- [ ] Remove this closed block\n" +
+            "</details>\n\n";
+
+        var updated = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.UpdateSection(
+            section,
+            Array.Empty<IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.PrTasks>(),
+            "\n",
+            out var changed);
+        AssertEqual(true, changed, "section should change when closed PR blocks are removed");
+        AssertContainsText(updated, "<summary>General Notes</summary>\n", "non-PR top-level details summary preserved");
+        AssertContainsText(updated, "<summary>Nested Notes</summary>\n", "non-PR nested details summary preserved");
+        AssertContainsText(updated, "Keep nested note mentioning PR #777 text", "non-PR nested details content preserved");
+        AssertEqual(0, CountOccurrences(updated, "<summary>PR #777 Closed</summary>"), "closed PR details block removed");
+    }
+
     private static void TestBotFeedbackParseTasksUsesMergeBlockerSections() {
         var body = string.Join("\n", new[] {
             "## Summary",

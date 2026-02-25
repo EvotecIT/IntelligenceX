@@ -112,5 +112,61 @@ internal static partial class Program {
         AssertContainsText(joined, "check . --output-format sarif", "python args run ruff sarif output");
         AssertContainsText(joined, "--select F821,S602", "python args include selected rule ids");
     }
+
+    private static void TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand() {
+        var unavailableMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+            languageLabel: "Python",
+            command: "ruff",
+            optionName: "--ruff-command",
+            exitCode: 127,
+            stdOut: string.Empty,
+            stdErr: "command not found");
+        AssertContainsText(unavailableMessage, "analysis command 'ruff' is unavailable",
+            "external runner unavailable message includes command guidance");
+        AssertContainsText(unavailableMessage, "--ruff-command",
+            "external runner unavailable message includes override option guidance");
+
+        var genericFailureMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+            languageLabel: "Python",
+            command: "ruff",
+            optionName: "--ruff-command",
+            exitCode: 2,
+            stdOut: string.Empty,
+            stdErr: "some analyzer failure");
+        AssertContainsText(genericFailureMessage, "analysis returned exit code 2",
+            "external runner generic failure message retains exit code");
+    }
+
+    private static void TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories() {
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-detect-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            var nodeModules = Path.Combine(workspace, "node_modules");
+            Directory.CreateDirectory(nodeModules);
+            File.WriteAllText(Path.Combine(nodeModules, "ignore.js"), "console.log('ignored');");
+
+            var foundInExcludedDirectory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.WorkspaceContainsAnySourceFileForTests(
+                workspace,
+                ".js");
+            AssertEqual(false, foundInExcludedDirectory,
+                "source detection ignores excluded directories");
+
+            var src = Path.Combine(workspace, "src");
+            Directory.CreateDirectory(src);
+            File.WriteAllText(Path.Combine(src, "main.ts"), "const answer = 42;");
+
+            var foundInIncludedDirectory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.WorkspaceContainsAnySourceFileForTests(
+                workspace,
+                ".ts");
+            AssertEqual(true, foundInIncludedDirectory,
+                "source detection finds matching files in included directories");
+        } finally {
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
 }
 #endif

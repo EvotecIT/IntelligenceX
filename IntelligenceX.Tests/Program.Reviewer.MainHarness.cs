@@ -282,6 +282,8 @@ internal static partial class Program {
         failed += Run("Todo bot feedback update section clears when no open PR tasks", TestBotFeedbackUpdateSectionWithNoOpenPrsClearsBlocks);
         failed += Run("Todo bot feedback update section keeps non-PR details blocks when no open PR tasks",
             TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNonPrDetailsBlocks);
+        failed += Run("Todo bot feedback update section keeps nested non-PR details blocks when no open PR tasks",
+            TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNestedNonPrDetailsBlocks);
         failed += Run("Todo bot feedback parse tasks uses merge-blocker sections", TestBotFeedbackParseTasksUsesMergeBlockerSections);
         failed += Run("Todo bot feedback parse tasks legacy fallback", TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
@@ -378,6 +380,10 @@ internal static partial class Program {
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
         failed += Run("Analyze run JavaScript args include configured rules", TestAnalyzeRunJavaScriptArgsIncludeConfiguredRules);
         failed += Run("Analyze run Python args include select rule IDs", TestAnalyzeRunPythonArgsIncludeSelectRuleIds);
+        failed += Run("Analyze run external runner missing command message classification",
+            TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
+        failed += Run("Analyze run workspace source detection skips excluded directories",
+            TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
         failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);
