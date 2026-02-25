@@ -364,7 +364,13 @@ internal sealed partial class ChatServiceSession {
             input: request.ArgumentsJson,
             arguments: arguments,
             raw: new JsonObject());
-        var output = await ExecuteToolAsync(call, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+        var output = await ExecuteToolAsync(
+                threadId: string.Empty,
+                userRequest: string.Empty,
+                call: call,
+                toolTimeoutSeconds: timeoutSeconds,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
         await WriteAsync(writer, new InvokeToolResultMessage {
             Kind = ChatServiceMessageKind.Response,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using Xunit;
 
@@ -541,5 +542,120 @@ public sealed class ChatServiceDomainAffinityTests {
             tools);
 
         Assert.False(shouldForce);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_BlocksAdScopeHostCallWhenTargetMatchesPublicDomainEvidence() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail",
+            new[] {
+                new ToolCallDto {
+                    CallId = "public-1",
+                    Name = "domaindetective_network_probe",
+                    ArgumentsJson = """{"host":"contoso-com.mail.protection.outlook.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "public-1",
+                    Output = """{"ok":true,"host":"contoso-com.mail.protection.outlook.com"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-1",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"contoso-com.mail.protection.outlook.com"}""",
+            arguments: new JsonObject().Add("machine_name", "contoso-com.mail.protection.outlook.com"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail",
+            userRequest: "Continue replication checks for AD scope.",
+            call: call,
+            output: out var output);
+
+        Assert.True(blocked);
+        Assert.Equal("domain_scope_host_guardrail", output.ErrorCode);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_AllowsExplicitHostWhenUserProvidesTargetInTurnRequest() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-explicit", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-explicit",
+            new[] {
+                new ToolCallDto {
+                    CallId = "public-1",
+                    Name = "domaindetective_network_probe",
+                    ArgumentsJson = """{"host":"contoso-com.mail.protection.outlook.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "public-1",
+                    Output = """{"ok":true,"host":"contoso-com.mail.protection.outlook.com"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-1",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"contoso-com.mail.protection.outlook.com"}""",
+            arguments: new JsonObject().Add("machine_name", "contoso-com.mail.protection.outlook.com"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-explicit",
+            userRequest: "Run AD checks on contoso-com.mail.protection.outlook.com in this turn.",
+            call: call,
+            output: out _);
+
+        Assert.False(blocked);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_AllowsAdScopeHostCallWhenTargetDoesNotMatchPublicDomainEvidence() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-miss", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-miss",
+            new[] {
+                new ToolCallDto {
+                    CallId = "public-1",
+                    Name = "domaindetective_network_probe",
+                    ArgumentsJson = """{"host":"contoso-com.mail.protection.outlook.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "public-1",
+                    Output = """{"ok":true,"host":"contoso-com.mail.protection.outlook.com"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-1",
+            name: "ad_replication_summary",
+            input: """{"domain_controller":"ad1.corp.contoso.com"}""",
+            arguments: new JsonObject().Add("domain_controller", "ad1.corp.contoso.com"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "ad_replication_summary"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-miss",
+            userRequest: "Continue AD replication checks on discovered DCs.",
+            call: call,
+            output: out _);
+
+        Assert.False(blocked);
     }
 }

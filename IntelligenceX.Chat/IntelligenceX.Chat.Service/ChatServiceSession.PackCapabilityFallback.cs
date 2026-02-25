@@ -810,6 +810,7 @@ internal sealed partial class ChatServiceSession {
 
         return normalized.Equals("machine_name", StringComparison.OrdinalIgnoreCase)
                || normalized.Equals("computer_name", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("host", StringComparison.OrdinalIgnoreCase)
                || normalized.Equals("hostname", StringComparison.OrdinalIgnoreCase)
                || normalized.Equals("host_name", StringComparison.OrdinalIgnoreCase)
                || normalized.Equals("dns_host_name", StringComparison.OrdinalIgnoreCase)

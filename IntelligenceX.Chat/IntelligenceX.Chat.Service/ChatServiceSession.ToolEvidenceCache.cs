@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using JsonValueKind = System.Text.Json.JsonValueKind;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -423,6 +425,53 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private string[] CollectThreadHostCandidatesByDomainIntentFamily(string threadId, string family) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedFamily = (family ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || normalizedFamily.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature) || bySignature.Count == 0) {
+                return Array.Empty<string>();
+            }
+
+            foreach (var entry in bySignature.Values) {
+                var entryFamily = ResolveDomainIntentFamily(entry.ToolName);
+                if (!string.Equals(entryFamily, normalizedFamily, StringComparison.Ordinal)) {
+                    continue;
+                }
+
+                CollectHostCandidatesFromSerializedJson(entry.ArgumentsJson, candidates);
+                CollectHostCandidatesFromSerializedJson(entry.Output, candidates);
+            }
+        }
+
+        return candidates.Count == 0 ? Array.Empty<string>() : candidates.ToArray();
+    }
+
+    private static void CollectHostCandidatesFromSerializedJson(string payload, HashSet<string> candidates) {
+        var normalized = (payload ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized[0] != '{') {
+            return;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(normalized, ActionSelectionJsonOptions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return;
+            }
+
+            CollectHostCandidates(doc.RootElement, candidates, depth: 0, maxDepth: 4, budget: 256);
+        } catch (JsonException) {
+            // Best-effort host candidate extraction only.
+        }
+    }
+
     private void ClearThreadToolEvidence() {
         lock (_threadToolEvidenceLock) {
             _threadToolEvidenceByThreadId.Clear();
@@ -440,5 +489,9 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto> toolOutputs,
         IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
         RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHintsByName);
+    }
+
+    internal string[] CollectThreadHostCandidatesByDomainIntentFamilyForTesting(string threadId, string family) {
+        return CollectThreadHostCandidatesByDomainIntentFamily(threadId, family);
     }
 }

@@ -893,39 +893,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var nowUtc = DateTime.UtcNow;
-        string preferredFamily = string.Empty;
-        var hasPreferredFamily = false;
-
-        lock (_toolRoutingContextLock) {
-            if (_domainIntentFamilyByThreadId.TryGetValue(normalizedThreadId, out var cachedFamily)
-                && !string.IsNullOrWhiteSpace(cachedFamily)) {
-                if (_domainIntentFamilySeenUtcTicks.TryGetValue(normalizedThreadId, out var seenTicks)
-                    && TryGetUtcDateTimeFromTicks(seenTicks, out var seenUtc)
-                    && nowUtc - seenUtc <= DomainIntentFamilyContextMaxAge) {
-                    preferredFamily = cachedFamily;
-                    hasPreferredFamily = true;
-                    _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowUtc.Ticks;
-                    TrimWeightedRoutingContextsNoLock();
-                } else {
-                    _domainIntentFamilyByThreadId.Remove(normalizedThreadId);
-                    _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId);
-                }
-            }
-        }
-
-        if (!hasPreferredFamily) {
-            if (!TryLoadDomainIntentFamilySnapshot(normalizedThreadId, out var snapshotFamily, out _)) {
-                return false;
-            }
-
-            preferredFamily = snapshotFamily;
-            hasPreferredFamily = true;
-            lock (_toolRoutingContextLock) {
-                _domainIntentFamilyByThreadId[normalizedThreadId] = preferredFamily;
-                _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowUtc.Ticks;
-                TrimWeightedRoutingContextsNoLock();
-            }
+        if (!TryGetCurrentDomainIntentFamily(normalizedThreadId, out var preferredFamily)) {
+            return false;
         }
 
         if (!TryFilterToolsByDomainIntentFamily(selectedTools, preferredFamily, out filteredTools, out removedCount)) {
@@ -962,6 +931,45 @@ internal sealed partial class ChatServiceSession {
         filteredTools = filtered;
         family = inferredFamily;
         RememberSelectedDomainIntentFamily(threadId, inferredFamily);
+        return true;
+    }
+
+    private bool TryGetCurrentDomainIntentFamily(string threadId, out string family) {
+        family = string.Empty;
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        lock (_toolRoutingContextLock) {
+            if (_domainIntentFamilyByThreadId.TryGetValue(normalizedThreadId, out var cachedFamily)
+                && !string.IsNullOrWhiteSpace(cachedFamily)) {
+                if (_domainIntentFamilySeenUtcTicks.TryGetValue(normalizedThreadId, out var seenTicks)
+                    && TryGetUtcDateTimeFromTicks(seenTicks, out var seenUtc)
+                    && nowUtc - seenUtc <= DomainIntentFamilyContextMaxAge) {
+                    family = cachedFamily;
+                    _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowUtc.Ticks;
+                    TrimWeightedRoutingContextsNoLock();
+                    return true;
+                }
+
+                _domainIntentFamilyByThreadId.Remove(normalizedThreadId);
+                _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId);
+            }
+        }
+
+        if (!TryLoadDomainIntentFamilySnapshot(normalizedThreadId, out var snapshotFamily, out _)) {
+            return false;
+        }
+
+        family = snapshotFamily;
+        lock (_toolRoutingContextLock) {
+            _domainIntentFamilyByThreadId[normalizedThreadId] = family;
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowUtc.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+
         return true;
     }
 
@@ -1773,6 +1781,10 @@ internal sealed partial class ChatServiceSession {
                 ? family
                 : null;
         }
+    }
+
+    internal bool TryGetCurrentDomainIntentFamilyForTesting(string threadId, out string family) {
+        return TryGetCurrentDomainIntentFamily(threadId, out family);
     }
 
     internal bool TryApplyDomainIntentAffinityForTesting(

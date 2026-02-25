@@ -503,6 +503,7 @@ internal sealed partial class ChatServiceSession {
                             allowMutatingParallel: allowMutatingParallel,
                             mutatingToolHintsByName: mutatingToolHints,
                             toolTimeoutSeconds: toolTimeoutSeconds,
+                            userRequest: routedUserRequest,
                             cancellationToken: turnToken)
                         .ConfigureAwait(false);
                     var carryoverHostFailedCalls = CountFailedToolOutputs(carryoverHostOutputs);
@@ -854,6 +855,7 @@ internal sealed partial class ChatServiceSession {
                             allowMutatingParallel: allowMutatingParallel,
                             mutatingToolHintsByName: mutatingToolHints,
                             toolTimeoutSeconds: toolTimeoutSeconds,
+                            userRequest: routedUserRequest,
                             cancellationToken: turnToken)
                         .ConfigureAwait(false);
                     var hostStructuredFailedCalls = CountFailedToolOutputs(hostStructuredOutputs);
@@ -979,6 +981,7 @@ internal sealed partial class ChatServiceSession {
                             allowMutatingParallel: allowMutatingParallel,
                             mutatingToolHintsByName: mutatingToolHints,
                             toolTimeoutSeconds: toolTimeoutSeconds,
+                            userRequest: routedUserRequest,
                             cancellationToken: turnToken)
                         .ConfigureAwait(false);
                     var packFallbackFailedCalls = CountFailedToolOutputs(packFallbackOutputs);
@@ -1389,6 +1392,7 @@ internal sealed partial class ChatServiceSession {
                         allowMutatingParallel,
                         mutatingToolHints,
                         toolTimeoutSeconds,
+                        routedUserRequest,
                         turnToken)
                     .ConfigureAwait(false);
             } else {
