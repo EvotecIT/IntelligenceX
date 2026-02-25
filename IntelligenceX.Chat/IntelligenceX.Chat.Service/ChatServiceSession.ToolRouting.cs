@@ -27,6 +27,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int DomainIntentClarificationMinRelevantCandidates = 3;
     private const double DomainIntentClarificationMaxDominantShare = 0.80d;
+    private const string DomainIntentFamilyAd = "ad_domain";
+    private const string DomainIntentFamilyPublic = "public_domain";
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -163,14 +165,16 @@ internal sealed partial class ChatServiceSession {
         var adCandidates = 0;
         var publicDomainCandidates = 0;
         for (var i = 0; i < selectedTools.Count; i++) {
-            var toolName = (selectedTools[i].Name ?? string.Empty).Trim();
+            var tool = selectedTools[i];
+            var toolName = (tool.Name ?? string.Empty).Trim();
             if (toolName.Length == 0) {
                 continue;
             }
 
-            if (IsAdDomainIntentTool(toolName)) {
+            var family = ResolveDomainIntentFamily(tool);
+            if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
                 adCandidates++;
-            } else if (IsPublicDomainIntentTool(toolName)) {
+            } else if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
                 publicDomainCandidates++;
             }
         }
@@ -188,13 +192,67 @@ internal sealed partial class ChatServiceSession {
         return dominantShare < DomainIntentClarificationMaxDominantShare;
     }
 
-    private static bool IsAdDomainIntentTool(string toolName) {
+    private static bool IsAdDomainIntentToolName(string toolName) {
         return toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsPublicDomainIntentTool(string toolName) {
+    private static bool IsPublicDomainIntentToolName(string toolName) {
         return toolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
                || toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveDomainIntentFamily(ToolDefinition definition) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        var category = (definition.Category ?? string.Empty).Trim();
+        if (category.Length == 0) {
+            category = (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
+        }
+
+        if (string.Equals(category, "active_directory", StringComparison.OrdinalIgnoreCase)) {
+            return DomainIntentFamilyAd;
+        }
+
+        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)) {
+            return DomainIntentFamilyPublic;
+        }
+
+        var toolName = (definition.Name ?? string.Empty).Trim();
+        if (IsAdDomainIntentToolName(toolName)) {
+            return DomainIntentFamilyAd;
+        }
+
+        if (IsPublicDomainIntentToolName(toolName)) {
+            return DomainIntentFamilyPublic;
+        }
+
+        return string.Empty;
+    }
+
+    private string ResolveDomainIntentFamily(string toolName) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return string.Empty;
+        }
+
+        if (_registry.TryGetDefinition(normalizedToolName, out var definition) && definition is not null) {
+            var family = ResolveDomainIntentFamily(definition);
+            if (family.Length > 0) {
+                return family;
+            }
+        }
+
+        if (IsAdDomainIntentToolName(normalizedToolName)) {
+            return DomainIntentFamilyAd;
+        }
+
+        if (IsPublicDomainIntentToolName(normalizedToolName)) {
+            return DomainIntentFamilyPublic;
+        }
+
+        return string.Empty;
     }
 
     private static string BuildDomainIntentClarificationText() {
@@ -203,6 +261,143 @@ internal sealed partial class ChatServiceSession {
                + "1. Active Directory domain scope (DCs, LDAP, replication, GPO)\n"
                + "2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)\n\n"
                + "Reply with `1` or `2`.";
+    }
+
+    private bool TryApplyDomainIntentAffinity(
+        string threadId,
+        IReadOnlyList<ToolDefinition> selectedTools,
+        out IReadOnlyList<ToolDefinition> filteredTools,
+        out string family,
+        out int removedCount) {
+        filteredTools = selectedTools;
+        family = string.Empty;
+        removedCount = 0;
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || selectedTools is null || selectedTools.Count == 0) {
+            return false;
+        }
+
+        string preferredFamily;
+        lock (_toolRoutingContextLock) {
+            if (!_domainIntentFamilyByThreadId.TryGetValue(normalizedThreadId, out preferredFamily!)
+                || string.IsNullOrWhiteSpace(preferredFamily)) {
+                return false;
+            }
+
+            if (!_domainIntentFamilySeenUtcTicks.TryGetValue(normalizedThreadId, out var seenTicks)
+                || !TryGetUtcDateTimeFromTicks(seenTicks, out var seenUtc)
+                || DateTime.UtcNow - seenUtc > DomainIntentFamilyContextMaxAge) {
+                _domainIntentFamilyByThreadId.Remove(normalizedThreadId);
+                _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId);
+                return false;
+            }
+
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        var filtered = new List<ToolDefinition>(selectedTools.Count);
+        for (var i = 0; i < selectedTools.Count; i++) {
+            var tool = selectedTools[i];
+            var toolName = (tool.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            var candidateFamily = ResolveDomainIntentFamily(tool);
+            if (string.Equals(preferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+                && string.Equals(candidateFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+                removedCount++;
+                continue;
+            }
+
+            if (string.Equals(preferredFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                && string.Equals(candidateFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+                removedCount++;
+                continue;
+            }
+
+            filtered.Add(tool);
+        }
+
+        if (removedCount <= 0 || filtered.Count == 0) {
+            return false;
+        }
+
+        filteredTools = filtered;
+        family = preferredFamily;
+        return true;
+    }
+
+    private void RememberPreferredDomainIntentFamily(
+        string threadId,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs,
+        IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || toolCalls.Count == 0 || toolOutputs.Count == 0) {
+            return;
+        }
+
+        var toolNameByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < toolCalls.Count; i++) {
+            var call = toolCalls[i];
+            var callId = (call.CallId ?? string.Empty).Trim();
+            var toolName = (call.Name ?? string.Empty).Trim();
+            if (callId.Length == 0 || toolName.Length == 0) {
+                continue;
+            }
+
+            toolNameByCallId[callId] = toolName;
+        }
+
+        if (toolNameByCallId.Count == 0) {
+            return;
+        }
+
+        var adVotes = 0;
+        var publicVotes = 0;
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            var output = toolOutputs[i];
+            var callId = (output.CallId ?? string.Empty).Trim();
+            if (callId.Length == 0 || !toolNameByCallId.TryGetValue(callId, out var toolName)) {
+                continue;
+            }
+
+            if (mutatingToolHintsByName.TryGetValue(toolName, out var mutating) && mutating) {
+                continue;
+            }
+
+            var success = output.Ok != false
+                          && string.IsNullOrWhiteSpace(output.ErrorCode)
+                          && string.IsNullOrWhiteSpace(output.Error);
+            if (!success) {
+                continue;
+            }
+
+            var family = ResolveDomainIntentFamily(toolName);
+            if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+                adVotes++;
+            } else if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+                publicVotes++;
+            }
+        }
+
+        string nextFamily;
+        if (adVotes > publicVotes && adVotes > 0) {
+            nextFamily = DomainIntentFamilyAd;
+        } else if (publicVotes > adVotes && publicVotes > 0) {
+            nextFamily = DomainIntentFamilyPublic;
+        } else {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _domainIntentFamilyByThreadId[normalizedThreadId] = nextFamily;
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
     }
 
     private static string BuildRoutingMetaPayload(
@@ -490,9 +685,12 @@ internal sealed partial class ChatServiceSession {
         var pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
         var structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
         var plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
+        var domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
         var removeCount = Math.Max(
-            Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
-            plannerRemoveCount);
+            Math.Max(
+                Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
+                Math.Max(plannerRemoveCount, domainIntentRemoveCount)),
+            0);
         if (removeCount <= 0) {
             return;
         }
@@ -555,15 +753,32 @@ internal sealed partial class ChatServiceSession {
                 removedInvalid = true;
             }
         }
+        foreach (var threadId in _domainIntentFamilyByThreadId.Keys.ToArray()) {
+            if (!_domainIntentFamilySeenUtcTicks.TryGetValue(threadId, out var ticks) || !TryGetUtcDateTimeFromTicks(ticks, out var seenUtc)) {
+                _domainIntentFamilyByThreadId.Remove(threadId);
+                _domainIntentFamilySeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+                continue;
+            }
+
+            if (DateTime.UtcNow - seenUtc > DomainIntentFamilyContextMaxAge) {
+                _domainIntentFamilyByThreadId.Remove(threadId);
+                _domainIntentFamilySeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
         if (removedInvalid) {
             weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
             intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
             pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
             structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
             plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
+            domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
             removeCount = Math.Max(
-                Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
-                plannerRemoveCount);
+                Math.Max(
+                    Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
+                    Math.Max(plannerRemoveCount, domainIntentRemoveCount)),
+                0);
             if (removeCount <= 0) {
                 return;
             }
@@ -580,6 +795,9 @@ internal sealed partial class ChatServiceSession {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _plannerThreadIdByActiveThreadId.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+        foreach (var threadId in _domainIntentFamilyByThreadId.Keys) {
             seenThreadIds.Add(threadId);
         }
 
@@ -602,6 +820,9 @@ internal sealed partial class ChatServiceSession {
                 if (_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(threadId, out var plannerTicks) && plannerTicks > ticks) {
                     ticks = plannerTicks;
                 }
+                if (_domainIntentFamilySeenUtcTicks.TryGetValue(threadId, out var domainIntentTicks) && domainIntentTicks > ticks) {
+                    ticks = domainIntentTicks;
+                }
                 return (ThreadId: threadId, Ticks: ticks);
             })
             .OrderBy(item => item.Ticks)
@@ -621,6 +842,8 @@ internal sealed partial class ChatServiceSession {
             _structuredNextActionByThreadId.Remove(threadId);
             _plannerThreadIdByActiveThreadId.Remove(threadId);
             _plannerThreadSeenUtcTicksByActiveThreadId.Remove(threadId);
+            _domainIntentFamilyByThreadId.Remove(threadId);
+            _domainIntentFamilySeenUtcTicks.Remove(threadId);
         }
     }
 
@@ -700,6 +923,50 @@ internal sealed partial class ChatServiceSession {
                 _lastWeightedToolSubsetSeenUtcTicks[threadId] = pair.Value;
             }
         }
+    }
+
+    internal void SetPreferredDomainIntentFamilyForTesting(string threadId, string family, long? seenUtcTicks = null) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedFamily = (family ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || normalizedFamily.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _domainIntentFamilyByThreadId[normalizedThreadId] = normalizedFamily;
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = seenUtcTicks ?? DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    internal string? GetPreferredDomainIntentFamilyForTesting(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return null;
+        }
+
+        lock (_toolRoutingContextLock) {
+            return _domainIntentFamilyByThreadId.TryGetValue(normalizedThreadId, out var family)
+                ? family
+                : null;
+        }
+    }
+
+    internal bool TryApplyDomainIntentAffinityForTesting(
+        string threadId,
+        IReadOnlyList<ToolDefinition> selectedTools,
+        out IReadOnlyList<ToolDefinition> filteredTools,
+        out string family,
+        out int removedCount) {
+        return TryApplyDomainIntentAffinity(threadId, selectedTools, out filteredTools, out family, out removedCount);
+    }
+
+    internal void RememberPreferredDomainIntentFamilyForTesting(
+        string threadId,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs,
+        IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
+        RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHintsByName);
     }
 
     internal IReadOnlyCollection<string> GetTrackedToolRoutingStatNamesForTesting() {
