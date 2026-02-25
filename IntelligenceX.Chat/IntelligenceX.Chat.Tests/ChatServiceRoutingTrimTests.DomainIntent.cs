@@ -132,7 +132,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var clarification = Assert.IsType<string>(text);
 
         Assert.Contains("Unicode digits supported", clarification, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Input forms", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("accepted_input", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("selection_map", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("examples", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("２", clarification, StringComparison.Ordinal);
+        Assert.Contains("١", clarification, StringComparison.Ordinal);
         Assert.Contains("ad_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:domain-intent:v1", clarification, StringComparison.OrdinalIgnoreCase);

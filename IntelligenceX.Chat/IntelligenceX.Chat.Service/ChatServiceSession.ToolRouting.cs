@@ -455,17 +455,26 @@ internal sealed partial class ChatServiceSession {
         return """
                [DomainIntent]
                ix:domain-intent-choice:v1
+               choice: 1|2
                option_1: ad_domain
                option_2: public_domain
 
-               1 -> `ad_domain` (AD, LDAP, DC, GPO)
-               2 -> `public_domain` (DNS, MX, SPF, DMARC, DKIM, NS)
+               selection_map:
+               1: ad_domain
+               2: public_domain
 
-               Input forms:
-               - `1` or `2` (Unicode digits supported)
-               - `ad_domain` or `public_domain`
-               - `ix:domain-intent:v1` marker payload
-               - `/act act_domain_scope_ad` or `/act act_domain_scope_public`
+               accepted_input:
+               - ordinal: 1|2 (Unicode digits supported)
+               - family: ad_domain|public_domain
+               - marker: ix:domain-intent:v1
+               - action: /act act_domain_scope_ad|/act act_domain_scope_public
+
+               examples:
+               - 1
+               - ２
+               - ١
+               - ad_domain
+               - public_domain
 
                [DomainIntent]
                ix:domain-intent:v1
