@@ -313,26 +313,24 @@ public sealed class HostScenarioCatalogStrictnessTests {
             return false;
         }
 
-        var name = turn.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
-            ? (nameElement.GetString() ?? string.Empty)
-            : string.Empty;
-        var user = turn.TryGetProperty("user", out var userElement) && userElement.ValueKind == JsonValueKind.String
-            ? (userElement.GetString() ?? string.Empty)
-            : string.Empty;
-
-        if (name.Length == 0 && user.Length == 0) {
+        // Language-neutral gate: detect cross-DC continuation turns via structured tool-contract
+        // fields instead of natural-language phrasing in `name`/`user`.
+        var minimumDistinctInputValues = ReadNonNegativeIntMap(turn, "min_distinct_tool_input_values");
+        if (!minimumDistinctInputValues.TryGetValue("machine_name", out var minMachineNameValues)
+            || minMachineNameValues < 2) {
             return false;
         }
 
-        var combined = (name + " " + user).ToLowerInvariant();
-        var continuationSignal = combined.Contains("continue", StringComparison.Ordinal)
-                                 || combined.Contains("continuation", StringComparison.Ordinal);
-        var dcScopeSignal = combined.Contains("remaining dc", StringComparison.Ordinal)
-                            || combined.Contains("other discovered dc", StringComparison.Ordinal)
-                            || combined.Contains("remaining discovered dc", StringComparison.Ordinal)
-                            || combined.Contains("all other dc", StringComparison.Ordinal)
-                            || combined.Contains("all remaining dc", StringComparison.Ordinal);
-        return continuationSignal && dcScopeSignal;
+        var requiredPatterns = ReadStringList(turn, "require_tools")
+            .Concat(ReadStringList(turn, "require_any_tools"))
+            .ToArray();
+        if (requiredPatterns.Length == 0) {
+            return false;
+        }
+
+        return requiredPatterns.Any(static pattern =>
+            pattern.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
+            || pattern.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase));
     }
 
     private static JsonElement RequireProperty(JsonElement root, string name) {

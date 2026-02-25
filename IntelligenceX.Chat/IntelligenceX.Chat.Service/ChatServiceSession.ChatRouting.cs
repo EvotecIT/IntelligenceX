@@ -89,7 +89,7 @@ internal sealed partial class ChatServiceSession {
             if (!executionContractApplies) {
                 if (compactFollowUpTurn) {
                     // Keep follow-up turns unconstrained so users don't see "subset retry" rewrites for
-                    // short continuation requests (for example "go ahead", "run it", "check replication").
+                    // short continuation requests (for example compact follow-up text or ordinal selections).
                     routingInsights = new List<ToolRoutingInsight>();
                 } else if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
                     var routed = await SelectWeightedToolSubsetAsync(

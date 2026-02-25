@@ -544,7 +544,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // Keep follow-up turns unconstrained: short continuation prompts ("run it", "1", "go ahead")
+        // Keep follow-up turns unconstrained: short continuation prompts (for example "1" or other compact follow-up text)
         // should have immediate access to the full toolset.
         if (LooksLikeContinuationFollowUp(normalized)) {
             return true;

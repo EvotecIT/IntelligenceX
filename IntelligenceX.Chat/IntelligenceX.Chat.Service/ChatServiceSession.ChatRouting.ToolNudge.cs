@@ -1463,7 +1463,7 @@ internal sealed partial class ChatServiceSession {
             {{executedTools}}
 
             Continue execution in the same turn.
-            Do not ask for another "go ahead" when a safe read-only next step is available.
+            Do not ask for another short confirmation phrase when a safe read-only next step is available.
             Choose the best next tool from the available tool list and execute it now.
             If execution is truly blocked, return one concise blocker with only the minimal missing input.
             """;
@@ -1772,7 +1772,7 @@ internal sealed partial class ChatServiceSession {
         var closeQuoteIndex = closeIndexExclusive - 1;
 
         if (!onlyBulletContext) {
-            // Most common CTA pattern: "... \"run now\", I'll execute ..."
+            // Common CTA pattern: "... \"<token>\", I'll execute ..."
             var after = closeIndexExclusive;
             if (after < assistantDraft.Length) {
                 // Allow tiny whitespace, then comma.
@@ -1788,7 +1788,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        // Bullet-like CTA: "- \"run now\"" or "1. \"run now\"" on its own line.
+        // Bullet-like CTA: "- \"<token>\"" or "1. \"<token>\"" on its own line.
         var lineStart = 0;
         for (var i = openIndex - 1; i >= 0; i--) {
             var ch = assistantDraft[i];
