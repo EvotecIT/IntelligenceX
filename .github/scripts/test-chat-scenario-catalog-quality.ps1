@@ -117,6 +117,7 @@ if ($files.Count -eq 0) {
 
 $failures = New-Object System.Collections.Generic.List[string]
 $summaries = New-Object System.Collections.Generic.List[string]
+$mixedDomainAmbiguityScenarioCount = 0
 
 foreach ($file in $files) {
     try {
@@ -208,7 +209,86 @@ foreach ($file in $files) {
         }
     }
 
+    if ($file.Name.StartsWith("mixed-domain-ambiguity-", [StringComparison]::OrdinalIgnoreCase)) {
+        $mixedDomainAmbiguityScenarioCount++
+
+        if (-not $tags.Contains("domain-ambiguity")) {
+            $failures.Add("$($file.Name): mixed-domain ambiguity scenario must include 'domain-ambiguity' tag.") | Out-Null
+        }
+        if (-not $tags.Contains("ad")) {
+            $failures.Add("$($file.Name): mixed-domain ambiguity scenario must include 'ad' tag.") | Out-Null
+        }
+        if (-not $tags.Contains("dns")) {
+            $failures.Add("$($file.Name): mixed-domain ambiguity scenario must include 'dns' tag.") | Out-Null
+        }
+
+        $clarifyTurn = $turns[0]
+        $clarifyForbidden = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $clarifyTurn -propertyName 'forbid_tools'))
+        if (-not ($clarifyForbidden -contains '*')) {
+            $failures.Add("$($file.Name): clarify turn must block tool execution (`forbid_tools: ['*']`).") | Out-Null
+        }
+
+        $clarifyContains = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $clarifyTurn -propertyName 'assert_contains'))
+        $clarifiesAd = $false
+        $clarifiesDns = $false
+        foreach ($value in $clarifyContains) {
+            if ($value.IndexOf("ad", [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $value.IndexOf("directory", [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                $clarifiesAd = $true
+            }
+            if ($value.IndexOf("dns", [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                $clarifiesDns = $true
+            }
+        }
+        if (-not $clarifiesAd) {
+            $failures.Add("$($file.Name): clarify turn must reference AD/Active Directory in assert_contains.") | Out-Null
+        }
+        if (-not $clarifiesDns) {
+            $failures.Add("$($file.Name): clarify turn must reference DNS in assert_contains.") | Out-Null
+        }
+
+        $adRoutedTurnFound = $false
+        $dnsRoutedTurnFound = $false
+        foreach ($turn in @($turns | Select-Object -Skip 1)) {
+            $requiredTurnPatterns = New-Object System.Collections.Generic.List[string]
+            foreach ($pattern in @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_tools'))) {
+                $requiredTurnPatterns.Add($pattern) | Out-Null
+            }
+            foreach ($pattern in @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_any_tools'))) {
+                $requiredTurnPatterns.Add($pattern) | Out-Null
+            }
+            if ($requiredTurnPatterns.Count -eq 0) {
+                continue
+            }
+
+            $requiredTurnPatternList = @($requiredTurnPatterns.ToArray())
+            $forbiddenTurnPatternList = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'forbid_tools'))
+
+            $requiresAd = (Has-PatternToken -patterns $requiredTurnPatternList -token "ad_") -or (Has-PatternToken -patterns $requiredTurnPatternList -token "eventlog_")
+            $requiresDns = (Has-PatternToken -patterns $requiredTurnPatternList -token "dnsclientx_") -or (Has-PatternToken -patterns $requiredTurnPatternList -token "domaindetective_")
+            $forbidsAd = (Has-PatternToken -patterns $forbiddenTurnPatternList -token "ad_") -or (Has-PatternToken -patterns $forbiddenTurnPatternList -token "eventlog_")
+            $forbidsDns = (Has-PatternToken -patterns $forbiddenTurnPatternList -token "dnsclientx_") -or (Has-PatternToken -patterns $forbiddenTurnPatternList -token "domaindetective_")
+
+            if ($requiresAd -and $forbidsDns) {
+                $adRoutedTurnFound = $true
+            }
+            if ($requiresDns -and $forbidsAd) {
+                $dnsRoutedTurnFound = $true
+            }
+        }
+
+        if (-not $adRoutedTurnFound) {
+            $failures.Add("$($file.Name): expected at least one AD-routed turn that forbids DNS tools.") | Out-Null
+        }
+        if (-not $dnsRoutedTurnFound) {
+            $failures.Add("$($file.Name): expected at least one DNS-routed turn that forbids AD/EventLog tools.") | Out-Null
+        }
+    }
+
     $summaries.Add(("{0}: turns={1}, tool_contract_turns={2}" -f $file.Name, $turns.Count, $toolContractTurns)) | Out-Null
+}
+
+if ($mixedDomainAmbiguityScenarioCount -lt 2) {
+    $failures.Add("Expected at least two mixed-domain ambiguity scenarios (`mixed-domain-ambiguity-*-10-turn.json`) for routing resilience coverage.") | Out-Null
 }
 
 if ($failures.Count -gt 0) {
