@@ -537,6 +537,126 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
     }
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_ReusesPriorOutput_WhenRetryReplayCombinesDuplicateAndFreshCalls() {
+        using var server = new DeterministicCompatibleHttpServer(
+            dropChatCompletionResponseOnRequestIndices: new[] { 2 },
+            emitReplayMixedToolCallsAfterDrop: true);
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+
+        var invokedSteps = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var invokedStepsSync = new object();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                lock (invokedStepsSync) {
+                    if (invokedSteps.TryGetValue(step, out var current)) {
+                        invokedSteps[step] = current + 1;
+                    } else {
+                        invokedSteps[step] = 1;
+                    }
+                }
+
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-e2e-replay-mixed-duplicate-and-fresh",
+            ThreadId = thread.Id,
+            Text = "Run the diagnostics workflow to completion.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_call", StringComparison.OrdinalIgnoreCase)));
+
+        Assert.Equal(4, server.ChatCompletionRequestCount);
+        Assert.Equal(1, server.DroppedChatCompletionRequestCount);
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(1), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(2), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(3), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(3), "call_round_2"));
+
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Final answer after two tool rounds.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(2, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(2, resultMessage.Tools.Outputs.Count);
+
+        var normalizedCallIds = resultMessage.Tools.Calls
+            .Select(static call => (call.CallId ?? string.Empty).Trim())
+            .Where(static callId => callId.Length > 0)
+            .ToArray();
+        var normalizedOutputIds = resultMessage.Tools.Outputs
+            .Select(static output => (output.CallId ?? string.Empty).Trim())
+            .Where(static callId => callId.Length > 0)
+            .ToArray();
+
+        Assert.Equal(
+            normalizedCallIds.Length,
+            normalizedCallIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(
+            normalizedOutputIds.Length,
+            normalizedOutputIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+        var normalizedCallIdSet = new HashSet<string>(normalizedCallIds, StringComparer.OrdinalIgnoreCase);
+        Assert.All(normalizedOutputIds, outputCallId => Assert.Contains(outputCallId, normalizedCallIdSet));
+
+        lock (invokedStepsSync) {
+            Assert.Equal(2, invokedSteps.Values.Sum());
+            Assert.True(invokedSteps.TryGetValue("one", out var oneCount) && oneCount == 1);
+            Assert.True(invokedSteps.TryGetValue("two", out var twoCount) && twoCount == 1);
+        }
+    }
+
     private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
         ChatRequest request, string threadId, CancellationToken cancellationToken) {
         var taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
@@ -641,13 +761,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         private readonly List<string> _chatCompletionRequestBodies = new();
         private readonly HashSet<int> _dropChatCompletionResponseOnRequestIndices;
         private readonly bool _emitReplayDuplicateToolCallAfterDrop;
+        private readonly bool _emitReplayMixedToolCallsAfterDrop;
         private readonly List<int> _droppedChatCompletionRequests = new();
         private volatile bool _disposed;
         private int _successfulChatCompletionResponses;
 
         public DeterministicCompatibleHttpServer(
             IEnumerable<int>? dropChatCompletionResponseOnRequestIndices = null,
-            bool emitReplayDuplicateToolCallAfterDrop = false) {
+            bool emitReplayDuplicateToolCallAfterDrop = false,
+            bool emitReplayMixedToolCallsAfterDrop = false) {
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
             var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -656,6 +778,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 ? new HashSet<int>()
                 : new HashSet<int>(dropChatCompletionResponseOnRequestIndices.Where(static index => index > 0));
             _emitReplayDuplicateToolCallAfterDrop = emitReplayDuplicateToolCallAfterDrop;
+            _emitReplayMixedToolCallsAfterDrop = emitReplayMixedToolCallsAfterDrop;
             _acceptLoop = Task.Run(AcceptLoopAsync);
         }
 
@@ -829,6 +952,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
                 code = 200;
                 status = "OK";
+                if (_emitReplayMixedToolCallsAfterDrop) {
+                    return responseIndex switch {
+                        1 => BuildToolCallCompletionBody("call_round_1", "one"),
+                        2 => BuildMultiToolCallCompletionBody(
+                            ("call_round_1", "one"),
+                            ("call_round_2", "two")),
+                        3 => BuildTextCompletionBody("Final answer after two tool rounds."),
+                        _ => BuildTextCompletionBody("Unexpected extra chat request.")
+                    };
+                }
+
                 if (_emitReplayDuplicateToolCallAfterDrop) {
                     return responseIndex switch {
                         1 => BuildToolCallCompletionBody("call_round_1", "one"),
@@ -871,6 +1005,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
                                     }
                                 }
                             }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+
+        private static string BuildMultiToolCallCompletionBody(params (string CallId, string Step)[] calls) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-multi-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = calls.Select(call => new {
+                                id = call.CallId,
+                                type = "function",
+                                function = new {
+                                    name = "mock_round_tool",
+                                    arguments = JsonSerializer.Serialize(new { step = call.Step })
+                                }
+                            }).ToArray()
                         },
                         finish_reason = "tool_calls"
                     }
