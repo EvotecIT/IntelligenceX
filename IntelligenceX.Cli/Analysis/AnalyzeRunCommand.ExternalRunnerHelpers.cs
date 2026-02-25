@@ -76,7 +76,8 @@ internal static partial class AnalyzeRunCommand {
 
             if (subdirectories is not null) {
                 foreach (var subdirectory in subdirectories) {
-                    if (IsPathUnderExcludedDirectorySegment(workspace, subdirectory)) {
+                    if (IsExcludedDirectoryName(subdirectory) ||
+                        IsPathUnderExcludedDirectorySegment(workspace, subdirectory)) {
                         continue;
                     }
                     pending.Push(subdirectory);
@@ -105,6 +106,21 @@ internal static partial class AnalyzeRunCommand {
                 if (extensionSet.Contains(extension)) {
                     return true;
                 }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsExcludedDirectoryName(string path) {
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(name)) {
+            return false;
+        }
+
+        foreach (var excluded in DefaultExcludedDirectorySegments) {
+            if (name.Equals(excluded, StringComparison.OrdinalIgnoreCase)) {
+                return true;
             }
         }
 

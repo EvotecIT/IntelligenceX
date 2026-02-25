@@ -374,7 +374,7 @@ internal static partial class AnalyzeRunCommand {
     private static IReadOnlyList<ExternalToolRuleSelector> BuildJavaScriptRuleSelectors(IReadOnlyList<AnalysisPolicyRule> rules) {
         var selectors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var policyRule in rules ?? Array.Empty<AnalysisPolicyRule>()) {
-            if (policyRule?.Rule is null) {
+            if (!IsPolicyRuleCompatibleWithTool(policyRule, "eslint")) {
                 continue;
             }
 
@@ -448,7 +448,7 @@ internal static partial class AnalyzeRunCommand {
     private static IReadOnlyList<string> BuildPythonSelectedRuleIds(IReadOnlyList<AnalysisPolicyRule> rules) {
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var policyRule in rules ?? Array.Empty<AnalysisPolicyRule>()) {
-            if (policyRule?.Rule is null) {
+            if (!IsPolicyRuleCompatibleWithTool(policyRule, "ruff")) {
                 continue;
             }
 
@@ -467,6 +467,12 @@ internal static partial class AnalyzeRunCommand {
 
     private static bool IsRuleSeverityEnabled(string? severity) {
         return !string.Equals(severity?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPolicyRuleCompatibleWithTool(AnalysisPolicyRule? policyRule, string expectedTool) {
+        return policyRule?.Rule is not null &&
+               !string.IsNullOrWhiteSpace(expectedTool) &&
+               expectedTool.Equals(policyRule.Rule.Tool?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ResolveToolRuleId(AnalysisRule rule) {
@@ -491,6 +497,18 @@ internal static partial class AnalyzeRunCommand {
 
     internal static IReadOnlyList<string> BuildPythonRunnerArgsForTests(IReadOnlyList<string> selectedRuleIds) {
         return BuildPythonRunnerArgs(selectedRuleIds);
+    }
+
+    internal static IReadOnlyDictionary<string, string> BuildJavaScriptRuleSelectorsForTests(IReadOnlyList<AnalysisPolicyRule> rules) {
+        var selectors = BuildJavaScriptRuleSelectors(rules);
+        return selectors.ToDictionary(
+            static selector => selector.ToolRuleId,
+            static selector => selector.Severity,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal static IReadOnlyList<string> BuildPythonSelectedRuleIdsForTests(IReadOnlyList<AnalysisPolicyRule> rules) {
+        return BuildPythonSelectedRuleIds(rules);
     }
 
     internal static string BuildExternalRunnerFailureMessageForTests(

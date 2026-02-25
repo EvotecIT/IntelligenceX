@@ -190,5 +190,108 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools() {
+        var rules = new[] {
+            new IntelligenceX.Analysis.AnalysisPolicyRule(
+                new IntelligenceX.Analysis.AnalysisRule(
+                    id: "IXJS100",
+                    language: "javascript",
+                    tool: "eslint",
+                    toolRuleId: "no-alert",
+                    title: "no alert",
+                    description: "desc",
+                    category: "Best Practices",
+                    defaultSeverity: "warning",
+                    tags: Array.Empty<string>(),
+                    docs: null,
+                    sourcePath: null),
+                severity: "warning"),
+            new IntelligenceX.Analysis.AnalysisPolicyRule(
+                new IntelligenceX.Analysis.AnalysisRule(
+                    id: "IXJS999",
+                    language: "javascript",
+                    tool: "internal",
+                    toolRuleId: "IXLOC001",
+                    title: "internal rule",
+                    description: "desc",
+                    category: "Maintainability",
+                    defaultSeverity: "error",
+                    tags: Array.Empty<string>(),
+                    docs: null,
+                    sourcePath: null),
+                severity: "error"),
+            new IntelligenceX.Analysis.AnalysisPolicyRule(
+                new IntelligenceX.Analysis.AnalysisRule(
+                    id: "IXJS101",
+                    language: "javascript",
+                    tool: "eslint",
+                    toolRuleId: "no-alert",
+                    title: "no alert duplicate",
+                    description: "desc",
+                    category: "Best Practices",
+                    defaultSeverity: "warning",
+                    tags: Array.Empty<string>(),
+                    docs: null,
+                    sourcePath: null),
+                severity: "critical")
+        };
+
+        var selectors = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildJavaScriptRuleSelectorsForTests(rules);
+        AssertEqual(1, selectors.Count, "javascript selector count ignores mismatched tools");
+        AssertEqual("error", selectors["no-alert"], "javascript selector keeps highest mapped severity");
+        AssertEqual(false, selectors.ContainsKey("IXLOC001"), "javascript selector excludes non-eslint tool ids");
+    }
+
+    private static void TestAnalyzeRunPythonSelectedRuleIdsIgnoreMismatchedTools() {
+        var rules = new[] {
+            new IntelligenceX.Analysis.AnalysisPolicyRule(
+                new IntelligenceX.Analysis.AnalysisRule(
+                    id: "IXPY100",
+                    language: "python",
+                    tool: "ruff",
+                    toolRuleId: "F401",
+                    title: "unused import",
+                    description: "desc",
+                    category: "F",
+                    defaultSeverity: "warning",
+                    tags: Array.Empty<string>(),
+                    docs: null,
+                    sourcePath: null),
+                severity: "warning"),
+            new IntelligenceX.Analysis.AnalysisPolicyRule(
+                new IntelligenceX.Analysis.AnalysisRule(
+                    id: "IXPY999",
+                    language: "python",
+                    tool: "internal",
+                    toolRuleId: "IXLOC001",
+                    title: "internal rule",
+                    description: "desc",
+                    category: "Maintainability",
+                    defaultSeverity: "error",
+                    tags: Array.Empty<string>(),
+                    docs: null,
+                    sourcePath: null),
+                severity: "error"),
+            new IntelligenceX.Analysis.AnalysisPolicyRule(
+                new IntelligenceX.Analysis.AnalysisRule(
+                    id: "IXPY101",
+                    language: "python",
+                    tool: "ruff",
+                    toolRuleId: "F821",
+                    title: "undefined name",
+                    description: "desc",
+                    category: "F",
+                    defaultSeverity: "warning",
+                    tags: Array.Empty<string>(),
+                    docs: null,
+                    sourcePath: null),
+                severity: "none")
+        };
+
+        var selectedRuleIds = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildPythonSelectedRuleIdsForTests(rules);
+        AssertEqual(1, selectedRuleIds.Count, "python selected rule ids ignore mismatched tools and disabled rules");
+        AssertEqual("F401", selectedRuleIds[0], "python selected rule ids keep only ruff-enabled rules");
+    }
 }
 #endif

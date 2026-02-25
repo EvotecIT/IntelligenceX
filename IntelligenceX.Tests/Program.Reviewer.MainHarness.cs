@@ -294,6 +294,10 @@ internal static partial class Program {
             TestBotFeedbackIssueLookupInterpretationHandlesUnknownState);
         failed += Run("Todo bot feedback issue title truncates by text elements",
             TestBotFeedbackIssueTitleTruncatesByTextElements);
+        failed += Run("Todo bot feedback label lookup api path escapes label name",
+            TestBotFeedbackLabelLookupApiPathEscapesLabelName);
+        failed += Run("Todo bot feedback label lookup interpretation handles known states",
+            TestBotFeedbackLabelLookupInterpretationHandlesKnownStates);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
@@ -394,6 +398,10 @@ internal static partial class Program {
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
             TestAnalyzeRunWorkspaceSourceDetectionDiagnosticsDefaultToZeroSkipped);
+        failed += Run("Analyze run javascript selectors ignore mismatched tools",
+            TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
+        failed += Run("Analyze run python selected rule ids ignore mismatched tools",
+            TestAnalyzeRunPythonSelectedRuleIdsIgnoreMismatchedTools);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
         failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);

@@ -366,6 +366,33 @@ internal static partial class Program {
             "issue title truncation preserves valid UTF-16 boundaries");
     }
 
+    private static void TestBotFeedbackLabelLookupApiPathEscapesLabelName() {
+        var path = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.BuildLabelExistsApiPathForTests(
+            "EvotecIT/IntelligenceX",
+            "ix bot/feedback");
+        AssertEqual("repos/EvotecIT/IntelligenceX/labels/ix%20bot%2Ffeedback", path,
+            "label lookup api path escapes label name deterministically");
+    }
+
+    private static void TestBotFeedbackLabelLookupInterpretationHandlesKnownStates() {
+        var exists = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretLabelLookupStateForTests(
+            0,
+            "{\"name\":\"ix-bot-feedback\"}",
+            string.Empty);
+        var missing = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretLabelLookupStateForTests(
+            1,
+            string.Empty,
+            "gh: Not Found (HTTP 404)");
+        var unknown = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.InterpretLabelLookupStateForTests(
+            1,
+            string.Empty,
+            "gh: permission denied");
+
+        AssertEqual("Exists", exists, "label lookup interpretation resolves existing label");
+        AssertEqual("Missing", missing, "label lookup interpretation resolves missing label from 404");
+        AssertEqual("Unknown", unknown, "label lookup interpretation keeps non-404 failures as unknown");
+    }
+
     private static bool IsValidUtf16(string value) {
         for (var i = 0; i < value.Length; i++) {
             var ch = value[i];

@@ -15,6 +15,12 @@ internal static partial class BotFeedbackSyncRunner {
         Unknown
     }
 
+    private enum LabelLookupState {
+        Missing,
+        Exists,
+        Unknown
+    }
+
     private static string BuildTaskId(int prNumber, string url, string text) {
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes($"{prNumber}|{url}|{text}"));
@@ -137,23 +143,11 @@ internal static partial class BotFeedbackSyncRunner {
         if (string.IsNullOrWhiteSpace(label)) {
             return;
         }
-        var (code, stdout, _) = await GhCli.RunAsync("label", "list", "--repo", repo, "--limit", "200", "--json", "name")
-            .ConfigureAwait(false);
-        if (code == 0) {
-            try {
-                using var doc = JsonDocument.Parse(stdout);
-                if (doc.RootElement.ValueKind == JsonValueKind.Array) {
-                    foreach (var item in doc.RootElement.EnumerateArray()) {
-                        var name = item.TryGetProperty("name", out var n) ? n.GetString() : null;
-                        if (!string.IsNullOrWhiteSpace(name) && name.Equals(label, StringComparison.OrdinalIgnoreCase)) {
-                            return;
-                        }
-                    }
-                }
-            } catch {
-                // ignore
-            }
+        var lookupState = await ResolveLabelLookupStateAsync(repo, label).ConfigureAwait(false);
+        if (lookupState == LabelLookupState.Exists) {
+            return;
         }
+
         // Best-effort label creation. If it fails due to permissions, issue creation will still run without label validation.
         await GhCli.RunAsync(
             "label", "create", label,
@@ -161,5 +155,37 @@ internal static partial class BotFeedbackSyncRunner {
             "--color", "0e8a16",
             "--description", "Checklist items imported from bot PR reviews/comments"
         ).ConfigureAwait(false);
+    }
+
+    internal static string BuildLabelExistsApiPathForTests(string repo, string label) {
+        return BuildLabelExistsApiPath(repo, label);
+    }
+
+    internal static string InterpretLabelLookupStateForTests(int exitCode, string stdout, string stderr) {
+        return InterpretLabelLookupState(exitCode, stdout, stderr).ToString();
+    }
+
+    private static async Task<LabelLookupState> ResolveLabelLookupStateAsync(string repo, string label) {
+        var path = BuildLabelExistsApiPath(repo, label);
+        var (code, stdout, stderr) = await GhCli.RunAsync("api", path).ConfigureAwait(false);
+        return InterpretLabelLookupState(code, stdout, stderr);
+    }
+
+    private static string BuildLabelExistsApiPath(string repo, string label) {
+        return $"repos/{repo}/labels/{Uri.EscapeDataString(label)}";
+    }
+
+    private static LabelLookupState InterpretLabelLookupState(int exitCode, string stdout, string stderr) {
+        if (exitCode == 0) {
+            return LabelLookupState.Exists;
+        }
+
+        var text = ((stderr ?? string.Empty) + "\n" + (stdout ?? string.Empty)).ToLowerInvariant();
+        if (text.Contains("404", StringComparison.Ordinal) ||
+            text.Contains("not found", StringComparison.Ordinal)) {
+            return LabelLookupState.Missing;
+        }
+
+        return LabelLookupState.Unknown;
     }
 }
