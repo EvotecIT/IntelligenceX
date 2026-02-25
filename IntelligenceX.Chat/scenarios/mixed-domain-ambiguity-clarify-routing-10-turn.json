@@ -1,0 +1,86 @@
+{
+  "name": "mixed-domain-ambiguity-clarify-routing-10-turn",
+  "tags": ["strict", "live", "domain-ambiguity", "mixed", "ad", "dns", "open-source"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Clarify AD vs public DNS intent",
+      "user": "Check domain health for corp.contoso.com and contoso.com.",
+      "forbid_tools": ["*"],
+      "assert_contains": ["Active Directory", "DNS"]
+    },
+    {
+      "name": "User selects AD path",
+      "user": "Start with Active Directory domain-controller health for corp.contoso.com.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_*domain*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD cross-DC evidence",
+      "user": "Collect reboot or availability evidence on at least two discovered DCs in this turn.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD findings summary",
+      "user": "Summarize AD findings and blockers with exact UTC markers.",
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Switch to public DNS path",
+      "user": "Now switch to public DNS for contoso.com. Do not use AD or EventLog tools.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary", "dnsclientx_pack_info", "domaindetective_pack_info"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Resolver comparison",
+      "user": "Query A/AAAA/NS using resolvers 1.1.1.1 and 8.8.8.8 and highlight differences.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "DomainDetective summary",
+      "user": "Run Domain Detective summary for contoso.com and list top risks.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Network diagnostics",
+      "user": "Run network probe checks for discovered authoritative hosts and continue across remaining hosts.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["domaindetective_network_probe", "dnsclientx_ping"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Boundary comparison",
+      "user": "Return two sections: AD internal findings and public DNS findings, with clear boundaries.",
+      "assert_contains": ["Active Directory", "DNS"]
+    },
+    {
+      "name": "Final compact checklist",
+      "user": "Provide a compact final checklist and unresolved blockers with no follow-up questions.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
+
