@@ -202,12 +202,12 @@ on:
       max_files:
         description: 'Max files to review'
         required: false
-        default: 20
+        default: 30
         type: number
       max_patch_chars:
         description: 'Max patch chars per file'
         required: false
-        default: 4000
+        default: 20000
         type: number
       max_inline_comments:
         description: 'Max inline comments'

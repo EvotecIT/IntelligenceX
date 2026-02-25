@@ -76,6 +76,8 @@ jobs:
       mode: hybrid
       length: medium
       style: direct
+      max_files: 30
+      max_patch_chars: 20000
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true
