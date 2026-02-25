@@ -50,8 +50,9 @@ pwsh .\Build\Run-ChatLiveConversation.ps1 `
 Live harness can also auto-select a scenario (no hardcoded file) using filter + tags:
 
 `-ScenarioTags`, `-Tags`, `-LiveScenarioTags`, and `-LiveSuiteTags` are PowerShell string-array parameters.
-Use one consistent convention in docs and scripts: comma-delimited array literal (recommended), for example `strict,live`.
-Equivalent space-separated form also works (`strict live`), but examples below use comma-delimited arrays.
+Use one consistent convention in docs and scripts: comma-delimited array literal (recommended), for example `-ScenarioTags strict,live`.
+Equivalent space-separated form also works (`-ScenarioTags strict live`), but examples below use comma-delimited arrays.
+Do not pass a quoted CSV string (for example `-ScenarioTags "strict,live"`), because that is treated as one tag value.
 
 ```powershell
 pwsh .\Build\Run-ChatLiveConversation.ps1 `
@@ -148,7 +149,7 @@ pwsh .\Build\Run-ChatQualityPreflight.ps1 `
   -RunLiveHarness
 ```
 
-If `-RunLiveHarness` is used without `-LiveScenarioFile`, preflight auto-selects the first scenario that matches `-LiveScenarioFilter` + `-LiveScenarioTags` (defaults: `*-10-turn.json`, `strict,live`).
+If `-RunLiveHarness` is used without `-LiveScenarioFile`, preflight auto-selects the first scenario that matches `-LiveScenarioFilter` + `-LiveScenarioTags` (defaults: `*-10-turn.json`, `strict,live` where `-LiveScenarioTags strict,live` means two tags).
 
 To include a tag-driven live harness suite run in the same preflight:
 
