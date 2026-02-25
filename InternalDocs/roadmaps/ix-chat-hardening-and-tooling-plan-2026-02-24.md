@@ -1,7 +1,7 @@
 # IX Chat + IX Tools Hardening Plan (2026-02-24)
 
 Status: in progress  
-Last validated: 2026-02-24
+Last validated: 2026-02-25
 
 ## Scope
 - Harden IX Chat for long-running, tool-heavy conversations without partial endings.
@@ -31,6 +31,11 @@ Last validated: 2026-02-24
 - Updated live-suite/preflight defaults to remove AD-only hardcoding:
   - default filter now targets all `*-10-turn.json` scenarios
   - default live-suite tags now target `strict,live` across AD + DNS/domain paths
+- Added host-level strictness contract for cross-host continuation quality:
+  - new scenario turn assertion `min_distinct_tool_input_values` (for example `machine_name >= 2`)
+  - parser + assertion runtime support in `Program.Scenario.cs`
+  - catalog test `AdContinuationTurns_EnforceDistinctMachineCoverage`
+- Updated AD continuation scenarios so "continue on all remaining/other DCs" turns fail when the run stays on one DC.
 - App already supports debug toggles for turn trace and draft bubbles with distinct rendering channels.
 
 ## Scenario Coverage (Current)
@@ -47,9 +52,9 @@ Last validated: 2026-02-24
 
 ## Confirmed Gaps / Risks
 - High: remaining end-to-end transport-break gaps are delayed/replayed output mismatch paths across service and app message handling.
-- High: no merge gate yet for strict scenario suite plus live-harness smoke run.
+- High: no required live-harness smoke gate in CI yet (deterministic catalog quality gate is wired).
 - Medium: routing ambiguity for "domain" tasks between AD directory intent and public DNS/domain intent.
-- Medium: no explicit per-model tool-candidate/context budget strategy, which risks degraded routing on long runs.
+- Medium: tool-candidate budgeting is model-context aware, but long-run replay/retention compaction still needs end-to-end validation under mixed tool traffic.
 - Medium: tool count is growing and needs profile-aware pack selection plus compaction policy.
 
 ## DNS/Domain Tooling Decision
@@ -152,6 +157,10 @@ Progress:
   - DNS scenarios must include strict/live tags and 10 turns
   - DNS scenarios must include both `dnsclientx_*` and `domaindetective_*` tool contracts
   - DNS scenarios must include `forbid_tools` guards for `ad_*` and `eventlog_*`
+- Added continuation host-diversity assertions for AD cross-DC follow-through turns:
+  - `min_distinct_tool_input_values.machine_name >= 2` on continuation turns with `min_tool_calls >= 2`
+  - host parser/assertion tests for pass/fail behavior
+  - catalog strictness guard to prevent future regression
 
 ### WS3: UI Debug Visibility Modes
 Status: mostly_done  
@@ -252,12 +261,16 @@ Progress:
 
 ## Assignable Backlog (Parallel Branch Ready)
 - `A1` (WS1, `ix-chat-transport-recovery-<id>`, Effort M, Risk High): finish transport-break E2E tests for delayed output and replay mismatch (drop-after-tool-call and drop-before-final now covered); assert one recovery path, no duplicate bubbles, no orphan outputs, clean final answer.
-- `A2` (WS2, `ix-chat-live-scenarios-<id>`, Effort M, Risk Medium): add 3 more 10-turn live scenarios for AD0-first follow-through, mixed AD+EventLog retry recovery, and long continuation with strict no-partials.
+- `A2` (WS2, `ix-chat-live-scenarios-<id>`, Effort M, Risk Medium): add live multi-turn scenarios for AD-vs-DNS domain ambiguity and explicit clarifying-turn contracts before tool execution when intent is mixed.
 - `A3` (WS4, `ix-tools-dns-open-packs-<id>`, Effort L, Risk Medium): onboard `DnsClientX` pack as standalone OSS DNS tools and `DomainDetective` pack as standalone OSS domain diagnostics with explicit pack-info hints.
 - `A4` (WS4, `ix-tools-dns-open-packs-<id>`, Effort S-M, Risk Medium): add router disambiguation contract for "domain" ambiguity (AD domain vs public DNS/domain) with one clarifying turn on ambiguous intent.
 - `A5` (WS5, `ix-chat-context-compaction-<id>`, Effort L, Risk High): implement per-model context/tool budgets and deterministic compaction preserving `call_id` evidence chains.
-- `A6` (WS6, `ix-chat-merge-gates-<id>`, Effort S, Risk Low): wire `Run-ChatQualityPreflight.ps1` into PR validation and fail on strict scenario regressions.
+- `A6` (WS6, `ix-chat-merge-gates-<id>`, Effort S, Risk Low): add required CI live-smoke profile (small tagged suite) on top of deterministic scenario quality gate.
 - `A7` (WS3, `ix-chat-ui-debug-modes-<id>`, Effort S, Risk Low): validate distinct bubble styling and hide/show behavior for thinking, draft, and trace channels on desktop + mobile-size windows.
+- `A8` (WS5, `ix-chat-context-compaction-<id>`, Effort M, Risk High): add long-run (20+ turn) compaction soak scenarios that prove no orphan outputs, no duplicate bubbles, and clean completion under budget pressure.
+
+## Current PR Queue
+- `#791` (`fix/chat-ad-scenario-strictness-sweep-20260225`): adds `min_distinct_tool_input_values` and enforces cross-DC continuation host diversity in AD scenarios.
 
 ## Parallel Branch Plan
 - Branch A: `ix-chat-transport-recovery-<id>`
@@ -270,11 +283,11 @@ Progress:
   - Ownership: tool budget, compaction policy, long-run resilience tests.
 
 ## Immediate TODO (Execution Order)
-- 1. Land strict scenario + harness branch changes (already prepared).
+- 1. Land PR `#791` (cross-DC continuation host-diversity strictness).
 - 2. Complete remaining transport-break E2E coverage for delayed output + replay mismatch and keep duplicate/orphan bubble prevention assertions.
-- 3. Add DNS/domain open-source packs and routing disambiguation metadata.
-- 4. Add context budget + compaction controls with long-run tests.
-- 5. Add merge gate wiring for scenario suite + live smoke.
+- 3. Add AD-vs-DNS domain ambiguity scenarios and enforce clarifying-turn behavior in live harness runs.
+- 4. Add context compaction long-run soak tests for multi-tool conversations.
+- 5. Add required CI live-smoke gate (tagged mini-suite) in addition to deterministic scenario quality checks.
 
 ## Tracking
 - Use `pending`, `in_progress`, `done` markers in each workstream.
