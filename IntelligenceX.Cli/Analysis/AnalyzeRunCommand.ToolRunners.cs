@@ -11,6 +11,22 @@ using IntelligenceX.Analysis;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
+    private const string JavaScriptEslintExtensionsArg = ".js,.jsx,.mjs,.cjs,.ts,.tsx,.mts,.cts";
+    private static readonly string[] JavaScriptSourceExtensions = {
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts"
+    };
+    private static readonly string[] PythonSourceExtensions = {
+        ".py",
+        ".pyi"
+    };
+
     private static async Task<RunnerResult> RunCsharpAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
         AnalysisSettings settings, string? generatedEditorConfig, List<string> warnings) {
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.roslyn.sarif");
@@ -264,8 +280,8 @@ internal static partial class AnalyzeRunCommand {
         }
         var skippedSourceEnumerations = 0;
         var hasJavaScriptSources = sourceInventory is null
-            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
-            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx");
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, JavaScriptSourceExtensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, JavaScriptSourceExtensions);
         if (!hasJavaScriptSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
@@ -313,8 +329,8 @@ internal static partial class AnalyzeRunCommand {
         }
         var skippedSourceEnumerations = 0;
         var hasPythonSources = sourceInventory is null
-            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, ".py")
-            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, ".py");
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, PythonSourceExtensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, PythonSourceExtensions);
         if (!hasPythonSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
@@ -368,7 +384,7 @@ internal static partial class AnalyzeRunCommand {
             "eslint",
             ".",
             "--ext",
-            ".js,.jsx,.mjs,.cjs,.ts,.tsx",
+            JavaScriptEslintExtensionsArg,
             "--format",
             "sarif",
             "--output-file",

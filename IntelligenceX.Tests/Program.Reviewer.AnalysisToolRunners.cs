@@ -94,6 +94,8 @@ internal static partial class Program {
             });
 
         AssertContainsText(string.Join(" ", args), "--yes eslint .", "javascript args run eslint via npx");
+        AssertContainsText(string.Join(" ", args), "--ext .js,.jsx,.mjs,.cjs,.ts,.tsx,.mts,.cts",
+            "javascript args include modern TypeScript module extensions");
         AssertContainsText(string.Join(" ", args), "--format sarif", "javascript args use sarif output");
         AssertContainsText(string.Join(" ", args), "--output-file artifacts/intelligencex.eslint.sarif",
             "javascript args set output file");
@@ -210,11 +212,11 @@ internal static partial class Program {
         try {
             var src = Path.Combine(workspace, "src");
             Directory.CreateDirectory(src);
-            File.WriteAllText(Path.Combine(src, "main.py"), "answer = 42");
+            File.WriteAllText(Path.Combine(src, "main.pyi"), "def answer() -> int: ...");
 
             var result = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.WorkspaceContainsAnySourceFileWithDiagnosticsForTests(
                 workspace,
-                ".py");
+                ".pyi");
             AssertEqual(true, result.Found, "source detection diagnostics reports found status");
             AssertEqual(0, result.SkippedEnumerations, "source detection diagnostics has zero skipped paths in healthy workspace");
         } finally {
@@ -232,11 +234,11 @@ internal static partial class Program {
         try {
             var src = Path.Combine(workspace, "src");
             Directory.CreateDirectory(src);
-            File.WriteAllText(Path.Combine(src, "main.ts"), "const answer = 42;");
+            File.WriteAllText(Path.Combine(src, "main.mts"), "export const answer = 42;");
 
             var scripts = Path.Combine(workspace, "scripts");
             Directory.CreateDirectory(scripts);
-            File.WriteAllText(Path.Combine(scripts, "tool.py"), "answer = 42");
+            File.WriteAllText(Path.Combine(scripts, "tool.pyi"), "def answer() -> int: ...");
 
             var inventory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.DiscoverWorkspaceSourceInventoryForTests(workspace);
             AssertEqual(0, inventory.SkippedEnumerations, "source inventory diagnostics has zero skipped paths in healthy workspace");
@@ -244,15 +246,15 @@ internal static partial class Program {
             var hasTypeScript = false;
             var hasPython = false;
             foreach (var extension in inventory.Extensions) {
-                if (string.Equals(extension, ".ts", StringComparison.OrdinalIgnoreCase)) {
+                if (string.Equals(extension, ".mts", StringComparison.OrdinalIgnoreCase)) {
                     hasTypeScript = true;
-                } else if (string.Equals(extension, ".py", StringComparison.OrdinalIgnoreCase)) {
+                } else if (string.Equals(extension, ".pyi", StringComparison.OrdinalIgnoreCase)) {
                     hasPython = true;
                 }
             }
 
-            AssertEqual(true, hasTypeScript, "source inventory captures TypeScript extension");
-            AssertEqual(true, hasPython, "source inventory captures Python extension");
+            AssertEqual(true, hasTypeScript, "source inventory captures modern TypeScript module extension");
+            AssertEqual(true, hasPython, "source inventory captures Python stub extension");
         } finally {
             try {
                 Directory.Delete(workspace, recursive: true);
