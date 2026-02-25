@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -23,12 +24,18 @@ internal static partial class Program {
 
     private sealed class ReplSession {
         private const int MaxNoToolExecutionRetries = 3;
+        private const int ScenarioForcedToolChoiceRetryThreshold = 2;
+        private const int MaxModelPhaseAttempts = 2;
+        private const int ModelPhaseRetryBaseDelayMs = 350;
+        private const int MaxRecentHostTargets = 24;
+        private const int MaxRetryPromptHostTargets = 8;
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private readonly IntelligenceXClient _client;
         private readonly ToolRegistry _registry;
         private readonly ReplOptions _options;
         private readonly string? _instructions;
         private readonly Action<string>? _status;
+        private readonly List<string> _recentHostTargets = new();
         private string? _previousResponseId;
 
         public ReplSession(IntelligenceXClient client, ToolRegistry registry, ReplOptions options, string? instructions, Action<string>? status) {
@@ -41,6 +48,7 @@ internal static partial class Program {
 
         public void ResetThread() {
             _previousResponseId = null;
+            _recentHostTargets.Clear();
         }
 
         public async Task<ReplTurnResult> AskAsync(string text, CancellationToken cancellationToken) {
@@ -140,11 +148,32 @@ internal static partial class Program {
                         var hasScenarioContract = TryParseScenarioExecutionContractRequirements(text, out _);
                         var useScenarioRepairPrompt = shouldRetryScenarioContractRepair
                                                       || (shouldRetryNoToolExecution && hasScenarioContract);
+                        var retryKnownHostTargets = GetRecentHostTargetsSnapshot();
+                        var forcedToolName = useScenarioRepairPrompt
+                            ? ResolveScenarioRepairForcedToolName(
+                                userRequest: text,
+                                calls: calls,
+                                toolDefinitions: toolDefs,
+                                retryAttempt: noToolExecutionRetryCount)
+                            : null;
                         var retryPrompt = useScenarioRepairPrompt
-                            ? BuildScenarioContractRepairRetryPrompt(text, finalText, calls, noToolExecutionRetryCount)
-                            : BuildNoToolExecutionRetryPrompt(text, finalText, noToolExecutionRetryCount);
+                            ? BuildScenarioContractRepairRetryPrompt(
+                                userRequest: text,
+                                assistantDraft: finalText,
+                                calls: calls,
+                                retryAttempt: noToolExecutionRetryCount,
+                                knownHostTargets: retryKnownHostTargets,
+                                forcedToolName: forcedToolName)
+                            : BuildNoToolExecutionRetryPrompt(
+                                userRequest: text,
+                                assistantDraft: finalText,
+                                retryAttempt: noToolExecutionRetryCount,
+                                knownHostTargets: retryKnownHostTargets);
                         chatOptions.NewThread = false;
                         chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                        chatOptions.ToolChoice = !string.IsNullOrWhiteSpace(forcedToolName)
+                            ? ToolChoice.Custom(forcedToolName!)
+                            : ToolChoice.Auto;
                         if (_options.LiveProgress) {
                             _status?.Invoke(useScenarioRepairPrompt
                                 ? "repairing partial scenario tool execution..."
@@ -152,6 +181,7 @@ internal static partial class Program {
                         }
                         turn = await ChatWithToolSchemaRecoveryAsync(ChatInput.FromText(retryPrompt), chatOptions, turnToken)
                             .ConfigureAwait(false);
+                        chatOptions.ToolChoice = ToolChoice.Auto;
                         continue;
                     }
 
@@ -161,6 +191,7 @@ internal static partial class Program {
 
                 toolRounds++;
                 calls.AddRange(extracted);
+                RememberRecentHostTargets(extracted);
                 if (_options.LiveProgress) {
                     foreach (var call in extracted) {
                         var args = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments);
@@ -286,10 +317,11 @@ internal static partial class Program {
         private static bool ShouldRetryNoToolExecution(string userRequest, string assistantDraft) {
             var draft = (assistantDraft ?? string.Empty).Trim();
             if (draft.Length == 0) {
-                return !string.IsNullOrWhiteSpace(userRequest);
+                return !string.IsNullOrWhiteSpace(userRequest)
+                       && !IsScenarioNoToolExecutionContract(userRequest);
             }
 
-            if ((userRequest ?? string.Empty).IndexOf(ScenarioExecutionContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
+            if (IsScenarioToolExecutionContract(userRequest)) {
                 return true;
             }
 
@@ -303,6 +335,33 @@ internal static partial class Program {
             }
 
             return LooksLikeLinkedFollowUpQuestionWithoutExecution(request, draft);
+        }
+
+        private static bool IsScenarioToolExecutionContract(string userRequest) {
+            var request = userRequest ?? string.Empty;
+            if (request.IndexOf(ScenarioExecutionContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+
+            if (request.IndexOf("requires tool execution before the final response", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+
+            return TryParseScenarioExecutionContractRequirements(request, out var requirements)
+                   && requirements is not null
+                   && (requirements.MinToolCalls > 0
+                       || requirements.MinDistinctToolInputValues.Count > 0
+                       || requirements.RequiredTools.Count > 0
+                       || requirements.RequiredAnyTools.Count > 0);
+        }
+
+        private static bool IsScenarioNoToolExecutionContract(string userRequest) {
+            var request = userRequest ?? string.Empty;
+            if (request.IndexOf(ScenarioExecutionContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+
+            return request.IndexOf("requires a response without tool execution", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool LooksLikeBlockerPrefaceWithoutExecution(string userRequest, string assistantDraft) {
@@ -452,10 +511,15 @@ internal static partial class Program {
             return tokens;
         }
 
-        private static string BuildNoToolExecutionRetryPrompt(string userRequest, string assistantDraft, int retryAttempt) {
+        private static string BuildNoToolExecutionRetryPrompt(
+            string userRequest,
+            string assistantDraft,
+            int retryAttempt,
+            IReadOnlyList<string>? knownHostTargets = null) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
             _ = retryAttempt;
+            var knownHostHint = BuildKnownHostTargetHint(knownHostTargets);
             return $$"""
                 [Execution correction]
                 The previous assistant draft implied execution (or returned empty output) but no tool calls were emitted.
@@ -478,6 +542,7 @@ internal static partial class Program {
                 If Event Log source input is missing, default machine_name to the first discovered/source DC from prior turns.
                 If this is a continuation request over "remaining discovered DCs/hosts", execute multiple best-effort tool calls using distinct host/DC inputs from thread context.
                 If discovery appears empty in this turn, still use previously seen DC/host targets from thread context rather than stopping at narration.
+                {{knownHostHint}}
                 Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy this request after a best-effort tool attempt, state the exact blocker and the minimal missing input once.
                 """;
@@ -661,25 +726,201 @@ internal static partial class Program {
                 return true;
             }
 
-            var wildcardIndex = expected.IndexOf('*');
-            if (wildcardIndex < 0) {
+            var hasWildcard = expected.IndexOf('*') >= 0 || expected.IndexOf('?') >= 0;
+            if (!hasWildcard) {
                 return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
             }
 
-            var regexPattern = "^" + Regex.Escape(expected).Replace("\\*", ".*") + "$";
+            var regexPattern = "^"
+                               + Regex.Escape(expected)
+                                   .Replace("\\*", ".*", StringComparison.Ordinal)
+                                   .Replace("\\?", ".", StringComparison.Ordinal)
+                               + "$";
             return Regex.IsMatch(actual, regexPattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        private static string BuildKnownHostTargetHint(IReadOnlyList<string>? knownHostTargets) {
+            if (knownHostTargets is null || knownHostTargets.Count == 0) {
+                return string.Empty;
+            }
+
+            var values = new List<string>(Math.Min(MaxRetryPromptHostTargets, knownHostTargets.Count));
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < knownHostTargets.Count && values.Count < MaxRetryPromptHostTargets; i++) {
+                var candidate = NormalizeHostTargetCandidate(knownHostTargets[i]);
+                if (candidate.Length == 0 || !seen.Add(candidate)) {
+                    continue;
+                }
+
+                values.Add(candidate);
+            }
+
+            if (values.Count == 0) {
+                return string.Empty;
+            }
+
+            return "Known host/DC targets from prior tool inputs in this thread: "
+                   + string.Join(", ", values)
+                   + ".";
+        }
+
+        private static string BuildForcedToolHint(string? forcedToolName) {
+            var toolName = (forcedToolName ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                return string.Empty;
+            }
+
+            return "Use tool '" + toolName + "' first in this retry before any narrative text.";
+        }
+
+        private static string? ResolveScenarioRepairForcedToolName(
+            string userRequest,
+            IReadOnlyList<ToolCall> calls,
+            IReadOnlyList<ToolDefinition> toolDefinitions,
+            int retryAttempt) {
+            if (retryAttempt < ScenarioForcedToolChoiceRetryThreshold || toolDefinitions.Count == 0) {
+                return null;
+            }
+
+            if (!TryParseScenarioExecutionContractRequirements(userRequest, out var requirements) || requirements is null) {
+                return null;
+            }
+
+            var patterns = new List<string>();
+            if (requirements.RequiredTools.Count > 0) {
+                foreach (var pattern in requirements.RequiredTools) {
+                    if (ToolCallSetContainsPattern(calls, pattern)) {
+                        continue;
+                    }
+
+                    patterns.Add(pattern);
+                }
+            }
+
+            if (requirements.RequiredAnyTools.Count > 0) {
+                var anyMatched = requirements.RequiredAnyTools.Any(pattern => ToolCallSetContainsPattern(calls, pattern));
+                if (!anyMatched) {
+                    patterns.AddRange(requirements.RequiredAnyTools);
+                }
+            }
+
+            if (patterns.Count == 0) {
+                return null;
+            }
+
+            var requiresHostTargetInputs = RequirementsNeedHostTargetCoverage(requirements);
+            foreach (var pattern in patterns.Distinct(StringComparer.OrdinalIgnoreCase)) {
+                var preferred = FindMatchingForcedToolName(
+                    pattern: pattern,
+                    toolDefinitions: toolDefinitions,
+                    requireHostTargetInputs: requiresHostTargetInputs);
+                if (!string.IsNullOrWhiteSpace(preferred)) {
+                    return preferred;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool RequirementsNeedHostTargetCoverage(ScenarioExecutionContractRequirements requirements) {
+            if (requirements.MinDistinctToolInputValues.Count == 0) {
+                return false;
+            }
+
+            foreach (var key in requirements.MinDistinctToolInputValues.Keys) {
+                var aliases = GetScenarioInputKeyAliases(key);
+                if (aliases.Any(alias => string.Equals(alias, "machine_name", StringComparison.OrdinalIgnoreCase)
+                                         || string.Equals(alias, "domain_controller", StringComparison.OrdinalIgnoreCase)
+                                         || string.Equals(alias, "host", StringComparison.OrdinalIgnoreCase)
+                                         || string.Equals(alias, "server", StringComparison.OrdinalIgnoreCase)
+                                         || string.Equals(alias, "target", StringComparison.OrdinalIgnoreCase)
+                                         || string.Equals(alias, "computer_name", StringComparison.OrdinalIgnoreCase))) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string? FindMatchingForcedToolName(
+            string pattern,
+            IReadOnlyList<ToolDefinition> toolDefinitions,
+            bool requireHostTargetInputs) {
+            for (var i = 0; i < toolDefinitions.Count; i++) {
+                var definition = toolDefinitions[i];
+                var toolName = (definition.Name ?? string.Empty).Trim();
+                if (toolName.Length == 0 || !PatternMatchesToolName(pattern, toolName)) {
+                    continue;
+                }
+
+                if (requireHostTargetInputs && !ToolDefinitionSupportsHostTargetInputs(definition)) {
+                    continue;
+                }
+
+                return toolName;
+            }
+
+            if (!requireHostTargetInputs) {
+                return null;
+            }
+
+            // Host-target requirement is a preference for contract recovery; fallback to any matching
+            // tool to avoid deadlocking when schema metadata is incomplete.
+            for (var i = 0; i < toolDefinitions.Count; i++) {
+                var toolName = (toolDefinitions[i].Name ?? string.Empty).Trim();
+                if (toolName.Length == 0) {
+                    continue;
+                }
+
+                if (PatternMatchesToolName(pattern, toolName)) {
+                    return toolName;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ToolDefinitionSupportsHostTargetInputs(ToolDefinition definition) {
+            var properties = definition.Parameters?.GetObject("properties");
+            if (properties is null) {
+                return false;
+            }
+
+            var candidateKeys = GetScenarioInputKeyAliases("machine_name");
+            if (candidateKeys.Count == 0) {
+                return false;
+            }
+
+            for (var keyIndex = 0; keyIndex < candidateKeys.Count; keyIndex++) {
+                var key = candidateKeys[keyIndex];
+                if (properties.GetObject(key) is not null) {
+                    return true;
+                }
+
+                foreach (var pair in properties) {
+                    if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static string BuildScenarioContractRepairRetryPrompt(
             string userRequest,
             string assistantDraft,
             IReadOnlyList<ToolCall> calls,
-            int retryAttempt) {
+            int retryAttempt,
+            IReadOnlyList<string>? knownHostTargets = null,
+            string? forcedToolName = null) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
             _ = retryAttempt;
             var safeCalls = calls ?? Array.Empty<ToolCall>();
             var observedToolCalls = Math.Max(0, safeCalls.Count);
+            var knownHostHint = BuildKnownHostTargetHint(knownHostTargets);
+            var forcedToolHint = BuildForcedToolHint(forcedToolName);
 
             var contractSummary = "unable to parse scenario requirements.";
             var qualifyingPatternHint = string.Empty;
@@ -728,14 +969,82 @@ internal static partial class Program {
                 Execute additional qualifying tool calls now in this same turn to satisfy the missing contract requirements.
                 Do not ask follow-up questions before issuing additional tool calls.
                 Emit at least one qualifying tool call before any narrative prose in this retry.
+                {{forcedToolHint}}
                 If required coverage is >1 (for example min_tool_calls>=2 or machine_name>=2), issue multiple tool calls in this retry.
                 Do not repeat identical tool-call signatures unless there is no alternative; prioritize missing distinct input coverage.
                 Infer missing read-only inputs from prior tool outputs where possible.
                 For continuation requests over remaining discovered DCs/hosts, execute calls across at least two distinct host/DC inputs.
                 If current discovery returns zero hosts, use previously seen DC/host targets from this thread as fallback and proceed with best-effort execution.
+                {{knownHostHint}}
                 Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy the missing contract requirements after best effort, state the exact blocker once.
                 """;
+        }
+
+        private void RememberRecentHostTargets(IReadOnlyList<ToolCall> calls) {
+            if (calls.Count == 0) {
+                return;
+            }
+
+            var candidateKeys = GetScenarioInputKeyAliases("machine_name");
+            if (candidateKeys.Count == 0) {
+                return;
+            }
+
+            for (var i = 0; i < calls.Count; i++) {
+                var args = calls[i].Arguments;
+                if (args is null) {
+                    continue;
+                }
+
+                for (var keyIndex = 0; keyIndex < candidateKeys.Count; keyIndex++) {
+                    var candidateKey = candidateKeys[keyIndex];
+                    if (!TryReadToolInputValuesByKey(args, candidateKey, out var values) || values.Count == 0) {
+                        continue;
+                    }
+
+                    for (var valueIndex = 0; valueIndex < values.Count; valueIndex++) {
+                        var normalized = NormalizeHostTargetCandidate(values[valueIndex]);
+                        if (normalized.Length == 0) {
+                            continue;
+                        }
+
+                        _recentHostTargets.RemoveAll(existing =>
+                            string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
+                        _recentHostTargets.Add(normalized);
+                        if (_recentHostTargets.Count <= MaxRecentHostTargets) {
+                            continue;
+                        }
+
+                        _recentHostTargets.RemoveAt(0);
+                    }
+                }
+            }
+        }
+
+        private string[] GetRecentHostTargetsSnapshot() {
+            if (_recentHostTargets.Count == 0) {
+                return Array.Empty<string>();
+            }
+
+            var start = Math.Max(0, _recentHostTargets.Count - MaxRetryPromptHostTargets);
+            return _recentHostTargets
+                .Skip(start)
+                .Take(MaxRetryPromptHostTargets)
+                .ToArray();
+        }
+
+        private static string NormalizeHostTargetCandidate(string value) {
+            var candidate = (value ?? string.Empty).Trim();
+            if (candidate.Length < 2 || candidate.Length > 128) {
+                return string.Empty;
+            }
+
+            if (candidate.Any(static ch => char.IsWhiteSpace(ch) || char.IsControl(ch))) {
+                return string.Empty;
+            }
+
+            return candidate;
         }
 
         private async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, CancellationToken cancellationToken) {
@@ -854,6 +1163,25 @@ internal static partial class Program {
         }
 
         private async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(ChatInput input, ChatOptions options, CancellationToken cancellationToken) {
+            for (var attempt = 0; attempt < MaxModelPhaseAttempts; attempt++) {
+                var attemptOptions = options.Clone();
+                try {
+                    return await ChatWithToolSchemaRecoverySingleAttemptAsync(input, attemptOptions, cancellationToken).ConfigureAwait(false);
+                } catch (Exception ex) when (ShouldRetryModelPhaseAttempt(ex, attempt, MaxModelPhaseAttempts, cancellationToken)) {
+                    if (_options.LiveProgress) {
+                        _status?.Invoke("transient model error; retrying...");
+                    }
+
+                    var delayMs = ModelPhaseRetryBaseDelayMs * (attempt + 1);
+                    await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            throw new InvalidOperationException("Model phase retry loop exhausted without returning a result.");
+        }
+
+        private async Task<TurnInfo> ChatWithToolSchemaRecoverySingleAttemptAsync(ChatInput input, ChatOptions options,
+            CancellationToken cancellationToken) {
             try {
                 return await _client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) when (ShouldRetryWithoutTools(ex, options)) {
@@ -861,6 +1189,98 @@ internal static partial class Program {
                 options.ToolChoice = null;
                 return await _client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private static bool ShouldRetryModelPhaseAttempt(Exception ex, int attempt, int maxAttempts, CancellationToken cancellationToken) {
+            if (attempt + 1 >= maxAttempts) {
+                return false;
+            }
+
+            if (cancellationToken.IsCancellationRequested || ex is OperationCanceledException) {
+                return false;
+            }
+
+            if (ex is OpenAIAuthenticationRequiredException) {
+                return false;
+            }
+
+            if (LooksLikeToolOutputPairingReferenceGap(ex)) {
+                return true;
+            }
+
+            return HasRetryableTransportFailureInChain(ex);
+        }
+
+        private static bool HasRetryableTransportFailureInChain(Exception ex) {
+            var depth = 0;
+            for (Exception? current = ex; current is not null && depth < 8; current = current.InnerException, depth++) {
+                if (current is TimeoutException || current is IOException || current is HttpRequestException) {
+                    return true;
+                }
+
+                var statusCode = TryGetStatusCodeFromExceptionData(current);
+                if (statusCode is >= 500) {
+                    return true;
+                }
+
+                var message = (current.Message ?? string.Empty).Trim();
+                if (message.Length == 0) {
+                    continue;
+                }
+
+                if (message.Contains("connection refused", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("connection reset", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("broken pipe", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("temporarily unavailable", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("unexpected end of stream", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("server disconnected", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("disconnected", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("service unavailable", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("server had an error processing your request", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("bad gateway", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("gateway timeout", StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int? TryGetStatusCodeFromExceptionData(Exception ex) {
+            if (ex?.Data is null) {
+                return null;
+            }
+
+            var raw = ex.Data["openai:status_code"];
+            return raw switch {
+                int intCode => intCode,
+                long longCode => (int)longCode,
+                short shortCode => shortCode,
+                byte byteCode => byteCode,
+                string text when int.TryParse(text, out var parsed) => parsed,
+                _ => null
+            };
+        }
+
+        private static bool LooksLikeToolOutputPairingReferenceGap(Exception ex) {
+            var depth = 0;
+            for (Exception? current = ex; current is not null && depth < 8; current = current.InnerException, depth++) {
+                var message = (current.Message ?? string.Empty).Trim();
+                if (message.Length == 0) {
+                    continue;
+                }
+
+                if (message.Contains("No tool call found for custom tool call output", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("custom tool call output with call_id", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("No tool output found for function call", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("No tool output found for custom tool call", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("No tool call found for function call output", StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool ShouldRetryWithoutTools(Exception ex, ChatOptions options) {
