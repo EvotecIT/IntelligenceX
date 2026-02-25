@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Globalization;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -1966,27 +1967,40 @@ internal static partial class Program {
             }
 
             fallbackTargets = OrderHostTargetCandidatesBySpecificity(fallbackTargets);
-            var patchedCalls = calls.ToArray();
+            var patchedCalls = calls.ToList();
             var patchedAny = false;
-            for (var i = 0; i < patchedCalls.Length
-                            && observedDistinctTargets.Count < requiredDistinctHostCoverage
-                            && fallbackTargets.Count > 0; i++) {
-                var originalCall = patchedCalls[i];
-                if (originalCall.Arguments is null) {
+            var callIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var callIndex = 0; callIndex < patchedCalls.Count; callIndex++) {
+                callIds.Add(patchedCalls[callIndex].CallId ?? string.Empty);
+            }
+
+            var hostUsageByTarget = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var primaryHostByCallIndex = new Dictionary<int, string>();
+            for (var i = 0; i < patchedCalls.Count; i++) {
+                if (!TryGetPrimaryHostTargetValue(patchedCalls[i], out var primaryHostTarget)) {
                     continue;
                 }
 
-                ToolDefinition? definition = null;
-                for (var definitionIndex = 0; definitionIndex < toolDefinitions.Count; definitionIndex++) {
-                    var candidateName = (toolDefinitions[definitionIndex].Name ?? string.Empty).Trim();
-                    if (!string.Equals(candidateName, originalCall.Name, StringComparison.OrdinalIgnoreCase)) {
-                        continue;
-                    }
-
-                    definition = toolDefinitions[definitionIndex];
-                    break;
+                primaryHostByCallIndex[i] = primaryHostTarget;
+                if (!hostUsageByTarget.TryGetValue(primaryHostTarget, out var count)) {
+                    hostUsageByTarget[primaryHostTarget] = 1;
+                    continue;
                 }
 
+                hostUsageByTarget[primaryHostTarget] = count + 1;
+            }
+
+            for (var i = 0; i < patchedCalls.Count
+                            && observedDistinctTargets.Count < requiredDistinctHostCoverage
+                            && fallbackTargets.Count > 0; i++) {
+                if (!primaryHostByCallIndex.TryGetValue(i, out var currentHostTarget)
+                    || !hostUsageByTarget.TryGetValue(currentHostTarget, out var currentHostUsage)
+                    || currentHostUsage <= 1) {
+                    continue;
+                }
+
+                var originalCall = patchedCalls[i];
+                var definition = FindToolDefinitionByName(toolDefinitions, originalCall.Name);
                 var fallbackTarget = fallbackTargets[0];
                 var patchedCall = ApplyHostTargetOverride(originalCall, definition, fallbackTarget);
                 if (ReferenceEquals(patchedCall, originalCall)) {
@@ -1995,11 +2009,121 @@ internal static partial class Program {
 
                 patchedCalls[i] = patchedCall;
                 patchedAny = true;
+                hostUsageByTarget[currentHostTarget] = currentHostUsage - 1;
+                if (!hostUsageByTarget.TryGetValue(fallbackTarget, out var fallbackUsage)) {
+                    hostUsageByTarget[fallbackTarget] = 1;
+                } else {
+                    hostUsageByTarget[fallbackTarget] = fallbackUsage + 1;
+                }
                 observedDistinctTargets.Add(fallbackTarget);
                 fallbackTargets.RemoveAt(0);
             }
 
-            return patchedAny ? patchedCalls : calls;
+            var derivedCallIndex = 0;
+            while (observedDistinctTargets.Count < requiredDistinctHostCoverage && fallbackTargets.Count > 0) {
+                var appended = false;
+                for (var i = 0; i < patchedCalls.Count; i++) {
+                    var templateCall = patchedCalls[i];
+                    var definition = FindToolDefinitionByName(toolDefinitions, templateCall.Name);
+                    var fallbackTarget = fallbackTargets[0];
+                    var derivedCall = TryCreateDerivedHostOverrideCall(
+                        templateCall,
+                        definition,
+                        fallbackTarget,
+                        callIds,
+                        ref derivedCallIndex);
+                    if (derivedCall is null) {
+                        continue;
+                    }
+
+                    patchedCalls.Add(derivedCall);
+                    observedDistinctTargets.Add(fallbackTarget);
+                    fallbackTargets.RemoveAt(0);
+                    patchedAny = true;
+                    appended = true;
+                    break;
+                }
+
+                if (!appended) {
+                    break;
+                }
+            }
+
+            return patchedAny ? patchedCalls.ToArray() : calls;
+        }
+
+        private static ToolDefinition? FindToolDefinitionByName(
+            IReadOnlyList<ToolDefinition> toolDefinitions,
+            string? toolName) {
+            var normalizedToolName = (toolName ?? string.Empty).Trim();
+            if (normalizedToolName.Length == 0) {
+                return null;
+            }
+
+            for (var definitionIndex = 0; definitionIndex < toolDefinitions.Count; definitionIndex++) {
+                var candidateName = (toolDefinitions[definitionIndex].Name ?? string.Empty).Trim();
+                if (string.Equals(candidateName, normalizedToolName, StringComparison.OrdinalIgnoreCase)) {
+                    return toolDefinitions[definitionIndex];
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryGetPrimaryHostTargetValue(ToolCall call, out string value) {
+            value = string.Empty;
+            if (call.Arguments is null) {
+                return false;
+            }
+
+            var candidateInputKeys = GetScenarioInputKeyAliases("machine_name");
+            for (var keyIndex = 0; keyIndex < candidateInputKeys.Count; keyIndex++) {
+                if (!TryReadToolInputValuesByKey(call.Arguments, candidateInputKeys[keyIndex], out var values) || values.Count == 0) {
+                    continue;
+                }
+
+                for (var valueIndex = 0; valueIndex < values.Count; valueIndex++) {
+                    var normalized = NormalizeHostTargetCandidate(values[valueIndex]);
+                    if (normalized.Length == 0) {
+                        continue;
+                    }
+
+                    value = normalized;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static ToolCall? TryCreateDerivedHostOverrideCall(
+            ToolCall templateCall,
+            ToolDefinition? definition,
+            string hostTarget,
+            ISet<string> existingCallIds,
+            ref int derivedCallIndex) {
+            var patchedCall = ApplyHostTargetOverride(templateCall, definition, hostTarget);
+            if (ReferenceEquals(patchedCall, templateCall)) {
+                return null;
+            }
+
+            var baseCallId = string.IsNullOrWhiteSpace(templateCall.CallId)
+                ? "call"
+                : templateCall.CallId.Trim();
+            while (true) {
+                derivedCallIndex++;
+                var candidateId = baseCallId + "_hostcov_" + derivedCallIndex.ToString(CultureInfo.InvariantCulture);
+                if (!existingCallIds.Add(candidateId)) {
+                    continue;
+                }
+
+                return new ToolCall(
+                    candidateId,
+                    patchedCall.Name,
+                    patchedCall.Input,
+                    patchedCall.Arguments,
+                    patchedCall.Raw);
+            }
         }
 
         private static int GetRequiredDistinctHostCoverage(ScenarioExecutionContractRequirements requirements) {

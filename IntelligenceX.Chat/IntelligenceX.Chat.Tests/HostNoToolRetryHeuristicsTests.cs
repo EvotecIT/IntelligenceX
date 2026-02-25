@@ -640,6 +640,44 @@ Continue that failure-signature collection across all remaining DCs in this turn
     }
 
     [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_AppendsDerivedCallWhenSingleCallCannotCoverDistinctHosts() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*stats*
+distinct_tool_inputs: machine_name>=2
+User request:
+Continue that failure-signature collection across all remaining DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", """{"log_name":"System","machine_name":"AD0"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "AD1" });
+
+        Assert.Equal(2, repaired.Count);
+        Assert.Equal("call_1", repaired[0].CallId);
+        Assert.StartsWith("call_1_hostcov_", repaired[1].CallId, StringComparison.Ordinal);
+        Assert.Equal("AD0", repaired[0].Arguments?.GetString("machine_name"));
+        Assert.Equal("AD1", repaired[1].Arguments?.GetString("machine_name"));
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_KeepsHostAliasesConsistentWithinPatchedCall() {
         const string request = """
 [Scenario execution contract]
