@@ -216,6 +216,42 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions() {
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            var src = Path.Combine(workspace, "src");
+            Directory.CreateDirectory(src);
+            File.WriteAllText(Path.Combine(src, "main.ts"), "const answer = 42;");
+
+            var scripts = Path.Combine(workspace, "scripts");
+            Directory.CreateDirectory(scripts);
+            File.WriteAllText(Path.Combine(scripts, "tool.py"), "answer = 42");
+
+            var inventory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.DiscoverWorkspaceSourceInventoryForTests(workspace);
+            AssertEqual(0, inventory.SkippedEnumerations, "source inventory diagnostics has zero skipped paths in healthy workspace");
+
+            var hasTypeScript = false;
+            var hasPython = false;
+            foreach (var extension in inventory.Extensions) {
+                if (string.Equals(extension, ".ts", StringComparison.OrdinalIgnoreCase)) {
+                    hasTypeScript = true;
+                } else if (string.Equals(extension, ".py", StringComparison.OrdinalIgnoreCase)) {
+                    hasPython = true;
+                }
+            }
+
+            AssertEqual(true, hasTypeScript, "source inventory captures TypeScript extension");
+            AssertEqual(true, hasPython, "source inventory captures Python extension");
+        } finally {
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
     private static void TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools() {
         var rules = new[] {
             new IntelligenceX.Analysis.AnalysisPolicyRule(

@@ -402,6 +402,8 @@ internal static partial class Program {
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
             TestAnalyzeRunWorkspaceSourceDetectionDiagnosticsDefaultToZeroSkipped);
+        failed += Run("Analyze run workspace source inventory captures multiple extensions",
+            TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions);
         failed += Run("Analyze run javascript selectors ignore mismatched tools",
             TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
         failed += Run("Analyze run python selected rule ids ignore mismatched tools",

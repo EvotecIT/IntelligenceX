@@ -252,7 +252,7 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<RunnerResult> RunJavaScriptAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
+        IReadOnlyList<AnalysisPolicyRule> rules, WorkspaceSourceInventory? sourceInventory, List<string> warnings) {
         var selectors = BuildJavaScriptRuleSelectors(rules);
         if (selectors.Count == 0) {
             warnings.Add("No JavaScript/TypeScript rule IDs selected; skipping ESLint analysis.");
@@ -262,7 +262,7 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")) {
+        if (!WorkspaceContainsAnySourceFile(sourceInventory, out var skippedSourceEnumerations, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
             }
@@ -301,13 +301,13 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<RunnerResult> RunPythonAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
+        IReadOnlyList<AnalysisPolicyRule> rules, WorkspaceSourceInventory? sourceInventory, List<string> warnings) {
         var selectedRuleIds = BuildPythonSelectedRuleIds(rules);
         if (selectedRuleIds.Count == 0) {
             warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations, ".py")) {
+        if (!WorkspaceContainsAnySourceFile(sourceInventory, out var skippedSourceEnumerations, ".py")) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
             }
@@ -559,6 +559,18 @@ internal static partial class AnalyzeRunCommand {
         params string[] extensions) {
         var found = WorkspaceContainsAnySourceFile(workspace, out var skippedEnumerations, extensions);
         return (found, skippedEnumerations);
+    }
+
+    internal static (IReadOnlyList<string> Extensions, int SkippedEnumerations) DiscoverWorkspaceSourceInventoryForTests(string workspace) {
+        var inventory = DiscoverWorkspaceSourceInventory(workspace);
+        if (inventory is null) {
+            return (Array.Empty<string>(), 0);
+        }
+
+        var extensions = inventory.Extensions
+            .OrderBy(static extension => extension, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return (extensions, inventory.SkippedEnumerations);
     }
 
     internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(

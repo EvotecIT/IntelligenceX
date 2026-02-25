@@ -5,6 +5,16 @@ using System.IO;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
+    private sealed class WorkspaceSourceInventory {
+        public WorkspaceSourceInventory(HashSet<string> extensions, int skippedEnumerations) {
+            Extensions = extensions ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            SkippedEnumerations = Math.Max(0, skippedEnumerations);
+        }
+
+        public HashSet<string> Extensions { get; }
+        public int SkippedEnumerations { get; }
+    }
+
     private static string BuildExternalRunnerFailureMessage(string languageLabel, string command, string optionName, CommandResult result) {
         if (IsCommandUnavailable(result)) {
             return $"{languageLabel} analysis command '{command}' is unavailable (exit code {result.ExitCode}). " +
@@ -38,27 +48,40 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static bool WorkspaceContainsAnySourceFile(string workspace, out int skippedEnumerations, params string[] extensions) {
-        skippedEnumerations = 0;
-        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace)) {
+        var sourceInventory = DiscoverWorkspaceSourceInventory(workspace);
+        return WorkspaceContainsAnySourceFile(sourceInventory, out skippedEnumerations, extensions);
+    }
+
+    private static bool WorkspaceContainsAnySourceFile(
+        WorkspaceSourceInventory? sourceInventory,
+        out int skippedEnumerations,
+        params string[] extensions) {
+        skippedEnumerations = sourceInventory?.SkippedEnumerations ?? 0;
+        if (sourceInventory is null) {
             return false;
         }
 
-        var extensionSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var extension in extensions ?? Array.Empty<string>()) {
-            if (string.IsNullOrWhiteSpace(extension)) {
-                continue;
-            }
-
-            var normalized = extension.Trim();
-            if (!normalized.StartsWith(".", StringComparison.Ordinal)) {
-                normalized = "." + normalized;
-            }
-            extensionSet.Add(normalized);
-        }
+        var extensionSet = NormalizeSourceExtensions(extensions);
         if (extensionSet.Count == 0) {
             return false;
         }
 
+        foreach (var extension in extensionSet) {
+            if (sourceInventory.Extensions.Contains(extension)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static WorkspaceSourceInventory? DiscoverWorkspaceSourceInventory(string workspace) {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace)) {
+            return null;
+        }
+
+        var skippedEnumerations = 0;
+        var discoveredExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Stack<string>();
         pending.Push(workspace);
 
@@ -103,13 +126,29 @@ internal static partial class AnalyzeRunCommand {
                 }
 
                 var extension = Path.GetExtension(path);
-                if (extensionSet.Contains(extension)) {
-                    return true;
+                if (!string.IsNullOrWhiteSpace(extension)) {
+                    discoveredExtensions.Add(extension);
                 }
             }
         }
 
-        return false;
+        return new WorkspaceSourceInventory(discoveredExtensions, skippedEnumerations);
+    }
+
+    private static HashSet<string> NormalizeSourceExtensions(params string[] extensions) {
+        var extensionSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var extension in extensions ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(extension)) {
+                continue;
+            }
+
+            var normalized = extension.Trim();
+            if (!normalized.StartsWith(".", StringComparison.Ordinal)) {
+                normalized = "." + normalized;
+            }
+            extensionSet.Add(normalized);
+        }
+        return extensionSet;
     }
 
     private static bool IsExcludedDirectoryName(string path) {

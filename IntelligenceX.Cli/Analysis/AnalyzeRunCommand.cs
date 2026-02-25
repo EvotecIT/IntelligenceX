@@ -106,6 +106,10 @@ internal static partial class AnalyzeRunCommand {
         var javascriptRules = policy.SelectByLanguage("javascript", "js", "typescript", "ts");
         var pythonRules = policy.SelectByLanguage("python", "py");
         var internalRules = policy.SelectByLanguage("internal");
+        WorkspaceSourceInventory? sourceInventory = null;
+        if (javascriptRules.Count > 0 || pythonRules.Count > 0) {
+            sourceInventory = DiscoverWorkspaceSourceInventory(workspace);
+        }
         var runWarnings = new List<string>();
         var runFailures = new List<string>();
         var findings = new List<AnalysisFindingItem>();
@@ -142,14 +146,14 @@ internal static partial class AnalyzeRunCommand {
                 }
             }
             if (javascriptRules.Count > 0) {
-                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, javascriptRules, runWarnings)
+                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, javascriptRules, sourceInventory, runWarnings)
                     .ConfigureAwait(false);
                 if (!jsResult.Success) {
                     runFailures.Add(jsResult.Message);
                 }
             }
             if (pythonRules.Count > 0) {
-                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, pythonRules, runWarnings)
+                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, pythonRules, sourceInventory, runWarnings)
                     .ConfigureAwait(false);
                 if (!pyResult.Success) {
                     runFailures.Add(pyResult.Message);
