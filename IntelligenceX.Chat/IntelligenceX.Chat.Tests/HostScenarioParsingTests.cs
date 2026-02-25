@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Xunit;
@@ -28,6 +29,7 @@ public sealed class HostScenarioParsingTests {
       "require_tools": ["eventlog_live_query"],
       "require_any_tools": ["eventlog_live_query", "eventlog_live_stats"],
       "forbid_tools": ["eventlog_evtx_query"],
+      "min_distinct_tool_input_values": { "machine_name": 2 },
       "assert_tool_output_contains": ["6008", "Kernel-Power"],
       "assert_tool_output_not_contains": ["schema_validation_failed"],
       "assert_no_tool_errors": true,
@@ -59,6 +61,9 @@ public sealed class HostScenarioParsingTests {
         Assert.Single(ReadStringListProperty(turns[0], "RequireTools"));
         Assert.Equal(2, ReadStringListProperty(turns[0], "RequireAnyTools").Count);
         Assert.Single(ReadStringListProperty(turns[0], "ForbidTools"));
+        var minDistinctInputValues = ReadIntDictionaryProperty(turns[0], "MinDistinctToolInputValues");
+        Assert.True(minDistinctInputValues.TryGetValue("machine_name", out var minMachineNameValues));
+        Assert.Equal(2, minMachineNameValues);
         Assert.Equal(2, ReadStringListProperty(turns[0], "AssertToolOutputContains").Count);
         Assert.Single(ReadStringListProperty(turns[0], "AssertToolOutputNotContains"));
         Assert.True(ReadBooleanProperty(turns[0], "AssertNoToolErrors"));
@@ -79,6 +84,7 @@ public sealed class HostScenarioParsingTests {
         Assert.Empty(ReadStringListProperty(turns[1], "RequireTools"));
         Assert.Empty(ReadStringListProperty(turns[1], "RequireAnyTools"));
         Assert.Empty(ReadStringListProperty(turns[1], "ForbidTools"));
+        Assert.Empty(ReadIntDictionaryProperty(turns[1], "MinDistinctToolInputValues"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputContains"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputNotContains"));
         Assert.False(ReadBooleanProperty(turns[1], "AssertNoToolErrors"));
@@ -318,5 +324,29 @@ Check AD0 reboot
         Assert.NotNull(property);
         var value = property!.GetValue(instance);
         return value is bool b && b;
+    }
+
+    private static IReadOnlyDictionary<string, int> ReadIntDictionaryProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var raw = property!.GetValue(instance);
+        var dictionary = Assert.IsAssignableFrom<IEnumerable>(raw);
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in dictionary) {
+            var type = entry.GetType();
+            var keyProperty = type.GetProperty("Key", BindingFlags.Instance | BindingFlags.Public);
+            var valueProperty = type.GetProperty("Value", BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(keyProperty);
+            Assert.NotNull(valueProperty);
+            var key = (keyProperty!.GetValue(entry)?.ToString() ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            var parsed = Convert.ToInt32(valueProperty!.GetValue(entry));
+            result[key] = parsed;
+        }
+
+        return result;
     }
 }

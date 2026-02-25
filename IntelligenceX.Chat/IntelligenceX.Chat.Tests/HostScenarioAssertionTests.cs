@@ -120,6 +120,84 @@ public sealed class HostScenarioAssertionTests {
         Assert.DoesNotContain(failures, value => value.Contains("orphan output", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void EvaluateScenarioAssertions_FailsWhenDistinctToolInputCoverageIsInsufficient() {
+        const string json = """
+{
+  "name": "distinct-inputs",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on all remaining DCs.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0\",\"window\":\"last_24_hours_utc\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD0\",\"window\":\"last_8_hours_utc\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("distinct 'machine_name' tool input value", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_PassesWhenDistinctToolInputCoverageIsSatisfied() {
+        const string json = """
+{
+  "name": "distinct-inputs",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on all remaining DCs.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD1\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD2\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("distinct 'machine_name' tool input value", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static object ParseSingleTurn(string json) {
         var programType = ResolveHostProgramType();
         var parseMethod = programType.GetMethod("ParseChatScenarioDefinition", BindingFlags.NonPublic | BindingFlags.Static);

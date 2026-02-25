@@ -34,6 +34,7 @@
       "name": "Continue across remaining DCs",
       "user": "Continue the same event correlation for every remaining discovered DC in this turn. Do not stop after the first failure.",
       "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
       "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "ad_monitoring_probe_run"],
       "assert_no_questions": true
     },
