@@ -109,4 +109,82 @@ public sealed class ChatServiceDomainAffinityTests {
 
         Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-votes"));
     }
+
+    [Fact]
+    public void RememberPreferredDomainIntentFamily_ClearsAffinityWhenVotesAreAmbiguous() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-ambiguous", "ad_domain");
+        var calls = new[] {
+            new ToolCallDto { CallId = "1", Name = "ad_scope_discovery", ArgumentsJson = "{}" },
+            new ToolCallDto { CallId = "2", Name = "dnsclientx_query", ArgumentsJson = "{}" }
+        };
+        var outputs = new[] {
+            new ToolOutputDto { CallId = "1", Output = "{\"ok\":true}", Ok = true },
+            new ToolOutputDto { CallId = "2", Output = "{\"ok\":true}", Ok = true }
+        };
+
+        session.RememberPreferredDomainIntentFamilyForTesting(
+            threadId: "thread-ambiguous",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-ambiguous"));
+    }
+
+    [Fact]
+    public void TryApplyDomainIntentAffinity_RehydratesPersistedAffinityAcrossSessionRestart() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-domain-affinity-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+
+        try {
+            var writerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var calls = new[] {
+                new ToolCallDto { CallId = "1", Name = "ad_scope_discovery", ArgumentsJson = "{}" },
+                new ToolCallDto { CallId = "2", Name = "ad_domain_controllers", ArgumentsJson = "{}" }
+            };
+            var outputs = new[] {
+                new ToolOutputDto { CallId = "1", Output = "{\"ok\":true}", Ok = true },
+                new ToolOutputDto { CallId = "2", Output = "{\"ok\":true}", Ok = true }
+            };
+
+            writerSession.RememberPreferredDomainIntentFamilyForTesting(
+                threadId: "thread-persisted",
+                toolCalls: calls,
+                toolOutputs: outputs,
+                mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+            var readerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var tools = new[] {
+                new ToolDefinition("ad_scope_discovery", "AD scope"),
+                new ToolDefinition("dnsclientx_query", "DNS query")
+            };
+
+            var applied = readerSession.TryApplyDomainIntentAffinityForTesting(
+                "thread-persisted",
+                tools,
+                out var filtered,
+                out var family,
+                out var removedCount);
+
+            Assert.True(applied);
+            Assert.Equal("ad_domain", family);
+            Assert.Equal(1, removedCount);
+            Assert.Contains(filtered, tool => string.Equals(tool.Name, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(filtered, tool => string.Equals(tool.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
 }

@@ -27,6 +27,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int DomainIntentClarificationMinRelevantCandidates = 3;
     private const double DomainIntentClarificationMaxDominantShare = 0.80d;
+    private const double DomainIntentAffinityRetentionMinDominantShare = 0.65d;
     private const string DomainIntentFamilyAd = "ad_domain";
     private const string DomainIntentFamilyPublic = "public_domain";
 
@@ -278,23 +279,39 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        string preferredFamily;
+        var nowUtc = DateTime.UtcNow;
+        string preferredFamily = string.Empty;
+        var hasPreferredFamily = false;
+
         lock (_toolRoutingContextLock) {
-            if (!_domainIntentFamilyByThreadId.TryGetValue(normalizedThreadId, out preferredFamily!)
-                || string.IsNullOrWhiteSpace(preferredFamily)) {
+            if (_domainIntentFamilyByThreadId.TryGetValue(normalizedThreadId, out var cachedFamily)
+                && !string.IsNullOrWhiteSpace(cachedFamily)) {
+                if (_domainIntentFamilySeenUtcTicks.TryGetValue(normalizedThreadId, out var seenTicks)
+                    && TryGetUtcDateTimeFromTicks(seenTicks, out var seenUtc)
+                    && nowUtc - seenUtc <= DomainIntentFamilyContextMaxAge) {
+                    preferredFamily = cachedFamily;
+                    hasPreferredFamily = true;
+                    _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowUtc.Ticks;
+                    TrimWeightedRoutingContextsNoLock();
+                } else {
+                    _domainIntentFamilyByThreadId.Remove(normalizedThreadId);
+                    _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId);
+                }
+            }
+        }
+
+        if (!hasPreferredFamily) {
+            if (!TryLoadDomainIntentFamilySnapshot(normalizedThreadId, out var snapshotFamily, out _)) {
                 return false;
             }
 
-            if (!_domainIntentFamilySeenUtcTicks.TryGetValue(normalizedThreadId, out var seenTicks)
-                || !TryGetUtcDateTimeFromTicks(seenTicks, out var seenUtc)
-                || DateTime.UtcNow - seenUtc > DomainIntentFamilyContextMaxAge) {
-                _domainIntentFamilyByThreadId.Remove(normalizedThreadId);
-                _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId);
-                return false;
+            preferredFamily = snapshotFamily;
+            hasPreferredFamily = true;
+            lock (_toolRoutingContextLock) {
+                _domainIntentFamilyByThreadId[normalizedThreadId] = preferredFamily;
+                _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowUtc.Ticks;
+                TrimWeightedRoutingContextsNoLock();
             }
-
-            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
         }
 
         var filtered = new List<ToolDefinition>(selectedTools.Count);
@@ -384,19 +401,45 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        string nextFamily;
-        if (adVotes > publicVotes && adVotes > 0) {
-            nextFamily = DomainIntentFamilyAd;
-        } else if (publicVotes > adVotes && publicVotes > 0) {
-            nextFamily = DomainIntentFamilyPublic;
-        } else {
+        var totalVotes = adVotes + publicVotes;
+        if (totalVotes <= 0) {
             return;
         }
 
+        var dominantVotes = Math.Max(adVotes, publicVotes);
+        if (adVotes == publicVotes || dominantVotes / (double)totalVotes < DomainIntentAffinityRetentionMinDominantShare) {
+            ClearPreferredDomainIntentFamily(normalizedThreadId);
+            return;
+        }
+
+        var nextFamily = adVotes > publicVotes ? DomainIntentFamilyAd : DomainIntentFamilyPublic;
+        var seenUtcTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
             _domainIntentFamilyByThreadId[normalizedThreadId] = nextFamily;
-            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = seenUtcTicks;
             TrimWeightedRoutingContextsNoLock();
+        }
+
+        PersistDomainIntentFamilySnapshot(normalizedThreadId, nextFamily, seenUtcTicks);
+    }
+
+    private void ClearPreferredDomainIntentFamily(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        var removed = false;
+        lock (_toolRoutingContextLock) {
+            removed = _domainIntentFamilyByThreadId.Remove(normalizedThreadId) || removed;
+            removed = _domainIntentFamilySeenUtcTicks.Remove(normalizedThreadId) || removed;
+            if (removed) {
+                TrimWeightedRoutingContextsNoLock();
+            }
+        }
+
+        if (removed) {
+            RemoveDomainIntentFamilySnapshot(normalizedThreadId);
         }
     }
 
