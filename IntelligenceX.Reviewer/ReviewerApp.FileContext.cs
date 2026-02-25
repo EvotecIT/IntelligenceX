@@ -352,6 +352,7 @@ public static partial class ReviewerApp {
         var scanned = 0;
         var skippedResolved = 0;
         var skippedPartialBotView = 0;
+        var skippedNonBot = 0;
         var skippedNoInlineKey = 0;
         var skippedExpectedMatch = 0;
         var failed = 0;
@@ -366,6 +367,10 @@ public static partial class ReviewerApp {
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
                 skippedPartialBotView++;
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
+                skippedNonBot++;
                 continue;
             }
             if (!TryGetInlineThreadMatchKeys(thread, settings, out var threadKeys) || threadKeys.Count == 0) {
@@ -389,7 +394,7 @@ public static partial class ReviewerApp {
         if (scanned > 0) {
             Console.Error.WriteLine(
                 $"Thread auto-resolve (missing-inline): expected_keys={keys.Count}; scanned={scanned}; resolved={resolved}; failed={failed}; " +
-                $"skip_resolved={skippedResolved}; skip_partial_view={skippedPartialBotView}; " +
+                $"skip_resolved={skippedResolved}; skip_partial_view={skippedPartialBotView}; skip_non_bot={skippedNonBot}; " +
                 $"skip_no_inline_key={skippedNoInlineKey}; skip_expected_match={skippedExpectedMatch}.");
         }
     }
@@ -506,4 +511,3 @@ public static partial class ReviewerApp {
     }
 
 }
-

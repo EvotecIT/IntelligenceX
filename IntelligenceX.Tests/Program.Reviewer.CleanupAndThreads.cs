@@ -423,6 +423,52 @@ internal static partial class Program {
         AssertEqual(true, resolvedThreadIdObserved, "auto resolve missing inline targets thread1");
     }
 
+    private static void TestAutoResolveMissingInlineBotsOnlySkipsHydratedNonBotThread() {
+        var resolved = 0;
+        var resolvePayloadObserved = false;
+        var hydrationObserved = false;
+        var inlineBody = $"{ReviewFormatter.InlineMarker}\nFix it.";
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                resolvePayloadObserved = true;
+                resolved++;
+                return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread1\",\"isResolved\":true}}}}");
+            }
+            if (request.Body.Contains("node(id:$id)", StringComparison.Ordinal)) {
+                hydrationObserved = true;
+                return new HttpResponse(BuildGraphQlHydratedThreadResponse(
+                    "thread1",
+                    (inlineBody, "src/Foo.cs", 10, "intelligencex-review"),
+                    ("Please keep this open.", "src/Foo.cs", 10, "alice")));
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(
+                inlineBody,
+                "src/Foo.cs",
+                10,
+                "intelligencex-review",
+                "thread1",
+                totalComments: 2));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 1,
+            ReviewThreadsMax = 1,
+            ReviewThreadsMaxComments = 1,
+            ReviewThreadsAutoResolveBotsOnly = true
+        };
+
+        CallAutoResolveMissingInlineThreads(github, context, new HashSet<string>(StringComparer.OrdinalIgnoreCase), settings);
+        AssertEqual(true, hydrationObserved, "auto resolve missing inline hydration observed");
+        AssertEqual(0, resolved, "auto resolve missing inline bots-only skips mixed author thread");
+        AssertEqual(false, resolvePayloadObserved, "auto resolve missing inline bots-only no resolve payload");
+    }
+
     private static void TestAutoResolveMissingInlineSkipsShiftedLineWithinWindow() {
         var resolved = 0;
         var resolvePayloadObserved = false;
@@ -531,6 +577,35 @@ internal static partial class Program {
         }
         threadId = payload.GetObject("variables")?.GetString("id");
         return !string.IsNullOrWhiteSpace(threadId);
+    }
+
+    private static string BuildGraphQlHydratedThreadResponse(string threadId,
+        params (string Body, string Path, int Line, string Author)[] comments) {
+        var sb = new StringBuilder();
+        sb.Append("{\"data\":{\"node\":{\"id\":\"")
+            .Append(EscapeJson(threadId))
+            .Append("\",\"isResolved\":false,\"isOutdated\":false,\"comments\":{\"totalCount\":")
+            .Append(comments.Length)
+            .Append(",\"nodes\":[");
+        for (var i = 0; i < comments.Length; i++) {
+            if (i > 0) {
+                sb.Append(',');
+            }
+            var comment = comments[i];
+            sb.Append("{\"databaseId\":")
+                .Append(i + 1)
+                .Append(",\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\"")
+                .Append(EscapeJson(comment.Body))
+                .Append("\",\"path\":\"")
+                .Append(EscapeJson(comment.Path))
+                .Append("\",\"line\":")
+                .Append(comment.Line.ToString())
+                .Append(",\"author\":{\"login\":\"")
+                .Append(EscapeJson(comment.Author))
+                .Append("\"}}");
+        }
+        sb.Append("],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}}");
+        return sb.ToString();
     }
 
     private static void TestAutoResolveMissingInlineGateAllowsEmptySet() {

@@ -566,14 +566,16 @@ internal static partial class Program {
     }
 
     private static string BuildGraphQlThreadsResponse(string body, string path, int line, string author, string threadId,
-        bool isResolved = false, bool isOutdated = false) {
+        bool isResolved = false, bool isOutdated = false, int totalComments = 1) {
         return "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":[{\"id\":\""
             + EscapeJson(threadId)
             + "\",\"isResolved\":"
             + (isResolved ? "true" : "false")
             + ",\"isOutdated\":"
             + (isOutdated ? "true" : "false")
-            + ",\"comments\":{\"totalCount\":1,\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\""
+            + ",\"comments\":{\"totalCount\":"
+            + totalComments.ToString()
+            + ",\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\""
             + EscapeJson(body)
             + "\",\"path\":\""
             + EscapeJson(path)
