@@ -180,6 +180,11 @@ public static class ChatStatusCodes {
     public const string ToolRoundCompleted = "tool_round_completed";
 
     /// <summary>
+    /// Indicates replayed tool outputs were compacted to fit context budget.
+    /// </summary>
+    public const string ToolReplayCompacted = "tool_replay_compacted";
+
+    /// <summary>
     /// Indicates max tool rounds were reached.
     /// </summary>
     public const string ToolRoundLimitReached = "tool_round_limit_reached";

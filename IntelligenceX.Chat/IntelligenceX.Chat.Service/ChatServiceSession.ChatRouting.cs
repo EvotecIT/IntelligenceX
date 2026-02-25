@@ -297,6 +297,7 @@ internal sealed partial class ChatServiceSession {
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
         var supportsSyntheticHostReplayItems = SupportsSyntheticHostReplayItems(_options.OpenAITransport);
+        var replayOutputCompactionBudget = ResolveReplayOutputCompactionBudgetForTurn(resolvedModel);
 
         var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
         for (var round = 0; round < maxRounds; round++) {
@@ -1344,7 +1345,21 @@ internal sealed partial class ChatServiceSession {
             }
 
             var replayInputOutputs = MergeToolRoundReplayOutputs(executed, replayRecoveredOutputs);
-            var next = BuildToolRoundReplayInput(extracted, executedCallsById, replayInputOutputs);
+            var next = BuildToolRoundReplayInputWithBudget(
+                extracted,
+                executedCallsById,
+                replayInputOutputs,
+                replayOutputCompactionBudget,
+                out var replayOutputCompactionStats);
+            if (ShouldEmitReplayOutputCompactionStatus(replayOutputCompactionStats)) {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.ToolReplayCompacted,
+                        message: BuildReplayOutputCompactionStatusMessage(replayOutputCompactionBudget, replayOutputCompactionStats))
+                    .ConfigureAwait(false);
+            }
             turn = await RunModelPhaseWithProgressAsync(
                     client,
                     writer,
@@ -1381,11 +1396,81 @@ internal sealed partial class ChatServiceSession {
         return transport == OpenAITransportKind.CompatibleHttp;
     }
 
-    private const int MaxReplayToolOutputCharsPerCall = 6_000;
-    private const int MaxReplayToolOutputCharsTotal = 16_000;
+    private const int DefaultMaxReplayToolOutputCharsPerCall = 6_000;
+    private const int DefaultMaxReplayToolOutputCharsTotal = 16_000;
+    private const int SmallContextMaxReplayToolOutputCharsPerCall = 2_500;
+    private const int SmallContextMaxReplayToolOutputCharsTotal = 7_000;
+    private const int MediumContextMaxReplayToolOutputCharsPerCall = 4_000;
+    private const int MediumContextMaxReplayToolOutputCharsTotal = 11_000;
+    private const int LargeContextMaxReplayToolOutputCharsPerCall = 8_000;
+    private const int LargeContextMaxReplayToolOutputCharsTotal = 22_000;
     private const string ReplayOutputCompactionMarker = "ix:replay-output-compacted:v1";
+    private const string ReplayOutputBudgetStatusMarker = "ix:replay-output-budget:v1";
 
     private readonly record struct ReplayToolOutputSelection(string Output, bool MatchedRawCallId);
+    private readonly record struct ReplayOutputCompactionBudget(
+        int MaxOutputCharsPerCall,
+        int MaxOutputCharsTotal,
+        long? EffectiveContextLength,
+        bool ContextAwareBudgetApplied);
+    private readonly record struct ReplayOutputCompactionStats(
+        int ReplayedCallCount,
+        int OriginalTotalChars,
+        int CompactedTotalChars,
+        int CompactedCallCount);
+
+    private static readonly ReplayOutputCompactionBudget DefaultReplayOutputCompactionBudget = new(
+        MaxOutputCharsPerCall: DefaultMaxReplayToolOutputCharsPerCall,
+        MaxOutputCharsTotal: DefaultMaxReplayToolOutputCharsTotal,
+        EffectiveContextLength: null,
+        ContextAwareBudgetApplied: false);
+
+    private ReplayOutputCompactionBudget ResolveReplayOutputCompactionBudgetForTurn(string? selectedModel) {
+        var effectiveContextLength = ResolveEffectiveModelContextLength(selectedModel);
+        if (!effectiveContextLength.HasValue) {
+            return DefaultReplayOutputCompactionBudget;
+        }
+
+        var (maxOutputCharsPerCall, maxOutputCharsTotal) = ResolveContextAwareReplayOutputCharBudgets(effectiveContextLength.Value);
+        return new ReplayOutputCompactionBudget(
+            MaxOutputCharsPerCall: maxOutputCharsPerCall,
+            MaxOutputCharsTotal: maxOutputCharsTotal,
+            EffectiveContextLength: effectiveContextLength.Value,
+            ContextAwareBudgetApplied: true);
+    }
+
+    private static (int MaxOutputCharsPerCall, int MaxOutputCharsTotal) ResolveContextAwareReplayOutputCharBudgets(
+        long effectiveContextLength) {
+        if (effectiveContextLength <= 0) {
+            return (DefaultMaxReplayToolOutputCharsPerCall, DefaultMaxReplayToolOutputCharsTotal);
+        }
+
+        if (effectiveContextLength <= 8_192) {
+            return (SmallContextMaxReplayToolOutputCharsPerCall, SmallContextMaxReplayToolOutputCharsTotal);
+        }
+
+        if (effectiveContextLength <= 16_384) {
+            return (MediumContextMaxReplayToolOutputCharsPerCall, MediumContextMaxReplayToolOutputCharsTotal);
+        }
+
+        if (effectiveContextLength <= 32_768) {
+            return (DefaultMaxReplayToolOutputCharsPerCall, DefaultMaxReplayToolOutputCharsTotal);
+        }
+
+        return (LargeContextMaxReplayToolOutputCharsPerCall, LargeContextMaxReplayToolOutputCharsTotal);
+    }
+
+    private static bool ShouldEmitReplayOutputCompactionStatus(ReplayOutputCompactionStats stats) {
+        return stats.CompactedCallCount > 0 && stats.CompactedTotalChars < stats.OriginalTotalChars;
+    }
+
+    private static string BuildReplayOutputCompactionStatusMessage(
+        ReplayOutputCompactionBudget budget,
+        ReplayOutputCompactionStats stats) {
+        var contextLength = budget.EffectiveContextLength.HasValue ? budget.EffectiveContextLength.Value.ToString() : "unknown";
+        var contextAware = budget.ContextAwareBudgetApplied ? "true" : "false";
+        return $"[{ReplayOutputBudgetStatusMarker} compacted_calls={stats.CompactedCallCount} replayed_calls={stats.ReplayedCallCount} original_chars={stats.OriginalTotalChars} kept_chars={stats.CompactedTotalChars} per_call_budget={budget.MaxOutputCharsPerCall} total_budget={budget.MaxOutputCharsTotal} context_aware={contextAware} context_length={contextLength}]";
+    }
 
     private static string ResolveToolOutputCallId(
         IReadOnlyList<ToolCall> extractedCalls,
@@ -1481,6 +1566,20 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolCall> extractedCalls,
         IReadOnlyDictionary<string, ToolCall> extractedCallsById,
         IReadOnlyList<ToolOutputDto> outputs) {
+        return BuildToolRoundReplayInputWithBudget(
+            extractedCalls,
+            extractedCallsById,
+            outputs,
+            DefaultReplayOutputCompactionBudget,
+            out _);
+    }
+
+    private static ChatInput BuildToolRoundReplayInputWithBudget(
+        IReadOnlyList<ToolCall> extractedCalls,
+        IReadOnlyDictionary<string, ToolCall> extractedCallsById,
+        IReadOnlyList<ToolOutputDto> outputs,
+        ReplayOutputCompactionBudget compactionBudget,
+        out ReplayOutputCompactionStats compactionStats) {
         var next = new ChatInput();
         var replayedCallIdsInOrder = new List<string>();
         var replayedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
@@ -1522,7 +1621,11 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        selectedOutputsByCallId = CompactReplayOutputsByBudget(replayedCallIdsInOrder, selectedOutputsByCallId);
+        selectedOutputsByCallId = CompactReplayOutputsByBudget(
+            replayedCallIdsInOrder,
+            selectedOutputsByCallId,
+            compactionBudget,
+            out compactionStats);
 
         for (var replayIndex = 0; replayIndex < replayedCallIdsInOrder.Count; replayIndex++) {
             var replayCallId = replayedCallIdsInOrder[replayIndex];
@@ -1544,8 +1647,15 @@ internal sealed partial class ChatServiceSession {
 
     private static Dictionary<string, ReplayToolOutputSelection> CompactReplayOutputsByBudget(
         IReadOnlyList<string> replayedCallIdsInOrder,
-        IReadOnlyDictionary<string, ReplayToolOutputSelection> selectedOutputsByCallId) {
-        var remainingChars = MaxReplayToolOutputCharsTotal;
+        IReadOnlyDictionary<string, ReplayToolOutputSelection> selectedOutputsByCallId,
+        ReplayOutputCompactionBudget compactionBudget,
+        out ReplayOutputCompactionStats compactionStats) {
+        var remainingChars = Math.Max(0, compactionBudget.MaxOutputCharsTotal);
+        var maxOutputCharsPerCall = Math.Max(0, compactionBudget.MaxOutputCharsPerCall);
+        var replayedCallCount = 0;
+        var originalTotalChars = 0;
+        var compactedTotalChars = 0;
+        var compactedCallCount = 0;
         var compactedByCallId = new Dictionary<string, ReplayToolOutputSelection>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < replayedCallIdsInOrder.Count; i++) {
             var callId = replayedCallIdsInOrder[i];
@@ -1553,18 +1663,33 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (remainingChars <= 0) {
-                compactedByCallId[callId] = selectedOutput with { Output = string.Empty };
-                continue;
-            }
+            replayedCallCount++;
 
             var originalOutput = selectedOutput.Output ?? string.Empty;
-            var maxOutputChars = Math.Min(MaxReplayToolOutputCharsPerCall, remainingChars);
-            var compactedOutput = CompactReplayOutputText(originalOutput, maxOutputChars);
+            originalTotalChars += originalOutput.Length;
+
+            string compactedOutput;
+            if (remainingChars <= 0 || maxOutputCharsPerCall <= 0) {
+                compactedOutput = string.Empty;
+            } else {
+                var maxOutputChars = Math.Min(maxOutputCharsPerCall, remainingChars);
+                compactedOutput = CompactReplayOutputText(originalOutput, maxOutputChars);
+            }
+
             compactedByCallId[callId] = selectedOutput with { Output = compactedOutput };
+            compactedTotalChars += compactedOutput.Length;
+            if (compactedOutput.Length < originalOutput.Length) {
+                compactedCallCount++;
+            }
+
             remainingChars = Math.Max(0, remainingChars - compactedOutput.Length);
         }
 
+        compactionStats = new ReplayOutputCompactionStats(
+            ReplayedCallCount: replayedCallCount,
+            OriginalTotalChars: originalTotalChars,
+            CompactedTotalChars: compactedTotalChars,
+            CompactedCallCount: compactedCallCount);
         return compactedByCallId;
     }
 

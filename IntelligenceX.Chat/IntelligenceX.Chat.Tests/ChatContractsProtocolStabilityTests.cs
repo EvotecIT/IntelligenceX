@@ -34,6 +34,7 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("tool_batch_completed", ChatStatusCodes.ToolBatchCompleted);
         Assert.Equal("tool_round_started", ChatStatusCodes.ToolRoundStarted);
         Assert.Equal("tool_round_completed", ChatStatusCodes.ToolRoundCompleted);
+        Assert.Equal("tool_replay_compacted", ChatStatusCodes.ToolReplayCompacted);
         Assert.Equal("tool_round_limit_reached", ChatStatusCodes.ToolRoundLimitReached);
         Assert.Equal("tool_round_cap_applied", ChatStatusCodes.ToolRoundCapApplied);
         Assert.Equal("review_passes_clamped", ChatStatusCodes.ReviewPassesClamped);
@@ -53,7 +54,7 @@ public sealed class ChatContractsProtocolStabilityTests {
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Assert.Equal(31, values.Length);
+        Assert.Equal(32, values.Length);
         Assert.Equal(values.Length, values.Distinct(StringComparer.Ordinal).Count());
     }
 
