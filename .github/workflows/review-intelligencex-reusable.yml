@@ -527,7 +527,10 @@ jobs:
           echo "IX_REVIEW_CONFIG_PATH=$config" >> "$GITHUB_ENV"
           mkdir -p artifacts
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > artifacts/changed-files.txt || true
+            if ! git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > artifacts/changed-files.txt; then
+              echo "Warning: failed to compute changed-files from PR SHAs; continuing with full gate scope." >&2
+              : > artifacts/changed-files.txt
+            fi
           fi
 
       - name: Run IntelligenceX analysis (pre-review, best-effort)
@@ -542,9 +545,8 @@ jobs:
           fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
 
-      - name: Evaluate IntelligenceX analysis gate (pre-review, best-effort)
+      - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         if: ${{ inputs.reviewer_source == 'source' }}
-        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
