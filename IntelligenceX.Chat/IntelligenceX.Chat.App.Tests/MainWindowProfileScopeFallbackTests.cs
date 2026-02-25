@@ -25,7 +25,10 @@ public sealed class MainWindowProfileScopeFallbackTests {
     [InlineData("{\"scope\":\"profile\"}", "Profile")]
     [InlineData("```ix_profile\n{\"scope\":\"session\"}\n```", "Session")]
     [InlineData("```ix_profile\n{\"scope\":\"profile\"}\n```", "Profile")]
+    [InlineData("```ix_profile\nscope：session\n```", "Session")]
+    [InlineData("```ix_profile\nscope＝profile\n```", "Profile")]
     [InlineData("scope: profile", "Profile")]
+    [InlineData("scope：session", "Session")]
     [InlineData("", "Unspecified")]
     public void DetectProfileUpdateScope_PrefersStructuredScope_AndDefaultsToSession(string input, string expected) {
         var result = DetectProfileUpdateScopeMethod.Invoke(null, new object?[] { input });

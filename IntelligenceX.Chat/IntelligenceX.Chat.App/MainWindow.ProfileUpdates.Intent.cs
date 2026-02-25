@@ -28,11 +28,18 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private static readonly Regex StructuredProfileEnvelopeRegex = new(
-        @"```(?:ix_profile|ix_profile_update)\s*(\{[\s\S]*?\})\s*```",
+        @"```(?:ix_profile|ix_profile_update)\s*([\s\S]*?)\s*```",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex StructuredMemoryEnvelopeRegex = new(
-        @"```(?:ix_memory|ix_memory_note)\s*(\{[\s\S]*?\})\s*```",
+        @"```(?:ix_memory|ix_memory_note)\s*([\s\S]*?)\s*```",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly char[] StructuredFieldLineSeparators = new[] { '\r', '\n' };
+    private static readonly char[] StructuredFieldSegmentSeparators = new[] { ';', '\uFF1B' };
+    private static readonly char[] StructuredFieldDelimiters = new[] { ':', '=', '\uFF1A', '\uFF1D' };
+    private static readonly char[] StructuredFieldTrimChars =
+        new[] { '"', '\'', '`', '\u201c', '\u201d', '\u201e', '\u201f', '\u00ab', '\u00bb', '\u2039', '\u203a' };
+    private static readonly char[] MemoryFactTrailingTrimChars =
+        new[] { '.', '!', '?', ';', ':', '\u3002', '\uFF01', '\uFF1F', '\u061B', '\uFF1A', '\uFF61', '\uFE12', '\uFE56', '\uFE57' };
 
     private static bool MightContainProfileUpdateCue(string text) {
         // Keep live profile update guidance language-neutral by default:
@@ -111,11 +118,21 @@ public sealed partial class MainWindow : Window {
 
     private static bool TryExtractStructuredMemoryFact(string text, out string? memoryFact) {
         memoryFact = null;
-        if (!TryExtractStructuredJsonPayload(text, StructuredMemoryEnvelopeRegex, out var root)) {
+        if (!TryExtractStructuredFieldMap(text, StructuredMemoryEnvelopeRegex, out var fields)) {
             return false;
         }
 
-        if (!TryReadStructuredString(root, out var candidate, "memory", "fact", "note", "text", "value")) {
+        if (!TryReadStructuredField(
+                fields,
+                out var candidate,
+                "memory",
+                "memory_fact",
+                "memory_note",
+                "fact",
+                "note",
+                "text",
+                "value",
+                "ix_memory")) {
             return false;
         }
 
@@ -129,7 +146,7 @@ public sealed partial class MainWindow : Window {
 
     private static bool TryFinalizeMemoryFactCandidate(string? candidate, out string memoryFact) {
         memoryFact = string.Empty;
-        var normalized = (candidate ?? string.Empty).Trim().Trim('.', '!', '?', ';', ':');
+        var normalized = (candidate ?? string.Empty).Trim().Trim(MemoryFactTrailingTrimChars);
         if (normalized.Length < 6) {
             return false;
         }
@@ -210,33 +227,58 @@ public sealed partial class MainWindow : Window {
 
     private static bool TryExtractStructuredUserProfileIntent(string text, out UserProfileIntent intent) {
         intent = new UserProfileIntent();
-        if (!TryExtractStructuredJsonPayload(text, StructuredProfileEnvelopeRegex, out var root)) {
+        if (!TryExtractStructuredFieldMap(text, StructuredProfileEnvelopeRegex, out var fields)) {
             return false;
         }
 
         var hasAny = false;
-        if (TryReadStructuredString(root, out var userName, "userName", "user_name", "name")
+        if (TryReadStructuredField(
+                fields,
+                out var userName,
+                "userName",
+                "user_name",
+                "username",
+                "user",
+                "name",
+                "display_name",
+                "displayName",
+                "ix_user_name")
             && !string.IsNullOrWhiteSpace(userName)) {
             intent.UserName = userName.Trim();
             intent.HasUserName = true;
             hasAny = true;
         }
 
-        if (TryReadStructuredString(root, out var persona, "assistantPersona", "assistant_persona", "persona")
+        if (TryReadStructuredField(
+                fields,
+                out var persona,
+                "assistantPersona",
+                "assistant_persona",
+                "persona",
+                "style",
+                "tone",
+                "mode",
+                "ix_assistant_persona")
             && !string.IsNullOrWhiteSpace(persona)) {
             intent.AssistantPersona = persona.Trim();
             intent.HasAssistantPersona = true;
             hasAny = true;
         }
 
-        if (TryReadStructuredString(root, out var theme, "themePreset", "theme_preset", "theme")
+        if (TryReadStructuredField(
+                fields,
+                out var theme,
+                "themePreset",
+                "theme_preset",
+                "theme",
+                "ix_theme")
             && !string.IsNullOrWhiteSpace(theme)) {
             intent.ThemePreset = theme.Trim();
             intent.HasThemePreset = true;
             hasAny = true;
         }
 
-        if (TryReadStructuredString(root, out var scopeValue, "scope")) {
+        if (TryReadStructuredField(fields, out var scopeValue, "scope", "profile_scope", "ix_scope")) {
             var parsedScope = ParseProfileUpdateScope(scopeValue);
             if (parsedScope != ProfileUpdateScope.Unspecified) {
                 intent.Scope = parsedScope;
@@ -246,85 +288,261 @@ public sealed partial class MainWindow : Window {
         return hasAny;
     }
 
-    private static bool TryExtractStructuredJsonPayload(string text, Regex envelopeRegex, out JsonElement root) {
-        root = default;
+    private static bool TryExtractStructuredFieldMap(
+        string text,
+        Regex envelopeRegex,
+        out Dictionary<string, string> fields) {
+        fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!TryExtractStructuredPayloadText(text, envelopeRegex, out var payload, out var fromEnvelope)) {
+            return false;
+        }
+
+        if (TryParseStructuredJsonObject(payload, fields)) {
+            return fields.Count > 0;
+        }
+
+        if (!fromEnvelope && !LooksLikeStructuredFieldPayload(payload)) {
+            return false;
+        }
+
+        return TryParseStructuredKeyValuePayload(payload, fields) && fields.Count > 0;
+    }
+
+    private static bool TryExtractStructuredPayloadText(
+        string text,
+        Regex envelopeRegex,
+        out string payload,
+        out bool fromEnvelope) {
+        payload = string.Empty;
+        fromEnvelope = false;
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
         }
 
-        string payload;
         var matches = envelopeRegex.Matches(normalized);
         if (matches.Count > 0) {
             var last = matches[matches.Count - 1];
             if (last.Groups.Count < 2) {
                 return false;
             }
+
+            fromEnvelope = true;
             payload = (last.Groups[1].Value ?? string.Empty).Trim();
         } else {
-            if (normalized.Length < 2 || normalized[0] != '{' || normalized[^1] != '}') {
-                return false;
-            }
             payload = normalized;
         }
 
-        if (payload.Length == 0) {
+        return payload.Length > 0;
+    }
+
+    private static bool TryParseStructuredJsonObject(string payload, Dictionary<string, string> fields) {
+        var normalized = (payload ?? string.Empty).Trim();
+        if (normalized.Length < 2 || normalized[0] != '{' || normalized[^1] != '}') {
             return false;
         }
 
         try {
-            using var doc = JsonDocument.Parse(payload);
+            using var doc = JsonDocument.Parse(normalized);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) {
                 return false;
             }
-            root = doc.RootElement.Clone();
+
+            foreach (var property in doc.RootElement.EnumerateObject()) {
+                var key = (property.Name ?? string.Empty).Trim();
+                if (!IsStructuredFieldKeyCandidate(key)) {
+                    continue;
+                }
+
+                var value = ReadJsonElementAsStructuredFieldValue(property.Value);
+                if (value.Length == 0) {
+                    continue;
+                }
+
+                fields[key] = value;
+            }
+
             return true;
         } catch (JsonException) {
             return false;
         }
     }
 
-    private static bool TryReadStructuredString(JsonElement root, out string value, params string[] names) {
-        value = string.Empty;
-        if (root.ValueKind != JsonValueKind.Object || names is null || names.Length == 0) {
+    private static bool TryParseStructuredKeyValuePayload(string payload, Dictionary<string, string> fields) {
+        var normalized = (payload ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
             return false;
         }
 
-        for (var i = 0; i < names.Length; i++) {
-            var name = names[i];
-            if (string.IsNullOrWhiteSpace(name)) {
+        var lines = normalized.Split(StructuredFieldLineSeparators, StringSplitOptions.RemoveEmptyEntries);
+        var parsedAny = false;
+        for (var i = 0; i < lines.Length; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal) || line.StartsWith("//", StringComparison.Ordinal)) {
                 continue;
             }
 
-            if (!TryGetJsonPropertyCaseInsensitive(root, name, out var element)) {
+            var segments = line.Split(StructuredFieldSegmentSeparators, StringSplitOptions.RemoveEmptyEntries);
+            for (var segmentIndex = 0; segmentIndex < segments.Length; segmentIndex++) {
+                if (!TryParseStructuredKeyValueSegment(segments[segmentIndex], out var key, out var value)) {
+                    continue;
+                }
+
+                fields[key] = value;
+                parsedAny = true;
+            }
+        }
+
+        return parsedAny;
+    }
+
+    private static bool TryParseStructuredKeyValueSegment(string segment, out string key, out string value) {
+        key = string.Empty;
+        value = string.Empty;
+        var normalized = NormalizeStructuredDelimiterCharacters((segment ?? string.Empty).Trim());
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var delimiterIndex = normalized.IndexOfAny(StructuredFieldDelimiters);
+        if (delimiterIndex <= 0 || delimiterIndex >= normalized.Length - 1) {
+            return false;
+        }
+
+        var candidateKey = normalized[..delimiterIndex].Trim();
+        if (!IsStructuredFieldKeyCandidate(candidateKey)) {
+            return false;
+        }
+
+        var candidateValue = normalized[(delimiterIndex + 1)..].Trim();
+        if (candidateValue.Length == 0) {
+            return false;
+        }
+
+        key = candidateKey;
+        value = TrimStructuredFieldValue(candidateValue);
+        return value.Length > 0;
+    }
+
+    private static string NormalizeStructuredDelimiterCharacters(string text) {
+        return (text ?? string.Empty)
+            .Replace('\uFF1A', ':')
+            .Replace('\uFE13', ':')
+            .Replace('\uFE55', ':')
+            .Replace('\uFF1D', '=')
+            .Replace('\uFE66', '=');
+    }
+
+    private static bool LooksLikeStructuredFieldPayload(string payload) {
+        var normalized = (payload ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var lines = normalized.Split(StructuredFieldLineSeparators, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < lines.Length; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
                 continue;
             }
 
-            value = element.ValueKind switch {
-                JsonValueKind.Null => string.Empty,
-                JsonValueKind.String => (element.GetString() ?? string.Empty).Trim(),
-                _ => element.GetRawText().Trim()
-            };
-            return true;
+            var segments = line.Split(StructuredFieldSegmentSeparators, StringSplitOptions.RemoveEmptyEntries);
+            for (var segmentIndex = 0; segmentIndex < segments.Length; segmentIndex++) {
+                if (TryParseStructuredKeyValueSegment(segments[segmentIndex], out _, out _)) {
+                    return true;
+                }
+            }
         }
 
         return false;
     }
 
-    private static bool TryGetJsonPropertyCaseInsensitive(JsonElement root, string propertyName, out JsonElement value) {
-        value = default;
-        if (root.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
+    private static bool IsStructuredFieldKeyCandidate(string key) {
+        var normalized = (key ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > 64) {
             return false;
         }
 
-        foreach (var property in root.EnumerateObject()) {
-            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
-                value = property.Value;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.') {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string ReadJsonElementAsStructuredFieldValue(JsonElement element) {
+        return element.ValueKind switch {
+            JsonValueKind.Null => string.Empty,
+            JsonValueKind.String => TrimStructuredFieldValue(element.GetString() ?? string.Empty),
+            _ => TrimStructuredFieldValue(element.GetRawText())
+        };
+    }
+
+    private static string TrimStructuredFieldValue(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        normalized = normalized.Trim(StructuredFieldTrimChars).Trim();
+        return normalized;
+    }
+
+    private static bool TryReadStructuredField(IReadOnlyDictionary<string, string> fields, out string value, params string[] names) {
+        value = string.Empty;
+        if (fields is null || fields.Count == 0 || names is null || names.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < names.Length; i++) {
+            var name = (names[i] ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            if (fields.TryGetValue(name, out var directValue)) {
+                value = (directValue ?? string.Empty).Trim();
+                return true;
+            }
+
+            foreach (var pair in fields) {
+                if (!StructuredFieldNamesMatch(pair.Key, name)) {
+                    continue;
+                }
+
+                value = (pair.Value ?? string.Empty).Trim();
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool StructuredFieldNamesMatch(string candidate, string expected) {
+        return string.Equals(candidate, expected, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(NormalizeStructuredFieldName(candidate), NormalizeStructuredFieldName(expected), StringComparison.Ordinal);
+    }
+
+    private static string NormalizeStructuredFieldName(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        var source = value.Trim();
+        var builder = new StringBuilder(source.Length);
+        for (var i = 0; i < source.Length; i++) {
+            var ch = source[i];
+            if (char.IsLetterOrDigit(ch)) {
+                builder.Append(char.ToLowerInvariant(ch));
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static bool TryMatchValue(Regex regex, string input, out string? value) {
@@ -387,8 +605,8 @@ public sealed partial class MainWindow : Window {
             return ProfileUpdateScope.Unspecified;
         }
 
-        if (TryExtractStructuredJsonPayload(normalized, StructuredProfileEnvelopeRegex, out var root)
-            && TryReadStructuredString(root, out var structuredScope, "scope")) {
+        if (TryExtractStructuredFieldMap(normalized, StructuredProfileEnvelopeRegex, out var fields)
+            && TryReadStructuredField(fields, out var structuredScope, "scope", "profile_scope", "ix_scope")) {
             return ParseProfileUpdateScope(structuredScope);
         }
 
@@ -407,55 +625,37 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (normalized.Length >= 2 && normalized[0] == '{' && normalized[^1] == '}') {
-            try {
-                using var doc = JsonDocument.Parse(normalized);
-                if (doc.RootElement.ValueKind == JsonValueKind.Object
-                    && doc.RootElement.TryGetProperty("scope", out var scopeElement)
-                    && scopeElement.ValueKind == JsonValueKind.String) {
-                    var value = (scopeElement.GetString() ?? string.Empty).Trim();
-                    if (value.Length > 0) {
-                        scopeValue = value;
-                        return true;
-                    }
-                }
-            } catch (JsonException) {
-                // Best effort only.
-            }
+        if (TryExtractStructuredFieldMap(normalized, StructuredProfileEnvelopeRegex, out var fields)
+            && TryReadStructuredField(fields, out var mappedScopeValue, "scope", "profile_scope", "ix_scope")
+            && mappedScopeValue.Length > 0) {
+            scopeValue = mappedScopeValue;
+            return true;
         }
 
-        var lines = normalized.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var lines = normalized.Split(StructuredFieldLineSeparators, StringSplitOptions.RemoveEmptyEntries);
         for (var i = 0; i < lines.Length; i++) {
-            var candidate = lines[i].Trim();
-            if (!candidate.StartsWith("scope", StringComparison.OrdinalIgnoreCase)) {
+            var segments = lines[i].Split(StructuredFieldSegmentSeparators, StringSplitOptions.RemoveEmptyEntries);
+            for (var segmentIndex = 0; segmentIndex < segments.Length; segmentIndex++) {
+                if (!TryParseStructuredKeyValueSegment(segments[segmentIndex], out var key, out var value)
+                    || !StructuredFieldNamesMatch(key, "scope")) {
+                    continue;
+                }
+
+                var token = value.Trim();
+                if (token.Length == 0) {
+                    continue;
+                }
+
+                scopeValue = token;
+                return true;
+            }
+
+            if (!TryParseStructuredKeyValueSegment(lines[i], out var directKey, out var directValue)
+                || !StructuredFieldNamesMatch(directKey, "scope")) {
                 continue;
             }
 
-            var remainder = candidate.Length > 5 ? candidate.Substring(5).TrimStart() : string.Empty;
-            if (remainder.Length == 0) {
-                continue;
-            }
-
-            if (remainder[0] is not (':' or '=')) {
-                continue;
-            }
-
-            remainder = remainder.Substring(1).Trim();
-            if (remainder.Length == 0) {
-                continue;
-            }
-
-            var end = 0;
-            while (end < remainder.Length && !char.IsWhiteSpace(remainder[end]) && remainder[end] != ',' && remainder[end] != ';') {
-                end++;
-            }
-
-            var token = (end > 0 ? remainder.Substring(0, end) : remainder).Trim().Trim('"', '\'');
-            if (token.Length == 0) {
-                continue;
-            }
-
-            scopeValue = token;
+            scopeValue = directValue.Trim();
             return true;
         }
 
@@ -470,7 +670,9 @@ public sealed partial class MainWindow : Window {
 
         if (normalized.Equals("session", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("temporary", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("temp", StringComparison.OrdinalIgnoreCase)) {
+            || normalized.Equals("temp", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("0", StringComparison.Ordinal)
+            || normalized.Equals("false", StringComparison.OrdinalIgnoreCase)) {
             return ProfileUpdateScope.Session;
         }
 
@@ -478,7 +680,9 @@ public sealed partial class MainWindow : Window {
             || normalized.Equals("default", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("saved", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("persistent", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("permanent", StringComparison.OrdinalIgnoreCase)) {
+            || normalized.Equals("permanent", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("1", StringComparison.Ordinal)
+            || normalized.Equals("true", StringComparison.OrdinalIgnoreCase)) {
             return ProfileUpdateScope.Profile;
         }
 

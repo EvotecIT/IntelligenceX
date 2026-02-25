@@ -47,4 +47,23 @@ public sealed class MainWindowStructuredMemoryIntentTests {
         Assert.True(parsed);
         Assert.Equal("Відповідай лаконічно та по суті", memoryFact);
     }
+
+    /// <summary>
+    /// Ensures ix_memory key-value payloads parse with Unicode delimiters.
+    /// </summary>
+    [Fact]
+    public void TryExtractMemoryIntent_ParsesIxMemoryKeyValuePayload() {
+        const string input = """
+                             ```ix_memory
+                             memory：用户偏好简短回复。
+                             ```
+                             """;
+
+        var args = new object?[] { input, null };
+        var parsed = (bool)(TryExtractMemoryIntentMethod.Invoke(null, args) ?? false);
+        var memoryFact = args[1] as string;
+
+        Assert.True(parsed);
+        Assert.Equal("用户偏好简短回复", memoryFact);
+    }
 }
