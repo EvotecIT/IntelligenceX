@@ -113,7 +113,11 @@ Packs are curated lists of rule IDs plus optional severity overrides.
 Pack layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
+- `Analysis/Packs/javascript-default.json`
+- `Analysis/Packs/python-default.json`
 - `Analysis/Packs/intelligencex-maintainability-default.json`
+- `Analysis/Packs/javascript-security-default.json`
+- `Analysis/Packs/python-security-default.json`
 - `Analysis/Packs/csharp-50.json`
 - `Analysis/Packs/csharp-100.json`
 - `Analysis/Packs/csharp-500.json`
@@ -155,15 +159,15 @@ Recommended tier selection:
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
 
-The built-in catalog now contains hundreds of C# rules plus PowerShell/internal rules, and tier IDs remain stable
-for policy compatibility as coverage evolves.
+The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and
+tier IDs remain stable for policy compatibility as coverage evolves.
 
 ## Temporary Analyzer Config Generation
-During analysis runs, configs are generated to a temporary directory and cleaned up at the end. Examples:
+During analysis runs, configs are generated or synthesized at runtime and cleaned up at the end. Examples:
 - C#: `.editorconfig` with `dotnet_diagnostic.<rule>.severity` entries.
 - PowerShell: `PSScriptAnalyzerSettings.psd1` with per-rule severities.
-- JS/TS: `.eslintrc` or flat config with enabled rule IDs.
-- Python: `ruff.toml` or `pyproject.toml` with rule selection.
+- JS/TS: ESLint CLI `--rule <toolRuleId>:<severity>` arguments are built from selected catalog rules.
+- Python: Ruff `--select <toolRuleId,...>` is built from selected catalog rules.
 
 `intelligencex analyze run` executes analysis for configured packs and emits findings artifacts for the reviewer.
 Set `analysis.run.strict=true` in `.intelligencex/reviewer.json` to fail the command on tool runner errors.
@@ -236,8 +240,7 @@ When `analysis.gate.ruleIds` is configured, the policy also includes:
 - `Gate rule IDs`: explicit gate-targeted rule IDs.
 - `Gate rule outcomes`: per-rule finding counts for those gate-targeted rule IDs.
 
-For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
-`analysis.results.inputs`.
+Teams can still produce SARIF with their preferred external tools and include those files in `analysis.results.inputs`.
 
 ## Migration Note
 If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.

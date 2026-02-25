@@ -75,8 +75,9 @@ internal static partial class Program {
             TestAnalysisCatalogLoaderTrimPreservesFilesystemRoot);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
-        failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);
+        failed += Run("Analysis packs: all-security includes language security packs", TestAnalysisPacksAllSecurityIncludesPowerShell);
         failed += Run("Analysis packs: powershell-default resolves", TestAnalysisPacksPowerShellDefaultResolves);
+        failed += Run("Analysis packs: external defaults resolve", TestAnalysisPacksExternalDefaultsResolve);
         failed += Run("Analysis packs: powershell-50 resolves to 50 rules", TestAnalysisPacksPowerShell50ResolvesTo50Rules);
         failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
         failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
@@ -88,6 +89,7 @@ internal static partial class Program {
         failed += Run("OpenAI client C# XML docs are complete", TestOpenAiClientCSharpXmlDocsAreComplete);
         failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
         failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
+        failed += Run("Analysis catalog built-in rules have type classification", TestAnalysisCatalogBuiltInRulesHaveTypes);
         failed += Run("Analysis hotspots render and state snippet", TestAnalysisHotspotsRenderAndStateSnippet);
         failed += Run("Hotspots redact absolute state path", TestAnalysisHotspotsRedactsAbsoluteStatePath);
         failed += Run("Hotspots reviewer state path is workspace-bound", TestAnalysisHotspotsReviewerStatePathIsWorkspaceBound);
@@ -374,6 +376,8 @@ internal static partial class Program {
         failed += Run("Todo project bootstrap rejects conflicting control issue options", TestProjectBootstrapRejectsConflictingControlIssueOptions);
         failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
+        failed += Run("Analyze run JavaScript args include configured rules", TestAnalyzeRunJavaScriptArgsIncludeConfiguredRules);
+        failed += Run("Analyze run Python args include select rule IDs", TestAnalyzeRunPythonArgsIncludeSelectRuleIds);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
         failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);

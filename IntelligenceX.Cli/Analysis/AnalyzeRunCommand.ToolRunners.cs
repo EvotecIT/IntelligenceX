@@ -252,19 +252,19 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<RunnerResult> RunJavaScriptAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        List<string> warnings) {
+        IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
+        var selectors = BuildJavaScriptRuleSelectors(rules);
+        if (selectors.Count == 0) {
+            warnings.Add("No JavaScript/TypeScript rule IDs selected; skipping ESLint analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+        if (selectors.All(static selector => selector.Severity.Equals("off", StringComparison.OrdinalIgnoreCase))) {
+            warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.eslint.sarif");
-        var args = new List<string> {
-            "--yes",
-            "eslint",
-            ".",
-            "--ext",
-            ".js,.jsx,.mjs,.cjs,.ts,.tsx",
-            "--format",
-            "sarif",
-            "--output-file",
-            sarifPath
-        };
+        var args = BuildJavaScriptRunnerArgs(sarifPath, selectors);
 
         var result = await RunProcessAsync(options.NpxCommand, args, workspace).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(result.StdOut)) {
@@ -290,14 +290,15 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<RunnerResult> RunPythonAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        List<string> warnings) {
+        IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
+        var selectedRuleIds = BuildPythonSelectedRuleIds(rules);
+        if (selectedRuleIds.Count == 0) {
+            warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.ruff.sarif");
-        var args = new List<string> {
-            "check",
-            ".",
-            "--output-format",
-            "sarif"
-        };
+        var args = BuildPythonRunnerArgs(selectedRuleIds);
 
         var result = await RunProcessAsync(options.RuffCommand, args, workspace).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(result.StdErr)) {
@@ -323,6 +324,149 @@ internal static partial class AnalyzeRunCommand {
 
         Console.WriteLine($"Ruff SARIF: {sarifPath}");
         return new RunnerResult(true, string.Empty);
+    }
+
+    private static List<string> BuildJavaScriptRunnerArgs(string sarifPath, IReadOnlyList<ExternalToolRuleSelector> selectors) {
+        var args = new List<string> {
+            "--yes",
+            "eslint",
+            ".",
+            "--ext",
+            ".js,.jsx,.mjs,.cjs,.ts,.tsx",
+            "--format",
+            "sarif",
+            "--output-file",
+            sarifPath
+        };
+        foreach (var selector in selectors.OrderBy(static selector => selector.ToolRuleId, StringComparer.OrdinalIgnoreCase)) {
+            if (string.IsNullOrWhiteSpace(selector.ToolRuleId) || string.IsNullOrWhiteSpace(selector.Severity)) {
+                continue;
+            }
+            args.Add("--rule");
+            args.Add($"{selector.ToolRuleId}:{selector.Severity}");
+        }
+        return args;
+    }
+
+    private static IReadOnlyList<ExternalToolRuleSelector> BuildJavaScriptRuleSelectors(IReadOnlyList<AnalysisPolicyRule> rules) {
+        var selectors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var policyRule in rules ?? Array.Empty<AnalysisPolicyRule>()) {
+            if (policyRule?.Rule is null) {
+                continue;
+            }
+
+            var toolRuleId = ResolveToolRuleId(policyRule.Rule);
+            if (string.IsNullOrWhiteSpace(toolRuleId)) {
+                continue;
+            }
+
+            var mappedSeverity = MapEslintSeverity(policyRule.Severity);
+            if (selectors.TryGetValue(toolRuleId, out var existing)) {
+                if (GetEslintSeverityRank(mappedSeverity) > GetEslintSeverityRank(existing)) {
+                    selectors[toolRuleId] = mappedSeverity;
+                }
+                continue;
+            }
+            selectors[toolRuleId] = mappedSeverity;
+        }
+
+        return selectors
+            .Select(static pair => new ExternalToolRuleSelector(pair.Key, pair.Value))
+            .ToList();
+    }
+
+    private static string MapEslintSeverity(string? severity) {
+        if (string.IsNullOrWhiteSpace(severity)) {
+            return "warn";
+        }
+        return severity.Trim().ToLowerInvariant() switch {
+            "critical" => "error",
+            "error" => "error",
+            "high" => "error",
+            "warning" => "warn",
+            "warn" => "warn",
+            "medium" => "warn",
+            "info" => "warn",
+            "information" => "warn",
+            "low" => "warn",
+            "suggestion" => "warn",
+            "none" => "off",
+            _ => "warn"
+        };
+    }
+
+    private static int GetEslintSeverityRank(string? severity) {
+        if (string.IsNullOrWhiteSpace(severity)) {
+            return 1;
+        }
+        return severity.Trim().ToLowerInvariant() switch {
+            "off" => 0,
+            "warn" => 1,
+            "error" => 2,
+            _ => 1
+        };
+    }
+
+    private static List<string> BuildPythonRunnerArgs(IReadOnlyList<string> selectedRuleIds) {
+        var args = new List<string> {
+            "check",
+            ".",
+            "--output-format",
+            "sarif"
+        };
+        if (selectedRuleIds is { Count: > 0 }) {
+            args.Add("--select");
+            args.Add(string.Join(",", selectedRuleIds));
+        }
+        return args;
+    }
+
+    private static IReadOnlyList<string> BuildPythonSelectedRuleIds(IReadOnlyList<AnalysisPolicyRule> rules) {
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var policyRule in rules ?? Array.Empty<AnalysisPolicyRule>()) {
+            if (policyRule?.Rule is null) {
+                continue;
+            }
+
+            if (!IsRuleSeverityEnabled(policyRule.Severity)) {
+                continue;
+            }
+
+            var toolRuleId = ResolveToolRuleId(policyRule.Rule);
+            if (string.IsNullOrWhiteSpace(toolRuleId)) {
+                continue;
+            }
+            selected.Add(toolRuleId);
+        }
+        return selected.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static bool IsRuleSeverityEnabled(string? severity) {
+        return !string.Equals(severity?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveToolRuleId(AnalysisRule rule) {
+        if (rule is null) {
+            return string.Empty;
+        }
+        return string.IsNullOrWhiteSpace(rule.ToolRuleId) ? rule.Id : rule.ToolRuleId;
+    }
+
+    internal static IReadOnlyList<string> BuildJavaScriptRunnerArgsForTests(
+        string sarifPath,
+        IReadOnlyDictionary<string, string> severityByToolRuleId) {
+        var selectors = new List<ExternalToolRuleSelector>();
+        foreach (var pair in severityByToolRuleId ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)) {
+            if (string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value)) {
+                continue;
+            }
+            selectors.Add(new ExternalToolRuleSelector(pair.Key.Trim(), pair.Value.Trim()));
+        }
+        return BuildJavaScriptRunnerArgs(sarifPath, selectors);
+    }
+
+    internal static IReadOnlyList<string> BuildPythonRunnerArgsForTests(IReadOnlyList<string> selectedRuleIds) {
+        return BuildPythonRunnerArgs(selectedRuleIds);
     }
 
     internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(

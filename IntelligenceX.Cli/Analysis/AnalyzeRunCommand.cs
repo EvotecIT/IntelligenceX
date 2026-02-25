@@ -142,13 +142,15 @@ internal static partial class AnalyzeRunCommand {
                 }
             }
             if (javascriptRules.Count > 0) {
-                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, runWarnings).ConfigureAwait(false);
+                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, javascriptRules, runWarnings)
+                    .ConfigureAwait(false);
                 if (!jsResult.Success) {
                     runFailures.Add(jsResult.Message);
                 }
             }
             if (pythonRules.Count > 0) {
-                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, runWarnings).ConfigureAwait(false);
+                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, pythonRules, runWarnings)
+                    .ConfigureAwait(false);
                 if (!pyResult.Success) {
                     runFailures.Add(pyResult.Message);
                 }
@@ -498,6 +500,7 @@ internal static partial class AnalyzeRunCommand {
 
     private sealed record RunnerResult(bool Success, string Message);
     private sealed record PowerShellRunnerResult(bool Success, string Message, IReadOnlyList<AnalysisFindingItem> Findings);
+    private sealed record ExternalToolRuleSelector(string ToolRuleId, string Severity);
     private sealed record CommandResult(int ExitCode, string StdOut, string StdErr);
 
     private sealed class FindingsEnvelope {

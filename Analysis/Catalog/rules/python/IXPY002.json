@@ -1,0 +1,13 @@
+{
+  "id": "IXPY002",
+  "language": "python",
+  "tool": "Ruff",
+  "toolRuleId": "F401",
+  "type": "code-smell",
+  "title": "Detect unused imports",
+  "description": "Unused imports increase maintenance burden and can mask stale module dependencies.",
+  "category": "Maintainability",
+  "defaultSeverity": "info",
+  "tags": ["maintainability", "python"],
+  "docs": "https://docs.astral.sh/ruff/rules/unused-import/"
+}

@@ -357,6 +357,8 @@ internal static partial class Program {
             "analyze list-rules markdown header");
         AssertContainsText(output, "CA2000", "analyze list-rules markdown includes CA2000");
         AssertContainsText(output, "PSAvoidUsingWriteHost", "analyze list-rules markdown includes powershell rule");
+        AssertContainsText(output, "IXJS001", "analyze list-rules markdown includes javascript rule");
+        AssertContainsText(output, "IXPY001", "analyze list-rules markdown includes python rule");
     }
 
     private static void TestAnalyzeListPacksIds() {

@@ -1,0 +1,13 @@
+{
+  "id": "IXPY004",
+  "language": "python",
+  "tool": "Ruff",
+  "toolRuleId": "S602",
+  "type": "vulnerability",
+  "title": "Subprocess call with shell=True",
+  "description": "Using shell=True with untrusted input can lead to command injection vulnerabilities.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": ["security", "command-injection", "python"],
+  "docs": "https://docs.astral.sh/ruff/rules/subprocess-popen-with-shell-equals-true/"
+}

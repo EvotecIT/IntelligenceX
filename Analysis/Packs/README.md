@@ -14,10 +14,14 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
 - Language defaults:
   - `csharp-default`
   - `powershell-default`
+  - `javascript-default`
+  - `python-default`
   - `intelligencex-maintainability-default`
 - Security defaults:
   - `csharp-security-default`
   - `powershell-security-default`
+  - `javascript-security-default`
+  - `python-security-default`
   - `all-security-default`
 - Language tiers:
   - `csharp-50`, `csharp-100`, `csharp-500`
@@ -44,6 +48,11 @@ For C#, tiers are generated from built-in NetAnalyzers metadata:
 Regenerate C# catalog + C# tiers with:
 
 `./scripts/update_analysis_catalog.py --repo-root .`
+
+## JavaScript/Python catalog
+
+JavaScript and Python built-in rules are curated starter packs intended to map high-signal ESLint and Ruff findings
+into stable IntelligenceX rule IDs for gating/reporting.
 
 ## PowerShell catalog
 

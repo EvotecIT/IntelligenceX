@@ -1,0 +1,13 @@
+{
+  "id": "IXPY001",
+  "language": "python",
+  "tool": "Ruff",
+  "toolRuleId": "F821",
+  "type": "bug",
+  "title": "Detect undefined names",
+  "description": "Undefined names typically fail at runtime and indicate correctness issues.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["correctness", "python"],
+  "docs": "https://docs.astral.sh/ruff/rules/undefined-name/"
+}

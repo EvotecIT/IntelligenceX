@@ -35,3 +35,6 @@ Regenerate built-in C# catalog metadata and C# tier packs from NetAnalyzers:
 
 - `./scripts/update_analysis_catalog.py --repo-root .`
 - `python3 scripts/update_analysis_catalog.py --repo-root .`
+
+JavaScript (`ESLint`) and Python (`Ruff`) built-in catalogs are curated rule sets checked into
+`Analysis/Catalog/rules/javascript` and `Analysis/Catalog/rules/python`.

@@ -84,5 +84,33 @@ internal static partial class Program {
         AssertEqual(".git,.vs,.worktrees,bin,node_modules,obj", strictExcludedDirectories ?? string.Empty,
             "powershell strict args excluded directories order is deterministic");
     }
+
+    private static void TestAnalyzeRunJavaScriptArgsIncludeConfiguredRules() {
+        var args = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildJavaScriptRunnerArgsForTests(
+            sarifPath: "artifacts/intelligencex.eslint.sarif",
+            severityByToolRuleId: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                ["no-eval"] = "error",
+                ["no-unused-vars"] = "warn"
+            });
+
+        AssertContainsText(string.Join(" ", args), "--yes eslint .", "javascript args run eslint via npx");
+        AssertContainsText(string.Join(" ", args), "--format sarif", "javascript args use sarif output");
+        AssertContainsText(string.Join(" ", args), "--output-file artifacts/intelligencex.eslint.sarif",
+            "javascript args set output file");
+        AssertContainsText(string.Join(" ", args), "--rule no-eval:error", "javascript args include no-eval severity");
+        AssertContainsText(string.Join(" ", args), "--rule no-unused-vars:warn",
+            "javascript args include no-unused-vars severity");
+    }
+
+    private static void TestAnalyzeRunPythonArgsIncludeSelectRuleIds() {
+        var args = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildPythonRunnerArgsForTests(new[] {
+            "F821",
+            "S602"
+        });
+
+        var joined = string.Join(" ", args);
+        AssertContainsText(joined, "check . --output-format sarif", "python args run ruff sarif output");
+        AssertContainsText(joined, "--select F821,S602", "python args include selected rule ids");
+    }
 }
 #endif

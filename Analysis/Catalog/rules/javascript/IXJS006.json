@@ -1,0 +1,13 @@
+{
+  "id": "IXJS006",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-undef",
+  "type": "bug",
+  "title": "Disallow undeclared variables",
+  "description": "References to undeclared symbols usually indicate runtime errors and broken behavior.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["correctness", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-undef"
+}

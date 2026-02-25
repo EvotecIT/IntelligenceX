@@ -15,8 +15,10 @@ This command:
   (`artifacts/intelligencex.findings.json`).
 - Runs JS/TS analysis through ESLint (`npx eslint`) when JS/TS rules are selected and emits SARIF
   (`artifacts/intelligencex.eslint.sarif`).
+  - JS/TS runner derives ESLint `--rule <toolRuleId>:<severity>` arguments from selected catalog rules.
 - Runs Python analysis through Ruff (`ruff check`) when Python rules are selected and emits SARIF
   (`artifacts/intelligencex.ruff.sarif`).
+  - Python runner derives Ruff `--select <toolRuleId,...>` from selected catalog rules (excluding `none` severity).
 - Runs built-in IntelligenceX maintainability checks for selected internal rules (for example `IXLOC001`
   for max file length, `IXDUP001` for duplicated significant-line percentage, `IXTOOL001` for
   write-tool schema helper contract enforcement, `IXTOOL002` for AD required-domain helper contract enforcement,

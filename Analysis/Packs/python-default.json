@@ -1,0 +1,11 @@
+{
+  "id": "python-default",
+  "label": "Python Default",
+  "description": "Core security and correctness rules for Python (Ruff).",
+  "includes": ["python-security-default"],
+  "rules": [
+    "IXPY001",
+    "IXPY002",
+    "IXPY003"
+  ]
+}
