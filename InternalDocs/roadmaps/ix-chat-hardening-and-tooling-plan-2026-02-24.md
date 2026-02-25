@@ -36,6 +36,7 @@ Last validated: 2026-02-24
 ## Scenario Coverage (Current)
 - `ad-reboot-local-10-turn.json`: local DC reboot evidence path.
 - `ad-replication-health-10-turn.json`: replication-first troubleshooting flow.
+- `ad-ad0-then-all-dcs-followthrough-10-turn.json`: explicit AD0-first then all-other-DCs continuation contract (anti-stuck guard).
 - `ad-cross-dc-followthrough-10-turn.json`: AD0-first then continue all DCs in same turn (anti-stuck guard).
 - `ad-identity-correlation-przemyslaw-10-turn.json`: identity-centric AD correlation.
 - `ad-ldap-adws-health-10-turn.json`: LDAP/ADWS service health.
@@ -130,6 +131,7 @@ Acceptance:
 
 Progress:
 - Added scenarios:
+  - `ad-ad0-then-all-dcs-followthrough-10-turn.json`
   - `ad-eventlog-correlation-partial-failures-10-turn.json`
   - `ad-long-continuation-no-partials-10-turn.json`
   - `ad-transport-recovery-no-duplicate-replay-10-turn.json`

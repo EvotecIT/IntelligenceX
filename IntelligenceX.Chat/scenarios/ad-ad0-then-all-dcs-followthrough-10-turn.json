@@ -1,0 +1,73 @@
+{
+  "name": "ad-ad0-then-all-dcs-followthrough-10-turn",
+  "tags": ["ad", "cross-dc", "continuation", "transport-recovery", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover DC scope",
+      "user": "Discover domain controllers in scope for this run and list which hosts are reachable now.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "Run baseline on AD0",
+      "user": "Start with AD0 if present, otherwise first discovered DC, and collect replication + reboot evidence with exact UTC markers.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "eventlog_*query*", "eventlog_*events*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Continue all remaining DCs in same turn",
+      "user": "Now continue with all other discovered DCs in this same turn. Do not stop after AD0 and do not return partial output.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["ad_replication_*", "eventlog_*query*", "eventlog_*events*", "ad_monitoring_probe_run"],
+      "assert_no_questions": true,
+      "assert_not_contains": ["partial", "stopped after AD0"]
+    },
+    {
+      "name": "Retry only failed non-AD0 targets once",
+      "user": "Retry only failed or unreachable non-AD0 targets once, then continue with available evidence and avoid rerunning successful hosts.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_monitoring_probe_run", "eventlog_*query*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC evidence matrix",
+      "user": "Return a per-DC matrix: AD0 baseline vs each remaining DC, evidence present/missing, earliest UTC, latest UTC, confidence.",
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Replication deltas focus",
+      "user": "Highlight replication deltas between AD0 and other DCs and flag which differences are likely transient vs persistent.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_run"]
+    },
+    {
+      "name": "Blocker handling",
+      "user": "For unreachable DCs, state exact blocker and fallback path, then continue with remaining scope."
+    },
+    {
+      "name": "Likely root-cause classes",
+      "user": "Classify likely root-cause families with confidence and strongest evidence per family."
+    },
+    {
+      "name": "Execute-now validation checklist",
+      "user": "Provide a prioritized 30-minute execute-now validation checklist with no follow-up questions.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final compact summary",
+      "user": "Summarize in 6 bullets with UTC markers, participating DC count, unresolved blockers, and rerun trigger.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}
