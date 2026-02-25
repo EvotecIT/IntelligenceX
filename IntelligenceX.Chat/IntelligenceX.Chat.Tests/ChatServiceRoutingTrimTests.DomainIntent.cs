@@ -127,12 +127,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildDomainIntentClarificationText_IncludesBothScopesAndChoicePrompt() {
+    public void BuildDomainIntentClarificationText_UsesLanguageNeutralStructuredScopeContract() {
         var text = BuildDomainIntentClarificationTextMethod.Invoke(null, Array.Empty<object?>());
         var clarification = Assert.IsType<string>(text);
 
-        Assert.Contains("Active Directory domain", clarification, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Public DNS/domain", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Any language is accepted", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad_domain", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:domain-intent:v1", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:domain-intent-choice:v1", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Reply with `1` or `2`", clarification, StringComparison.OrdinalIgnoreCase);
     }
 

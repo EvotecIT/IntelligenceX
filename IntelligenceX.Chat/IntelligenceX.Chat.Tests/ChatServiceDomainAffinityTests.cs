@@ -296,6 +296,25 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesDomainIntentFamilyMarkerPayload() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-family-marker");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-family-marker",
+            """
+            [DomainIntent]
+            ix:domain-intent:v1
+            family: public_domain
+            """,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-family-marker"));
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesActionSelectionPayload() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action");
@@ -321,6 +340,10 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("SPF", "public_domain")]
     [InlineData("DMARC", "public_domain")]
     [InlineData("نتيجة DNS", "public_domain")]
+    [InlineData("Necesito revisar directorio activo", "ad_domain")]
+    [InlineData("Verifier annuaire actif du domaine", "ad_domain")]
+    [InlineData("Por favor revisar DNS publico", "public_domain")]
+    [InlineData("Verifier DNS public du domaine", "public_domain")]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
         string input,
         string expectedFamily) {
@@ -425,6 +448,7 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("AD and DNS")]
     [InlineData("Need LDAP + MX checks")]
     [InlineData("kerberos DNS MX")]
+    [InlineData("directorio activo and dns publico")]
     public void HasConflictingDomainIntentSignalsForTesting_ReturnsTrueForMixedSignals(string input) {
         Assert.True(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
     }

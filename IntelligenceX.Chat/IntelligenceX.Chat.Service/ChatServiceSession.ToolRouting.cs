@@ -32,8 +32,26 @@ internal sealed partial class ChatServiceSession {
     private const string DomainIntentFamilyPublic = "public_domain";
     private const string DomainIntentActionIdAd = "act_domain_scope_ad";
     private const string DomainIntentActionIdPublic = "act_domain_scope_public";
+    private const string DomainIntentMarker = "ix:domain-intent:v1";
+    private const string DomainIntentChoiceMarker = "ix:domain-intent-choice:v1";
     private static readonly string[] DomainIntentAdTechnicalSignals = new[] { "ad", "dc", "ldap", "gpo", "kerberos" };
     private static readonly string[] DomainIntentPublicTechnicalSignals = new[] { "dns", "mx", "spf", "dmarc", "dkim", "ns" };
+    private static readonly string[] DomainIntentAdTechnicalSignalPhrases = new[] {
+        "active directory",
+        "domain controller",
+        "directorio activo",
+        "controlador de dominio",
+        "annuaire actif",
+        "controleur de domaine"
+    };
+    private static readonly string[] DomainIntentPublicTechnicalSignalPhrases = new[] {
+        "public dns",
+        "public domain dns",
+        "dns publico",
+        "dns public",
+        "dns publique",
+        "dominio publico"
+    };
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -262,22 +280,23 @@ internal sealed partial class ChatServiceSession {
 
     private static string BuildDomainIntentClarificationText() {
         return """
-               I can help with either scope, and I want to avoid running the wrong tool family.
-               You can respond in any language, or use the structured selections below.
-               You can also answer with technical signals such as `AD`, `LDAP`, `DNS`, `MX`, `SPF`, or `DMARC`.
+               Scope selection needed to avoid the wrong tool family.
+               Any language is accepted. Structured selection is preferred.
 
-               Do you want:
-               1. Active Directory domain scope (DCs, LDAP, replication, GPO)
-               2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)
+               Choose one:
+               1. `ad_domain` (Active Directory / Directorio Activo / Annuaire Actif)
+               2. `public_domain` (Public DNS / DNS Publico)
 
-               Reply with `1` or `2`, or run one of these follow-up actions:
-               1. Active Directory domain scope (`/act act_domain_scope_ad`)
-               2. Public DNS/domain scope (`/act act_domain_scope_public`)
+               Reply with `1` or `2`, a technical signal (`AD`, `LDAP`, `DNS`, `MX`, `SPF`, `DMARC`), or one action below.
 
                [DomainIntent]
                ix:domain-intent-choice:v1
                option_1: ad_domain
                option_2: public_domain
+
+               [DomainIntent]
+               ix:domain-intent:v1
+               family: ad_domain|public_domain
 
                [Action]
                ix:action:v1
@@ -401,6 +420,10 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, out family)) {
+            return true;
+        }
+
         if (TryParseDomainIntentChoiceMarkerSelection(normalized, out family)) {
             return true;
         }
@@ -492,8 +515,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals);
-        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals)
+                           || ContainsAnyDomainSignalPhrase(normalized, DomainIntentAdTechnicalSignalPhrases);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals)
+                               || ContainsAnyDomainSignalPhrase(normalized, DomainIntentPublicTechnicalSignalPhrases);
         if (hasAdSignals == hasPublicSignals) {
             return false;
         }
@@ -508,8 +533,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals);
-        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals)
+                           || ContainsAnyDomainSignalPhrase(normalized, DomainIntentAdTechnicalSignalPhrases);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals)
+                               || ContainsAnyDomainSignalPhrase(normalized, DomainIntentPublicTechnicalSignalPhrases);
         return hasAdSignals && hasPublicSignals;
     }
 
@@ -525,6 +552,25 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (ContainsDomainSignalToken(text, signal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsAnyDomainSignalPhrase(string text, IReadOnlyList<string> phrases) {
+        if (phrases is null || phrases.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < phrases.Count; i++) {
+            var phrase = NormalizeCompactText(phrases[i] ?? string.Empty);
+            if (phrase.Length == 0) {
+                continue;
+            }
+
+            if (ContainsPhraseWithBoundaries(text, phrase)) {
                 return true;
             }
         }
@@ -572,13 +618,16 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryParseDomainIntentChoiceMarkerSelection(string text, out string family) {
+        return TryParseDomainIntentMarkerSelection(text, DomainIntentChoiceMarker, out family);
+    }
+
+    private static bool TryParseDomainIntentMarkerSelection(string text, string marker, out string family) {
         family = string.Empty;
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
         }
 
-        const string marker = "ix:domain-intent-choice:v1";
         var markerIndex = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (markerIndex < 0) {
             return false;
