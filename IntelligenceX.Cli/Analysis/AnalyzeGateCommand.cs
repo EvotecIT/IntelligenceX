@@ -152,19 +152,23 @@ internal static partial class AnalyzeGateCommand {
             }
             var isEnabled = enabledRuleIds.Contains(ruleId);
             var isExplicitRuleIdMatch = gateRuleIds.Contains(ruleId);
+            var countAsOutsidePackRuleIdInclude = false;
             if (!isEnabled) {
                 outsidePack++;
                 if (!analysisSettings.Gate.IncludeOutsidePackRules && !isExplicitRuleIdMatch) {
                     continue;
                 }
                 if (!analysisSettings.Gate.IncludeOutsidePackRules && isExplicitRuleIdMatch) {
-                    outsidePackIncludedByRuleId++;
+                    countAsOutsidePackRuleIdInclude = true;
                 }
             }
 
             var type = ResolveRuleType(ruleId, catalog, fallback: "unknown");
             if (!gateFilters.Matches(ruleId, type)) {
                 continue;
+            }
+            if (countAsOutsidePackRuleIdInclude) {
+                outsidePackIncludedByRuleId++;
             }
             violations.Add(finding);
         }
