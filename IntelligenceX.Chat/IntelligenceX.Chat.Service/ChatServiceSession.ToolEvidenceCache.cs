@@ -43,6 +43,7 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        ThreadToolEvidenceEntry[]? snapshotEntries = null;
         lock (_threadToolEvidenceLock) {
             if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature)) {
                 bySignature = new Dictionary<string, ThreadToolEvidenceEntry>(StringComparer.Ordinal);
@@ -89,6 +90,15 @@ internal sealed partial class ChatServiceSession {
 
             TrimThreadToolEvidenceEntriesNoLock(bySignature);
             TrimThreadToolEvidenceContextsNoLock(nowTicks);
+            if (_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var latestBySignature) && latestBySignature.Count > 0) {
+                snapshotEntries = SnapshotThreadToolEvidenceEntries(latestBySignature);
+            }
+        }
+
+        if (snapshotEntries is not null) {
+            PersistThreadToolEvidenceSnapshot(normalizedThreadId, snapshotEntries);
+        } else {
+            PersistThreadToolEvidenceSnapshot(normalizedThreadId, Array.Empty<ThreadToolEvidenceEntry>());
         }
     }
 
@@ -99,8 +109,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
         var requestTokens = TokenizeRoutingTokens(userRequest, maxTokens: 10);
         ThreadToolEvidenceEntry[] selected;
+        ThreadToolEvidenceEntry[]? updatedSnapshotEntries = null;
+        var shouldClearSnapshot = false;
+        var hasCandidates = true;
         lock (_threadToolEvidenceLock) {
             if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature) || bySignature.Count == 0) {
                 return false;
@@ -130,20 +145,35 @@ internal sealed partial class ChatServiceSession {
 
             if (bySignature.Count == 0) {
                 _threadToolEvidenceByThreadId.Remove(normalizedThreadId);
+                shouldClearSnapshot = true;
             }
 
             if (candidates.Count == 0) {
-                return false;
-            }
-
-            candidates.Sort(static (a, b) => b.Score.CompareTo(a.Score));
-            var takeCount = Math.Min(3, candidates.Count);
-            selected = new ThreadToolEvidenceEntry[takeCount];
-            for (var i = 0; i < takeCount; i++) {
-                selected[i] = candidates[i].Entry;
+                hasCandidates = false;
+                selected = Array.Empty<ThreadToolEvidenceEntry>();
+            } else {
+                candidates.Sort(static (a, b) => b.Score.CompareTo(a.Score));
+                var takeCount = Math.Min(3, candidates.Count);
+                selected = new ThreadToolEvidenceEntry[takeCount];
+                for (var i = 0; i < takeCount; i++) {
+                    selected[i] = candidates[i].Entry;
+                }
             }
 
             TrimThreadToolEvidenceContextsNoLock(nowUtc.Ticks);
+            if (!shouldClearSnapshot && expiredKeys.Count > 0) {
+                updatedSnapshotEntries = SnapshotThreadToolEvidenceEntries(bySignature);
+            }
+        }
+
+        if (shouldClearSnapshot) {
+            PersistThreadToolEvidenceSnapshot(normalizedThreadId, Array.Empty<ThreadToolEvidenceEntry>());
+        } else if (updatedSnapshotEntries is not null) {
+            PersistThreadToolEvidenceSnapshot(normalizedThreadId, updatedSnapshotEntries);
+        }
+
+        if (!hasCandidates) {
+            return false;
         }
 
         var sb = new StringBuilder(1024);
@@ -247,6 +277,64 @@ internal sealed partial class ChatServiceSession {
         return tokenHits * 9d;
     }
 
+    private void TryHydrateThreadToolEvidenceFromSnapshot(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        lock (_threadToolEvidenceLock) {
+            if (_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var existing) && existing.Count > 0) {
+                return;
+            }
+        }
+
+        if (!TryLoadThreadToolEvidenceSnapshot(normalizedThreadId, out var snapshotEntries) || snapshotEntries.Length == 0) {
+            return;
+        }
+
+        var bySignature = new Dictionary<string, ThreadToolEvidenceEntry>(StringComparer.Ordinal);
+        for (var i = 0; i < snapshotEntries.Length; i++) {
+            var entry = snapshotEntries[i];
+            var signature = BuildToolEvidenceSignature(entry.ToolName, entry.ArgumentsJson);
+            if (signature.Length == 0) {
+                continue;
+            }
+
+            bySignature[signature] = entry;
+        }
+
+        if (bySignature.Count == 0) {
+            PersistThreadToolEvidenceSnapshot(normalizedThreadId, Array.Empty<ThreadToolEvidenceEntry>());
+            return;
+        }
+
+        lock (_threadToolEvidenceLock) {
+            if (_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var existing) && existing.Count > 0) {
+                return;
+            }
+
+            _threadToolEvidenceByThreadId[normalizedThreadId] = bySignature;
+            TrimThreadToolEvidenceEntriesNoLock(bySignature);
+            TrimThreadToolEvidenceContextsNoLock(DateTime.UtcNow.Ticks);
+        }
+    }
+
+    private static ThreadToolEvidenceEntry[] SnapshotThreadToolEvidenceEntries(
+        IReadOnlyDictionary<string, ThreadToolEvidenceEntry> bySignature) {
+        if (bySignature.Count == 0) {
+            return Array.Empty<ThreadToolEvidenceEntry>();
+        }
+
+        var entries = new ThreadToolEvidenceEntry[bySignature.Count];
+        var index = 0;
+        foreach (var pair in bySignature) {
+            entries[index++] = pair.Value;
+        }
+
+        return entries;
+    }
+
     private void TrimThreadToolEvidenceEntriesNoLock(Dictionary<string, ThreadToolEvidenceEntry> bySignature) {
         if (bySignature.Count <= MaxToolEvidenceEntriesPerThread) {
             return;
@@ -339,6 +427,7 @@ internal sealed partial class ChatServiceSession {
         lock (_threadToolEvidenceLock) {
             _threadToolEvidenceByThreadId.Clear();
         }
+        ClearThreadToolEvidenceSnapshotsNoThrow();
     }
 
     internal bool TryBuildToolEvidenceFallbackTextForTesting(string threadId, string userRequest, out string text) {

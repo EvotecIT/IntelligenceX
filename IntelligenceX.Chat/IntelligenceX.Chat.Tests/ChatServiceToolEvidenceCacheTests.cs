@@ -89,4 +89,58 @@ public sealed class ChatServiceToolEvidenceCacheTests {
 
         Assert.False(built);
     }
+
+    [Fact]
+    public void ToolEvidenceCache_RehydratesFallbackAfterServiceRestart() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-tool-evidence-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+
+        try {
+            var writerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var calls = new[] {
+                new ToolCallDto {
+                    CallId = "call-1",
+                    Name = "domaindetective_domain_summary",
+                    ArgumentsJson = "{\"domain\":\"contoso.com\"}"
+                }
+            };
+            var outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "call-1",
+                    Ok = true,
+                    Output = "{\"domain\":\"contoso.com\",\"risk\":\"medium\"}",
+                    SummaryMarkdown = "Domain posture: medium risk."
+                }
+            };
+
+            writerSession.RememberThreadToolEvidenceForTesting(
+                threadId: "thread-restart",
+                toolCalls: calls,
+                toolOutputs: outputs,
+                mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+            var readerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var built = readerSession.TryBuildToolEvidenceFallbackTextForTesting(
+                "thread-restart",
+                "repeat latest contoso checks",
+                out var text);
+
+            Assert.True(built);
+            Assert.Contains("ix:cached-tool-evidence:v1", text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("domaindetective_domain_summary", text, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort cleanup only.
+            }
+        }
+    }
 }
