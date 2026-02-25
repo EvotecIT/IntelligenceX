@@ -107,6 +107,7 @@ internal sealed partial class ChatServiceSession {
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default
         };
+        TryRehydrateToolRoutingStats();
     }
 
     private void UpdatePackMetadataIndexes(IReadOnlyList<ToolPackDescriptor> descriptors) {

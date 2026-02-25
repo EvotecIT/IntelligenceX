@@ -1280,6 +1280,7 @@ internal sealed partial class ChatServiceSession {
             }
             TrimToolRoutingStatsNoLock();
         }
+        PersistToolRoutingStatsSnapshot();
     }
 
     private void TrimWeightedRoutingContextsNoLock() {
@@ -1515,6 +1516,14 @@ internal sealed partial class ChatServiceSession {
                 };
             }
         }
+    }
+
+    internal void PersistToolRoutingStatsForTesting() {
+        PersistToolRoutingStatsSnapshot();
+    }
+
+    internal double ReadToolRoutingAdjustmentForTesting(string toolName) {
+        return ReadToolRoutingAdjustment(toolName);
     }
 
     internal void SetWeightedRoutingContextsForTesting(IReadOnlyDictionary<string, string[]> namesByThreadId, IReadOnlyDictionary<string, long> seenTicksByThreadId) {
