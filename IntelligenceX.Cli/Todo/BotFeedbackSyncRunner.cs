@@ -17,6 +17,17 @@ internal static class BotFeedbackSyncRunner {
         RegexOptions.Compiled);
     private static readonly Regex TodoTaskLine = new(@"^\s*-\s+\[(?<state>[ xX])\]\s+(?<text>.+?)\s*$",
         RegexOptions.Compiled);
+    private static readonly Regex MarkdownHeaderLine = new(@"^\s{0,3}#{2,6}\s+(?<title>.+?)\s*$",
+        RegexOptions.Compiled);
+    private static readonly IReadOnlyList<string> DefaultBotLogins = new[] {
+        "intelligencex-review",
+        "chatgpt-codex-connector",
+        "github-actions"
+    };
+    private static readonly IReadOnlyList<string> MergeBlockerSections = new[] {
+        "todo list",
+        "critical issues"
+    };
 
     internal sealed record TaskItem(bool Checked, string Text, string Url);
     internal sealed record PrTasks(int Number, string Title, string Url, IReadOnlyList<TaskItem> Tasks);
@@ -25,7 +36,7 @@ internal static class BotFeedbackSyncRunner {
         public string Repo { get; set; } = "EvotecIT/IntelligenceX";
         public string TodoPath { get; set; } = "TODO.md";
         public int MaxPrs { get; set; } = 30;
-        public List<string> Bots { get; } = new() { "intelligencex-review" };
+        public List<string> Bots { get; } = new();
         public bool CreateIssues { get; set; }
         public string IssueLabel { get; set; } = "ix-bot-feedback";
         public int MaxIssues { get; set; } = 20;
@@ -124,7 +135,7 @@ internal static class BotFeedbackSyncRunner {
     private static Options ParseOptions(string[] args) {
         var options = new Options();
         options.Bots.Clear();
-        options.Bots.Add("intelligencex-review");
+        options.Bots.AddRange(DefaultBotLogins);
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
             switch (arg) {
@@ -175,6 +186,7 @@ internal static class BotFeedbackSyncRunner {
             }
         }
         var normalized = options.Bots
+            .Select(NormalizeBotLogin)
             .Where(b => !string.IsNullOrWhiteSpace(b))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -194,7 +206,7 @@ internal static class BotFeedbackSyncRunner {
         Console.WriteLine("  --repo <owner/name>      GitHub repo (default: EvotecIT/IntelligenceX)");
         Console.WriteLine("  --todo <path>            Path to TODO.md (default: TODO.md)");
         Console.WriteLine("  --max-prs <n>            Max open PRs to scan (default: 30)");
-        Console.WriteLine("  --bot <login>            Bot login to include (repeatable; default: intelligencex-review)");
+        Console.WriteLine("  --bot <login>            Bot login to include (repeatable; default: intelligencex-review, chatgpt-codex-connector, github-actions)");
         Console.WriteLine("  --create-issues          Create GitHub issues for unchecked tasks (opt-in)");
         Console.WriteLine("  --label <name>           Issue label (default: ix-bot-feedback)");
         Console.WriteLine("  --max-issues <n>         Max issues to create (default: 20)");
@@ -212,8 +224,8 @@ query($owner: String!, $name: String!, $n: Int!) {
         number
         title
         url
-        comments(last: 50) { nodes { author { login } body url } }
-        reviews(last: 50)  { nodes { author { login } body url } }
+        comments(last: 100) { nodes { author { login } body url } }
+        reviews(last: 100)  { nodes { author { login } body url } }
       }
     }
   }
@@ -282,7 +294,7 @@ query($owner: String!, $name: String!, $n: Int!) {
             return;
         }
         foreach (var n in nodes.EnumerateArray()) {
-            var author = TryReadLogin(n);
+            var author = NormalizeBotLogin(TryReadLogin(n));
             if (!bots.Contains(author)) {
                 continue;
             }
@@ -313,7 +325,20 @@ query($owner: String!, $name: String!, $n: Int!) {
         if (string.IsNullOrWhiteSpace(body)) {
             yield break;
         }
-        foreach (var line in body.Split('\n')) {
+        var lines = body.Split('\n');
+        var sectionTasks = ParseSectionTasks(lines, url).ToList();
+        if (sectionTasks.Count > 0) {
+            foreach (var item in sectionTasks) {
+                yield return item;
+            }
+            yield break;
+        }
+
+        // Legacy fallback: if no markdown sections are present, treat checklist lines as actionable tasks.
+        if (HasMarkdownHeaders(lines)) {
+            yield break;
+        }
+        foreach (var line in lines) {
             var m = TaskLine.Match(line);
             if (!m.Success) {
                 continue;
@@ -326,6 +351,71 @@ query($owner: String!, $name: String!, $n: Int!) {
             var isChecked = state.Equals("x", StringComparison.OrdinalIgnoreCase);
             yield return new TaskItem(isChecked, text, url);
         }
+    }
+
+    // Internal for tests.
+    internal static IReadOnlyList<TaskItem> ParseTasksForTests(string body, string url) {
+        return ParseTasks(body, url).ToList();
+    }
+
+    private static IEnumerable<TaskItem> ParseSectionTasks(IEnumerable<string> lines, string url) {
+        var inMergeBlockerSection = false;
+        foreach (var line in lines) {
+            var header = MarkdownHeaderLine.Match(line);
+            if (header.Success) {
+                var title = NormalizeHeading(header.Groups["title"].Value);
+                inMergeBlockerSection = IsMergeBlockerSection(title);
+                continue;
+            }
+            if (!inMergeBlockerSection) {
+                continue;
+            }
+            var task = TaskLine.Match(line);
+            if (!task.Success) {
+                continue;
+            }
+            var state = task.Groups["state"].Value;
+            var text = task.Groups["text"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(text)) {
+                continue;
+            }
+            var isChecked = state.Equals("x", StringComparison.OrdinalIgnoreCase);
+            yield return new TaskItem(isChecked, text, url);
+        }
+    }
+
+    private static bool HasMarkdownHeaders(IEnumerable<string> lines) {
+        foreach (var line in lines) {
+            if (MarkdownHeaderLine.IsMatch(line)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsMergeBlockerSection(string normalizedHeading) {
+        foreach (var section in MergeBlockerSections) {
+            if (normalizedHeading.Contains(section, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string NormalizeHeading(string heading) {
+        var compact = heading.Trim().Trim(':');
+        while (compact.Contains("  ", StringComparison.Ordinal)) {
+            compact = compact.Replace("  ", " ", StringComparison.Ordinal);
+        }
+        return compact.ToLowerInvariant();
+    }
+
+    private static string NormalizeBotLogin(string? login) {
+        var trimmed = (login ?? string.Empty).Trim();
+        if (trimmed.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) {
+            trimmed = trimmed.Substring(0, trimmed.Length - "[bot]".Length).TrimEnd();
+        }
+        return trimmed.ToLowerInvariant();
     }
 
     private static string UpdateTodo(string todoPath, IReadOnlyList<PrTasks> prs, out List<PrTasks> mergedPrs, out bool changed) {

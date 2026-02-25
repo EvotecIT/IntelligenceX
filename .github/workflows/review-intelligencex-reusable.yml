@@ -515,6 +515,49 @@ jobs:
         shell: bash
         run: dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release
 
+      - name: Prepare static analysis context
+        if: ${{ inputs.reviewer_source == 'source' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config='${{ inputs.review_config_path }}'
+          if [ -z "$config" ]; then
+            config=".intelligencex/reviewer.json"
+          fi
+          echo "IX_REVIEW_CONFIG_PATH=$config" >> "$GITHUB_ENV"
+          mkdir -p artifacts
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > artifacts/changed-files.txt || true
+          fi
+
+      - name: Run IntelligenceX analysis (pre-review, best-effort)
+        if: ${{ inputs.reviewer_source == 'source' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$IX_REVIEW_CONFIG_PATH" ]; then
+            echo "Static analysis pre-run skipped: config '$IX_REVIEW_CONFIG_PATH' not found."
+            exit 0
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
+
+      - name: Evaluate IntelligenceX analysis gate (pre-review, best-effort)
+        if: ${{ inputs.reviewer_source == 'source' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$IX_REVIEW_CONFIG_PATH" ]; then
+            echo "Static analysis gate skipped: config '$IX_REVIEW_CONFIG_PATH' not found."
+            exit 0
+          fi
+          if [ -s artifacts/changed-files.txt ]; then
+            dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --changed-files artifacts/changed-files.txt
+          else
+            dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH"
+          fi
+
       - name: Run IntelligenceX.Reviewer (source)
         if: ${{ inputs.reviewer_source == 'source' }}
         env:
@@ -813,4 +856,3 @@ jobs:
             exit 1
           }
           dotnet $reviewer.FullName
-

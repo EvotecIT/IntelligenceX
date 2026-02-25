@@ -158,6 +158,8 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationScopeChangedFilesIgnoresUnchangedFiles);
         failed += Run("Analyze gate duplication changed-files scope blocks changed file",
             TestAnalyzeGateDuplicationScopeChangedFilesBlocksChangedFiles);
+        failed += Run("Analyze gate duplication changed-files scope without changed-files is unavailable",
+            TestAnalyzeGateDuplicationScopeChangedFilesWithoutChangedFilesIsUnavailable);
         failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate duplication overall delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
@@ -203,6 +205,10 @@ internal static partial class Program {
             TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease);
         failed += Run("Analysis config reader reads duplication maxFilePercentIncrease",
             TestAnalysisConfigReaderReadsDuplicationMaxFilePercentIncrease);
+        failed += Run("Analysis config reader marks duplication scope explicit when provided",
+            TestAnalysisConfigReaderMarksDuplicationScopeAsExplicitWhenProvided);
+        failed += Run("Analysis config reader keeps duplication scope implicit when omitted",
+            TestAnalysisConfigReaderKeepsDuplicationScopeImplicitWhenOmitted);
         failed += Run("Analyze gate changed-files accepts absolute in-workspace path",
             TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace);
         failed += Run("Analyze gate changed-files rejects absolute outside-workspace path",
@@ -264,6 +270,8 @@ internal static partial class Program {
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
         failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndOrder);
         failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
+        failed += Run("Todo bot feedback parse tasks uses merge-blocker sections", TestBotFeedbackParseTasksUsesMergeBlockerSections);
+        failed += Run("Todo bot feedback parse tasks legacy fallback", TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
@@ -534,6 +542,8 @@ internal static partial class Program {
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("Reviewer untrusted PR skips auth store write from env", TestReviewerUntrustedPrSkipsAuthStoreWriteFromEnv);
+        failed += Run("Reviewer GitHub token resolver uses GH_TOKEN fallback", TestReviewerGitHubTokenResolverUsesGhTokenFallback);
+        failed += Run("Reviewer GitHub token resolver prefers GITHUB_TOKEN", TestReviewerGitHubTokenResolverPrefersGithubTokenOverGhToken);
         failed += Run("GitHub context cache", TestGitHubContextCache);
         failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
         failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
@@ -570,6 +580,7 @@ internal static partial class Program {
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
         failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
+        failed += Run("Resolve-threads default bot logins include managed bots", TestResolveThreadsDefaultBotLoginsIncludeManagedBots);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
         failed += Run("OpenAI account order round-robin many accounts", TestOpenAiAccountOrderRoundRobinSupportsManyAccounts);

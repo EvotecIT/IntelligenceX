@@ -134,5 +134,49 @@ internal static partial class Program {
 
         AssertEqual(3.0, settings.Gate.Duplication.MaxFilePercentIncrease, "analysis config duplication maxFilePercentIncrease applied");
     }
+
+    private static void TestAnalysisConfigReaderMarksDuplicationScopeAsExplicitWhenProvided() {
+        var root = JsonLite.Parse("""
+{
+  "analysis": {
+    "enabled": true,
+    "gate": {
+      "duplication": {
+        "scope": "changed-files"
+      }
+    }
+  }
+}
+""")?.AsObject();
+        AssertNotNull(root, "analysis config duplication scope explicit parse root");
+
+        var settings = new AnalysisSettings();
+        AnalysisConfigReader.Apply(root!, reviewObj: null, settings);
+
+        AssertEqual(true, settings.Gate.Duplication.ScopeExplicitlyConfigured,
+            "analysis config duplication scope explicit flag set");
+    }
+
+    private static void TestAnalysisConfigReaderKeepsDuplicationScopeImplicitWhenOmitted() {
+        var root = JsonLite.Parse("""
+{
+  "analysis": {
+    "enabled": true,
+    "gate": {
+      "duplication": {
+        "maxFilePercent": 30
+      }
+    }
+  }
+}
+""")?.AsObject();
+        AssertNotNull(root, "analysis config duplication scope omitted parse root");
+
+        var settings = new AnalysisSettings();
+        AnalysisConfigReader.Apply(root!, reviewObj: null, settings);
+
+        AssertEqual(false, settings.Gate.Duplication.ScopeExplicitlyConfigured,
+            "analysis config duplication scope explicit flag omitted");
+    }
 }
 #endif

@@ -102,9 +102,9 @@ public static class AnalysisConfigReader {
                     duplication,
                     "maxOverallPercentIncrease",
                     settings.Gate.Duplication.MaxOverallPercentIncrease);
-                settings.Gate.Duplication.Scope = NormalizeDuplicationScope(
-                    duplication.GetString("scope"),
-                    settings.Gate.Duplication.Scope);
+                var duplicationScope = duplication.GetString("scope");
+                settings.Gate.Duplication.ScopeExplicitlyConfigured = !string.IsNullOrWhiteSpace(duplicationScope);
+                settings.Gate.Duplication.Scope = NormalizeDuplicationScope(duplicationScope, settings.Gate.Duplication.Scope);
                 settings.Gate.Duplication.NewIssuesOnly =
                     ReadBool(duplication, "newIssuesOnly", settings.Gate.Duplication.NewIssuesOnly);
                 settings.Gate.Duplication.FailOnUnavailable = ReadBool(

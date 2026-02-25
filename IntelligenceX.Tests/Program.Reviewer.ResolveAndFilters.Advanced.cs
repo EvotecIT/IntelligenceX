@@ -94,6 +94,14 @@ internal static partial class Program {
             "Looks good."
         });
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(plainProseOnly), "merge blockers plain prose");
+
+        var checkedOnly = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "- [x] Addressed in this PR.",
+            "## Critical Issues ⚠️ (if any)",
+            "None."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(checkedOnly), "merge blockers checked checklist is non-blocking");
     }
 
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {

@@ -117,5 +117,35 @@ internal static partial class Program {
         AssertContainsText(updated, "- [ ] New item\n", "pr1 updated task");
         AssertContainsText(updated, "<summary>PR #2 Two</summary>\n", "pr2 inserted");
     }
+
+    private static void TestBotFeedbackParseTasksUsesMergeBlockerSections() {
+        var body = string.Join("\n", new[] {
+            "## Summary",
+            "- [ ] Non-blocking checklist item",
+            "## Todo List ✅",
+            "- [ ] Fix cancellation race",
+            "## Critical Issues ⚠️ (if any)",
+            "- [x] Already addressed"
+        });
+        var tasks = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.ParseTasksForTests(body, "https://example/comment");
+        AssertEqual(2, tasks.Count, "section tasks count");
+        AssertEqual("Fix cancellation race", tasks[0].Text, "section task todo text");
+        AssertEqual(false, tasks[0].Checked, "section task todo checked");
+        AssertEqual("Already addressed", tasks[1].Text, "section task critical text");
+        AssertEqual(true, tasks[1].Checked, "section task critical checked");
+    }
+
+    private static void TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders() {
+        var body = string.Join("\n", new[] {
+            "- [ ] Fix cancellation race",
+            "- [x] Already addressed"
+        });
+        var tasks = IntelligenceX.Cli.Todo.BotFeedbackSyncRunner.ParseTasksForTests(body, "https://example/comment");
+        AssertEqual(2, tasks.Count, "legacy fallback task count");
+        AssertEqual("Fix cancellation race", tasks[0].Text, "legacy fallback todo");
+        AssertEqual(false, tasks[0].Checked, "legacy fallback todo checked");
+        AssertEqual("Already addressed", tasks[1].Text, "legacy fallback checked task");
+        AssertEqual(true, tasks[1].Checked, "legacy fallback checked state");
+    }
 #endif
 }

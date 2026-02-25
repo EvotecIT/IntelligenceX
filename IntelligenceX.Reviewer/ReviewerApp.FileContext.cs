@@ -126,8 +126,11 @@ public static partial class ReviewerApp {
         var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
         if (loadThreads) {
             try {
+                var threadCommentFetchLimit = ResolveThreadCommentFetchLimit(settings);
                 var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, settings.ReviewThreadsMax,
-                        settings.ReviewThreadsMaxComments, cancellationToken)
+                        threadCommentFetchLimit, cancellationToken)
+                    .ConfigureAwait(false);
+                threads = await HydratePartialThreadsForBotsOnlyAsync(github, threads, settings, cancellationToken)
                     .ConfigureAwait(false);
                 extras.ReviewThreads = threads;
                 if (settings.ReviewThreadsAutoResolveStale) {
@@ -339,8 +342,10 @@ public static partial class ReviewerApp {
 
         var keys = expectedKeys ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var maxThreads = Math.Max(settings.ReviewThreadsAutoResolveMax, settings.ReviewThreadsMax);
-        var maxComments = Math.Max(1, settings.ReviewThreadsMaxComments);
+        var maxComments = ResolveThreadCommentFetchLimit(settings);
         var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, maxThreads, maxComments, cancellationToken)
+            .ConfigureAwait(false);
+        threads = await HydratePartialThreadsForBotsOnlyAsync(github, threads, settings, cancellationToken)
             .ConfigureAwait(false);
 
         var resolved = 0;
@@ -467,6 +472,38 @@ public static partial class ReviewerApp {
         return (currentFiles, $"current PR files ({note})");
     }
 
-}
+    private static int ResolveThreadCommentFetchLimit(ReviewSettings settings) {
+        // Keep prompt/context limits independent from fetch limits so auto-resolve logic can inspect full thread authorship.
+        return Math.Max(Math.Max(1, settings.ReviewThreadsMaxComments), 20);
+    }
 
+    private static async Task<IReadOnlyList<PullRequestReviewThread>> HydratePartialThreadsForBotsOnlyAsync(GitHubClient github,
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken) {
+        if (!settings.ReviewThreadsAutoResolveBotsOnly || threads.Count == 0) {
+            return threads;
+        }
+
+        const int maxHydratedComments = 500;
+        var hydrated = new List<PullRequestReviewThread>(threads.Count);
+        foreach (var thread in threads) {
+            if (thread.TotalComments <= thread.Comments.Count || string.IsNullOrWhiteSpace(thread.Id)) {
+                hydrated.Add(thread);
+                continue;
+            }
+
+            PullRequestReviewThread? expanded = null;
+            try {
+                expanded = await github.GetPullRequestReviewThreadAsync(thread.Id, maxHydratedComments, cancellationToken)
+                    .ConfigureAwait(false);
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to hydrate review thread {thread.Id}: {ex.Message}");
+            }
+
+            hydrated.Add(expanded ?? thread);
+        }
+
+        return hydrated;
+    }
+
+}
 

@@ -142,26 +142,29 @@ public static partial class ReviewerApp {
                 return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
             }
             var primaryToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+            var standardToken = ResolveFirstNonEmptyGitHubToken("GITHUB_TOKEN", "GH_TOKEN");
             var token = !string.IsNullOrWhiteSpace(primaryToken)
                 ? primaryToken
-                : Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+                : standardToken;
             var tokenSource = !string.IsNullOrWhiteSpace(primaryToken)
                 ? "INTELLIGENCEX_GITHUB_TOKEN"
-                : "GITHUB_TOKEN";
+                : ResolveFirstNonEmptyGitHubTokenSource("GITHUB_TOKEN", "GH_TOKEN");
 
-            if (string.IsNullOrWhiteSpace(token)) {
-                Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
+            if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(tokenSource)) {
+                Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN, GITHUB_TOKEN, or GH_TOKEN).");
                 return 1;
             }
             githubToken = token;
             SecretsAudit.Record($"GitHub token from {tokenSource}");
 
-            var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var fallbackToken = standardToken;
+            var fallbackTokenSource = ResolveFirstNonEmptyGitHubTokenSource("GITHUB_TOKEN", "GH_TOKEN");
             if (string.Equals(token, fallbackToken, StringComparison.Ordinal)) {
                 fallbackToken = null;
+                fallbackTokenSource = null;
             }
-            if (!string.IsNullOrWhiteSpace(fallbackToken)) {
-                SecretsAudit.Record("GitHub fallback token from GITHUB_TOKEN");
+            if (!string.IsNullOrWhiteSpace(fallbackToken) && !string.IsNullOrWhiteSpace(fallbackTokenSource)) {
+                SecretsAudit.Record($"GitHub fallback token from {fallbackTokenSource}");
             }
 
             using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
@@ -545,6 +548,26 @@ public static partial class ReviewerApp {
             }
             CleanupTempAuthPathFromEnv();
         }
+    }
+
+    internal static string? ResolveFirstNonEmptyGitHubToken(params string[] variableNames) {
+        foreach (var variableName in variableNames) {
+            var value = Environment.GetEnvironmentVariable(variableName);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    internal static string? ResolveFirstNonEmptyGitHubTokenSource(params string[] variableNames) {
+        foreach (var variableName in variableNames) {
+            var value = Environment.GetEnvironmentVariable(variableName);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return variableName;
+            }
+        }
+        return null;
     }
 
     private static string ApplyAnalysisLoadFailure(string summaryBody, ReviewSettings settings, Exception ex) {

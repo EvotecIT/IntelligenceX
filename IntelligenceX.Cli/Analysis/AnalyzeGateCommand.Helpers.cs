@@ -79,6 +79,11 @@ internal static partial class AnalyzeGateCommand {
 
         var duplication = settings.Gate.Duplication;
         var scope = NormalizeDuplicationScope(duplication.Scope);
+        var scopeExplicitlyChangedFiles = duplication.ScopeExplicitlyConfigured && scope == "changed-files";
+        if (scopeExplicitlyChangedFiles && changedPaths.Count == 0) {
+            return DuplicationGateEvaluation.Unavailable(
+                "duplication scope 'changed-files' requires --changed-files with at least one in-workspace file (implicit fallback to scope=all is disabled)");
+        }
         var useChangedFileScope = scope == "changed-files" && changedPaths is { Count: > 0 };
         var effectiveScope = useChangedFileScope ? "changed-files" : "all";
         var metricsPath = ResolveWorkspaceBoundFilePath(workspace, duplication.MetricsPath);

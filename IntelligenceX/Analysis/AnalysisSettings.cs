@@ -200,6 +200,11 @@ public sealed class AnalysisGateDuplicationSettings {
     /// </summary>
     public string Scope { get; set; } = "changed-files";
     /// <summary>
+    /// True when <c>analysis.gate.duplication.scope</c> was explicitly provided in config.
+    /// Used to distinguish default scope fallback from an intentional strict scope selection.
+    /// </summary>
+    public bool ScopeExplicitlyConfigured { get; set; }
+    /// <summary>
     /// When true, duplication gate checks honor baseline/new-only suppression semantics.
     /// </summary>
     public bool NewIssuesOnly { get; set; }

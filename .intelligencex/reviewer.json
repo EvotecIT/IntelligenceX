@@ -15,9 +15,6 @@
         "vulnerability",
         "bug"
       ],
-      "ruleIds": [
-        "IXTOOL001"
-      ],
       "failOnUnavailable": true,
       "failOnNoEnabledRules": true,
       "includeOutsidePackRules": false,
@@ -45,10 +42,11 @@
     "includeReviewComments": true,
     "includeReviewThreads": true,
     "reviewThreadsIncludeBots": true,
-    "reviewThreadsMax": 15,
-    "reviewThreadsMaxComments": 4,
+    "reviewThreadsMax": 25,
+    "reviewThreadsMaxComments": 6,
     "reviewThreadsAutoResolveStale": true,
     "reviewThreadsAutoResolveDiffRange": "pr-base",
+    "reviewThreadsAutoResolveMax": 25,
     "reviewThreadsAutoResolveSweepNoBlockers": true,
     "reviewThreadsAutoResolveAIReply": true,
     "reviewUsageSummary": true,
