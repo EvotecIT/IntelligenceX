@@ -623,6 +623,7 @@ internal sealed partial class ChatServiceSession {
         ClearDomainIntentFamilySnapshots();
         ClearPendingDomainIntentClarificationSnapshots();
         ClearWeightedToolSubsetSnapshots();
+        ClearStructuredNextActionSnapshots();
     }
 
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(

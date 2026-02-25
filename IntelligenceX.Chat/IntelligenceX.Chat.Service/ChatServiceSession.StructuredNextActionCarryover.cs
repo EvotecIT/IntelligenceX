@@ -72,6 +72,7 @@ internal sealed partial class ChatServiceSession {
             _structuredNextActionByThreadId[normalizedThreadId] = snapshot;
             TrimWeightedRoutingContextsNoLock();
         }
+        PersistStructuredNextActionSnapshot(normalizedThreadId, snapshot);
     }
 
     private bool TryBuildCarryoverStructuredNextActionToolCall(
@@ -167,9 +168,22 @@ internal sealed partial class ChatServiceSession {
         snapshot = default;
         reason = "carryover_missing";
 
+        var loadedFromSnapshot = false;
         lock (_toolRoutingContextLock) {
             if (!_structuredNextActionByThreadId.TryGetValue(normalizedThreadId, out snapshot)) {
+                snapshot = default;
+                loadedFromSnapshot = true;
+            }
+        }
+
+        if (loadedFromSnapshot) {
+            if (!TryLoadStructuredNextActionSnapshot(normalizedThreadId, out snapshot)) {
                 return false;
+            }
+
+            lock (_toolRoutingContextLock) {
+                _structuredNextActionByThreadId[normalizedThreadId] = snapshot;
+                TrimWeightedRoutingContextsNoLock();
             }
         }
 
@@ -193,9 +207,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         lock (_toolRoutingContextLock) {
-            _structuredNextActionByThreadId[normalizedThreadId] = snapshot with { SeenUtcTicks = now.Ticks };
+            snapshot = snapshot with { SeenUtcTicks = now.Ticks };
+            _structuredNextActionByThreadId[normalizedThreadId] = snapshot;
             TrimWeightedRoutingContextsNoLock();
         }
+        PersistStructuredNextActionSnapshot(normalizedThreadId, snapshot);
 
         reason = "carryover_ready";
         return true;
@@ -211,5 +227,6 @@ internal sealed partial class ChatServiceSession {
             _structuredNextActionByThreadId.Remove(normalizedThreadId);
             TrimWeightedRoutingContextsNoLock();
         }
+        RemoveStructuredNextActionSnapshot(normalizedThreadId);
     }
 }

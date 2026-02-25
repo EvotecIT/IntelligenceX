@@ -5,6 +5,7 @@ using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -28,6 +29,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ResolveWeightedSubsetStorePathMethod =
         typeof(ChatServiceSession).GetMethod("ResolveWeightedSubsetStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ResolveWeightedSubsetStorePath not found.");
+    private static readonly MethodInfo ResolveStructuredNextActionStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveStructuredNextActionStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveStructuredNextActionStorePath not found.");
 
     [Fact]
     public void ClearToolRoutingCaches_RemovesPersistedRoutingSnapshots() {
@@ -44,6 +48,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new("dnsclientx_query", "DNS query")
         };
         var subsetTools = new[] { allTools[0], allTools[1] };
+        var carryoverToolDefinitions = new List<ToolDefinition> {
+            new("ad_environment_discover", "Discover", ToolSchema.Object().NoAdditionalProperties()),
+            new(
+                "ad_scope_discovery",
+                "Scope",
+                ToolSchema.Object(
+                        ("include_trusts", ToolSchema.Boolean()),
+                        ("max_domains", ToolSchema.Integer()))
+                    .NoAdditionalProperties())
+        };
+        var carryoverToolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-carryover-1", Name = "ad_environment_discover", ArgumentsJson = "{}" }
+        };
+        var carryoverToolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-carryover-1",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"ad_scope_discovery","mutating":false,"arguments":{"include_trusts":"true","max_domains":"2"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var carryoverMutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_scope_discovery"] = false
+        };
         var actionDraft = """
             [Action]
             ix:action:v1
@@ -62,6 +91,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             RememberUserIntentMethod.Invoke(session1, new object?[] { threadId, "Please run forest-wide replication diagnostics." });
             RememberWeightedToolSubsetMethod.Invoke(session1, new object?[] { threadId, subsetTools, allTools.Count });
             RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, actionDraft });
+            RememberStructuredNextActionCarryoverMethod.Invoke(
+                session1,
+                new object?[] { threadId, carryoverToolDefinitions, carryoverToolCalls, carryoverToolOutputs, carryoverMutabilityHints });
             session1.RememberPendingDomainIntentClarificationRequestForTesting(threadId);
             session1.RememberPreferredDomainIntentFamilyForTesting(
                 domainThreadId,
@@ -74,6 +106,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var domainIntentPath = Assert.IsType<string>(ResolveDomainIntentStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var domainClarificationPath = Assert.IsType<string>(ResolveDomainIntentClarificationStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var weightedSubsetPath = Assert.IsType<string>(ResolveWeightedSubsetStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var structuredNextActionPath = Assert.IsType<string>(ResolveStructuredNextActionStorePathMethod.Invoke(session1, Array.Empty<object>()));
 
             ClearToolRoutingCachesMethod.Invoke(session1, Array.Empty<object>());
 
@@ -82,6 +115,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.False(File.Exists(domainIntentPath));
             Assert.False(File.Exists(domainClarificationPath));
             Assert.False(File.Exists(weightedSubsetPath));
+            Assert.False(File.Exists(structuredNextActionPath));
 
             var session2 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
