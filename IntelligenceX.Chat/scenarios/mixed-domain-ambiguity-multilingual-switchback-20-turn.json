@@ -47,7 +47,7 @@
     },
     {
       "name": "Switch to AD via action payload",
-      "user": "{\"ix_action_selection\":{\"id\":\"act_domain_scope_ad\",\"title\":\"Active Directory domain scope\",\"request\":\"{\\\"ix_domain_scope\\\":{\\\"family\\\":\\\"ad_domain\\\"}}\",\"mutating\":false}}",
+      "user": "{\"ix_action_selection\":{\"id\":\"act_domain_scope_ad\",\"title\":\"ad_domain\",\"request\":{\"ix_domain_scope\":{\"family\":\"ad_domain\"}},\"mutating\":false}}",
       "min_tool_calls": 1,
       "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_*domain*"],
       "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
