@@ -118,6 +118,32 @@ public sealed class HostScenarioCatalogStrictnessTests {
     }
 
     [Fact]
+    public void AdRebootLocalPeerCrossCheckTurn_EnforcesDistinctMachineCoverage() {
+        var scenarioDir = ResolveScenarioDirectory();
+        var file = Path.Combine(scenarioDir, "ad-reboot-local-10-turn.json");
+
+        Assert.True(File.Exists(file), $"Expected scenario file '{file}' to exist.");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var root = document.RootElement;
+        var turns = RequireProperty(root, "turns");
+        Assert.Equal(JsonValueKind.Array, turns.ValueKind);
+
+        var crossCheckTurn = turns.EnumerateArray().FirstOrDefault(static turn =>
+            turn.ValueKind == JsonValueKind.Object
+            && turn.TryGetProperty("name", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+            && string.Equals(nameElement.GetString(), "Cross-check peer DCs", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(JsonValueKind.Object, crossCheckTurn.ValueKind);
+        Assert.True(ReadRequiredInt32(crossCheckTurn, "min_tool_calls") >= 2);
+
+        var minimumDistinctInputValues = ReadNonNegativeIntMap(crossCheckTurn, "min_distinct_tool_input_values");
+        Assert.True(minimumDistinctInputValues.TryGetValue("machine_name", out var minMachineNameValues));
+        Assert.True(minMachineNameValues >= 2);
+    }
+
+    [Fact]
     public void MixedDomainAmbiguityScenarios_RequireClarifyBeforeSplitToolPaths() {
         var scenarioDir = ResolveScenarioDirectory();
         var files = Directory.GetFiles(scenarioDir, "mixed-domain-ambiguity-*-10-turn.json", SearchOption.TopDirectoryOnly)
@@ -332,5 +358,4 @@ public sealed class HostScenarioCatalogStrictnessTests {
         throw new InvalidDataException($"Property '{name}' must be an integer.");
     }
 }
-
 

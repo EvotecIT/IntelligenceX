@@ -189,6 +189,32 @@ foreach ($file in $files) {
         if (-not (Has-PatternToken -patterns $requiredPatternList -token "ad_")) {
             $failures.Add("$($file.Name): AD scenario must include at least one ad_* required tool pattern.") | Out-Null
         }
+
+        if ($file.Name.Equals("ad-reboot-local-10-turn.json", [StringComparison]::OrdinalIgnoreCase)) {
+            $crossCheckTurn = $null
+            foreach ($turn in $turns) {
+                $turnName = "$(Get-JsonPropertyValue -instance $turn -propertyName 'name')".Trim()
+                if ($turnName.Equals("Cross-check peer DCs", [StringComparison]::OrdinalIgnoreCase)) {
+                    $crossCheckTurn = $turn
+                    break
+                }
+            }
+
+            if ($null -eq $crossCheckTurn) {
+                $failures.Add("$($file.Name): expected 'Cross-check peer DCs' turn for cross-DC reboot validation.") | Out-Null
+            } else {
+                $crossCheckMinToolCalls = [int](Get-JsonPropertyValue -instance $crossCheckTurn -propertyName 'min_tool_calls' -defaultValue 0)
+                if ($crossCheckMinToolCalls -lt 2) {
+                    $failures.Add("$($file.Name): 'Cross-check peer DCs' must set min_tool_calls >= 2.") | Out-Null
+                }
+
+                $minimumDistinct = Get-JsonPropertyValue -instance $crossCheckTurn -propertyName 'min_distinct_tool_input_values'
+                $minimumMachineName = [int](Get-JsonPropertyValue -instance $minimumDistinct -propertyName 'machine_name' -defaultValue 0)
+                if ($minimumMachineName -lt 2) {
+                    $failures.Add("$($file.Name): 'Cross-check peer DCs' must enforce min_distinct_tool_input_values.machine_name >= 2.") | Out-Null
+                }
+            }
+        }
     }
 
     if ($file.Name.StartsWith("dns-", [StringComparison]::OrdinalIgnoreCase)) {

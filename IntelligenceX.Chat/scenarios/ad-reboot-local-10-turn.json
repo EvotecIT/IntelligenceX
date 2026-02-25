@@ -48,6 +48,7 @@
       "user": "Check those DCs for the same reboot signature around AD0's window and return a side-by-side matrix.",
       "assert_no_questions": true,
       "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
       "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_*events*"]
     },
     {
