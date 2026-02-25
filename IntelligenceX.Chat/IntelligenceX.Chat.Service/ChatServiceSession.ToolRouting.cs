@@ -933,11 +933,13 @@ internal sealed partial class ChatServiceSession {
             normalized = normalized.Substring(0, 600);
         }
 
+        var seenUtcTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
             _lastUserIntentByThreadId[normalizedThreadId] = normalized;
-            _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            _lastUserIntentSeenUtcTicks[normalizedThreadId] = seenUtcTicks;
             TrimWeightedRoutingContextsNoLock();
         }
+        PersistUserIntentSnapshot(normalizedThreadId, normalized, seenUtcTicks);
     }
 
     private string ExpandContinuationUserRequest(string threadId, string userRequest) {
@@ -959,28 +961,53 @@ internal sealed partial class ChatServiceSession {
         string? intent;
         long intentTicks;
         lock (_toolRoutingContextLock) {
-            if (!_lastUserIntentByThreadId.TryGetValue(normalizedThreadId, out intent) || string.IsNullOrWhiteSpace(intent)) {
+            _lastUserIntentByThreadId.TryGetValue(normalizedThreadId, out intent);
+            intentTicks = _lastUserIntentSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
+        }
+
+        if (string.IsNullOrWhiteSpace(intent)) {
+            if (!TryLoadUserIntentSnapshot(normalizedThreadId, out var persistedIntent, out var persistedTicks)) {
                 return raw;
             }
 
-            intentTicks = _lastUserIntentSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
+            intent = persistedIntent;
+            intentTicks = persistedTicks;
+            lock (_toolRoutingContextLock) {
+                _lastUserIntentByThreadId[normalizedThreadId] = intent;
+                _lastUserIntentSeenUtcTicks[normalizedThreadId] = intentTicks;
+                TrimWeightedRoutingContextsNoLock();
+            }
         }
 
         if (intentTicks > 0) {
             if (intentTicks < DateTime.MinValue.Ticks || intentTicks > DateTime.MaxValue.Ticks) {
                 // Defensive: avoid exceptions from ticks->DateTime conversion if ticks are corrupted/out of range.
+                lock (_toolRoutingContextLock) {
+                    _lastUserIntentByThreadId.Remove(normalizedThreadId);
+                    _lastUserIntentSeenUtcTicks.Remove(normalizedThreadId);
+                    TrimWeightedRoutingContextsNoLock();
+                }
+                RemoveUserIntentSnapshot(normalizedThreadId);
                 return raw;
             }
             var age = DateTime.UtcNow - new DateTime(intentTicks, DateTimeKind.Utc);
             if (age > UserIntentContextMaxAge) {
+                lock (_toolRoutingContextLock) {
+                    _lastUserIntentByThreadId.Remove(normalizedThreadId);
+                    _lastUserIntentSeenUtcTicks.Remove(normalizedThreadId);
+                    TrimWeightedRoutingContextsNoLock();
+                }
+                RemoveUserIntentSnapshot(normalizedThreadId);
                 return raw;
             }
         }
 
+        var refreshedSeenTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
-            _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            _lastUserIntentSeenUtcTicks[normalizedThreadId] = refreshedSeenTicks;
             TrimWeightedRoutingContextsNoLock();
         }
+        PersistUserIntentSnapshot(normalizedThreadId, intent!, refreshedSeenTicks);
 
         var expanded = $"{intent!.Trim()}\nFollow-up: {normalized}";
         return expanded.Length <= 900 ? expanded : expanded.Substring(0, 900);
