@@ -28,6 +28,9 @@ internal sealed partial class ChatServiceSession {
     private const int DomainIntentClarificationMinRelevantCandidates = 3;
     private const double DomainIntentClarificationMaxDominantShare = 0.80d;
     private const double DomainIntentAffinityRetentionMinDominantShare = 0.65d;
+    private const int DomainIntentAmbiguousDomainTokenMinLength = 4;
+    private const int DomainIntentAmbiguousDomainTokenMinLabels = 2;
+    private const int DomainIntentAmbiguousDomainTokenMaxCandidates = 16;
     private const string DomainIntentFamilyAd = "ad_domain";
     private const string DomainIntentFamilyPublic = "public_domain";
     private const string DomainIntentActionIdAd = "act_domain_scope_ad";
@@ -244,16 +247,145 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldForceDomainIntentClarificationForConflictingSignals(string userRequest, IReadOnlyList<ToolDefinition> allDefinitions) {
-        if (!HasConflictingDomainIntentSignals(userRequest)) {
-            return false;
-        }
-
         if (!HasMixedDomainIntentFamilyCoverage(allDefinitions)) {
             return false;
         }
 
         // If an explicit structured family selection is present, do not force clarification.
-        return !TryResolveDomainIntentFamilyFromUserSignals(userRequest, out _);
+        if (TryResolveDomainIntentFamilyFromUserSignals(userRequest, out _)) {
+            return false;
+        }
+
+        return HasConflictingDomainIntentSignals(userRequest)
+               || LooksLikeMixedDomainScopeRequest(userRequest);
+    }
+
+    private static bool LooksLikeMixedDomainScopeRequest(string text) {
+        var domains = ExtractDomainLikeTokens(text);
+        if (domains.Count < 2) {
+            return false;
+        }
+
+        for (var i = 0; i < domains.Count; i++) {
+            var left = domains[i];
+            for (var j = i + 1; j < domains.Count; j++) {
+                var right = domains[j];
+                if (IsParentChildDomainPair(left, right) || IsParentChildDomainPair(right, left)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static List<string> ExtractDomainLikeTokens(string text) {
+        var normalizedText = NormalizeRoutingUserText((text ?? string.Empty).Trim());
+        if (normalizedText.Length == 0) {
+            return new List<string>(0);
+        }
+
+        var domains = new List<string>(DomainIntentAmbiguousDomainTokenMaxCandidates);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tokenStart = -1;
+        for (var i = 0; i <= normalizedText.Length; i++) {
+            var tokenCharacter = false;
+            if (i < normalizedText.Length) {
+                var ch = normalizedText[i];
+                tokenCharacter = char.IsLetterOrDigit(ch) || ch is '.' or '-';
+            }
+
+            if (tokenCharacter) {
+                if (tokenStart < 0) {
+                    tokenStart = i;
+                }
+
+                continue;
+            }
+
+            if (tokenStart < 0) {
+                continue;
+            }
+
+            var token = normalizedText.Substring(tokenStart, i - tokenStart).Trim('.');
+            tokenStart = -1;
+            if (token.Length == 0 || !IsLikelyDomainToken(token) || !seen.Add(token)) {
+                continue;
+            }
+
+            domains.Add(token);
+            if (domains.Count >= DomainIntentAmbiguousDomainTokenMaxCandidates) {
+                break;
+            }
+        }
+
+        return domains;
+    }
+
+    private static bool IsLikelyDomainToken(string token) {
+        var normalized = (token ?? string.Empty).Trim();
+        if (normalized.Length < DomainIntentAmbiguousDomainTokenMinLength
+            || normalized.Length > 255
+            || normalized.StartsWith(".", StringComparison.Ordinal)
+            || normalized.EndsWith(".", StringComparison.Ordinal)
+            || normalized.Contains("..", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var labels = normalized.Split('.');
+        if (labels.Length < DomainIntentAmbiguousDomainTokenMinLabels) {
+            return false;
+        }
+
+        var hasLetter = false;
+        for (var i = 0; i < labels.Length; i++) {
+            var label = labels[i];
+            if (label.Length is < 1 or > 63
+                || label.StartsWith("-", StringComparison.Ordinal)
+                || label.EndsWith("-", StringComparison.Ordinal)) {
+                return false;
+            }
+
+            for (var j = 0; j < label.Length; j++) {
+                var ch = label[j];
+                if (!(char.IsLetterOrDigit(ch) || ch == '-')) {
+                    return false;
+                }
+
+                if (char.IsLetter(ch)) {
+                    hasLetter = true;
+                }
+            }
+        }
+
+        return hasLetter;
+    }
+
+    private static bool IsParentChildDomainPair(string child, string parent) {
+        var normalizedChild = (child ?? string.Empty).Trim();
+        var normalizedParent = (parent ?? string.Empty).Trim();
+        if (normalizedChild.Length == 0
+            || normalizedParent.Length == 0
+            || normalizedChild.Length <= normalizedParent.Length
+            || !normalizedChild.EndsWith(normalizedParent, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var separatorIndex = normalizedChild.Length - normalizedParent.Length - 1;
+        if (separatorIndex < 0 || normalizedChild[separatorIndex] != '.') {
+            return false;
+        }
+
+        return CountDomainLabels(normalizedChild) > CountDomainLabels(normalizedParent);
+    }
+
+    private static int CountDomainLabels(string value) {
+        var normalized = (value ?? string.Empty).Trim().Trim('.');
+        if (normalized.Length == 0) {
+            return 0;
+        }
+
+        return normalized.Split('.').Length;
     }
 
     private static bool IsAdDomainIntentToolName(string toolName) {

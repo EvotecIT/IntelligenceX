@@ -562,6 +562,37 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.False(shouldForce);
     }
 
+    [Theory]
+    [InlineData("Check domain health for corp.contoso.com and contoso.com.")]
+    [InlineData("Necesito revisar corp.contoso.com y contoso.com.")]
+    public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsTrueForParentChildDomainPairWithoutLexicalSignals(
+        string input) {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("dnsclientx_query", "DNS query")
+        };
+
+        var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
+            input,
+            tools);
+
+        Assert.True(shouldForce);
+    }
+
+    [Fact]
+    public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsFalseForUnrelatedDomainPairWithoutLexicalSignals() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("dnsclientx_query", "DNS query")
+        };
+
+        var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
+            "Check domain health for contoso.com and fabrikam.net.",
+            tools);
+
+        Assert.False(shouldForce);
+    }
+
     [Fact]
     public void DomainIntentHostGuardrail_BlocksAdScopeHostCallWhenTargetMatchesPublicDomainEvidence() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
