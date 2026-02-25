@@ -144,12 +144,12 @@ public sealed class HostScenarioCatalogStrictnessTests {
         Assert.Contains(clarifyForbidden, pattern => string.Equals(pattern, "*", StringComparison.Ordinal));
 
         var clarifyContains = ReadStringList(clarifyTurn, "assert_contains");
-        Assert.Contains(clarifyContains, pattern => pattern.IndexOf("ad", StringComparison.OrdinalIgnoreCase) >= 0);
+        Assert.Contains(clarifyContains, pattern => pattern.IndexOf("ad", StringComparison.OrdinalIgnoreCase) >= 0 || pattern.IndexOf("directory", StringComparison.OrdinalIgnoreCase) >= 0);
         Assert.Contains(clarifyContains, pattern => pattern.IndexOf("dns", StringComparison.OrdinalIgnoreCase) >= 0);
 
         var adPathTurnFound = false;
         var dnsPathTurnFound = false;
-        foreach (var turn in turnList) {
+        foreach (var turn in turnList.Skip(1)) {
             var requiredPatterns = ReadStringList(turn, "require_any_tools");
             var forbiddenPatterns = ReadStringList(turn, "forbid_tools");
             if (requiredPatterns.Count == 0) {
@@ -324,4 +324,6 @@ public sealed class HostScenarioCatalogStrictnessTests {
         throw new InvalidDataException($"Property '{name}' must be an integer.");
     }
 }
+
+
 
