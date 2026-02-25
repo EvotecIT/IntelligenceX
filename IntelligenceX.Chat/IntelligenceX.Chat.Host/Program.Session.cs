@@ -34,6 +34,7 @@ internal static partial class Program {
         private const int HostTargetSpecificityShortNameBonus = 1;
         private const int HostTargetSpecificityIpLiteralPenalty = 2;
         private const int HostTargetSpecificityLocalhostPenalty = 3;
+        private const int MinReplicationProbeTimeoutMs = 10000;
         private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
@@ -1462,6 +1463,20 @@ internal static partial class Program {
                     }
                 }
 
+                var replicationRepairedCall = ApplyAdReplicationProbeFallback(effectiveCall, result, knownHostTargets);
+                if (!ReferenceEquals(replicationRepairedCall, effectiveCall)) {
+                    if (_options.LiveProgress) {
+                        _status?.Invoke("input-repair: retrying replication probe with expanded timeout and normalized DC target.");
+                    }
+
+                    var repairedResult = await tool.InvokeAsync(replicationRepairedCall.Arguments, toolToken).ConfigureAwait(false);
+                    if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
+                        return new ToolOutput(replicationRepairedCall.CallId, repairedResult ?? string.Empty);
+                    }
+
+                    return new ToolOutput(replicationRepairedCall.CallId, repairedResult ?? string.Empty);
+                }
+
                 return new ToolOutput(effectiveCall.CallId, result ?? string.Empty);
             } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
                 return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
@@ -1518,6 +1533,174 @@ internal static partial class Program {
 
             var patchedInput = JsonLite.Serialize(JsonValue.From(rewrittenArguments));
             return new ToolCall(call.CallId, call.Name, patchedInput, rewrittenArguments, call.Raw);
+        }
+
+        private static ToolCall ApplyAdReplicationProbeFallback(
+            ToolCall call,
+            string toolOutput,
+            IReadOnlyList<string>? knownHostTargets) {
+            if (call.Arguments is null
+                || !string.Equals(call.Name, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase)
+                || !IsReplicationProbeCall(call.Arguments)
+                || !TryReadToolOutputFailure(toolOutput, out var errorCode, out var errorMessage)) {
+                return call;
+            }
+
+            var looksLikeTimeout = string.Equals(errorCode, "timeout", StringComparison.OrdinalIgnoreCase)
+                                   || errorMessage.Contains("Replication query timed out", StringComparison.OrdinalIgnoreCase);
+            var looksLikeNoData = errorMessage.Contains("No replication data returned", StringComparison.OrdinalIgnoreCase);
+            if (!looksLikeTimeout && !looksLikeNoData) {
+                return call;
+            }
+
+            var rewrittenArguments = new JsonObject(StringComparer.Ordinal);
+            foreach (var pair in call.Arguments) {
+                rewrittenArguments.Add(pair.Key, pair.Value ?? JsonValue.Null);
+            }
+
+            var changed = false;
+            if (looksLikeTimeout) {
+                var configuredTimeout = rewrittenArguments.GetInt64("timeout_ms") ?? 0;
+                if (configuredTimeout <= 0 || configuredTimeout < MinReplicationProbeTimeoutMs) {
+                    rewrittenArguments.Add("timeout_ms", MinReplicationProbeTimeoutMs);
+                    changed = true;
+                }
+            }
+
+            if (TryPromoteReplicationProbeHostInputsToFqdn(rewrittenArguments, knownHostTargets)) {
+                changed = true;
+            }
+
+            if (!changed) {
+                return call;
+            }
+
+            var patchedInput = JsonLite.Serialize(JsonValue.From(rewrittenArguments));
+            return new ToolCall(call.CallId, call.Name, patchedInput, rewrittenArguments, call.Raw);
+        }
+
+        private static bool IsReplicationProbeCall(JsonObject arguments) {
+            var probeKind = arguments.GetString("probe_kind") ?? string.Empty;
+            return string.Equals(probeKind, "replication", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryPromoteReplicationProbeHostInputsToFqdn(
+            JsonObject arguments,
+            IReadOnlyList<string>? knownHostTargets) {
+            if (knownHostTargets is null || knownHostTargets.Count == 0) {
+                return false;
+            }
+
+            var knownFqdns = OrderHostTargetCandidatesBySpecificity(knownHostTargets)
+                .Select(NormalizeHostTargetCandidate)
+                .Where(static value => value.Contains('.'))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (knownFqdns.Length == 0) {
+                return false;
+            }
+
+            var changed = false;
+            if (TryPromoteStringHostArgument(arguments, "domain_controller", knownFqdns)) {
+                changed = true;
+            }
+
+            if (TryPromoteStringArrayHostArgument(arguments, "targets", knownFqdns)) {
+                changed = true;
+            }
+
+            if (TryPromoteStringArrayHostArgument(arguments, "include_domain_controllers", knownFqdns)) {
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool TryPromoteStringHostArgument(JsonObject arguments, string key, IReadOnlyList<string> knownFqdns) {
+            var current = arguments.GetString(key) ?? string.Empty;
+            if (!TryResolveKnownHostFqdn(current, knownFqdns, out var resolved)) {
+                return false;
+            }
+
+            arguments.Add(key, resolved);
+            return true;
+        }
+
+        private static bool TryPromoteStringArrayHostArgument(JsonObject arguments, string key, IReadOnlyList<string> knownFqdns) {
+            if (arguments.GetArray(key) is not JsonArray values || values.Count == 0) {
+                return false;
+            }
+
+            var patched = new JsonArray();
+            var changed = false;
+            for (var i = 0; i < values.Count; i++) {
+                var original = values[i]?.AsString() ?? string.Empty;
+                if (TryResolveKnownHostFqdn(original, knownFqdns, out var resolved)) {
+                    patched.Add(resolved);
+                    changed = true;
+                    continue;
+                }
+
+                patched.Add(original);
+            }
+
+            if (!changed) {
+                return false;
+            }
+
+            arguments.Add(key, patched);
+            return true;
+        }
+
+        private static bool TryResolveKnownHostFqdn(string value, IReadOnlyList<string> knownFqdns, out string resolved) {
+            resolved = string.Empty;
+            var normalized = NormalizeHostTargetCandidate(value);
+            if (normalized.Length == 0) {
+                return false;
+            }
+
+            for (var i = 0; i < knownFqdns.Count; i++) {
+                var candidate = knownFqdns[i];
+                if (string.Equals(candidate, normalized, StringComparison.OrdinalIgnoreCase)) {
+                    resolved = candidate;
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < knownFqdns.Count; i++) {
+                var candidate = knownFqdns[i];
+                if (candidate.StartsWith(normalized + ".", StringComparison.OrdinalIgnoreCase)) {
+                    resolved = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryReadToolOutputFailure(string output, out string errorCode, out string errorMessage) {
+            errorCode = string.Empty;
+            errorMessage = string.Empty;
+            if (string.IsNullOrWhiteSpace(output)) {
+                return false;
+            }
+
+            var envelope = JsonLite.Parse(output)?.AsObject();
+            if (envelope is null || !TryReadToolOutputOk(output, out var ok) || ok) {
+                return false;
+            }
+
+            errorCode = envelope.GetString("error_code") ?? string.Empty;
+            errorMessage = envelope.GetString("error") ?? string.Empty;
+            var failure = envelope.GetObject("failure");
+            if (errorCode.Length == 0) {
+                errorCode = failure?.GetString("code") ?? string.Empty;
+            }
+            if (errorMessage.Length == 0) {
+                errorMessage = failure?.GetString("message") ?? string.Empty;
+            }
+
+            return errorCode.Length > 0 || errorMessage.Length > 0;
         }
 
         private static bool IsAdDiscoveryToolName(string toolName) {

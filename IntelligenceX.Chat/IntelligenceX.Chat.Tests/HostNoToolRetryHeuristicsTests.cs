@@ -456,6 +456,64 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void ApplyAdReplicationProbeFallback_ExtendsTimeoutAndPromotesFqdnTargets() {
+        var call = BuildToolCall(
+            "call_1",
+            "ad_monitoring_probe_run",
+            """{"probe_kind":"replication","domain_controller":"AD2","targets":["AD2"],"timeout_ms":5000}""");
+        const string output = """{"ok":false,"error_code":"timeout","error":"Replication query timed out after 0:00:05."}""";
+
+        var repaired = InvokeApplyAdReplicationProbeFallback(
+            call: call,
+            output: output,
+            knownHostTargets: new[] { "AD2.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal(10000L, repaired.Arguments?.GetInt64("timeout_ms"));
+        Assert.Equal("AD2.ad.evotec.xyz", repaired.Arguments?.GetString("domain_controller"));
+        var targets = repaired.Arguments?.GetArray("targets");
+        Assert.NotNull(targets);
+        Assert.Single(targets!);
+        Assert.Equal("AD2.ad.evotec.xyz", targets[0].AsString());
+    }
+
+    [Fact]
+    public void ApplyAdReplicationProbeFallback_PromotesFqdnOnNoDataFailure() {
+        var call = BuildToolCall(
+            "call_1",
+            "ad_monitoring_probe_run",
+            """{"probe_kind":"replication","domain_controller":"AD1","targets":["AD1"]}""");
+        const string output = """{"ok":false,"error":"No replication data returned (domain=ad.evotec.xyz; explicitDCs=AD1; preferredDC=; ldapFallback=True; cred=False)."}""";
+
+        var repaired = InvokeApplyAdReplicationProbeFallback(
+            call: call,
+            output: output,
+            knownHostTargets: new[] { "AD1.ad.evotec.xyz", "AD2.ad.evotec.xyz" });
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal("AD1.ad.evotec.xyz", repaired.Arguments?.GetString("domain_controller"));
+        var targets = repaired.Arguments?.GetArray("targets");
+        Assert.NotNull(targets);
+        Assert.Equal("AD1.ad.evotec.xyz", targets![0].AsString());
+    }
+
+    [Fact]
+    public void ApplyAdReplicationProbeFallback_DoesNotPatchNonReplicationProbeCalls() {
+        var call = BuildToolCall(
+            "call_1",
+            "ad_monitoring_probe_run",
+            """{"probe_kind":"ldap","domain_controller":"AD2","timeout_ms":5000}""");
+        const string output = """{"ok":false,"error_code":"timeout","error":"Replication query timed out after 0:00:05."}""";
+
+        var repaired = InvokeApplyAdReplicationProbeFallback(
+            call: call,
+            output: output,
+            knownHostTargets: new[] { "AD2.ad.evotec.xyz" });
+
+        Assert.Same(call, repaired);
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
         const string request = """
 [Scenario execution contract]
@@ -797,6 +855,23 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.NotNull(method);
 
         var value = method!.Invoke(null, new object?[] { call, output });
+        return Assert.IsType<ToolCall>(value);
+    }
+
+    private static ToolCall InvokeApplyAdReplicationProbeFallback(
+        ToolCall call,
+        string output,
+        IReadOnlyList<string>? knownHostTargets) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ApplyAdReplicationProbeFallback",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { call, output, knownHostTargets });
         return Assert.IsType<ToolCall>(value);
     }
 
