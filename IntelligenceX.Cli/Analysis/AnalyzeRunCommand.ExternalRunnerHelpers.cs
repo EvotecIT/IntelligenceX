@@ -5,6 +5,16 @@ using System.IO;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
+    private static readonly string[] CommandUnavailableMarkers = {
+        "not recognized as an internal or external command",
+        "is not recognized as an internal or external command",
+        "no such file or directory",
+        "cannot find the file",
+        "the system cannot find the file specified",
+        "command not found",
+        "could not determine executable to run"
+    };
+
     private sealed class WorkspaceSourceInventory {
         public WorkspaceSourceInventory(HashSet<string> extensions, int skippedEnumerations) {
             Extensions = extensions ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -34,13 +44,21 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
 
-        return text.Contains("not recognized as an internal or external command", StringComparison.Ordinal) ||
-               text.Contains("is not recognized as an internal or external command", StringComparison.Ordinal) ||
-               text.Contains("no such file or directory", StringComparison.Ordinal) ||
-               text.Contains("cannot find the file", StringComparison.Ordinal) ||
-               text.Contains("the system cannot find the file specified", StringComparison.Ordinal) ||
-               text.Contains("command not found", StringComparison.Ordinal) ||
-               text.Contains("could not determine executable to run", StringComparison.Ordinal);
+        return ContainsAnyCommandUnavailableMarker(text);
+    }
+
+    private static bool ContainsAnyCommandUnavailableMarker(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        foreach (var marker in CommandUnavailableMarkers) {
+            if (text.Contains(marker, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool WorkspaceContainsAnySourceFile(string workspace, params string[] extensions) {

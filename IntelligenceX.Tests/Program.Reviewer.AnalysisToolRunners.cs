@@ -151,6 +151,16 @@ internal static partial class Program {
         AssertContainsText(unavailableMessage, "--ruff-command",
             "external runner unavailable message includes override option guidance");
 
+        var unavailableByTextMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+            languageLabel: "Python",
+            command: "ruff",
+            optionName: "--ruff-command",
+            exitCode: 2,
+            stdOut: string.Empty,
+            stdErr: "'ruff' is not recognized as an internal or external command");
+        AssertContainsText(unavailableByTextMessage, "analysis command 'ruff' is unavailable",
+            "external runner unavailable message recognizes command-not-found text heuristics");
+
         var genericFailureMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
             languageLabel: "Python",
             command: "ruff",
