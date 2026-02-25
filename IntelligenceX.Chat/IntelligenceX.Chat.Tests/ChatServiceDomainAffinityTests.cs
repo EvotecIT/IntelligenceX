@@ -277,6 +277,25 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesDomainIntentChoiceMarkerPayload() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-marker");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-marker",
+            """
+            [DomainIntent]
+            ix:domain-intent-choice:v1
+            choice: 2
+            """,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-marker"));
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesActionSelectionPayload() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action");

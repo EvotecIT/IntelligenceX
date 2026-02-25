@@ -393,6 +393,10 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        if (TryParseDomainIntentChoiceMarkerSelection(normalized, out family)) {
+            return true;
+        }
+
         var compact = NormalizeCompactText(normalized);
         if (string.Equals(compact, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
             family = DomainIntentFamilyAd;
@@ -458,6 +462,82 @@ internal sealed partial class ChatServiceSession {
             }
         } catch (JsonException) {
             return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseDomainIntentChoiceMarkerSelection(string text, out string family) {
+        family = string.Empty;
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        const string marker = "ix:domain-intent-choice:v1";
+        var markerIndex = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return false;
+        }
+
+        var tail = normalized[(markerIndex + marker.Length)..];
+        var lines = tail.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
+        for (var i = 0; i < lines.Length; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            if (line.StartsWith("[", StringComparison.Ordinal) && line.EndsWith("]", StringComparison.Ordinal)) {
+                break;
+            }
+
+            var separator = line.IndexOf(':');
+            if (separator <= 0) {
+                continue;
+            }
+
+            var key = line[..separator].Trim();
+            var value = line[(separator + 1)..].Trim();
+            if (key.Length == 0 || value.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(key, "family", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "scope", StringComparison.OrdinalIgnoreCase)) {
+                if (string.Equals(value, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
+                    family = DomainIntentFamilyAd;
+                    return true;
+                }
+
+                if (string.Equals(value, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
+                    family = DomainIntentFamilyPublic;
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (!string.Equals(key, "choice", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(key, "selection", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(key, "option", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(key, "index", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (!TryParseOrdinalSelection(value, out var ordinalValue)) {
+                continue;
+            }
+
+            if (ordinalValue == 1) {
+                family = DomainIntentFamilyAd;
+                return true;
+            }
+
+            if (ordinalValue == 2) {
+                family = DomainIntentFamilyPublic;
+                return true;
+            }
         }
 
         return false;
