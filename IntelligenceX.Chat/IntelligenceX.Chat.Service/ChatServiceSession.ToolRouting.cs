@@ -502,6 +502,17 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    private static bool HasConflictingDomainIntentSignals(string text) {
+        var normalized = NormalizeCompactText(text);
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
+        return hasAdSignals && hasPublicSignals;
+    }
+
     private static bool ContainsAnyDomainSignalToken(string text, IReadOnlyList<string> signals) {
         if (signals is null || signals.Count == 0) {
             return false;
@@ -1612,6 +1623,10 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto> toolOutputs,
         IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
         RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHintsByName);
+    }
+
+    internal static bool HasConflictingDomainIntentSignalsForTesting(string userRequest) {
+        return HasConflictingDomainIntentSignals(userRequest);
     }
 
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {

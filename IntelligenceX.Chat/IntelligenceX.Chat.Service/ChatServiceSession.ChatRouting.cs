@@ -190,7 +190,12 @@ internal sealed partial class ChatServiceSession {
                 selectedToolCount: routingSelectedToolCount,
                 totalToolCount: routingTotalToolCount,
                 selectedTools: toolDefs)) {
-            if (TryApplyDomainIntentSignalRoutingHint(
+            var conflictingDomainSignals = HasConflictingDomainIntentSignals(routedUserRequest);
+            if (conflictingDomainSignals) {
+                ClearPreferredDomainIntentFamily(threadId);
+            }
+
+            if (!conflictingDomainSignals && TryApplyDomainIntentSignalRoutingHint(
                     threadId,
                     routedUserRequest,
                     toolDefs,
@@ -230,7 +235,8 @@ internal sealed partial class ChatServiceSession {
                         status: ChatStatusCodes.RoutingMeta,
                         message: signalRoutingMetaPayload)
                     .ConfigureAwait(false);
-            } else if (TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
+            } else if (!conflictingDomainSignals
+                       && TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
                 toolDefs = affinedTools;
                 (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
                 var affinityScope = string.Equals(affinityFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
@@ -270,7 +276,9 @@ internal sealed partial class ChatServiceSession {
                         request.RequestId,
                         threadId,
                         status: ChatStatusCodes.Routing,
-                        message: "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
+                        message: conflictingDomainSignals
+                            ? "Tool routing detected conflicting AD and public DNS/domain signals in your request; requesting scope clarification before execution."
+                            : "Tool routing detected mixed AD and public DNS/domain candidates; requesting scope clarification before execution.")
                     .ConfigureAwait(false);
 
                 var clarificationText = BuildDomainIntentClarificationText();

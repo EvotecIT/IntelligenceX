@@ -420,4 +420,20 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.False(applied);
         Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-domain-signal-conflict"));
     }
+
+    [Theory]
+    [InlineData("AD and DNS")]
+    [InlineData("Need LDAP + MX checks")]
+    [InlineData("kerberos DNS MX")]
+    public void HasConflictingDomainIntentSignalsForTesting_ReturnsTrueForMixedSignals(string input) {
+        Assert.True(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
+    }
+
+    [Theory]
+    [InlineData("AD LDAP GPO")]
+    [InlineData("DNS MX SPF")]
+    [InlineData("domain summary")]
+    public void HasConflictingDomainIntentSignalsForTesting_ReturnsFalseWhenSignalsDoNotConflict(string input) {
+        Assert.False(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
+    }
 }
