@@ -60,6 +60,37 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void UserMatchesAssistantCallToAction_ParsesQuotedCtaWithFullwidthComma() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "UserMatchesAssistantCallToAction",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var userRequest = "继续执行";
+        var assistantDraft = "请回复“继续执行”，我会马上执行并返回结果。";
+        var result = method!.Invoke(null, new object?[] { userRequest, assistantDraft, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void UserMatchesAssistantCallToAction_ParsesQuoteOnlyLineWhenPreviousLineEndsWithFullwidthColon() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "UserMatchesAssistantCallToAction",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var userRequest = "继续执行";
+        var assistantDraft = """
+                             要继续请回复：
+                             “继续执行”
+                             """;
+        var result = method!.Invoke(null, new object?[] { userRequest, assistantDraft, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForNumericActionSelectionId() {
         var userRequest = "{\"ix_action_selection\":{\"id\":1,\"title\":\"Run\",\"request\":\"Run it.\"}}";
         var assistantDraft = "Ok, doing it now.";

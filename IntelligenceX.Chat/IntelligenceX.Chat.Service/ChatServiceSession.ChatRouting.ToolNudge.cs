@@ -27,6 +27,8 @@ internal sealed partial class ChatServiceSession {
     private const int NoResultPhaseLoopThresholdWithToolActivity = 8;
     private const int NoResultPhaseLoopThresholdWithoutToolActivity = 6;
     private const int FollowUpQuestionMaxTokens = 12;
+    private static readonly char[] CallToActionCommaPunctuation = new[] { ',', '\uFF0C', '\u3001', '\u060C' };
+    private static readonly char[] CallToActionColonPunctuation = new[] { ':', '\uFF1A', '\uFE13' };
     private enum ActionMutability {
         Unknown = 0,
         ReadOnly = 1,
@@ -1780,7 +1782,7 @@ internal sealed partial class ChatServiceSession {
                     scan++;
                     consumedSpace++;
                 }
-                if (scan < assistantDraft.Length && assistantDraft[scan] == ',') {
+                if (scan < assistantDraft.Length && IsCallToActionComma(assistantDraft[scan])) {
                     return true;
                 }
             }
@@ -1896,13 +1898,33 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (start <= lineEnd) {
-                return text[lineEnd] == ':';
+                return IsCallToActionColon(text[lineEnd]);
             }
 
             // Empty line; move to previous.
             i = lineStart - 1;
             while (i >= 0 && (text[i] == '\n' || text[i] == '\r')) {
                 i--;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsCallToActionComma(char value) {
+        for (var i = 0; i < CallToActionCommaPunctuation.Length; i++) {
+            if (CallToActionCommaPunctuation[i] == value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsCallToActionColon(char value) {
+        for (var i = 0; i < CallToActionColonPunctuation.Length; i++) {
+            if (CallToActionColonPunctuation[i] == value) {
+                return true;
             }
         }
 
