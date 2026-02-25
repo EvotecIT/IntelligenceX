@@ -1690,17 +1690,50 @@ internal static partial class Program {
             }
             using var toolCts = CreateTimeoutCts(cancellationToken, _options.ToolTimeoutSeconds);
             var toolToken = toolCts?.Token ?? cancellationToken;
+
+            async Task<(bool TimedOut, string? Output)> InvokeToolWithTimeoutGuardAsync(JsonObject? arguments) {
+                var invokeTask = tool.InvokeAsync(arguments, toolToken);
+                var invocation = await WaitForToolOutputWithTimeoutAsync(
+                    invokeTask,
+                    _options.ToolTimeoutSeconds,
+                    cancellationToken).ConfigureAwait(false);
+                if (!invocation.TimedOut) {
+                    return invocation;
+                }
+
+                if (toolCts is not null && !toolCts.IsCancellationRequested) {
+                    try {
+                        toolCts.Cancel();
+                    } catch (ObjectDisposedException) {
+                        // Best-effort cancellation; safe to ignore if the CTS has already been disposed.
+                    }
+                }
+
+                ObserveToolInvocationFault(invokeTask);
+                return invocation;
+            }
+
             try {
-                var result = await tool.InvokeAsync(effectiveCall.Arguments, toolToken).ConfigureAwait(false);
+                var invocation = await InvokeToolWithTimeoutGuardAsync(effectiveCall.Arguments).ConfigureAwait(false);
+                if (invocation.TimedOut) {
+                    return BuildToolTimeoutOutput(effectiveCall.CallId, call.Name);
+                }
+
+                var result = invocation.Output ?? string.Empty;
                 var repairedCall = ApplyAdDiscoveryRootDseFallback(effectiveCall, result);
                 if (!ReferenceEquals(repairedCall, effectiveCall)) {
                     if (_options.LiveProgress) {
                         _status?.Invoke("input-repair: retrying AD discovery without pinned domain_controller after RootDSE failure.");
                     }
 
-                    var repairedResult = await tool.InvokeAsync(repairedCall.Arguments, toolToken).ConfigureAwait(false);
+                    var repairedInvocation = await InvokeToolWithTimeoutGuardAsync(repairedCall.Arguments).ConfigureAwait(false);
+                    if (repairedInvocation.TimedOut) {
+                        return BuildToolTimeoutOutput(repairedCall.CallId, call.Name);
+                    }
+
+                    var repairedResult = repairedInvocation.Output ?? string.Empty;
                     if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
-                        var repairedOutput = repairedResult ?? string.Empty;
+                        var repairedOutput = repairedResult;
                         TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
                         return new ToolOutput(repairedCall.CallId, repairedOutput);
                     }
@@ -1712,14 +1745,19 @@ internal static partial class Program {
                         _status?.Invoke("input-repair: retrying replication probe with expanded timeout and normalized DC target.");
                     }
 
-                    var repairedResult = await tool.InvokeAsync(replicationRepairedCall.Arguments, toolToken).ConfigureAwait(false);
+                    var repairedInvocation = await InvokeToolWithTimeoutGuardAsync(replicationRepairedCall.Arguments).ConfigureAwait(false);
+                    if (repairedInvocation.TimedOut) {
+                        return BuildToolTimeoutOutput(replicationRepairedCall.CallId, call.Name);
+                    }
+
+                    var repairedResult = repairedInvocation.Output ?? string.Empty;
                     if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
-                        var repairedOutput = repairedResult ?? string.Empty;
+                        var repairedOutput = repairedResult;
                         TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
                         return new ToolOutput(replicationRepairedCall.CallId, repairedOutput);
                     }
 
-                    var failedOutput = repairedResult ?? string.Empty;
+                    var failedOutput = repairedResult;
                     TryStoreSessionToolOutputCache(sessionCacheKey, failedOutput, hasSessionCacheKey);
                     return new ToolOutput(replicationRepairedCall.CallId, failedOutput);
                 }
@@ -1730,27 +1768,63 @@ internal static partial class Program {
                         _status?.Invoke("input-repair: retrying DomainDetective summary with expanded timeout.");
                     }
 
-                    var repairedResult = await tool.InvokeAsync(domainDetectiveRepairedCall.Arguments, toolToken).ConfigureAwait(false);
-                    var repairedOutput = repairedResult ?? string.Empty;
+                    var repairedInvocation = await InvokeToolWithTimeoutGuardAsync(domainDetectiveRepairedCall.Arguments).ConfigureAwait(false);
+                    if (repairedInvocation.TimedOut) {
+                        return BuildToolTimeoutOutput(domainDetectiveRepairedCall.CallId, call.Name);
+                    }
+
+                    var repairedOutput = repairedInvocation.Output ?? string.Empty;
                     TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
                     return new ToolOutput(domainDetectiveRepairedCall.CallId, repairedOutput);
                 }
 
-                var output = result ?? string.Empty;
+                var output = result;
                 TryStoreSessionToolOutputCache(sessionCacheKey, output, hasSessionCacheKey);
                 return new ToolOutput(effectiveCall.CallId, output);
             } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
-                return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
-                    errorCode: "tool_timeout",
-                    error: $"Tool '{call.Name}' timed out after {_options.ToolTimeoutSeconds}s.",
-                    hints: new[] { "Increase --tool-timeout-seconds, or narrow the query (OU scoping, tighter filters)." },
-                    isTransient: true));
+                return BuildToolTimeoutOutput(effectiveCall.CallId, call.Name);
             } catch (Exception ex) {
                 return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_exception",
                     error: $"{ex.GetType().Name}: {ex.Message}",
                     hints: new[] { "Try again. If it keeps failing, re-run with --echo-tool-outputs to capture details." },
                     isTransient: false));
+            }
+        }
+
+        private ToolOutput BuildToolTimeoutOutput(string callId, string toolName) {
+            return new ToolOutput(callId, ToolOutputEnvelope.Error(
+                errorCode: "tool_timeout",
+                error: $"Tool '{toolName}' timed out after {_options.ToolTimeoutSeconds}s.",
+                hints: new[] { "Increase --tool-timeout-seconds, or narrow the query (OU scoping, tighter filters)." },
+                isTransient: true));
+        }
+
+        private static void ObserveToolInvocationFault(Task<string> invocationTask) {
+            _ = invocationTask.ContinueWith(
+                static task => {
+                    _ = task.Exception;
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        private static async Task<(bool TimedOut, string? Output)> WaitForToolOutputWithTimeoutAsync(
+            Task<string> invocationTask,
+            int timeoutSeconds,
+            CancellationToken cancellationToken) {
+            if (timeoutSeconds <= 0) {
+                return (false, await invocationTask.ConfigureAwait(false));
+            }
+
+            try {
+                var output = await invocationTask
+                    .WaitAsync(TimeSpan.FromSeconds(timeoutSeconds), cancellationToken)
+                    .ConfigureAwait(false);
+                return (false, output);
+            } catch (TimeoutException) {
+                return (true, null);
             }
         }
 

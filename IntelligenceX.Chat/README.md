@@ -47,6 +47,8 @@ pwsh .\Build\Run-ChatLiveConversation.ps1 `
   -OutDir .\artifacts\chat-live
 ```
 
+By default, live harness runs now apply `-TurnTimeoutSeconds 900` and `-ToolTimeoutSeconds 120` to avoid indefinite hangs in long turns. Set either to `0` to disable that timeout.
+
 Live harness can also auto-select a scenario (no hardcoded file) using filter + tags:
 
 `-ScenarioTags`, `-Tags`, `-LiveScenarioTags`, and `-LiveSuiteTags` are PowerShell string-array parameters.

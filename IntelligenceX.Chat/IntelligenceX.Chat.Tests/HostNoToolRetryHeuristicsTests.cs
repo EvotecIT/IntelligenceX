@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.Tools;
@@ -890,6 +891,30 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.False(result);
     }
 
+    [Fact]
+    public async Task WaitForToolOutputWithTimeoutAsync_ReturnsTimedOutForNonCompletingTask() {
+        var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var result = await InvokeWaitForToolOutputWithTimeoutAsync(
+            pending.Task,
+            timeoutSeconds: 1,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.timedOut);
+        Assert.Null(result.output);
+    }
+
+    [Fact]
+    public async Task WaitForToolOutputWithTimeoutAsync_ReturnsOutputWhenTaskCompletesWithinTimeout() {
+        var result = await InvokeWaitForToolOutputWithTimeoutAsync(
+            Task.FromResult("""{"ok":true}"""),
+            timeoutSeconds: 2,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.timedOut);
+        Assert.Equal("""{"ok":true}""", result.output);
+    }
+
     private static bool InvokeShouldRetryNoToolExecution(string userRequest, string assistantDraft) {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
@@ -984,6 +1009,26 @@ Continue that failure-signature collection across all remaining DCs in this turn
 
         var value = method!.Invoke(null, new object?[] { ex, attempt, maxAttempts, cancellationToken });
         return value is bool b && b;
+    }
+
+    private static async Task<(bool timedOut, string? output)> InvokeWaitForToolOutputWithTimeoutAsync(
+        Task<string> invocationTask,
+        int timeoutSeconds,
+        CancellationToken cancellationToken) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "WaitForToolOutputWithTimeoutAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        dynamic task = method!.Invoke(null, new object?[] { invocationTask, timeoutSeconds, cancellationToken })!;
+        await task;
+        bool timedOut = task.Result.Item1;
+        string? output = task.Result.Item2;
+        return (timedOut, output);
     }
 
     private static (int[] canonical, int dedupedCount) InvokeBuildReadOnlyCallCanonicalIndices(
