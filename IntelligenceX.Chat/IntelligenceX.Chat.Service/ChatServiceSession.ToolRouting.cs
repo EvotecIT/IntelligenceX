@@ -865,13 +865,36 @@ internal sealed partial class ChatServiceSession {
         }
 
         string[]? previousNames;
+        long seenUtcTicks;
         lock (_toolRoutingContextLock) {
-            if (!_lastWeightedToolNamesByThreadId.TryGetValue(normalizedThreadId, out previousNames) || previousNames.Length == 0) {
+            _lastWeightedToolNamesByThreadId.TryGetValue(normalizedThreadId, out previousNames);
+            seenUtcTicks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
+        }
+
+        if (previousNames is null || previousNames.Length == 0) {
+            if (!TryLoadWeightedToolSubsetSnapshot(normalizedThreadId, out seenUtcTicks, out var persistedNames)
+                || persistedNames.Length == 0) {
                 return false;
             }
 
-            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+            previousNames = persistedNames;
+            lock (_toolRoutingContextLock) {
+                _lastWeightedToolNamesByThreadId[normalizedThreadId] = previousNames;
+                _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = seenUtcTicks;
+                TrimWeightedRoutingContextsNoLock();
+            }
+        }
+
+        if (!TryGetUtcDateTimeFromTicks(seenUtcTicks, out var seenUtc)
+            || seenUtc > DateTime.UtcNow
+            || DateTime.UtcNow - seenUtc > UserIntentContextMaxAge) {
+            lock (_toolRoutingContextLock) {
+                _lastWeightedToolNamesByThreadId.Remove(normalizedThreadId);
+                _lastWeightedToolSubsetSeenUtcTicks.Remove(normalizedThreadId);
+                TrimWeightedRoutingContextsNoLock();
+            }
+            RemoveWeightedToolSubsetSnapshot(normalizedThreadId);
+            return false;
         }
 
         var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
@@ -887,6 +910,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var refreshedTicks = DateTime.UtcNow.Ticks;
+        lock (_toolRoutingContextLock) {
+            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = refreshedTicks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+        PersistWeightedToolSubsetSnapshot(normalizedThreadId, refreshedTicks, previousNames!);
+
         subset = selected;
         return true;
     }
@@ -897,24 +927,38 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        long seenUtcTicks = 0;
+        string[] namesSnapshot = Array.Empty<string>();
+        var removeSnapshot = false;
         lock (_toolRoutingContextLock) {
             if (selectedDefinitions.Count == 0 || selectedDefinitions.Count >= allToolCount) {
                 _lastWeightedToolNamesByThreadId.Remove(normalizedThreadId);
                 _lastWeightedToolSubsetSeenUtcTicks.Remove(normalizedThreadId);
-                return;
-            }
-
-            var names = new List<string>(selectedDefinitions.Count);
-            for (var i = 0; i < selectedDefinitions.Count && i < 64; i++) {
-                var name = (selectedDefinitions[i].Name ?? string.Empty).Trim();
-                if (name.Length > 0) {
-                    names.Add(name);
+                removeSnapshot = true;
+            } else {
+                var names = new List<string>(selectedDefinitions.Count);
+                for (var i = 0; i < selectedDefinitions.Count && i < 64; i++) {
+                    var name = (selectedDefinitions[i].Name ?? string.Empty).Trim();
+                    if (name.Length > 0) {
+                        names.Add(name);
+                    }
                 }
-            }
 
-            _lastWeightedToolNamesByThreadId[normalizedThreadId] = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
-            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+                namesSnapshot = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+                seenUtcTicks = DateTime.UtcNow.Ticks;
+                _lastWeightedToolNamesByThreadId[normalizedThreadId] = namesSnapshot;
+                _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = seenUtcTicks;
+                TrimWeightedRoutingContextsNoLock();
+            }
+        }
+
+        if (removeSnapshot) {
+            RemoveWeightedToolSubsetSnapshot(normalizedThreadId);
+            return;
+        }
+
+        if (namesSnapshot.Length > 0 && seenUtcTicks > 0) {
+            PersistWeightedToolSubsetSnapshot(normalizedThreadId, seenUtcTicks, namesSnapshot);
         }
     }
 

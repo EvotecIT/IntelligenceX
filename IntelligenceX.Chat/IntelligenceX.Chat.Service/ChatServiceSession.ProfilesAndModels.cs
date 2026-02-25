@@ -618,6 +618,7 @@ internal sealed partial class ChatServiceSession {
         _structuredNextActionByThreadId.Clear();
         ClearRecoveredThreadAliases();
         ClearThreadToolEvidence();
+        ClearWeightedToolSubsetSnapshots();
     }
 
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(
