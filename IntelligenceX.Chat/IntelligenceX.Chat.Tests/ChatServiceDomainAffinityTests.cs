@@ -349,4 +349,75 @@ public sealed class ChatServiceDomainAffinityTests {
 
         Assert.False(resolved);
     }
+
+    [Fact]
+    public void TryApplyDomainIntentSignalRoutingHint_FiltersMixedToolsAndRemembersAdPreference() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("ad_domain_controllers", "AD DCs"),
+            new ToolDefinition("dnsclientx_query", "DNS query"),
+            new ToolDefinition("domaindetective_domain_summary", "Domain summary")
+        };
+
+        var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
+            "thread-domain-signal-ad",
+            "Run LDAP and GPO checks for this domain.",
+            tools,
+            out var filtered,
+            out var family,
+            out var removedCount);
+
+        Assert.True(applied);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal(2, removedCount);
+        Assert.Contains(filtered, tool => string.Equals(tool.Name, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(filtered, tool => string.Equals(tool.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-domain-signal-ad"));
+    }
+
+    [Fact]
+    public void TryApplyDomainIntentSignalRoutingHint_FiltersMixedToolsAndRemembersPublicPreference() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("dnsclientx_query", "DNS query"),
+            new ToolDefinition("domaindetective_domain_summary", "Domain summary")
+        };
+
+        var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
+            "thread-domain-signal-public",
+            "Necesito revisar MX y SPF del dominio público.",
+            tools,
+            out var filtered,
+            out var family,
+            out var removedCount);
+
+        Assert.True(applied);
+        Assert.Equal("public_domain", family);
+        Assert.Equal(1, removedCount);
+        Assert.DoesNotContain(filtered, tool => string.Equals(tool.Name, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(filtered, tool => string.Equals(tool.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-domain-signal-public"));
+    }
+
+    [Fact]
+    public void TryApplyDomainIntentSignalRoutingHint_DoesNotApplyWhenSignalsConflict() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("dnsclientx_query", "DNS query")
+        };
+
+        var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
+            "thread-domain-signal-conflict",
+            "AD and DNS both please.",
+            tools,
+            out _,
+            out _,
+            out _);
+
+        Assert.False(applied);
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-domain-signal-conflict"));
+    }
 }

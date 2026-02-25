@@ -363,16 +363,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var nowTicks = DateTime.UtcNow.Ticks;
-        lock (_toolRoutingContextLock) {
-            _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
-            _domainIntentFamilyByThreadId[normalizedThreadId] = selectedFamily;
-            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowTicks;
-            TrimWeightedRoutingContextsNoLock();
-        }
-
-        RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
-        PersistDomainIntentFamilySnapshot(normalizedThreadId, selectedFamily, nowTicks);
+        RememberSelectedDomainIntentFamily(normalizedThreadId, selectedFamily);
         family = selectedFamily;
         return true;
     }
@@ -396,6 +387,20 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        return TryResolveDomainIntentFamilyFromUserSignals(normalized, out family);
+    }
+
+    private static bool TryResolveDomainIntentFamilyFromUserSignals(string userRequest, out string family) {
+        family = string.Empty;
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, out family)) {
+            return true;
+        }
+
         if (TryParseDomainIntentChoiceMarkerSelection(normalized, out family)) {
             return true;
         }
@@ -411,7 +416,8 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, out family)) {
+        if (TryExtractActionSelectionPayloadJson(normalized, out var payload)
+            && TryParseDomainIntentFamilyFromDomainScopePayload(payload, out family)) {
             return true;
         }
 
@@ -419,7 +425,12 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        if (!TryExtractActionSelectionPayloadJson(normalized, out var payload)) {
+        return false;
+    }
+
+    private static bool TryParseDomainIntentFamilyFromDomainScopePayload(string payload, out string family) {
+        family = string.Empty;
+        if (string.IsNullOrWhiteSpace(payload)) {
             return false;
         }
 
@@ -668,7 +679,7 @@ internal sealed partial class ChatServiceSession {
                 var nestedRequest = (requestNode.GetString() ?? string.Empty).Trim();
                 if (nestedRequest.Length > 0
                     && !string.Equals(nestedRequest, text, StringComparison.Ordinal)
-                    && TryParsePendingDomainIntentClarificationSelection(nestedRequest, out family)) {
+                    && TryResolveDomainIntentFamilyFromUserSignals(nestedRequest, out family)) {
                     return true;
                 }
             }
@@ -729,6 +740,57 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        if (!TryFilterToolsByDomainIntentFamily(selectedTools, preferredFamily, out filteredTools, out removedCount)) {
+            return false;
+        }
+
+        family = preferredFamily;
+        return true;
+    }
+
+    private bool TryApplyDomainIntentSignalRoutingHint(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> selectedTools,
+        out IReadOnlyList<ToolDefinition> filteredTools,
+        out string family,
+        out int removedCount) {
+        filteredTools = selectedTools;
+        family = string.Empty;
+        removedCount = 0;
+
+        if (selectedTools is null || selectedTools.Count == 0) {
+            return false;
+        }
+
+        if (!TryResolveDomainIntentFamilyFromUserSignals(userRequest, out var inferredFamily)) {
+            return false;
+        }
+
+        if (!TryFilterToolsByDomainIntentFamily(selectedTools, inferredFamily, out var filtered, out removedCount)) {
+            return false;
+        }
+
+        filteredTools = filtered;
+        family = inferredFamily;
+        RememberSelectedDomainIntentFamily(threadId, inferredFamily);
+        return true;
+    }
+
+    private static bool TryFilterToolsByDomainIntentFamily(
+        IReadOnlyList<ToolDefinition> selectedTools,
+        string preferredFamily,
+        out IReadOnlyList<ToolDefinition> filteredTools,
+        out int removedCount) {
+        filteredTools = selectedTools;
+        removedCount = 0;
+        if (selectedTools is null || selectedTools.Count == 0 || string.IsNullOrWhiteSpace(preferredFamily)) {
+            return false;
+        }
+
+        var normalizedFamily = string.Equals(preferredFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)
+            ? DomainIntentFamilyPublic
+            : DomainIntentFamilyAd;
         var filtered = new List<ToolDefinition>(selectedTools.Count);
         for (var i = 0; i < selectedTools.Count; i++) {
             var tool = selectedTools[i];
@@ -738,13 +800,13 @@ internal sealed partial class ChatServiceSession {
             }
 
             var candidateFamily = ResolveDomainIntentFamily(tool);
-            if (string.Equals(preferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+            if (string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
                 && string.Equals(candidateFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
                 removedCount++;
                 continue;
             }
 
-            if (string.Equals(preferredFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)
+            if (string.Equals(normalizedFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)
                 && string.Equals(candidateFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
                 removedCount++;
                 continue;
@@ -758,7 +820,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         filteredTools = filtered;
-        family = preferredFamily;
         return true;
     }
 
@@ -828,16 +889,26 @@ internal sealed partial class ChatServiceSession {
         }
 
         var nextFamily = adVotes > publicVotes ? DomainIntentFamilyAd : DomainIntentFamilyPublic;
-        var seenUtcTicks = DateTime.UtcNow.Ticks;
+        RememberSelectedDomainIntentFamily(normalizedThreadId, nextFamily);
+    }
+
+    private void RememberSelectedDomainIntentFamily(string threadId, string family) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedFamily = (family ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || !IsSupportedDomainIntentFamily(normalizedFamily)) {
+            return;
+        }
+
+        var nowTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
             _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
-            _domainIntentFamilyByThreadId[normalizedThreadId] = nextFamily;
-            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = seenUtcTicks;
+            _domainIntentFamilyByThreadId[normalizedThreadId] = normalizedFamily;
+            _domainIntentFamilySeenUtcTicks[normalizedThreadId] = nowTicks;
             TrimWeightedRoutingContextsNoLock();
         }
 
         RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
-        PersistDomainIntentFamilySnapshot(normalizedThreadId, nextFamily, seenUtcTicks);
+        PersistDomainIntentFamilySnapshot(normalizedThreadId, normalizedFamily, nowTicks);
     }
 
     private void ClearPreferredDomainIntentFamily(string threadId) {
@@ -1514,6 +1585,16 @@ internal sealed partial class ChatServiceSession {
         out string family,
         out int removedCount) {
         return TryApplyDomainIntentAffinity(threadId, selectedTools, out filteredTools, out family, out removedCount);
+    }
+
+    internal bool TryApplyDomainIntentSignalRoutingHintForTesting(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> selectedTools,
+        out IReadOnlyList<ToolDefinition> filteredTools,
+        out string family,
+        out int removedCount) {
+        return TryApplyDomainIntentSignalRoutingHint(threadId, userRequest, selectedTools, out filteredTools, out family, out removedCount);
     }
 
     internal void RememberPreferredDomainIntentFamilyForTesting(

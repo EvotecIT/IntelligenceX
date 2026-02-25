@@ -190,7 +190,47 @@ internal sealed partial class ChatServiceSession {
                 selectedToolCount: routingSelectedToolCount,
                 totalToolCount: routingTotalToolCount,
                 selectedTools: toolDefs)) {
-            if (TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
+            if (TryApplyDomainIntentSignalRoutingHint(
+                    threadId,
+                    routedUserRequest,
+                    toolDefs,
+                    out var signaledTools,
+                    out var signaledFamily,
+                    out var signaledRemovedCount)) {
+                toolDefs = signaledTools;
+                (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
+                var signalScope = string.Equals(signaledFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+                    ? "Active Directory domain scope"
+                    : "public DNS/domain scope";
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.Routing,
+                        message:
+                        $"Tool routing detected explicit {signalScope} signals in your request and removed {signaledRemovedCount} conflicting candidate tool(s).")
+                    .ConfigureAwait(false);
+                var signalRoutingMetaPayload = BuildRoutingMetaPayload(
+                    strategy: "domain_signal_hint",
+                    weightedToolRouting,
+                    executionContractApplies,
+                    usedContinuationSubset,
+                    selectedToolCount: routingSelectedToolCount,
+                    totalToolCount: routingTotalToolCount,
+                    insightCount: routingInsights.Count,
+                    plannerInsightsDetected: false,
+                    requestedMaxCandidateTools: requestedMaxCandidateTools,
+                    effectiveMaxCandidateTools: maxCandidateTools,
+                    effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
+                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied);
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.RoutingMeta,
+                        message: signalRoutingMetaPayload)
+                    .ConfigureAwait(false);
+            } else if (TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
                 toolDefs = affinedTools;
                 (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
                 var affinityScope = string.Equals(affinityFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
