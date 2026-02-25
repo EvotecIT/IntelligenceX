@@ -49,6 +49,10 @@ pwsh .\Build\Run-ChatLiveConversation.ps1 `
 
 Live harness can also auto-select a scenario (no hardcoded file) using filter + tags:
 
+`-ScenarioTags`, `-Tags`, `-LiveScenarioTags`, and `-LiveSuiteTags` are PowerShell string-array parameters.
+Use one consistent convention in docs and scripts: comma-delimited array literal (recommended), for example `strict,live`.
+Equivalent space-separated form also works (`strict live`), but examples below use comma-delimited arrays.
+
 ```powershell
 pwsh .\Build\Run-ChatLiveConversation.ps1 `
   -ScenarioFilter "*-10-turn.json" `
