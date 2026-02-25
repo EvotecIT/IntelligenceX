@@ -49,4 +49,40 @@ public sealed class OnboardingModelProtocolTests {
         Assert.False(update.HasThemePreset);
         Assert.False(update.HasOnboardingCompleted);
     }
+
+    /// <summary>
+    /// Ensures unknown scope values are treated as unspecified instead of persisted profile scope.
+    /// </summary>
+    [Fact]
+    public void TryExtractLastProfileUpdate_UnknownScopeFallsBackToUnspecified() {
+        const string text = """
+                            ```ix_profile
+                            {"scope":"sessie","assistantPersona":"focused helper"}
+                            ```
+                            """;
+
+        var ok = OnboardingModelProtocol.TryExtractLastProfileUpdate(text, out var update, out _);
+
+        Assert.True(ok);
+        Assert.True(update.HasAssistantPersona);
+        Assert.Equal(ProfileUpdateScope.Unspecified, update.Scope);
+    }
+
+    /// <summary>
+    /// Ensures missing scope keeps the update scope unspecified until an explicit scope is provided.
+    /// </summary>
+    [Fact]
+    public void TryExtractLastProfileUpdate_MissingScopeRemainsUnspecified() {
+        const string text = """
+                            ```ix_profile
+                            {"assistantPersona":"focused helper"}
+                            ```
+                            """;
+
+        var ok = OnboardingModelProtocol.TryExtractLastProfileUpdate(text, out var update, out _);
+
+        Assert.True(ok);
+        Assert.True(update.HasAssistantPersona);
+        Assert.Equal(ProfileUpdateScope.Unspecified, update.Scope);
+    }
 }

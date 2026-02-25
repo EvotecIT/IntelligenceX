@@ -12,6 +12,14 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 namespace IntelligenceX.Chat.App;
 
 internal sealed class ChatAppStateStore : IDisposable {
+    private const int MaxPersistedMessages = 500;
+    private const int MaxPersistedConversations = 80;
+    private const int MaxPersistedMemoryFacts = 120;
+    private const int MaxPersistedModelEntries = 250;
+    private const int MaxPersistedFavoriteEntries = 100;
+    private const int MaxPersistedRecentEntries = 100;
+    private const int MaxPersistedQueuedTurns = 24;
+
     private readonly string _dbPath;
     private readonly JsonSerializerOptions _json;
     private readonly SQLite _db = new();
@@ -76,51 +84,65 @@ internal sealed class ChatAppStateStore : IDisposable {
         payload.ProfileName = profileName.Trim();
         payload.UpdatedUtc = DateTime.UtcNow;
 
-        if (payload.Messages is { Count: > 250 }) {
+        if (payload.Messages is { Count: > MaxPersistedMessages }) {
             payload.Messages = payload.Messages
-                .Skip(payload.Messages.Count - 250)
+                .Skip(payload.Messages.Count - MaxPersistedMessages)
                 .ToList();
         }
 
         if (payload.Conversations is { Count: > 0 }) {
-            if (payload.Conversations.Count > 40) {
+            if (payload.Conversations.Count > MaxPersistedConversations) {
                 payload.Conversations = payload.Conversations
                     .OrderByDescending(conversation => conversation.UpdatedUtc)
-                    .Take(40)
+                    .Take(MaxPersistedConversations)
                     .ToList();
             }
 
             foreach (var conversation in payload.Conversations) {
-                if (conversation.Messages is { Count: > 250 }) {
+                if (conversation.Messages is { Count: > MaxPersistedMessages }) {
                     conversation.Messages = conversation.Messages
-                        .Skip(conversation.Messages.Count - 250)
+                        .Skip(conversation.Messages.Count - MaxPersistedMessages)
                         .ToList();
                 }
             }
         }
 
-        if (payload.MemoryFacts is { Count: > 0 } && payload.MemoryFacts.Count > 120) {
+        if (payload.MemoryFacts is { Count: > 0 } && payload.MemoryFacts.Count > MaxPersistedMemoryFacts) {
             payload.MemoryFacts = payload.MemoryFacts
                 .OrderByDescending(fact => fact.UpdatedUtc)
-                .Take(120)
+                .Take(MaxPersistedMemoryFacts)
                 .ToList();
         }
 
-        if (payload.CachedModels is { Count: > 250 }) {
+        if (payload.CachedModels is { Count: > MaxPersistedModelEntries }) {
             payload.CachedModels = payload.CachedModels
-                .Take(250)
+                .Take(MaxPersistedModelEntries)
                 .ToList();
         }
 
-        if (payload.CachedFavoriteModels is { Count: > 100 }) {
+        if (payload.CachedFavoriteModels is { Count: > MaxPersistedFavoriteEntries }) {
             payload.CachedFavoriteModels = payload.CachedFavoriteModels
-                .Take(100)
+                .Take(MaxPersistedFavoriteEntries)
                 .ToList();
         }
 
-        if (payload.CachedRecentModels is { Count: > 100 }) {
+        if (payload.CachedRecentModels is { Count: > MaxPersistedRecentEntries }) {
             payload.CachedRecentModels = payload.CachedRecentModels
-                .Take(100)
+                .Take(MaxPersistedRecentEntries)
+                .ToList();
+        }
+
+        if (payload.PendingTurns is { Count: > MaxPersistedQueuedTurns }) {
+            payload.PendingTurns = payload.PendingTurns
+                .OrderBy(turn => turn.EnqueuedUtc)
+                .TakeLast(MaxPersistedQueuedTurns)
+                .ToList();
+        }
+
+        if (payload.QueuedTurnsAfterLogin is { Count: > MaxPersistedQueuedTurns }) {
+            payload.QueuedTurnsAfterLogin = payload.QueuedTurnsAfterLogin
+                .OrderBy(turn => turn.EnqueuedUtc)
+                .TakeLast(MaxPersistedQueuedTurns)
                 .ToList();
         }
 
@@ -244,6 +266,8 @@ internal sealed class ChatAppState {
     public List<string> DisabledTools { get; set; } = new();
     public List<ChatMessageState> Messages { get; set; } = new();
     public List<ChatConversationState> Conversations { get; set; } = new();
+    public List<ChatQueuedTurnState> PendingTurns { get; set; } = new();
+    public List<ChatQueuedTurnState> QueuedTurnsAfterLogin { get; set; } = new();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
@@ -256,6 +280,13 @@ internal sealed class ChatConversationState {
     public string? ModelOverride { get; set; }
     public List<ChatMessageState> Messages { get; set; } = new();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+internal sealed class ChatQueuedTurnState {
+    public string Text { get; set; } = string.Empty;
+    public string? ConversationId { get; set; }
+    public DateTime EnqueuedUtc { get; set; } = DateTime.UtcNow;
+    public bool SkipUserBubbleOnDispatch { get; set; }
 }
 
 internal sealed class ChatMessageState {

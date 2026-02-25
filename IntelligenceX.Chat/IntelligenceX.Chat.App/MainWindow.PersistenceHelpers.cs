@@ -73,6 +73,8 @@ public sealed partial class MainWindow : Window {
             _appState.DisabledTools = BuildDisabledToolsList();
             _appState.Messages = BuildMessageStateSnapshot(activeConversation.Messages);
             _appState.Conversations = BuildConversationStateSnapshot();
+            _appState.PendingTurns = BuildPendingTurnStateSnapshot();
+            _appState.QueuedTurnsAfterLogin = BuildQueuedAfterLoginStateSnapshot();
             lock (_turnDiagnosticsSync) {
                 SyncAccountUsageToAppStateLocked();
             }

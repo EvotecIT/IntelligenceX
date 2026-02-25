@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -299,6 +300,7 @@ public sealed partial class MainWindow : Window {
     private bool TryEnqueuePendingTurn(string text, string? conversationId, out int queuedCount) {
         var trimmedText = (text ?? string.Empty).Trim();
         var trimmedConversationId = (conversationId ?? string.Empty).Trim();
+        var enqueued = false;
         lock (_pendingTurnQueueSync) {
             if (trimmedText.Length == 0 || _pendingTurns.Count >= MaxQueuedTurns) {
                 queuedCount = _pendingTurns.Count;
@@ -307,11 +309,18 @@ public sealed partial class MainWindow : Window {
 
             _pendingTurns.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow));
             queuedCount = _pendingTurns.Count;
-            return true;
+            enqueued = true;
         }
+
+        if (enqueued) {
+            QueuePersistAppState();
+        }
+
+        return enqueued;
     }
 
     private bool TryDequeuePendingTurn(out QueuedTurn queuedTurn) {
+        var dequeued = false;
         lock (_pendingTurnQueueSync) {
             if (_pendingTurns.Count == 0) {
                 queuedTurn = null!;
@@ -319,8 +328,14 @@ public sealed partial class MainWindow : Window {
             }
 
             queuedTurn = _pendingTurns.Dequeue();
-            return true;
+            dequeued = true;
         }
+
+        if (dequeued) {
+            QueuePersistAppState();
+        }
+
+        return dequeued;
     }
 
     private int GetQueuedTurnCount() {
@@ -330,11 +345,17 @@ public sealed partial class MainWindow : Window {
     }
 
     private int ClearPendingTurns() {
+        var cleared = 0;
         lock (_pendingTurnQueueSync) {
-            var cleared = _pendingTurns.Count;
+            cleared = _pendingTurns.Count;
             _pendingTurns.Clear();
-            return cleared;
         }
+
+        if (cleared > 0) {
+            QueuePersistAppState();
+        }
+
+        return cleared;
     }
 
     private bool TryEnqueuePromptAfterLogin(
@@ -344,6 +365,7 @@ public sealed partial class MainWindow : Window {
         bool skipUserBubbleOnDispatch = false) {
         var trimmedText = (text ?? string.Empty).Trim();
         var trimmedConversationId = (conversationId ?? string.Empty).Trim();
+        var enqueued = false;
         lock (_queuedAfterLoginSync) {
             if (trimmedText.Length == 0 || _queuedTurnsAfterLogin.Count >= MaxQueuedTurns) {
                 queuedCount = _queuedTurnsAfterLogin.Count;
@@ -352,11 +374,18 @@ public sealed partial class MainWindow : Window {
 
             _queuedTurnsAfterLogin.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow, skipUserBubbleOnDispatch));
             queuedCount = _queuedTurnsAfterLogin.Count;
-            return true;
+            enqueued = true;
         }
+
+        if (enqueued) {
+            QueuePersistAppState();
+        }
+
+        return enqueued;
     }
 
     private bool TryDequeuePromptAfterLogin(out QueuedTurn queuedTurn) {
+        var dequeued = false;
         lock (_queuedAfterLoginSync) {
             if (_queuedTurnsAfterLogin.Count == 0) {
                 queuedTurn = null!;
@@ -364,8 +393,14 @@ public sealed partial class MainWindow : Window {
             }
 
             queuedTurn = _queuedTurnsAfterLogin.Dequeue();
-            return true;
+            dequeued = true;
         }
+
+        if (dequeued) {
+            QueuePersistAppState();
+        }
+
+        return dequeued;
     }
 
     private int GetQueuedPromptAfterLoginCount() {
@@ -375,10 +410,104 @@ public sealed partial class MainWindow : Window {
     }
 
     private int ClearQueuedPromptsAfterLogin() {
+        var cleared = 0;
         lock (_queuedAfterLoginSync) {
-            var cleared = _queuedTurnsAfterLogin.Count;
+            cleared = _queuedTurnsAfterLogin.Count;
             _queuedTurnsAfterLogin.Clear();
-            return cleared;
+        }
+
+        if (cleared > 0) {
+            QueuePersistAppState();
+        }
+
+        return cleared;
+    }
+
+    private List<ChatQueuedTurnState> BuildPendingTurnStateSnapshot() {
+        lock (_pendingTurnQueueSync) {
+            var snapshot = new List<ChatQueuedTurnState>(_pendingTurns.Count);
+            foreach (var pending in _pendingTurns) {
+                snapshot.Add(new ChatQueuedTurnState {
+                    Text = pending.Text,
+                    ConversationId = pending.ConversationId,
+                    EnqueuedUtc = pending.EnqueuedUtc,
+                    SkipUserBubbleOnDispatch = pending.SkipUserBubbleOnDispatch
+                });
+            }
+            return snapshot;
+        }
+    }
+
+    private List<ChatQueuedTurnState> BuildQueuedAfterLoginStateSnapshot() {
+        lock (_queuedAfterLoginSync) {
+            var snapshot = new List<ChatQueuedTurnState>(_queuedTurnsAfterLogin.Count);
+            foreach (var pending in _queuedTurnsAfterLogin) {
+                snapshot.Add(new ChatQueuedTurnState {
+                    Text = pending.Text,
+                    ConversationId = pending.ConversationId,
+                    EnqueuedUtc = pending.EnqueuedUtc,
+                    SkipUserBubbleOnDispatch = pending.SkipUserBubbleOnDispatch
+                });
+            }
+            return snapshot;
+        }
+    }
+
+    private void RestoreQueuedTurnsFromState(ChatAppState state) {
+        if (state is null) {
+            return;
+        }
+
+        lock (_pendingTurnQueueSync) {
+            _pendingTurns.Clear();
+            if (state.PendingTurns is { Count: > 0 }) {
+                foreach (var pending in state.PendingTurns) {
+                    if (pending is null) {
+                        continue;
+                    }
+
+                    var text = (pending.Text ?? string.Empty).Trim();
+                    if (text.Length == 0) {
+                        continue;
+                    }
+
+                    if (_pendingTurns.Count >= MaxQueuedTurns) {
+                        break;
+                    }
+
+                    var conversationId = (pending.ConversationId ?? string.Empty).Trim();
+                    var enqueuedUtc = pending.EnqueuedUtc.Kind == DateTimeKind.Utc
+                        ? pending.EnqueuedUtc
+                        : pending.EnqueuedUtc.ToUniversalTime();
+                    _pendingTurns.Enqueue(new QueuedTurn(text, conversationId, enqueuedUtc, pending.SkipUserBubbleOnDispatch));
+                }
+            }
+        }
+
+        lock (_queuedAfterLoginSync) {
+            _queuedTurnsAfterLogin.Clear();
+            if (state.QueuedTurnsAfterLogin is { Count: > 0 }) {
+                foreach (var pending in state.QueuedTurnsAfterLogin) {
+                    if (pending is null) {
+                        continue;
+                    }
+
+                    var text = (pending.Text ?? string.Empty).Trim();
+                    if (text.Length == 0) {
+                        continue;
+                    }
+
+                    if (_queuedTurnsAfterLogin.Count >= MaxQueuedTurns) {
+                        break;
+                    }
+
+                    var conversationId = (pending.ConversationId ?? string.Empty).Trim();
+                    var enqueuedUtc = pending.EnqueuedUtc.Kind == DateTimeKind.Utc
+                        ? pending.EnqueuedUtc
+                        : pending.EnqueuedUtc.ToUniversalTime();
+                    _queuedTurnsAfterLogin.Enqueue(new QueuedTurn(text, conversationId, enqueuedUtc, pending.SkipUserBubbleOnDispatch));
+                }
+            }
         }
     }
 

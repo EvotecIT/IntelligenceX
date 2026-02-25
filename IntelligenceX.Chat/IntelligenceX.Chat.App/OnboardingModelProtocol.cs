@@ -13,7 +13,7 @@ internal sealed class OnboardingProfileUpdate {
     public string? AssistantPersona { get; set; }
     public bool HasThemePreset { get; set; }
     public string? ThemePreset { get; set; }
-    public ProfileUpdateScope Scope { get; set; } = ProfileUpdateScope.Profile;
+    public ProfileUpdateScope Scope { get; set; } = ProfileUpdateScope.Unspecified;
     public bool HasOnboardingCompleted { get; set; }
     public bool OnboardingCompleted { get; set; }
 }
@@ -96,22 +96,26 @@ internal static class OnboardingModelProtocol {
 
     private static ProfileUpdateScope ParseScope(JsonElement element) {
         if (element.ValueKind != JsonValueKind.String) {
-            return ProfileUpdateScope.Profile;
+            return ProfileUpdateScope.Unspecified;
         }
 
         var normalized = (element.GetString() ?? string.Empty).Trim();
         if (normalized.Equals("session", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("temporary", StringComparison.OrdinalIgnoreCase)) {
+            || normalized.Equals("temporary", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("temp", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("chat", StringComparison.OrdinalIgnoreCase)) {
             return ProfileUpdateScope.Session;
         }
 
         if (normalized.Equals("profile", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("default", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("saved", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("persistent", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("permanent", StringComparison.OrdinalIgnoreCase)) {
             return ProfileUpdateScope.Profile;
         }
 
-        return ProfileUpdateScope.Profile;
+        // Unknown scope tokens (including localized values) should not silently become persistent profile writes.
+        return ProfileUpdateScope.Unspecified;
     }
 }
