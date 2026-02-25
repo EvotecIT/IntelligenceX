@@ -348,6 +348,45 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void BuildReadOnlyCallCanonicalIndices_DeduplicatesIdenticalReadOnlyCalls() {
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}"""),
+            BuildToolCall("call_2", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}""")
+        };
+
+        var (canonical, deduped) = InvokeBuildReadOnlyCallCanonicalIndices(calls, new HashSet<int>());
+
+        Assert.Equal(new[] { 0, 0 }, canonical);
+        Assert.Equal(1, deduped);
+    }
+
+    [Fact]
+    public void BuildReadOnlyCallCanonicalIndices_DoesNotDeduplicateNonReusableCalls() {
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}"""),
+            BuildToolCall("call_2", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}""")
+        };
+
+        var (canonical, deduped) = InvokeBuildReadOnlyCallCanonicalIndices(calls, new HashSet<int> { 1 });
+
+        Assert.Equal(new[] { 0, 1 }, canonical);
+        Assert.Equal(0, deduped);
+    }
+
+    [Fact]
+    public void BuildReadOnlyCallCanonicalIndices_KeepsDistinctArgumentsSeparated() {
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}"""),
+            BuildToolCall("call_2", "dnsclientx_query", """{"name":"contoso.com","type":"A"}""")
+        };
+
+        var (canonical, deduped) = InvokeBuildReadOnlyCallCanonicalIndices(calls, new HashSet<int>());
+
+        Assert.Equal(new[] { 0, 1 }, canonical);
+        Assert.Equal(0, deduped);
+    }
+
+    [Fact]
     public void ApplyKnownHostTargetFallbacks_FillsTargetAndTargetsWhenMissing() {
         var schema = new JsonObject()
             .Add("type", "object")
@@ -825,6 +864,25 @@ Continue that failure-signature collection across all remaining DCs in this turn
 
         var value = method!.Invoke(null, new object?[] { ex, attempt, maxAttempts, cancellationToken });
         return value is bool b && b;
+    }
+
+    private static (int[] canonical, int dedupedCount) InvokeBuildReadOnlyCallCanonicalIndices(
+        IReadOnlyList<ToolCall> calls,
+        ISet<int> nonReusableIndices) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "BuildReadOnlyCallCanonicalIndices",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var args = new object?[] { calls, nonReusableIndices, 0 };
+        var value = method!.Invoke(null, args);
+        var canonical = Assert.IsType<int[]>(value);
+        var dedupedCount = Assert.IsType<int>(args[2]);
+        return (canonical, dedupedCount);
     }
 
     private static ToolCall InvokeApplyKnownHostTargetFallbacks(

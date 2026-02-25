@@ -1371,19 +1371,137 @@ internal static partial class Program {
                     "Use --allow-mutating-parallel-tools to override.");
             }
 
-            if (!runInParallel || calls.Count <= 1) {
-                var outputs = new List<ToolOutput>(calls.Count);
-                foreach (var call in calls) {
-                    outputs.Add(await ExecuteToolAsync(call, cancellationToken, knownHostTargets).ConfigureAwait(false));
-                }
-                return outputs;
+            var nonReusableIndices = GetNonReusableReadOnlyToolCallIndices(calls);
+            var canonicalIndices = BuildReadOnlyCallCanonicalIndices(calls, nonReusableIndices, out var dedupedReadOnlyCalls);
+            if (_options.LiveProgress && dedupedReadOnlyCalls > 0) {
+                _status?.Invoke($"input-repair: deduplicated {dedupedReadOnlyCalls} identical read-only tool call signatures in this turn.");
             }
 
-            var tasks = new Task<ToolOutput>[calls.Count];
-            for (var i = 0; i < calls.Count; i++) {
-                tasks[i] = ExecuteToolAsync(calls[i], cancellationToken, knownHostTargets);
+            var uniqueCanonicalIndices = GetUniqueCanonicalIndices(canonicalIndices);
+            if (!runInParallel || calls.Count <= 1) {
+                var canonicalOutputs = new Dictionary<int, ToolOutput>(uniqueCanonicalIndices.Length);
+                for (var index = 0; index < uniqueCanonicalIndices.Length; index++) {
+                    var canonicalIndex = uniqueCanonicalIndices[index];
+                    canonicalOutputs[canonicalIndex] = await ExecuteToolAsync(calls[canonicalIndex], cancellationToken, knownHostTargets).ConfigureAwait(false);
+                }
+
+                return RehydrateToolOutputsFromCanonical(calls, canonicalIndices, canonicalOutputs);
             }
-            return await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            var tasks = new Task<ToolOutput>[uniqueCanonicalIndices.Length];
+            for (var index = 0; index < uniqueCanonicalIndices.Length; index++) {
+                var canonicalIndex = uniqueCanonicalIndices[index];
+                tasks[index] = ExecuteToolAsync(calls[canonicalIndex], cancellationToken, knownHostTargets);
+            }
+
+            var executed = await Task.WhenAll(tasks).ConfigureAwait(false);
+            var outputsByCanonical = new Dictionary<int, ToolOutput>(uniqueCanonicalIndices.Length);
+            for (var index = 0; index < uniqueCanonicalIndices.Length; index++) {
+                outputsByCanonical[uniqueCanonicalIndices[index]] = executed[index];
+            }
+
+            return RehydrateToolOutputsFromCanonical(calls, canonicalIndices, outputsByCanonical);
+        }
+
+        private ISet<int> GetNonReusableReadOnlyToolCallIndices(IReadOnlyList<ToolCall> calls) {
+            var nonReusable = new HashSet<int>();
+            for (var i = 0; i < calls.Count; i++) {
+                var toolName = (calls[i].Name ?? string.Empty).Trim();
+                if (toolName.Length == 0 || !_registry.TryGetDefinition(toolName, out var definition)) {
+                    nonReusable.Add(i);
+                    continue;
+                }
+
+                if (definition.WriteGovernance?.IsWriteCapable == true) {
+                    nonReusable.Add(i);
+                }
+            }
+
+            return nonReusable;
+        }
+
+        private static int[] BuildReadOnlyCallCanonicalIndices(
+            IReadOnlyList<ToolCall> calls,
+            ISet<int> nonReusableIndices,
+            out int dedupedCount) {
+            dedupedCount = 0;
+            var canonicalIndices = new int[calls.Count];
+            var bySignature = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < calls.Count; i++) {
+                canonicalIndices[i] = i;
+                if (nonReusableIndices.Contains(i)
+                    || !TryBuildToolCallExecutionSignature(calls[i], out var signature)) {
+                    continue;
+                }
+
+                if (bySignature.TryGetValue(signature, out var existingCanonicalIndex)) {
+                    canonicalIndices[i] = existingCanonicalIndex;
+                    dedupedCount++;
+                    continue;
+                }
+
+                bySignature[signature] = i;
+            }
+
+            return canonicalIndices;
+        }
+
+        private static int[] GetUniqueCanonicalIndices(IReadOnlyList<int> canonicalIndices) {
+            var unique = new List<int>(canonicalIndices.Count);
+            var seen = new HashSet<int>();
+            for (var i = 0; i < canonicalIndices.Count; i++) {
+                var canonical = canonicalIndices[i];
+                if (seen.Add(canonical)) {
+                    unique.Add(canonical);
+                }
+            }
+
+            return unique.ToArray();
+        }
+
+        private static IReadOnlyList<ToolOutput> RehydrateToolOutputsFromCanonical(
+            IReadOnlyList<ToolCall> calls,
+            IReadOnlyList<int> canonicalIndices,
+            IReadOnlyDictionary<int, ToolOutput> outputsByCanonical) {
+            var outputs = new List<ToolOutput>(calls.Count);
+            for (var i = 0; i < calls.Count; i++) {
+                var canonicalIndex = canonicalIndices[i];
+                if (!outputsByCanonical.TryGetValue(canonicalIndex, out var canonicalOutput)) {
+                    outputs.Add(new ToolOutput(calls[i].CallId, ToolOutputEnvelope.Error(
+                        errorCode: "tool_output_missing",
+                        error: $"Missing canonical tool output for call '{calls[i].CallId}'.",
+                        hints: new[] { "Re-run the turn; this indicates an internal orchestration mismatch." },
+                        isTransient: true)));
+                    continue;
+                }
+
+                if (canonicalIndex == i && string.Equals(canonicalOutput.CallId, calls[i].CallId, StringComparison.Ordinal)) {
+                    outputs.Add(canonicalOutput);
+                    continue;
+                }
+
+                outputs.Add(new ToolOutput(calls[i].CallId, canonicalOutput.Output));
+            }
+
+            return outputs;
+        }
+
+        private static bool TryBuildToolCallExecutionSignature(ToolCall call, out string signature) {
+            signature = string.Empty;
+            var toolName = (call.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                return false;
+            }
+
+            var normalizedToolName = toolName.ToLowerInvariant();
+            if (call.Arguments is not null) {
+                signature = normalizedToolName + "|" + JsonLite.Serialize(JsonValue.From(call.Arguments));
+                return true;
+            }
+
+            var normalizedInput = (call.Input ?? string.Empty).Trim();
+            signature = normalizedToolName + "|" + normalizedInput;
+            return true;
         }
 
         private bool ShouldRunParallelToolExecution(IReadOnlyList<ToolCall> calls, out string[] mutatingToolNames) {
