@@ -136,6 +136,25 @@ pwsh .\Build\Run-ChatCompactionSoakSuite.ps1 `
   -OutDir .\artifacts\chat-compaction-soak
 ```
 
+Run compaction soak with golden-baseline comparison (real host runtime + strict regression gate):
+
+```powershell
+pwsh .\Build\Run-ChatCompactionSoakBaseline.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -OutDir .\artifacts\chat-compaction-soak `
+  -GoldenDir .\artifacts\chat-compaction-soak\golden
+```
+
+To refresh golden baselines after an intentional behavior change:
+
+```powershell
+pwsh .\Build\Run-ChatCompactionSoakBaseline.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -OutDir .\artifacts\chat-compaction-soak `
+  -GoldenDir .\artifacts\chat-compaction-soak\golden `
+  -UpdateGolden
+```
+
 Optional flags:
 - `-NoBuild` to skip restore/build in repeated local runs.
 - `-StopOnFailure` to stop on first failed scenario.
