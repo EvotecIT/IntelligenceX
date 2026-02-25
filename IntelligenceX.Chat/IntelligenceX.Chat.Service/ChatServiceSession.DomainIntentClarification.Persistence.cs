@@ -78,6 +78,19 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private void ClearPendingDomainIntentClarificationSnapshots() {
+        var path = ResolveDomainIntentClarificationStorePath();
+        lock (DomainIntentClarificationStoreLock) {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch (Exception ex) {
+                Trace.TraceWarning($"Domain intent clarification store clear failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
     private bool TryLoadPendingDomainIntentClarificationSnapshot(string threadId, out long seenUtcTicks) {
         seenUtcTicks = 0;
         var normalizedThreadId = (threadId ?? string.Empty).Trim();

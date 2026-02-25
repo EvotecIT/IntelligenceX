@@ -82,6 +82,19 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private void ClearDomainIntentFamilySnapshots() {
+        var path = ResolveDomainIntentStorePath();
+        lock (DomainIntentStoreLock) {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch (Exception ex) {
+                Trace.TraceWarning($"Domain intent store clear failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
     private bool TryLoadDomainIntentFamilySnapshot(string threadId, out string family, out long seenUtcTicks) {
         family = string.Empty;
         seenUtcTicks = 0;

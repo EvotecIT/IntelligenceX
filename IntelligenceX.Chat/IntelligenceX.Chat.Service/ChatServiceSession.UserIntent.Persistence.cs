@@ -85,6 +85,19 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private void ClearUserIntentSnapshots() {
+        var path = ResolveUserIntentStorePath();
+        lock (UserIntentStoreLock) {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch (Exception ex) {
+                Trace.TraceWarning($"User intent store clear failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
     private bool TryLoadUserIntentSnapshot(string threadId, out string intent, out long seenUtcTicks) {
         intent = string.Empty;
         seenUtcTicks = 0;

@@ -618,6 +618,10 @@ internal sealed partial class ChatServiceSession {
         _structuredNextActionByThreadId.Clear();
         ClearRecoveredThreadAliases();
         ClearThreadToolEvidence();
+        ClearPendingActionsSnapshots();
+        ClearUserIntentSnapshots();
+        ClearDomainIntentFamilySnapshots();
+        ClearPendingDomainIntentClarificationSnapshots();
         ClearWeightedToolSubsetSnapshots();
     }
 

@@ -199,6 +199,19 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private void ClearPendingActionsSnapshots() {
+        var path = ResolvePendingActionsStorePath();
+        lock (PendingActionStoreLock) {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch (Exception ex) {
+                Trace.TraceWarning($"Pending action store clear failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
     private bool TryLoadPendingActionsSnapshot(string threadId, out long seenUtcTicks, out PendingAction[] actions, out string[] callToActionTokens) {
         seenUtcTicks = 0;
         actions = Array.Empty<PendingAction>();
