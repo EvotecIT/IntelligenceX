@@ -228,6 +228,29 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunWorkspaceSourceDetectionFindsPowerShellModuleFiles() {
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-detect-ps-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            var modulePath = Path.Combine(workspace, "Module");
+            Directory.CreateDirectory(modulePath);
+            File.WriteAllText(Path.Combine(modulePath, "TestModule.psm1"), "function Get-Answer { 42 }");
+
+            var found = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.WorkspaceContainsAnySourceFileForTests(
+                workspace,
+                ".ps1",
+                ".psm1",
+                ".psd1");
+            AssertEqual(true, found, "source detection finds PowerShell module files");
+        } finally {
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
     private static void TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions() {
         var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);

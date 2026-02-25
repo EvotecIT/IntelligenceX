@@ -26,6 +26,11 @@ internal static partial class AnalyzeRunCommand {
         ".py",
         ".pyi"
     };
+    private static readonly string[] PowerShellSourceExtensions = {
+        ".ps1",
+        ".psm1",
+        ".psd1"
+    };
 
     private static async Task<RunnerResult> RunCsharpAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
         AnalysisSettings settings, string? generatedEditorConfig, List<string> warnings) {
@@ -238,6 +243,14 @@ internal static partial class AnalyzeRunCommand {
 
     private static async Task<PowerShellRunnerResult> RunPowerShellAsync(AnalyzeRunOptions options, string workspace,
         string findingsPath, AnalysisSettings settings, string? generatedSettingsPath, List<string> warnings) {
+        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations, PowerShellSourceExtensions)) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"PowerShell source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
+            warnings.Add("No PowerShell source files detected; skipping PSScriptAnalyzer analysis.");
+            return new PowerShellRunnerResult(true, string.Empty, Array.Empty<AnalysisFindingItem>());
+        }
+
         var settingsPath = ResolvePowerShellSettingsPath(settings, workspace, generatedSettingsPath, warnings);
         if (string.IsNullOrWhiteSpace(settingsPath)) {
             warnings.Add("PowerShell settings could not be resolved; writing empty findings.");

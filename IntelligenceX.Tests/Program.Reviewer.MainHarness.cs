@@ -402,6 +402,8 @@ internal static partial class Program {
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
             TestAnalyzeRunWorkspaceSourceDetectionDiagnosticsDefaultToZeroSkipped);
+        failed += Run("Analyze run workspace source detection finds powershell module files",
+            TestAnalyzeRunWorkspaceSourceDetectionFindsPowerShellModuleFiles);
         failed += Run("Analyze run workspace source inventory captures multiple extensions",
             TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions);
         failed += Run("Analyze run javascript selectors ignore mismatched tools",
