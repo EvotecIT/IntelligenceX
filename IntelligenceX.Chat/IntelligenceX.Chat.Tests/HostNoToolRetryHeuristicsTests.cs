@@ -387,6 +387,47 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void TryGetSessionToolOutputCacheKey_MatchesPackInfoWithEmptyInput() {
+        var call = BuildToolCall("call_1", "AD_Pack_Info", "{}");
+
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(call);
+
+        Assert.True(matched);
+        Assert.Equal("ad_pack_info", cacheKey);
+    }
+
+    [Fact]
+    public void TryGetSessionToolOutputCacheKey_DoesNotMatchNonPackTools() {
+        var call = BuildToolCall("call_1", "ad_monitoring_probe_run", "{}");
+
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(call);
+
+        Assert.False(matched);
+        Assert.Equal(string.Empty, cacheKey);
+    }
+
+    [Fact]
+    public void TryGetSessionToolOutputCacheKey_DoesNotMatchPackInfoWithArguments() {
+        var call = BuildToolCall("call_1", "ad_pack_info", """{"include_tools":true}""");
+
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(call);
+
+        Assert.False(matched);
+        Assert.Equal(string.Empty, cacheKey);
+    }
+
+    [Fact]
+    public void ShouldCacheSessionToolOutput_RequiresOkTrueEnvelope() {
+        var ok = InvokeShouldCacheSessionToolOutput("""{"ok":true,"data":{"name":"ad_pack_info"}}""");
+        var failed = InvokeShouldCacheSessionToolOutput("""{"ok":false,"error_code":"not_configured"}""");
+        var malformed = InvokeShouldCacheSessionToolOutput("not-json");
+
+        Assert.True(ok);
+        Assert.False(failed);
+        Assert.False(malformed);
+    }
+
+    [Fact]
     public void ApplyKnownHostTargetFallbacks_FillsTargetAndTargetsWhenMissing() {
         var schema = new JsonObject()
             .Add("type", "object")
@@ -883,6 +924,37 @@ Continue that failure-signature collection across all remaining DCs in this turn
         var canonical = Assert.IsType<int[]>(value);
         var dedupedCount = Assert.IsType<int>(args[2]);
         return (canonical, dedupedCount);
+    }
+
+    private static (bool matched, string cacheKey) InvokeTryGetSessionToolOutputCacheKey(ToolCall call) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "TryGetSessionToolOutputCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var args = new object?[] { call, null };
+        var value = method!.Invoke(null, args);
+        var matched = value is bool b && b;
+        var cacheKey = args[1] as string ?? string.Empty;
+        return (matched, cacheKey);
+    }
+
+    private static bool InvokeShouldCacheSessionToolOutput(string output) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "ShouldCacheSessionToolOutput",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { output });
+        return value is bool b && b;
     }
 
     private static ToolCall InvokeApplyKnownHostTargetFallbacks(

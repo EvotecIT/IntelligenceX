@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
@@ -44,6 +45,7 @@ internal static partial class Program {
         private readonly string? _instructions;
         private readonly Action<string>? _status;
         private readonly List<string> _recentHostTargets = new();
+        private readonly ConcurrentDictionary<string, string> _sessionToolOutputCache = new(StringComparer.Ordinal);
         private string? _previousResponseId;
 
         public ReplSession(IntelligenceXClient client, ToolRegistry registry, ReplOptions options, string? instructions, Action<string>? status) {
@@ -1547,6 +1549,15 @@ internal static partial class Program {
             ToolCall call,
             CancellationToken cancellationToken,
             IReadOnlyList<string>? knownHostTargets = null) {
+            var hasSessionCacheKey = TryGetSessionToolOutputCacheKey(call, out var sessionCacheKey);
+            if (hasSessionCacheKey && _sessionToolOutputCache.TryGetValue(sessionCacheKey, out var cachedOutput)) {
+                if (_options.LiveProgress) {
+                    _status?.Invoke($"cache-hit: reused {GetToolDisplayName(call.Name)} metadata from session cache.");
+                }
+
+                return new ToolOutput(call.CallId, cachedOutput);
+            }
+
             if (!_registry.TryGet(call.Name, out var tool)) {
                 return new ToolOutput(call.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_not_registered",
@@ -1577,7 +1588,9 @@ internal static partial class Program {
 
                     var repairedResult = await tool.InvokeAsync(repairedCall.Arguments, toolToken).ConfigureAwait(false);
                     if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
-                        return new ToolOutput(repairedCall.CallId, repairedResult ?? string.Empty);
+                        var repairedOutput = repairedResult ?? string.Empty;
+                        TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
+                        return new ToolOutput(repairedCall.CallId, repairedOutput);
                     }
                 }
 
@@ -1589,13 +1602,19 @@ internal static partial class Program {
 
                     var repairedResult = await tool.InvokeAsync(replicationRepairedCall.Arguments, toolToken).ConfigureAwait(false);
                     if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
-                        return new ToolOutput(replicationRepairedCall.CallId, repairedResult ?? string.Empty);
+                        var repairedOutput = repairedResult ?? string.Empty;
+                        TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
+                        return new ToolOutput(replicationRepairedCall.CallId, repairedOutput);
                     }
 
-                    return new ToolOutput(replicationRepairedCall.CallId, repairedResult ?? string.Empty);
+                    var failedOutput = repairedResult ?? string.Empty;
+                    TryStoreSessionToolOutputCache(sessionCacheKey, failedOutput, hasSessionCacheKey);
+                    return new ToolOutput(replicationRepairedCall.CallId, failedOutput);
                 }
 
-                return new ToolOutput(effectiveCall.CallId, result ?? string.Empty);
+                var output = result ?? string.Empty;
+                TryStoreSessionToolOutputCache(sessionCacheKey, output, hasSessionCacheKey);
+                return new ToolOutput(effectiveCall.CallId, output);
             } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
                 return new ToolOutput(effectiveCall.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_timeout",
@@ -1609,6 +1628,38 @@ internal static partial class Program {
                     hints: new[] { "Try again. If it keeps failing, re-run with --echo-tool-outputs to capture details." },
                     isTransient: false));
             }
+        }
+
+        private void TryStoreSessionToolOutputCache(string cacheKey, string output, bool hasSessionCacheKey) {
+            if (!hasSessionCacheKey || !ShouldCacheSessionToolOutput(output)) {
+                return;
+            }
+
+            _sessionToolOutputCache[cacheKey] = output;
+        }
+
+        private static bool TryGetSessionToolOutputCacheKey(ToolCall call, out string cacheKey) {
+            cacheKey = string.Empty;
+            var toolName = (call.Name ?? string.Empty).Trim();
+            if (!toolName.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            if (call.Arguments is not null && call.Arguments.Count > 0) {
+                return false;
+            }
+
+            var normalizedInput = (call.Input ?? string.Empty).Trim();
+            if (normalizedInput.Length > 0 && !string.Equals(normalizedInput, "{}", StringComparison.Ordinal)) {
+                return false;
+            }
+
+            cacheKey = toolName.ToLowerInvariant();
+            return true;
+        }
+
+        private static bool ShouldCacheSessionToolOutput(string output) {
+            return TryReadToolOutputOk(output, out var ok) && ok;
         }
 
         private static ToolCall ApplyAdDiscoveryRootDseFallback(ToolCall call, string toolOutput) {
