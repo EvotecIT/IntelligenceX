@@ -524,38 +524,7 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaintainabilityWarnsOnUnmappedInternalRule);
         failed += Run("Analyze run internal maintainability warns on ambiguous internal rule match",
             TestAnalyzeRunInternalMaintainabilityWarnsOnAmbiguousInternalRuleMatch);
-        failed += Run("Analyze run internal duplication threshold",
-            TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
-        failed += Run("Analyze run internal duplication malformed tags warn",
-            TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
-        failed += Run("Analyze run internal duplication tokenized javascript",
-            TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
-        failed += Run("Analyze run internal duplication tokenized mts",
-            TestAnalyzeRunInternalDuplicationTokenizesTypeScriptModuleExtension);
-        failed += Run("Analyze run internal duplication ignores javascript imports",
-            TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports);
-        failed += Run("Analyze run internal duplication ignores PowerShell using statements",
-            TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements);
-        failed += Run("Analyze run internal duplication tokenized python",
-            TestAnalyzeRunInternalDuplicationTokenizesPython);
-        failed += Run("Analyze run internal duplication tokenized pyi",
-            TestAnalyzeRunInternalDuplicationTokenizesPythonStubExtension);
-        failed += Run("Analyze run internal duplication ignores python imports",
-            TestAnalyzeRunInternalDuplicationIgnoresPythonImports);
-        failed += Run("Analyze run internal duplication python triple-quote comment handling",
-            TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling);
-        failed += Run("Analyze run include-ext is per-rule",
-            TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
-        failed += Run("Analyze run duplication language threshold",
-            TestAnalyzeRunInternalDuplicationLanguageSpecificThreshold);
-        failed += Run("Analyze run duplication language threshold mts",
-            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesTypeScriptModuleExtension);
-        failed += Run("Analyze run duplication language threshold pyi",
-            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesPythonStubExtension);
-        failed += Run("Analyze run duplication language-only tag activates rule",
-            TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
-        failed += Run("Duplication metrics store modern extension language inference",
-            TestDuplicationMetricsStoreInfersLanguageForModernExtensions);
+        failed += RunAnalysisMaintainabilityDuplicationTests();
         failed += RunAnalysisPolicyReportingTests();
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);

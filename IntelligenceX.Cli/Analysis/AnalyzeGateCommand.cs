@@ -154,6 +154,8 @@ internal static partial class AnalyzeGateCommand {
             var isExplicitRuleIdMatch = gateRuleIds.Contains(ruleId);
             var countAsOutsidePackRuleIdInclude = false;
             if (!isEnabled) {
+                // Track outside-pack findings before type/rule filters so summary reporting reflects
+                // total outside-pack exposure, not only the subset that survives gate filters.
                 outsidePack++;
                 if (!analysisSettings.Gate.IncludeOutsidePackRules && !isExplicitRuleIdMatch) {
                     continue;

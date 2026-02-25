@@ -11,27 +11,6 @@ using IntelligenceX.Analysis;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
-    private const string JavaScriptEslintExtensionsArg = ".js,.jsx,.mjs,.cjs,.ts,.tsx,.mts,.cts";
-    private static readonly string[] JavaScriptSourceExtensions = {
-        ".js",
-        ".jsx",
-        ".mjs",
-        ".cjs",
-        ".ts",
-        ".tsx",
-        ".mts",
-        ".cts"
-    };
-    private static readonly string[] PythonSourceExtensions = {
-        ".py",
-        ".pyi"
-    };
-    private static readonly string[] PowerShellSourceExtensions = {
-        ".ps1",
-        ".psm1",
-        ".psd1"
-    };
-
     private static async Task<RunnerResult> RunCsharpAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
         AnalysisSettings settings, string? generatedEditorConfig, List<string> warnings) {
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.roslyn.sarif");
@@ -243,7 +222,8 @@ internal static partial class AnalyzeRunCommand {
 
     private static async Task<PowerShellRunnerResult> RunPowerShellAsync(AnalyzeRunOptions options, string workspace,
         string findingsPath, AnalysisSettings settings, string? generatedSettingsPath, List<string> warnings) {
-        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations, PowerShellSourceExtensions)) {
+        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations,
+                SourceLanguageConventions.PowerShellSourceExtensions)) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"PowerShell source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
             }
@@ -293,8 +273,10 @@ internal static partial class AnalyzeRunCommand {
         }
         var skippedSourceEnumerations = 0;
         var hasJavaScriptSources = sourceInventory is null
-            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, JavaScriptSourceExtensions)
-            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, JavaScriptSourceExtensions);
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations,
+                SourceLanguageConventions.JavaScriptSourceExtensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations,
+                SourceLanguageConventions.JavaScriptSourceExtensions);
         if (!hasJavaScriptSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
@@ -342,8 +324,10 @@ internal static partial class AnalyzeRunCommand {
         }
         var skippedSourceEnumerations = 0;
         var hasPythonSources = sourceInventory is null
-            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, PythonSourceExtensions)
-            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, PythonSourceExtensions);
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations,
+                SourceLanguageConventions.PythonSourceExtensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations,
+                SourceLanguageConventions.PythonSourceExtensions);
         if (!hasPythonSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
@@ -397,7 +381,7 @@ internal static partial class AnalyzeRunCommand {
             "eslint",
             ".",
             "--ext",
-            JavaScriptEslintExtensionsArg,
+            SourceLanguageConventions.JavaScriptEslintExtensionsArg,
             "--format",
             "sarif",
             "--output-file",
@@ -538,85 +522,6 @@ internal static partial class AnalyzeRunCommand {
             return string.Empty;
         }
         return string.IsNullOrWhiteSpace(rule.ToolRuleId) ? rule.Id : rule.ToolRuleId;
-    }
-
-    internal static IReadOnlyList<string> BuildJavaScriptRunnerArgsForTests(
-        string sarifPath,
-        IReadOnlyDictionary<string, string> severityByToolRuleId) {
-        var selectors = new List<ExternalToolRuleSelector>();
-        foreach (var pair in severityByToolRuleId ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)) {
-            if (string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value)) {
-                continue;
-            }
-            selectors.Add(new ExternalToolRuleSelector(pair.Key.Trim(), pair.Value.Trim()));
-        }
-        return BuildJavaScriptRunnerArgs(sarifPath, selectors);
-    }
-
-    internal static IReadOnlyList<string> BuildPythonRunnerArgsForTests(IReadOnlyList<string> selectedRuleIds) {
-        return BuildPythonRunnerArgs(string.Empty, selectedRuleIds, includeOutputFile: false);
-    }
-
-    internal static IReadOnlyList<string> BuildPythonRunnerArgsWithOutputForTests(string sarifPath, IReadOnlyList<string> selectedRuleIds) {
-        return BuildPythonRunnerArgs(sarifPath, selectedRuleIds, includeOutputFile: true);
-    }
-
-    internal static IReadOnlyDictionary<string, string> BuildJavaScriptRuleSelectorsForTests(IReadOnlyList<AnalysisPolicyRule> rules) {
-        var selectors = BuildJavaScriptRuleSelectors(rules);
-        return selectors.ToDictionary(
-            static selector => selector.ToolRuleId,
-            static selector => selector.Severity,
-            StringComparer.OrdinalIgnoreCase);
-    }
-
-    internal static IReadOnlyList<string> BuildPythonSelectedRuleIdsForTests(IReadOnlyList<AnalysisPolicyRule> rules) {
-        return BuildPythonSelectedRuleIds(rules);
-    }
-
-    internal static bool IsUnsupportedRuffOutputFileOptionForTests(int exitCode, string stdOut, string stdErr) {
-        return IsUnsupportedRuffOutputFileOption(new CommandResult(exitCode, stdOut, stdErr));
-    }
-
-    internal static string BuildExternalRunnerFailureMessageForTests(
-        string languageLabel,
-        string command,
-        string optionName,
-        int exitCode,
-        string stdOut,
-        string stdErr) {
-        return BuildExternalRunnerFailureMessage(languageLabel, command, optionName, new CommandResult(exitCode, stdOut, stdErr));
-    }
-
-    internal static bool WorkspaceContainsAnySourceFileForTests(string workspace, params string[] extensions) {
-        return WorkspaceContainsAnySourceFile(workspace, extensions);
-    }
-
-    internal static (bool Found, int SkippedEnumerations) WorkspaceContainsAnySourceFileWithDiagnosticsForTests(
-        string workspace,
-        params string[] extensions) {
-        var found = WorkspaceContainsAnySourceFile(workspace, out var skippedEnumerations, extensions);
-        return (found, skippedEnumerations);
-    }
-
-    internal static (IReadOnlyList<string> Extensions, int SkippedEnumerations) DiscoverWorkspaceSourceInventoryForTests(string workspace) {
-        var inventory = DiscoverWorkspaceSourceInventory(workspace);
-        if (inventory is null) {
-            return (Array.Empty<string>(), 0);
-        }
-
-        var extensions = inventory.Extensions
-            .OrderBy(static extension => extension, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        return (extensions, inventory.SkippedEnumerations);
-    }
-
-    internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(
-        string tempScript,
-        string workspace,
-        string findingsPath,
-        string settingsPath,
-        bool strict) {
-        return BuildPowerShellRunnerArgs(tempScript, workspace, findingsPath, settingsPath, strict);
     }
 
     private static List<string> BuildPowerShellRunnerArgs(

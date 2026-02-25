@@ -24,18 +24,10 @@ internal static partial class AnalyzeRunCommand {
                 extension.Equals(".psd1", StringComparison.OrdinalIgnoreCase)) {
                 return BuildSignificantLinesFromPowerShellTokens(content);
             }
-            if (extension.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".jsx", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".mjs", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".cjs", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".mts", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".cts", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".tsx", StringComparison.OrdinalIgnoreCase)) {
+            if (SourceLanguageConventions.IsJavaScriptOrTypeScriptExtension(extension)) {
                 return BuildSignificantLinesFromJavaScriptTokens(content);
             }
-            if (extension.Equals(".py", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".pyi", StringComparison.OrdinalIgnoreCase)) {
+            if (SourceLanguageConventions.IsPythonExtension(extension)) {
                 return BuildSignificantLinesFromPythonTokens(content);
             }
             return BuildSignificantLinesFallback(content);

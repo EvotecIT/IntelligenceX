@@ -14,6 +14,10 @@ internal static partial class AnalyzeRunCommand {
         "command not found",
         "could not determine executable to run"
     };
+    private static readonly char[] PathSeparators = {
+        Path.DirectorySeparatorChar,
+        Path.AltDirectorySeparatorChar
+    };
 
     private sealed class WorkspaceSourceInventory {
         public WorkspaceSourceInventory(HashSet<string> extensions, int skippedEnumerations) {
@@ -170,7 +174,7 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static bool IsExcludedDirectoryName(string path) {
-        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var name = Path.GetFileName(path.TrimEnd(PathSeparators));
         if (string.IsNullOrWhiteSpace(name)) {
             return false;
         }
@@ -193,8 +197,7 @@ internal static partial class AnalyzeRunCommand {
                 return false;
             }
 
-            var separators = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
-            var segments = relative.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+            var segments = relative.Split(PathSeparators, StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length <= 1) {
                 return false;
             }
