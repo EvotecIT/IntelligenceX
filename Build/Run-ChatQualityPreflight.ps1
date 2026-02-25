@@ -14,8 +14,11 @@
     [string] $TransportRecoveryOutDir = '.\artifacts\chat-scenarios-transport',
     [switch] $RunRecoveryUnitTests,
     [switch] $RunLiveHarness,
-    [string] $LiveScenarioFile = '.\IntelligenceX.Chat\scenarios\ad-cross-dc-followthrough-10-turn.json',
-    [int] $LiveExpectedTurns = 10,
+    [string] $LiveScenarioFile = '',
+    [string] $LiveScenarioDir = '.\IntelligenceX.Chat\scenarios',
+    [string] $LiveScenarioFilter = '*-10-turn.json',
+    [string[]] $LiveScenarioTags = @('strict', 'live'),
+    [int] $LiveExpectedTurns = 0,
     [string] $LiveOutDir = '.\artifacts\chat-live',
     [switch] $RunLiveHarnessSuite,
     [string] $LiveSuiteScenarioDir = '.\IntelligenceX.Chat\scenarios',
@@ -262,13 +265,19 @@ Write-Step "Strict scenario suite passed."
 Write-Step "Running live harness smoke scenario..."
 
 $liveParams = @{
-    ScenarioFile = $LiveScenarioFile
     ExpectedTurns = $LiveExpectedTurns
     OutDir = $LiveOutDir
     ContinueOnError = $false
     ParallelTools = [bool]$ParallelTools
     EchoToolOutputs = [bool]$EchoToolOutputs
     NoBuild = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($LiveScenarioFile)) {
+    $liveParams['ScenarioFile'] = $LiveScenarioFile
+} else {
+    $liveParams['ScenarioDir'] = $LiveScenarioDir
+    $liveParams['ScenarioFilter'] = $LiveScenarioFilter
+    $liveParams['ScenarioTags'] = $LiveScenarioTags
 }
 if ($AllowRoot -and $AllowRoot.Count -gt 0) {
     $liveParams['AllowRoot'] = $AllowRoot

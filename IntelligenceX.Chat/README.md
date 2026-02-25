@@ -47,6 +47,16 @@ pwsh .\Build\Run-ChatLiveConversation.ps1 `
   -OutDir .\artifacts\chat-live
 ```
 
+Live harness can also auto-select a scenario (no hardcoded file) using filter + tags:
+
+```powershell
+pwsh .\Build\Run-ChatLiveConversation.ps1 `
+  -ScenarioFilter "*-10-turn.json" `
+  -ScenarioTags strict,live `
+  -ExpectedTurns 10 `
+  -OutDir .\artifacts\chat-live
+```
+
 Live 10-turn harness suite run (tag-driven, no hardcoded single scenario):
 
 ```powershell
@@ -133,6 +143,8 @@ pwsh .\Build\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "*-10-turn.json" `
   -RunLiveHarness
 ```
+
+If `-RunLiveHarness` is used without `-LiveScenarioFile`, preflight auto-selects the first scenario that matches `-LiveScenarioFilter` + `-LiveScenarioTags` (defaults: `*-10-turn.json`, `strict,live`).
 
 To include a tag-driven live harness suite run in the same preflight:
 

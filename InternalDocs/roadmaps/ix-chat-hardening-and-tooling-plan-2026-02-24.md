@@ -31,6 +31,9 @@ Last validated: 2026-02-25
 - Updated live-suite/preflight defaults to remove AD-only hardcoding:
   - default filter now targets all `*-10-turn.json` scenarios
   - default live-suite tags now target `strict,live` across AD + DNS/domain paths
+- Updated single live-harness + preflight smoke path to remove AD-only hardcoding:
+  - `Build/Run-ChatLiveConversation.ps1` now supports tag-driven auto-selection when `-ScenarioFile` is omitted
+  - `Build/Run-ChatQualityPreflight.ps1 -RunLiveHarness` now forwards filter/tag-driven auto-selection by default when `-LiveScenarioFile` is omitted
 - Added host-level strictness contract for cross-host continuation quality:
   - new scenario turn assertion `min_distinct_tool_input_values` (for example `machine_name >= 2`)
   - parser + assertion runtime support in `Program.Scenario.cs`
@@ -51,7 +54,7 @@ Last validated: 2026-02-25
 - `dns-resolver-fallback-recovery-10-turn.json`: resolver divergence/fallback recovery with bounded retries and no AD/eventlog tool path.
 
 ## Confirmed Gaps / Risks
-- High: remaining end-to-end transport-break gaps are delayed/replayed output mismatch paths across service and app message handling.
+- Medium: continue observing transport-break replay behavior under mixed delayed/replayed output patterns across service and app message handling.
 - High: no required live-harness smoke gate in CI yet (deterministic catalog quality gate is wired).
 - Medium: routing ambiguity for "domain" tasks between AD directory intent and public DNS/domain intent.
 - Medium: tool-candidate budgeting is model-context aware, but long-run replay/retention compaction still needs end-to-end validation under mixed tool traffic.
@@ -69,7 +72,7 @@ Last validated: 2026-02-25
 ## Workstreams
 
 ### WS1: Transport-Break Recovery Hardening
-Status: in_progress  
+Status: mostly_done  
 Effort: M  
 Risk: High
 
@@ -115,6 +118,9 @@ Progress:
   - `RunChatOnCurrentThreadAsync_RetriesAfterTransportDropPostToolRound_WithoutReexecutingTool` (PR #780)
   - `RunChatOnCurrentThreadAsync_RetriesAfterTransportDropBeforeFinalResponse_WithoutExtraToolRounds` (PR #782)
   - Both tests assert clean completion with no duplicate/orphan tool call-output artifacts.
+- Added replay contract mismatch recovery hardening and E2E coverage:
+  - replay-recovered outputs now require compatible call contract (`call_id` + tool name + canonicalized args) instead of `call_id` only
+  - `RunChatOnCurrentThreadAsync_ExecutesReplayCall_WhenCallIdMatchesButArgumentsDiffer` validates no stale replay reuse when retry mutates arguments with same `call_id` (PR #794)
 - Tightened replay and reconnect quality checks:
   - replay test now asserts stable `call -> output` sequencing for mixed delayed-output paths
   - added negative retry-control test for nested non-transport failures
@@ -148,6 +154,7 @@ Progress:
   - `Build/Get-ChatScenarioCoverage.ps1`
 - Added scenario tag taxonomy (`ad`, `strict`, `continuation`, `cross-dc`, `eventlog`, etc.) and suite tag filtering.
 - Added live harness suite runner (tag-driven, repeatable) for real auth/tool runs without hardcoded single-scenario selection.
+- Added single live harness auto-selection path (filter + tags) so smoke runs can stay no-hardcoded by default.
 - Hardened scenario duplicate-call detection by canonicalizing tool argument JSON before signature comparison
   (so key-order-only differences still count as duplicate signatures).
 - Added DNS/open-source scenario coverage:
@@ -260,7 +267,7 @@ Progress:
   - `.github/workflows/test-dotnet-hosted.yml`
 
 ## Assignable Backlog (Parallel Branch Ready)
-- `A1` (WS1, `ix-chat-transport-recovery-<id>`, Effort M, Risk High): finish transport-break E2E tests for delayed output and replay mismatch (drop-after-tool-call and drop-before-final now covered); assert one recovery path, no duplicate bubbles, no orphan outputs, clean final answer.
+- `A1` (WS1, `ix-chat-transport-recovery-<id>`, Effort S-M, Risk Medium): add follow-up delayed/replayed-output transport stress cases at app/service boundary and keep one-path/no-duplicate/no-orphan/clean-completion invariants.
 - `A2` (WS2, `ix-chat-live-scenarios-<id>`, Effort M, Risk Medium): add live multi-turn scenarios for AD-vs-DNS domain ambiguity and explicit clarifying-turn contracts before tool execution when intent is mixed.
 - `A3` (WS4, `ix-tools-dns-open-packs-<id>`, Effort L, Risk Medium): onboard `DnsClientX` pack as standalone OSS DNS tools and `DomainDetective` pack as standalone OSS domain diagnostics with explicit pack-info hints.
 - `A4` (WS4, `ix-tools-dns-open-packs-<id>`, Effort S-M, Risk Medium): add router disambiguation contract for "domain" ambiguity (AD domain vs public DNS/domain) with one clarifying turn on ambiguous intent.
@@ -270,7 +277,7 @@ Progress:
 - `A8` (WS5, `ix-chat-context-compaction-<id>`, Effort M, Risk High): add long-run (20+ turn) compaction soak scenarios that prove no orphan outputs, no duplicate bubbles, and clean completion under budget pressure.
 
 ## Current PR Queue
-- `#791` (`fix/chat-ad-scenario-strictness-sweep-20260225`): adds `min_distinct_tool_input_values` and enforces cross-DC continuation host diversity in AD scenarios.
+- none (2026-02-25 snapshot: #791 and #794 merged)
 
 ## Parallel Branch Plan
 - Branch A: `ix-chat-transport-recovery-<id>`
@@ -283,11 +290,10 @@ Progress:
   - Ownership: tool budget, compaction policy, long-run resilience tests.
 
 ## Immediate TODO (Execution Order)
-- 1. Land PR `#791` (cross-DC continuation host-diversity strictness).
-- 2. Complete remaining transport-break E2E coverage for delayed output + replay mismatch and keep duplicate/orphan bubble prevention assertions.
-- 3. Add AD-vs-DNS domain ambiguity scenarios and enforce clarifying-turn behavior in live harness runs.
-- 4. Add context compaction long-run soak tests for multi-tool conversations.
-- 5. Add required CI live-smoke gate (tagged mini-suite) in addition to deterministic scenario quality checks.
+- 1. Add AD-vs-DNS domain ambiguity live-suite scenarios and enforce clarifying-turn behavior in live harness runs.
+- 2. Add context compaction long-run soak tests for multi-tool conversations (20+ turns).
+- 3. Add required CI live-smoke gate (tagged mini-suite) in addition to deterministic scenario quality checks.
+- 4. Add follow-up transport stress tests for delayed/replayed outputs at app/service boundary.
 
 ## Tracking
 - Use `pending`, `in_progress`, `done` markers in each workstream.
