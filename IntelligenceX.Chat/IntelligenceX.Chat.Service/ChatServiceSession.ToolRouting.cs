@@ -32,25 +32,29 @@ internal sealed partial class ChatServiceSession {
     private const string DomainIntentFamilyPublic = "public_domain";
     private const string DomainIntentActionIdAd = "act_domain_scope_ad";
     private const string DomainIntentActionIdPublic = "act_domain_scope_public";
+    private const string DomainIntentAcronymTokenAd = "AD";
     private const string DomainIntentMarker = "ix:domain-intent:v1";
     private const string DomainIntentChoiceMarker = "ix:domain-intent-choice:v1";
-    private static readonly string[] DomainIntentAdTechnicalSignals = new[] { "ad", "dc", "ldap", "gpo", "kerberos", "adplayground" };
-    private static readonly string[] DomainIntentPublicTechnicalSignals = new[] { "dns", "mx", "spf", "dmarc", "dkim", "ns", "dnsclientx", "domaindetective" };
-    private static readonly string[] DomainIntentAdTechnicalSignalPhrases = new[] {
-        "active directory",
-        "domain controller",
-        "directorio activo",
-        "controlador de dominio",
-        "annuaire actif",
-        "controleur de domaine"
+    private static readonly string[] DomainIntentAdTechnicalSignals = new[] {
+        "dc",
+        "ldap",
+        "gpo",
+        "kerberos",
+        "adplayground",
+        "ad_domain",
+        "act_domain_scope_ad"
     };
-    private static readonly string[] DomainIntentPublicTechnicalSignalPhrases = new[] {
-        "public dns",
-        "public domain dns",
-        "dns publico",
-        "dns public",
-        "dns publique",
-        "dominio publico"
+    private static readonly string[] DomainIntentPublicTechnicalSignals = new[] {
+        "dns",
+        "mx",
+        "spf",
+        "dmarc",
+        "dkim",
+        "ns",
+        "dnsclientx",
+        "domaindetective",
+        "public_domain",
+        "act_domain_scope_public"
     };
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
@@ -605,9 +609,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals)
-                           || ContainsAnyDomainSignalPhrase(normalized, DomainIntentAdTechnicalSignalPhrases);
-        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals)
-                               || ContainsAnyDomainSignalPhrase(normalized, DomainIntentPublicTechnicalSignalPhrases);
+                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
         if (hasAdSignals == hasPublicSignals) {
             return false;
         }
@@ -623,9 +626,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals)
-                           || ContainsAnyDomainSignalPhrase(normalized, DomainIntentAdTechnicalSignalPhrases);
-        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals)
-                               || ContainsAnyDomainSignalPhrase(normalized, DomainIntentPublicTechnicalSignalPhrases);
+                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
         return hasAdSignals && hasPublicSignals;
     }
 
@@ -648,18 +650,39 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ContainsAnyDomainSignalPhrase(string text, IReadOnlyList<string> phrases) {
-        if (phrases is null || phrases.Count == 0) {
+    private static bool ContainsDomainSignalToken(string text, string token) {
+        var normalizedText = (text ?? string.Empty).Trim();
+        var normalizedToken = NormalizeDomainSignalTokenValue(token);
+        if (normalizedText.Length == 0 || normalizedToken.Length == 0) {
             return false;
         }
 
-        for (var i = 0; i < phrases.Count; i++) {
-            var phrase = NormalizeCompactText(phrases[i] ?? string.Empty);
-            if (phrase.Length == 0) {
+        var index = 0;
+        while (index < normalizedText.Length) {
+            while (index < normalizedText.Length && !IsDomainSignalTokenCharacter(normalizedText[index])) {
+                index++;
+            }
+
+            if (index >= normalizedText.Length) {
+                break;
+            }
+
+            var start = index;
+            while (index < normalizedText.Length && IsDomainSignalTokenCharacter(normalizedText[index])) {
+                index++;
+            }
+
+            var length = index - start;
+            if (length <= 0) {
                 continue;
             }
 
-            if (ContainsPhraseWithBoundaries(text, phrase)) {
+            var candidate = NormalizeDomainSignalTokenValue(normalizedText.Substring(start, length));
+            if (candidate.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(candidate, normalizedToken, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }
@@ -667,10 +690,10 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ContainsDomainSignalToken(string text, string token) {
+    private static bool ContainsDomainSignalAcronymToken(string text, string acronym) {
         var normalizedText = (text ?? string.Empty).Trim();
-        var normalizedToken = (token ?? string.Empty).Trim();
-        if (normalizedText.Length == 0 || normalizedToken.Length == 0) {
+        var normalizedAcronym = (acronym ?? string.Empty).Trim();
+        if (normalizedText.Length == 0 || normalizedAcronym.Length == 0) {
             return false;
         }
 
@@ -690,20 +713,64 @@ internal sealed partial class ChatServiceSession {
             }
 
             var length = index - start;
-            if (length <= 0) {
+            if (length != normalizedAcronym.Length) {
                 continue;
             }
 
-            if (length != normalizedToken.Length) {
+            if (string.Compare(normalizedText, start, normalizedAcronym, 0, normalizedAcronym.Length, StringComparison.OrdinalIgnoreCase) != 0) {
                 continue;
             }
 
-            if (string.Compare(normalizedText, start, normalizedToken, 0, normalizedToken.Length, StringComparison.OrdinalIgnoreCase) == 0) {
+            var allLettersUpper = true;
+            for (var i = 0; i < length; i++) {
+                var ch = normalizedText[start + i];
+                if (!char.IsLetter(ch)) {
+                    continue;
+                }
+
+                if (char.IsLower(ch)) {
+                    allLettersUpper = false;
+                    break;
+                }
+            }
+
+            if (allLettersUpper) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsDomainSignalTokenCharacter(char ch) {
+        return char.IsLetterOrDigit(ch) || ch is '_' or '-';
+    }
+
+    private static string NormalizeDomainSignalTokenValue(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(normalized.Length);
+        var previousWasSeparator = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch)) {
+                sb.Append(char.ToLowerInvariant(ch));
+                previousWasSeparator = false;
+                continue;
+            }
+
+            if (ch is '_' or '-') {
+                if (!previousWasSeparator && sb.Length > 0) {
+                    sb.Append('_');
+                    previousWasSeparator = true;
+                }
+            }
+        }
+
+        return sb.ToString().Trim('_');
     }
 
     private static bool TryParseDomainIntentChoiceMarkerSelection(string text, out string family) {

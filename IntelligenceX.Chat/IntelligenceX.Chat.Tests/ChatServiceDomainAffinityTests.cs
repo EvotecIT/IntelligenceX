@@ -373,13 +373,15 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("SPF", "public_domain")]
     [InlineData("DMARC", "public_domain")]
     [InlineData("نتيجة DNS", "public_domain")]
-    [InlineData("Necesito revisar directorio activo", "ad_domain")]
-    [InlineData("Verifier annuaire actif du domaine", "ad_domain")]
+    [InlineData("Necesito revisar LDAP y Kerberos en este dominio", "ad_domain")]
+    [InlineData("Verifier LDAP du domaine", "ad_domain")]
     [InlineData("Por favor revisar DNS publico", "public_domain")]
     [InlineData("Verifier DNS public du domaine", "public_domain")]
     [InlineData("Use adplayground for this domain", "ad_domain")]
     [InlineData("Run domaindetective checks for this zone", "public_domain")]
     [InlineData("dnsclientx resolver baseline", "public_domain")]
+    [InlineData("act_domain_scope_public", "public_domain")]
+    [InlineData("ad_domain", "ad_domain")]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
         string input,
         string expectedFamily) {
@@ -407,6 +409,20 @@ public sealed class ChatServiceDomainAffinityTests {
             out _);
 
         Assert.False(resolved);
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotTreatLowercaseAdAsStandaloneAdSignal() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-lowercase-ad");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-lowercase-ad",
+            "ad and dns",
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
     }
 
     [Fact]
@@ -470,7 +486,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
         var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
             "thread-domain-signal-conflict",
-            "AD and DNS both please.",
+            "LDAP and DNS both please.",
             tools,
             out _,
             out _,
@@ -484,7 +500,7 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("AD and DNS")]
     [InlineData("Need LDAP + MX checks")]
     [InlineData("kerberos DNS MX")]
-    [InlineData("directorio activo and dns publico")]
+    [InlineData("act_domain_scope_ad with dns checks")]
     public void HasConflictingDomainIntentSignalsForTesting_ReturnsTrueForMixedSignals(string input) {
         Assert.True(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
     }
@@ -493,6 +509,7 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("AD LDAP GPO")]
     [InlineData("DNS MX SPF")]
     [InlineData("domain summary")]
+    [InlineData("ad and dns")]
     public void HasConflictingDomainIntentSignalsForTesting_ReturnsFalseWhenSignalsDoNotConflict(string input) {
         Assert.False(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
     }
