@@ -526,6 +526,7 @@ jobs:
           fi
           echo "IX_REVIEW_CONFIG_PATH=$config" >> "$GITHUB_ENV"
           mkdir -p artifacts
+          : > artifacts/changed-files.txt
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             if ! git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > artifacts/changed-files.txt; then
               echo "Warning: failed to compute changed-files from PR SHAs; continuing with full gate scope." >&2
