@@ -109,7 +109,7 @@ internal static partial class BotFeedbackSyncRunner {
             if (await IssueExistsAsync(options.Repo, id).ConfigureAwait(false)) {
                 continue;
             }
-            var title = BuildIssueTitle(pr.Number, pr.Title, task.Text);
+            var title = BuildIssueTitle(pr.Number, task.Text);
             var body = BuildIssueBody(pr, task, id);
             var (code, stdout, stderr) = await GhCli.RunAsync(
                 "issue", "create",

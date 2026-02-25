@@ -14,7 +14,7 @@ internal static partial class BotFeedbackSyncRunner {
         return Convert.ToHexString(bytes).Substring(0, 12).ToLowerInvariant();
     }
 
-    private static string BuildIssueTitle(int prNumber, string prTitle, string taskText) {
+    private static string BuildIssueTitle(int prNumber, string taskText) {
         var prefix = $"Bot feedback (PR #{prNumber})";
         var trimmedTask = taskText.Trim();
         if (trimmedTask.Length > 90) {
