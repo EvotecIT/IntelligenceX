@@ -118,64 +118,98 @@ public sealed class HostScenarioCatalogStrictnessTests {
     }
 
     [Fact]
-    public void MixedDomainAmbiguityScenario_RequiresClarifyBeforeSplitToolPaths() {
+    public void AdRebootLocalPeerCrossCheckTurn_EnforcesDistinctMachineCoverage() {
         var scenarioDir = ResolveScenarioDirectory();
-        var file = Path.Combine(scenarioDir, "mixed-domain-ambiguity-clarify-routing-10-turn.json");
+        var file = Path.Combine(scenarioDir, "ad-reboot-local-10-turn.json");
 
         Assert.True(File.Exists(file), $"Expected scenario file '{file}' to exist.");
 
         using var document = JsonDocument.Parse(File.ReadAllText(file));
         var root = document.RootElement;
-
-        var tags = ReadTagSet(root);
-        Assert.Contains("strict", tags);
-        Assert.Contains("live", tags);
-        Assert.Contains("domain-ambiguity", tags);
-
         var turns = RequireProperty(root, "turns");
         Assert.Equal(JsonValueKind.Array, turns.ValueKind);
-        Assert.Equal(10, turns.GetArrayLength());
 
-        var turnList = turns.EnumerateArray().ToArray();
-        Assert.NotEmpty(turnList);
+        var crossCheckTurn = turns.EnumerateArray().FirstOrDefault(static turn =>
+            turn.ValueKind == JsonValueKind.Object
+            && turn.TryGetProperty("name", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+            && string.Equals(nameElement.GetString(), "Cross-check peer DCs", StringComparison.OrdinalIgnoreCase));
 
-        var clarifyTurn = turnList[0];
-        var clarifyForbidden = ReadStringList(clarifyTurn, "forbid_tools");
-        Assert.Contains(clarifyForbidden, pattern => string.Equals(pattern, "*", StringComparison.Ordinal));
+        Assert.Equal(JsonValueKind.Object, crossCheckTurn.ValueKind);
+        Assert.True(ReadRequiredInt32(crossCheckTurn, "min_tool_calls") >= 2);
 
-        var clarifyContains = ReadStringList(clarifyTurn, "assert_contains");
-        Assert.Contains(clarifyContains, pattern => pattern.IndexOf("ad", StringComparison.OrdinalIgnoreCase) >= 0 || pattern.IndexOf("directory", StringComparison.OrdinalIgnoreCase) >= 0);
-        Assert.Contains(clarifyContains, pattern => pattern.IndexOf("dns", StringComparison.OrdinalIgnoreCase) >= 0);
+        var minimumDistinctInputValues = ReadNonNegativeIntMap(crossCheckTurn, "min_distinct_tool_input_values");
+        Assert.True(minimumDistinctInputValues.TryGetValue("machine_name", out var minMachineNameValues));
+        Assert.True(minMachineNameValues >= 2);
+    }
 
-        var adPathTurnFound = false;
-        var dnsPathTurnFound = false;
-        foreach (var turn in turnList.Skip(1)) {
-            var requiredPatterns = ReadStringList(turn, "require_any_tools");
-            var forbiddenPatterns = ReadStringList(turn, "forbid_tools");
-            if (requiredPatterns.Count == 0) {
-                continue;
+    [Fact]
+    public void MixedDomainAmbiguityScenarios_RequireClarifyBeforeSplitToolPaths() {
+        var scenarioDir = ResolveScenarioDirectory();
+        var files = Directory.GetFiles(scenarioDir, "mixed-domain-ambiguity-*-10-turn.json", SearchOption.TopDirectoryOnly)
+            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.NotEmpty(files);
+        Assert.True(files.Length >= 2, "Expected at least two mixed-domain ambiguity scenarios.");
+
+        foreach (var file in files) {
+            using var document = JsonDocument.Parse(File.ReadAllText(file));
+            var root = document.RootElement;
+            var fileName = Path.GetFileName(file);
+
+            var tags = ReadTagSet(root);
+            Assert.Contains("strict", tags);
+            Assert.Contains("live", tags);
+            Assert.Contains("domain-ambiguity", tags);
+
+            var turns = RequireProperty(root, "turns");
+            Assert.Equal(JsonValueKind.Array, turns.ValueKind);
+            Assert.Equal(10, turns.GetArrayLength());
+
+            var turnList = turns.EnumerateArray().ToArray();
+            Assert.NotEmpty(turnList);
+
+            var clarifyTurn = turnList[0];
+            var clarifyForbidden = ReadStringList(clarifyTurn, "forbid_tools");
+            Assert.Contains(clarifyForbidden, pattern => string.Equals(pattern, "*", StringComparison.Ordinal));
+
+            var clarifyContains = ReadStringList(clarifyTurn, "assert_contains");
+            Assert.Contains(clarifyContains, pattern => pattern.IndexOf("ad", StringComparison.OrdinalIgnoreCase) >= 0 || pattern.IndexOf("directory", StringComparison.OrdinalIgnoreCase) >= 0);
+            Assert.Contains(clarifyContains, pattern => pattern.IndexOf("dns", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            var adPathTurnFound = false;
+            var dnsPathTurnFound = false;
+            foreach (var turn in turnList.Skip(1)) {
+                var requiredPatterns = new List<string>();
+                requiredPatterns.AddRange(ReadStringList(turn, "require_tools"));
+                requiredPatterns.AddRange(ReadStringList(turn, "require_any_tools"));
+                var forbiddenPatterns = ReadStringList(turn, "forbid_tools");
+                if (requiredPatterns.Count == 0) {
+                    continue;
+                }
+
+                var requiresAd = requiredPatterns.Any(static pattern => pattern.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
+                                                                        || pattern.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase));
+                var requiresDns = requiredPatterns.Any(static pattern => pattern.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
+                                                                         || pattern.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase));
+                var forbidsAd = forbiddenPatterns.Any(static pattern => pattern.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
+                                                                        || pattern.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase));
+                var forbidsDns = forbiddenPatterns.Any(static pattern => pattern.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
+                                                                         || pattern.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase));
+
+                if (requiresAd && forbidsDns) {
+                    adPathTurnFound = true;
+                }
+
+                if (requiresDns && forbidsAd) {
+                    dnsPathTurnFound = true;
+                }
             }
 
-            var requiresAd = requiredPatterns.Any(static pattern => pattern.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
-                                                                    || pattern.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase));
-            var requiresDns = requiredPatterns.Any(static pattern => pattern.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
-                                                                     || pattern.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase));
-            var forbidsAd = forbiddenPatterns.Any(static pattern => pattern.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
-                                                                    || pattern.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase));
-            var forbidsDns = forbiddenPatterns.Any(static pattern => pattern.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
-                                                                     || pattern.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase));
-
-            if (requiresAd && forbidsDns) {
-                adPathTurnFound = true;
-            }
-
-            if (requiresDns && forbidsAd) {
-                dnsPathTurnFound = true;
-            }
+            Assert.True(adPathTurnFound, $"{fileName}: expected at least one AD-routed turn that forbids DNS tools.");
+            Assert.True(dnsPathTurnFound, $"{fileName}: expected at least one DNS-routed turn that forbids AD/EventLog tools.");
         }
-
-        Assert.True(adPathTurnFound, "Expected at least one AD-routed turn that forbids DNS tools.");
-        Assert.True(dnsPathTurnFound, "Expected at least one DNS-routed turn that forbids AD/EventLog tools.");
     }
 
     private static string ResolveScenarioDirectory() {
@@ -324,6 +358,4 @@ public sealed class HostScenarioCatalogStrictnessTests {
         throw new InvalidDataException($"Property '{name}' must be an integer.");
     }
 }
-
-
 

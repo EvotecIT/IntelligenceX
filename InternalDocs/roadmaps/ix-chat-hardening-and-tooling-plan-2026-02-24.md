@@ -168,6 +168,9 @@ Progress:
   - `min_distinct_tool_input_values.machine_name >= 2` on continuation turns with `min_tool_calls >= 2`
   - host parser/assertion tests for pass/fail behavior
   - catalog strictness guard to prevent future regression
+- Tightened AD reboot cross-DC coverage:
+  - `ad-reboot-local-10-turn.json` now enforces `min_distinct_tool_input_values.machine_name >= 2` on the "Cross-check peer DCs" turn
+  - catalog strictness tests and scenario quality gate both assert this contract
 
 ### WS3: UI Debug Visibility Modes
 Status: mostly_done  

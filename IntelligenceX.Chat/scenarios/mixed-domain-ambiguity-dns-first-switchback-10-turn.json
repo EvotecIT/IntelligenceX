@@ -1,0 +1,85 @@
+{
+  "name": "mixed-domain-ambiguity-dns-first-switchback-10-turn",
+  "tags": ["strict", "live", "domain-ambiguity", "mixed", "ad", "dns", "open-source", "continuation"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Clarify AD DS vs public DNS intent",
+      "user": "Diagnose domain issues for corp.fabrikam.com and fabrikam.com.",
+      "forbid_tools": ["*"],
+      "assert_contains": ["Active Directory", "DNS"]
+    },
+    {
+      "name": "User selects public DNS first",
+      "user": "Start with public DNS/domain checks for fabrikam.com. Do not use AD DS tools.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_pack_info", "domaindetective_pack_info", "dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "DNS resolver evidence",
+      "user": "Collect A/AAAA/NS and MX evidence using resolvers 1.1.1.1 and 8.8.8.8 and continue across remaining record families.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "DNS network probes",
+      "user": "Probe reachability for discovered DNS or MX hosts and continue across all remaining hosts in this turn.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["domaindetective_network_probe", "dnsclientx_ping"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "DNS posture summary",
+      "user": "Summarize the DNS/domain findings with top risks and unresolved blockers.",
+      "assert_contains": ["DNS"]
+    },
+    {
+      "name": "Switch to AD DS path",
+      "user": "Now switch to Active Directory domain-controller checks for corp.fabrikam.com and do not use DNS tools.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_*domain*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD cross-DC evidence",
+      "user": "Collect reboot or availability evidence on at least two discovered DCs in this turn and continue across remaining DCs.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD service/replication validation",
+      "user": "Validate AD DS service and replication health for the same scope and return concrete blockers.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*ldap*", "ad_*adws*", "ad_*replication*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Boundary comparison",
+      "user": "Return two bounded sections: AD DS internal findings and public DNS findings.",
+      "assert_contains": ["Active Directory", "DNS"]
+    },
+    {
+      "name": "Final compact checklist",
+      "user": "Provide a compact final checklist and unresolved blockers with no follow-up questions.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
