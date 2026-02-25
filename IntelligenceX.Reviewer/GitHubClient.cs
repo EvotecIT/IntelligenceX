@@ -326,20 +326,7 @@ internal sealed partial class GitHubClient : IDisposable {
                         if (commentObj is null) {
                             continue;
                         }
-                        var body = commentObj.GetString("body") ?? string.Empty;
-                        var author = commentObj.GetObject("author")?.GetString("login");
-                        var path = commentObj.GetString("path");
-                        var line = commentObj.GetInt64("line");
-                        var databaseId = commentObj.GetInt64("databaseId");
-                        var createdAtRaw = commentObj.GetString("createdAt");
-                        DateTimeOffset? createdAt = null;
-                        if (!string.IsNullOrWhiteSpace(createdAtRaw) &&
-                            DateTimeOffset.TryParse(createdAtRaw, CultureInfo.InvariantCulture,
-                                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)) {
-                            createdAt = parsed;
-                        }
-                        comments.Add(new PullRequestReviewThreadComment(databaseId, createdAt, body, author, path,
-                            line.HasValue ? (int?)line.Value : null));
+                        comments.Add(ParseReviewThreadComment(commentObj));
                     }
                 }
                 threads.Add(new PullRequestReviewThread(id, isResolved, isOutdated, totalComments, comments));
@@ -357,6 +344,87 @@ internal sealed partial class GitHubClient : IDisposable {
         }
 
         return threads;
+    }
+
+    public async Task<PullRequestReviewThread?> GetPullRequestReviewThreadAsync(string threadId, int maxComments,
+        CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(threadId) || maxComments <= 0) {
+            return null;
+        }
+
+        var comments = new List<PullRequestReviewThreadComment>();
+        var effectiveMaxComments = Math.Max(1, maxComments);
+        string? cursor = null;
+        var totalComments = 0;
+        var isResolved = false;
+        var isOutdated = false;
+
+        while (comments.Count < effectiveMaxComments) {
+            var first = Math.Min(100, effectiveMaxComments - comments.Count);
+            var payload = new JsonObject()
+                .Add("query", @"query($id:ID!,$cursor:String,$first:Int!){
+  node(id:$id){
+    ... on PullRequestReviewThread{
+      id
+      isResolved
+      isOutdated
+      comments(first:$first, after:$cursor){
+        totalCount
+        nodes{
+          databaseId
+          createdAt
+          body
+          path
+          line
+          author{ login }
+        }
+        pageInfo{ hasNextPage endCursor }
+      }
+    }
+  }
+}")
+                .Add("variables", new JsonObject()
+                    .Add("id", threadId)
+                    .Add("cursor", cursor)
+                    .Add("first", first));
+            var response = await PostGraphQlQueryAsync(payload, cancellationToken, allowRetries: true).ConfigureAwait(false);
+            var node = response.AsObject()?
+                .GetObject("data")?
+                .GetObject("node");
+            if (node is null) {
+                return null;
+            }
+
+            isResolved = node.GetBoolean("isResolved");
+            isOutdated = node.GetBoolean("isOutdated");
+            var commentsObj = node.GetObject("comments");
+            totalComments = (int)(commentsObj?.GetInt64("totalCount") ?? totalComments);
+            var commentNodes = commentsObj?.GetArray("nodes");
+            if (commentNodes is not null) {
+                foreach (var comment in commentNodes) {
+                    if (comments.Count >= effectiveMaxComments) {
+                        break;
+                    }
+                    var commentObj = comment.AsObject();
+                    if (commentObj is null) {
+                        continue;
+                    }
+                    comments.Add(ParseReviewThreadComment(commentObj));
+                }
+            }
+
+            var pageInfo = commentsObj?.GetObject("pageInfo");
+            var hasNext = pageInfo?.GetBoolean("hasNextPage") ?? false;
+            if (!hasNext || comments.Count >= totalComments) {
+                break;
+            }
+            cursor = pageInfo?.GetString("endCursor");
+            if (string.IsNullOrWhiteSpace(cursor)) {
+                break;
+            }
+        }
+
+        return new PullRequestReviewThread(threadId, isResolved, isOutdated, totalComments, comments);
     }
 
     public async Task ResolveReviewThreadAsync(string threadId, CancellationToken cancellationToken) {
@@ -474,6 +542,23 @@ internal sealed partial class GitHubClient : IDisposable {
     public void Dispose() {
         _http.Dispose();
         _requestGate.Dispose();
+    }
+
+    private static PullRequestReviewThreadComment ParseReviewThreadComment(JsonObject commentObj) {
+        var body = commentObj.GetString("body") ?? string.Empty;
+        var author = commentObj.GetObject("author")?.GetString("login");
+        var path = commentObj.GetString("path");
+        var line = commentObj.GetInt64("line");
+        var databaseId = commentObj.GetInt64("databaseId");
+        var createdAtRaw = commentObj.GetString("createdAt");
+        DateTimeOffset? createdAt = null;
+        if (!string.IsNullOrWhiteSpace(createdAtRaw) &&
+            DateTimeOffset.TryParse(createdAtRaw, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)) {
+            createdAt = parsed;
+        }
+        return new PullRequestReviewThreadComment(databaseId, createdAt, body, author, path,
+            line.HasValue ? (int?)line.Value : null);
     }
 
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {

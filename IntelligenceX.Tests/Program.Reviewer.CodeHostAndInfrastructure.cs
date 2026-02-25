@@ -74,6 +74,38 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewerGitHubTokenResolverUsesGhTokenFallback() {
+        var previousGitHubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        var previousGhToken = Environment.GetEnvironmentVariable("GH_TOKEN");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", null);
+            Environment.SetEnvironmentVariable("GH_TOKEN", "gh-token-value");
+            var token = ReviewerApp.ResolveFirstNonEmptyGitHubToken("GITHUB_TOKEN", "GH_TOKEN");
+            var source = ReviewerApp.ResolveFirstNonEmptyGitHubTokenSource("GITHUB_TOKEN", "GH_TOKEN");
+            AssertEqual("gh-token-value", token ?? string.Empty, "github token resolver gh token value");
+            AssertEqual("GH_TOKEN", source ?? string.Empty, "github token resolver gh token source");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", previousGitHubToken);
+            Environment.SetEnvironmentVariable("GH_TOKEN", previousGhToken);
+        }
+    }
+
+    private static void TestReviewerGitHubTokenResolverPrefersGithubTokenOverGhToken() {
+        var previousGitHubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        var previousGhToken = Environment.GetEnvironmentVariable("GH_TOKEN");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", "github-token-value");
+            Environment.SetEnvironmentVariable("GH_TOKEN", "gh-token-value");
+            var token = ReviewerApp.ResolveFirstNonEmptyGitHubToken("GITHUB_TOKEN", "GH_TOKEN");
+            var source = ReviewerApp.ResolveFirstNonEmptyGitHubTokenSource("GITHUB_TOKEN", "GH_TOKEN");
+            AssertEqual("github-token-value", token ?? string.Empty, "github token resolver prefers GITHUB_TOKEN");
+            AssertEqual("GITHUB_TOKEN", source ?? string.Empty, "github token resolver prefers GITHUB_TOKEN source");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", previousGitHubToken);
+            Environment.SetEnvironmentVariable("GH_TOKEN", previousGhToken);
+        }
+    }
+
     private static void TestGitHubContextCache() {
         var prHits = 0;
         var filesHits = 0;
@@ -534,14 +566,16 @@ internal static partial class Program {
     }
 
     private static string BuildGraphQlThreadsResponse(string body, string path, int line, string author, string threadId,
-        bool isResolved = false, bool isOutdated = false) {
+        bool isResolved = false, bool isOutdated = false, int totalComments = 1) {
         return "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":[{\"id\":\""
             + EscapeJson(threadId)
             + "\",\"isResolved\":"
             + (isResolved ? "true" : "false")
             + ",\"isOutdated\":"
             + (isOutdated ? "true" : "false")
-            + ",\"comments\":{\"totalCount\":1,\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\""
+            + ",\"comments\":{\"totalCount\":"
+            + totalComments.ToString()
+            + ",\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\""
             + EscapeJson(body)
             + "\",\"path\":\""
             + EscapeJson(path)

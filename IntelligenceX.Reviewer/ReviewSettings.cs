@@ -63,7 +63,8 @@ internal sealed partial class ReviewSettings {
     private static readonly IReadOnlyList<string> DefaultReviewThreadsBotLogins = new[] {
         "intelligencex-review",
         "copilot-pull-request-reviewer",
-        "chatgpt-codex-connector"
+        "chatgpt-codex-connector",
+        "github-actions"
     };
     private static readonly IReadOnlyList<string> DefaultRedactionPatterns = new[] {
         "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]*PRIVATE KEY-----",
@@ -295,8 +296,8 @@ internal sealed partial class ReviewSettings {
     public bool ReviewThreadsIncludeBots { get; set; }
     public bool ReviewThreadsIncludeResolved { get; set; }
     public bool ReviewThreadsIncludeOutdated { get; set; } = true;
-    public int ReviewThreadsMax { get; set; } = 10;
-    public int ReviewThreadsMaxComments { get; set; } = 3;
+    public int ReviewThreadsMax { get; set; } = 20;
+    public int ReviewThreadsMaxComments { get; set; } = 6;
     public bool ReviewThreadsAutoResolveStale { get; set; }
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
@@ -306,7 +307,7 @@ internal sealed partial class ReviewSettings {
     /// Uses the same values as <see cref="ReviewDiffRange"/>.
     /// </summary>
     public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
-    public int ReviewThreadsAutoResolveMax { get; set; } = 10;
+    public int ReviewThreadsAutoResolveMax { get; set; } = 20;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
     /// <summary>
     /// Require explicit diff evidence to auto-resolve review threads.

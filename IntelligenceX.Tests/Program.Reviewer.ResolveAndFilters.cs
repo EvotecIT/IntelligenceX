@@ -20,6 +20,16 @@ internal static partial class Program {
         AssertEqual(2, options.BotLogins.Count, "bot logins count");
         AssertEqual("intelligencex-review", options.BotLogins[0], "bot login 1");
         AssertEqual("copilot-pull-request-reviewer", options.BotLogins[1], "bot login 2");
+        AssertEqual(20, options.MaxComments, "default max comments");
+    }
+
+    private static void TestResolveThreadsDefaultBotLoginsIncludeManagedBots() {
+        var options = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ParseOptions(Array.Empty<string>());
+        var bots = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveBotLogins(options);
+        AssertEqual(true, ContainsCaseInsensitive(bots, "intelligencex-review"), "default bot includes intelligencex-review");
+        AssertEqual(true, ContainsCaseInsensitive(bots, "chatgpt-codex-connector"), "default bot includes codex connector");
+        AssertEqual(true, ContainsCaseInsensitive(bots, "copilot-pull-request-reviewer"), "default bot includes copilot reviewer");
+        AssertEqual(true, ContainsCaseInsensitive(bots, "github-actions"), "default bot includes github-actions");
     }
 
     private static void TestOpenAiAccountOrderRoundRobin() {
@@ -626,6 +636,15 @@ internal static partial class Program {
             names.Add(file.Filename);
         }
         return names;
+    }
+
+    private static bool ContainsCaseInsensitive(IReadOnlyList<string> values, string expected) {
+        foreach (var value in values) {
+            if (string.Equals(value, expected, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }

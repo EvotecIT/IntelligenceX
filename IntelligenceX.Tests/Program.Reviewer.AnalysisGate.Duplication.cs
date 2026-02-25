@@ -494,6 +494,62 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateDuplicationScopeChangedFilesWithoutChangedFilesIsUnavailable() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-scope-missing-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            WriteEmptyFindings(Path.Combine(temp, "artifacts", "intelligencex.findings.json"));
+            WriteDuplicationMetrics(
+                Path.Combine(temp, "artifacts", "intelligencex.duplication.json"),
+                duplicatedPercent: 40,
+                duplicatedLines: 20,
+                significantLines: 50,
+                firstLine: 12,
+                fingerprint: "ixdup-fp-scope-missing",
+                findingPath: "src/changed.cs");
+
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "failOnUnavailable": true,
+      "duplication": {
+        "enabled": true,
+        "metricsPath": "artifacts/intelligencex.duplication.json",
+        "scope": "changed-files",
+        "ruleIds": ["IXDUP001"],
+        "maxFilePercent": 30,
+        "failOnUnavailable": true
+      }
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var (exit, output) = RunAnalyzeAndCaptureOutput(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath
+            });
+            AssertEqual(2, exit, "analyze gate duplication changed-files scope without changed-files is unavailable");
+            AssertContainsText(output, "requires --changed-files", "analyze gate duplication changed-files missing list message");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
     private static void TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-new-only-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

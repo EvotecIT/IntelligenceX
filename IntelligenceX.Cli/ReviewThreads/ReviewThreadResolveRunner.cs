@@ -13,6 +13,14 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Cli.ReviewThreads;
 
 internal static class ReviewThreadResolveRunner {
+    private static readonly IReadOnlyList<string> DefaultBotLogins = new[] {
+        "intelligencex-review",
+        "chatgpt-codex-connector",
+        "copilot-pull-request-reviewer",
+        "github-actions"
+    };
+    private const int FullThreadCommentScanLimit = 500;
+
     public static async Task<int> RunAsync(string[] args) {
         var options = ParseOptions(args);
         if (options.ShowHelp) {
@@ -45,7 +53,7 @@ internal static class ReviewThreadResolveRunner {
         var threads = await client.ListReviewThreadsAsync(owner, repo, prNumber, options.MaxThreads, options.MaxComments,
             tokenSource).ConfigureAwait(false);
 
-        var eligible = FilterThreads(threads, botLogins, options).ToList();
+        var eligible = await FilterThreadsAsync(threads, botLogins, options, client, tokenSource).ConfigureAwait(false);
         if (eligible.Count == 0) {
             Console.WriteLine("No review threads matched the criteria.");
             return 0;
@@ -60,6 +68,7 @@ internal static class ReviewThreadResolveRunner {
         }
 
         var resolved = 0;
+        var failed = 0;
         foreach (var thread in eligible) {
             if (resolved >= options.ResolveMax) {
                 break;
@@ -68,15 +77,22 @@ internal static class ReviewThreadResolveRunner {
                 await client.ResolveThreadAsync(thread.Id, tokenSource).ConfigureAwait(false);
                 resolved++;
             } catch (Exception ex) {
+                failed++;
                 Console.Error.WriteLine($"Failed to resolve thread {thread.Id}: {ex.Message}");
             }
         }
 
         Console.WriteLine($"Resolved {resolved} thread(s).");
+        if (failed > 0) {
+            Console.Error.WriteLine($"Failed to resolve {failed} thread(s).");
+            return 1;
+        }
         return 0;
     }
 
-    private static IEnumerable<ReviewThread> FilterThreads(IEnumerable<ReviewThread> threads, IReadOnlyList<string> botLogins, Options options) {
+    private static async Task<List<ReviewThread>> FilterThreadsAsync(IEnumerable<ReviewThread> threads,
+        IReadOnlyList<string> botLogins, Options options, ReviewThreadClient client, CancellationToken cancellationToken) {
+        var eligible = new List<ReviewThread>();
         foreach (var thread in threads) {
             if (thread.IsResolved) {
                 continue;
@@ -84,18 +100,26 @@ internal static class ReviewThreadResolveRunner {
             if (options.OnlyOutdated && !thread.IsOutdated) {
                 continue;
             }
-            if (options.BotOnly && !ThreadHasOnlyBotComments(thread, botLogins)) {
+            var candidate = thread;
+            if (options.BotOnly && candidate.TotalComments > candidate.Comments.Count) {
+                candidate = await client.HydrateThreadCommentsAsync(candidate, FullThreadCommentScanLimit, cancellationToken)
+                    .ConfigureAwait(false);
+                if (candidate.TotalComments > candidate.Comments.Count) {
+                    Console.Error.WriteLine(
+                        $"Skipping thread {thread.Id}: comment view incomplete ({candidate.Comments.Count}/{candidate.TotalComments}).");
+                    continue;
+                }
+            }
+            if (options.BotOnly && !ThreadHasOnlyBotComments(candidate, botLogins)) {
                 continue;
             }
-            yield return thread;
+            eligible.Add(candidate);
         }
+        return eligible;
     }
 
     private static bool ThreadHasOnlyBotComments(ReviewThread thread, IReadOnlyList<string> botLogins) {
         if (thread.Comments.Count == 0) {
-            return false;
-        }
-        if (thread.TotalComments > thread.Comments.Count) {
             return false;
         }
         return thread.Comments.All(comment =>
@@ -133,11 +157,21 @@ internal static class ReviewThreadResolveRunner {
         return trimmed;
     }
 
-    private static IReadOnlyList<string> ResolveBotLogins(Options options) {
-        if (options.BotLogins.Count > 0) {
-            return options.BotLogins;
+    internal static IReadOnlyList<string> ResolveBotLogins(Options options) {
+        var source = options.BotLogins.Count > 0
+            ? options.BotLogins
+            : DefaultBotLogins;
+        var normalized = new List<string>(source.Count);
+        foreach (var bot in source) {
+            var login = NormalizeBotLogin(bot);
+            if (string.IsNullOrWhiteSpace(login)) {
+                continue;
+            }
+            if (!normalized.Contains(login, StringComparer.OrdinalIgnoreCase)) {
+                normalized.Add(login);
+            }
         }
-        return new[] { "intelligencex-review" };
+        return normalized;
     }
 
     private static bool TryResolveRepo(Options options, out string owner, out string repo) {
@@ -319,7 +353,7 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("  --include-human          Allow resolving threads with non-bot comments");
         Console.WriteLine("  --include-current        Resolve non-outdated threads too");
         Console.WriteLine("  --max-threads <n>         Max threads to scan (default: 50)");
-        Console.WriteLine("  --max-comments <n>        Max comments per thread (default: 5)");
+        Console.WriteLine("  --max-comments <n>        Max comments per thread (default: 20)");
         Console.WriteLine("  --resolve-max <n>         Max threads to resolve (default: 20)");
         Console.WriteLine("  --timeout-seconds <n>     Overall timeout (default: 60)");
         Console.WriteLine("  --api-base-url <url>     GitHub API base (default: https://api.github.com)");
@@ -336,7 +370,7 @@ internal static class ReviewThreadResolveRunner {
         public bool OnlyOutdated { get; set; } = true;
         public bool DryRun { get; set; }
         public int MaxThreads { get; set; } = 50;
-        public int MaxComments { get; set; } = 5;
+        public int MaxComments { get; set; } = 20;
         public int ResolveMax { get; set; } = 20;
         public int TimeoutSeconds { get; set; } = 60;
         public string? ApiBaseUrl { get; set; }
@@ -460,6 +494,81 @@ internal static class ReviewThreadResolveRunner {
                 }
             }
             return threads;
+        }
+
+        public async Task<ReviewThread> HydrateThreadCommentsAsync(ReviewThread thread, int maxComments,
+            CancellationToken cancellationToken) {
+            if (string.IsNullOrWhiteSpace(thread.Id) || maxComments <= 0) {
+                return thread;
+            }
+            var comments = new List<ReviewThreadComment>();
+            var effectiveMaxComments = Math.Max(1, maxComments);
+            string? cursor = null;
+            var totalComments = thread.TotalComments;
+            var isResolved = thread.IsResolved;
+            var isOutdated = thread.IsOutdated;
+            while (comments.Count < effectiveMaxComments) {
+                var first = Math.Min(100, effectiveMaxComments - comments.Count);
+                var payload = new JsonObject()
+                    .Add("query", @"query($id:ID!,$cursor:String,$first:Int!){
+  node(id:$id){
+    ... on PullRequestReviewThread{
+      id
+      isResolved
+      isOutdated
+      comments(first:$first, after:$cursor){
+        totalCount
+        nodes{
+          author{ login }
+        }
+        pageInfo{ hasNextPage endCursor }
+      }
+    }
+  }
+}")
+                    .Add("variables", new JsonObject()
+                        .Add("id", thread.Id)
+                        .Add("cursor", cursor)
+                        .Add("first", first));
+                var response = await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
+                var threadNode = response.AsObject()?
+                    .GetObject("data")?
+                    .GetObject("node");
+                if (threadNode is null) {
+                    break;
+                }
+
+                isResolved = threadNode.GetBoolean("isResolved");
+                isOutdated = threadNode.GetBoolean("isOutdated");
+                var commentsObj = threadNode.GetObject("comments");
+                totalComments = (int)(commentsObj?.GetInt64("totalCount") ?? totalComments);
+                var nodes = commentsObj?.GetArray("nodes");
+                if (nodes is not null) {
+                    foreach (var node in nodes) {
+                        if (comments.Count >= effectiveMaxComments) {
+                            break;
+                        }
+                        var obj = node.AsObject();
+                        if (obj is null) {
+                            continue;
+                        }
+                        var author = obj.GetObject("author")?.GetString("login");
+                        comments.Add(new ReviewThreadComment(author));
+                    }
+                }
+
+                var pageInfo = commentsObj?.GetObject("pageInfo");
+                var hasNext = pageInfo?.GetBoolean("hasNextPage") ?? false;
+                if (!hasNext || comments.Count >= totalComments) {
+                    break;
+                }
+                cursor = pageInfo?.GetString("endCursor");
+                if (string.IsNullOrWhiteSpace(cursor)) {
+                    break;
+                }
+            }
+
+            return new ReviewThread(thread.Id, isResolved, isOutdated, totalComments, comments);
         }
 
         public async Task ResolveThreadAsync(string threadId, CancellationToken cancellationToken) {
