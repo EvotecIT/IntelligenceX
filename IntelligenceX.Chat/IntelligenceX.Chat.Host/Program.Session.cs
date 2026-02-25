@@ -1659,16 +1659,18 @@ internal static partial class Program {
             var rewrittenArguments = new JsonObject(StringComparer.Ordinal);
             var replaced = false;
             foreach (var pair in call.Arguments) {
-                if (!string.Equals(pair.Key, targetKey, StringComparison.OrdinalIgnoreCase)) {
-                    rewrittenArguments.Add(pair.Key, pair.Value);
+                if (!IsHostTargetAlias(pair.Key)) {
+                    rewrittenArguments.Add(pair.Key, pair.Value ?? JsonValue.Null);
                     continue;
                 }
 
-                if (replaced) {
-                    continue;
-                }
-
-                AddHostTargetValue(rewrittenArguments, pair.Key, normalizedTarget, keyIsArray);
+                // Keep host-target aliases internally consistent within the same call. If any fallback
+                // host is applied, every present host/DC alias should resolve to that same host target.
+                AddHostTargetValue(
+                    rewrittenArguments,
+                    pair.Key,
+                    normalizedTarget,
+                    asArray: pair.Value?.AsArray() is not null);
                 replaced = true;
             }
 
