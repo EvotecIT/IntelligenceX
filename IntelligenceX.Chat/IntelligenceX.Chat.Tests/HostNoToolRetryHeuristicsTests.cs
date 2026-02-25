@@ -516,6 +516,28 @@ Continue that failure-signature collection across all remaining DCs in this turn
     }
 
     [Fact]
+    public void ReplSession_HostTargetRetentionCapacity_IsSizedForLongContinuationRuns() {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var recentCapacityField = replSessionType!.GetField(
+            "MaxRecentHostTargets",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var promptCapacityField = replSessionType.GetField(
+            "MaxRetryPromptHostTargets",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(recentCapacityField);
+        Assert.NotNull(promptCapacityField);
+
+        var recentCapacity = Assert.IsType<int>(recentCapacityField!.GetRawConstantValue());
+        var promptCapacity = Assert.IsType<int>(promptCapacityField!.GetRawConstantValue());
+
+        Assert.True(recentCapacity >= 64, $"Expected MaxRecentHostTargets >= 64 but found {recentCapacity}.");
+        Assert.True(promptCapacity >= 12, $"Expected MaxRetryPromptHostTargets >= 12 but found {promptCapacity}.");
+    }
+
+    [Fact]
     public void ShouldRetryModelPhaseAttempt_RetriesOnProviderServerErrorMessage() {
         var ex = new InvalidOperationException(
             "The server had an error processing your request. Please include the request ID 123.");

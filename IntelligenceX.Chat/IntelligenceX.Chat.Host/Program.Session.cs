@@ -27,8 +27,8 @@ internal static partial class Program {
         private const int ScenarioForcedToolChoiceRetryThreshold = 2;
         private const int MaxModelPhaseAttempts = 2;
         private const int ModelPhaseRetryBaseDelayMs = 350;
-        private const int MaxRecentHostTargets = 24;
-        private const int MaxRetryPromptHostTargets = 8;
+        private const int MaxRecentHostTargets = 96;
+        private const int MaxRetryPromptHostTargets = 16;
         private const int MaxAutoFilledToolTargets = 4;
         private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
