@@ -41,7 +41,7 @@ public sealed class HostScenarioAssertionTests {
             toolCalls: calls,
             toolOutputs: outputs,
             toolRounds: 1,
-            noToolExecutionRetries: 1);
+            noToolExecutionRetries: 2);
 
         var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
 
@@ -105,6 +105,42 @@ public sealed class HostScenarioAssertionTests {
             toolOutputs: Array.Empty<ToolOutput>(),
             toolRounds: 0,
             noToolExecutionRetries: 2);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("no-tool execution retry", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_ToleratesSingleNoToolRetry_WhenToolContractCompletesWithToolCalls() {
+        const string json = """
+{
+  "name": "single-retry-tolerance",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Collect evidence with tools.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"]
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 1);
 
         var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
 

@@ -158,6 +158,7 @@ Check AD0 reboot
         Assert.Contains("Minimum tool calls in this turn: 1.", prompt, StringComparison.Ordinal);
         Assert.Contains("ad_ldap_query*", prompt, StringComparison.Ordinal);
         Assert.Contains("Do not ask for permission/confirmation before the first required tool call.", prompt, StringComparison.Ordinal);
+        Assert.Contains("Hard requirement: execute at least one qualifying tool call before any narrative prose in this turn.", prompt, StringComparison.Ordinal);
         Assert.Contains("Make at least one best-effort qualifying tool call in this turn, then summarize results.", prompt, StringComparison.Ordinal);
         Assert.Contains("User request:", prompt, StringComparison.Ordinal);
         Assert.Contains("Compare lastLogon across DCs.", prompt, StringComparison.Ordinal);

@@ -19,6 +19,7 @@ using JsonLite = IntelligenceX.Json.JsonLite;
 namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
+    private const int NoToolExecutionRetryToleranceOnSuccessfulToolTurn = 1;
     private static readonly string[] PartialCompletionMarkers = {
         "partial response shown above",
         "turn ended before completion",
@@ -209,6 +210,7 @@ internal static partial class Program {
         }
 
         sb.AppendLine("- Do not ask for permission/confirmation before the first required tool call.");
+        sb.AppendLine("- Hard requirement: execute at least one qualifying tool call before any narrative prose in this turn.");
         sb.AppendLine("- Make at least one best-effort qualifying tool call in this turn, then summarize results.");
         sb.AppendLine("- Required tool-call constraints are strict for this turn: execute at least one qualifying required tool before final response.");
         sb.AppendLine("- *_pack_info tools are orientation-only and do not satisfy required tool-call assertions unless explicitly listed.");
@@ -810,11 +812,21 @@ internal static partial class Program {
             }
         }
 
+        var effectiveNoToolExecutionRetries = noToolExecutionRetries;
+        if (hasToolContract
+            && toolCallsCount > 0
+            && noToolExecutionRetries > 0) {
+            effectiveNoToolExecutionRetries = Math.Max(
+                0,
+                noToolExecutionRetries - NoToolExecutionRetryToleranceOnSuccessfulToolTurn);
+        }
+
         if (hasToolContract
             && turn.MaxNoToolExecutionRetries.HasValue
-            && noToolExecutionRetries > turn.MaxNoToolExecutionRetries.Value) {
+            && effectiveNoToolExecutionRetries > turn.MaxNoToolExecutionRetries.Value) {
             failures.Add(
-                $"Expected at most {turn.MaxNoToolExecutionRetries.Value} no-tool execution retry attempt(s); observed {noToolExecutionRetries}.");
+                $"Expected at most {turn.MaxNoToolExecutionRetries.Value} no-tool execution retry attempt(s);"
+                + $" observed {noToolExecutionRetries} (effective {effectiveNoToolExecutionRetries} after tolerance {NoToolExecutionRetryToleranceOnSuccessfulToolTurn}).");
         }
 
         foreach (var requiredTool in turn.RequireTools) {
