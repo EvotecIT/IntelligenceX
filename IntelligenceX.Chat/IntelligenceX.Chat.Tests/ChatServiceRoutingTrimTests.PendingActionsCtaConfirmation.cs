@@ -250,6 +250,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenTwoTokenFollowUpEndsWithShortNonLatinIntentToken() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_cn_execute
+            title: 执行 巡检 报告
+            request: 执行 域 控制器 巡检 并 汇总
+            mutating: false
+            reply: /act act_cn_execute
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "马上 执行" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_cn_execute", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenShortNonLatinIntentTokenIsNonTrailing() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_cn_execute
+            title: 执行 巡检 报告
+            request: 执行 域 控制器 巡检 并 汇总
+            mutating: false
+            reply: /act act_cn_execute
+            """;
+        var input = "执行 马上";
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesContiguousNonLatinIntentToken() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
