@@ -219,4 +219,21 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.Equal("ad_domain", family);
         Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-structured"));
     }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesActionSelectionPayload() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action",
+            """
+            {"ix_action_selection":{"id":"act_domain_scope_public","title":"Public DNS/domain scope","request":"{\"ix_domain_scope\":{\"family\":\"public_domain\"}}","mutating":false}}
+            """,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action"));
+    }
 }

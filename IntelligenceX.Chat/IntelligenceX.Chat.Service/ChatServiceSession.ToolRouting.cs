@@ -30,6 +30,8 @@ internal sealed partial class ChatServiceSession {
     private const double DomainIntentAffinityRetentionMinDominantShare = 0.65d;
     private const string DomainIntentFamilyAd = "ad_domain";
     private const string DomainIntentFamilyPublic = "public_domain";
+    private const string DomainIntentActionIdAd = "act_domain_scope_ad";
+    private const string DomainIntentActionIdPublic = "act_domain_scope_public";
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -257,15 +259,33 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildDomainIntentClarificationText() {
-        return "I can help with either scope, and I want to avoid running the wrong tool family.\n\n"
-               + "Do you want:\n"
-               + "1. Active Directory domain scope (DCs, LDAP, replication, GPO)\n"
-               + "2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)\n\n"
-               + "Reply with `1` or `2`.\n\n"
-               + "Structured option:\n"
-               + "```ix_domain_scope\n"
-               + "{\"ix_domain_scope\":{\"family\":\"ad_domain\"}}\n"
-               + "```";
+        return """
+               I can help with either scope, and I want to avoid running the wrong tool family.
+
+               Do you want:
+               1. Active Directory domain scope (DCs, LDAP, replication, GPO)
+               2. Public DNS/domain scope (records, MX, SPF, DMARC, NS)
+
+               Reply with `1` or `2`, or run one of these follow-up actions:
+               1. Active Directory domain scope (`/act act_domain_scope_ad`)
+               2. Public DNS/domain scope (`/act act_domain_scope_public`)
+
+               [Action]
+               ix:action:v1
+               id: act_domain_scope_ad
+               title: Active Directory domain scope
+               request: {"ix_domain_scope":{"family":"ad_domain"}}
+               reply: /act act_domain_scope_ad
+               mutating: false
+
+               [Action]
+               ix:action:v1
+               id: act_domain_scope_public
+               title: Public DNS/domain scope
+               request: {"ix_domain_scope":{"family":"public_domain"}}
+               reply: /act act_domain_scope_public
+               mutating: false
+               """;
     }
 
     private static string BuildDomainIntentSelectionRoutingHint(string family) {
@@ -359,6 +379,10 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, out family)) {
+            return true;
+        }
+
         if (!TryExtractActionSelectionPayloadJson(normalized, out var payload)) {
             return false;
         }
@@ -404,6 +428,60 @@ internal sealed partial class ChatServiceSession {
 
                 if (choiceNumber == 2) {
                     family = DomainIntentFamilyPublic;
+                    return true;
+                }
+            }
+        } catch (JsonException) {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseDomainIntentFamilyFromActionSelectionPayload(string text, out string family) {
+        family = string.Empty;
+        if (!TryExtractActionSelectionPayloadJson(text, out var payload)) {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(payload);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!TryGetObjectPropertyCaseInsensitive(
+                    doc.RootElement,
+                    out var selection,
+                    "ix_action_selection",
+                    "ixActionSelection",
+                    "action_selection",
+                    "actionSelection")
+                || selection.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (TryGetObjectPropertyCaseInsensitive(selection, out var idNode, "id", "action_id", "actionId")) {
+                if (idNode.ValueKind == JsonValueKind.String) {
+                    var id = (idNode.GetString() ?? string.Empty).Trim();
+                    if (string.Equals(id, DomainIntentActionIdAd, StringComparison.OrdinalIgnoreCase)) {
+                        family = DomainIntentFamilyAd;
+                        return true;
+                    }
+
+                    if (string.Equals(id, DomainIntentActionIdPublic, StringComparison.OrdinalIgnoreCase)) {
+                        family = DomainIntentFamilyPublic;
+                        return true;
+                    }
+                }
+            }
+
+            if (TryGetObjectPropertyCaseInsensitive(selection, out var requestNode, "request")
+                && requestNode.ValueKind == JsonValueKind.String) {
+                var nestedRequest = (requestNode.GetString() ?? string.Empty).Trim();
+                if (nestedRequest.Length > 0
+                    && !string.Equals(nestedRequest, text, StringComparison.Ordinal)
+                    && TryParsePendingDomainIntentClarificationSelection(nestedRequest, out family)) {
                     return true;
                 }
             }
