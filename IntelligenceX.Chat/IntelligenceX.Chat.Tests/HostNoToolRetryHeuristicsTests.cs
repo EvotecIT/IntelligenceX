@@ -65,6 +65,15 @@ public sealed class HostNoToolRetryHeuristicsTests {
     }
 
     [Fact]
+    public void ShouldRetryNoToolExecution_TriggersForDeferredExecutionNarrativeInNonEnglish() {
+        var result = InvokeShouldRetryNoToolExecution(
+            userRequest: "Devuelve una línea de tiempo UTC por DC para AD0.ad.evotec.xyz con IDs 4624 y 4625.",
+            assistantDraft: "Puedo hacerlo, pero primero necesito ejecutar consultas de eventos en varios DC para construir la línea de tiempo.");
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void ShouldRetryNoToolExecution_TriggersForScenarioExecutionContractTurns() {
         var result = InvokeShouldRetryNoToolExecution(
             userRequest: "[Scenario execution contract]\nThis scenario turn requires tool execution before the final response.\nUser request:\nCompare lastLogon vs lastLogonTimestamp.",
@@ -77,6 +86,46 @@ public sealed class HostNoToolRetryHeuristicsTests {
     public void ShouldRetryNoToolExecution_DoesNotTriggerForScenarioNoToolExecutionContractTurns() {
         var result = InvokeShouldRetryNoToolExecution(
             userRequest: "[Scenario execution contract]\nThis scenario turn requires a response without tool execution.\nUser request:\nAcknowledge the chosen scope only.",
+            assistantDraft: "Scope acknowledged. Continuing with the selected domain family.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldRetryNoToolExecution_TriggersForScenarioExecutionContractTurns_WithStructuredDirectiveOnly() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 1
+required_tools_any: ad_ldap_query*
+User request:
+Compare lastLogon vs lastLogonTimestamp.
+""";
+
+        var result = InvokeShouldRetryNoToolExecution(
+            userRequest: request,
+            assistantDraft: "I will summarize now based only on prior context.");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldRetryNoToolExecution_DoesNotTriggerForScenarioNoToolExecutionContractTurns_WithStructuredDirectiveOnly() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: false
+requires_no_tool_execution: true
+min_tool_calls: 0
+required_tools_any: none
+User request:
+Acknowledge the chosen scope only.
+""";
+
+        var result = InvokeShouldRetryNoToolExecution(
+            userRequest: request,
             assistantDraft: "Scope acknowledged. Continuing with the selected domain family.");
 
         Assert.False(result);
@@ -130,6 +179,30 @@ Continue recurring-error analysis across all remaining DCs in this turn.
         var result = InvokeShouldRetryScenarioContractRepair(request, calls);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldRetryScenarioContractRepair_ParsesStructuredDistinctInputRequirements() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*, eventlog_*stats*
+distinct_tool_inputs: machine_name>=2
+User request:
+Continue recurring-error analysis across all remaining DCs in this turn.
+""";
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", "{\"machine_name\":\"AD1\"}")
+        };
+
+        var result = InvokeShouldRetryScenarioContractRepair(request, calls);
+
+        Assert.True(result);
     }
 
     [Fact]

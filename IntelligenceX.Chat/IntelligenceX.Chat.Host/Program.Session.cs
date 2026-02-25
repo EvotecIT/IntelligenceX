@@ -30,6 +30,7 @@ internal static partial class Program {
         private const int MaxRecentHostTargets = 24;
         private const int MaxRetryPromptHostTargets = 8;
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
+        private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
         private readonly IntelligenceXClient _client;
         private readonly ToolRegistry _registry;
         private readonly ReplOptions _options;
@@ -321,6 +322,10 @@ internal static partial class Program {
                        && !IsScenarioNoToolExecutionContract(userRequest);
             }
 
+            if (IsScenarioNoToolExecutionContract(userRequest)) {
+                return false;
+            }
+
             if (IsScenarioToolExecutionContract(userRequest)) {
                 return true;
             }
@@ -343,6 +348,16 @@ internal static partial class Program {
                 return false;
             }
 
+            if (TryParseScenarioExecutionContractBoolDirective(request, "requires_no_tool_execution", out var requiresNoToolExecution)
+                && requiresNoToolExecution) {
+                return false;
+            }
+
+            if (TryParseScenarioExecutionContractBoolDirective(request, "requires_tool_execution", out var requiresToolExecution)
+                && requiresToolExecution) {
+                return true;
+            }
+
             if (request.IndexOf("requires tool execution before the final response", StringComparison.OrdinalIgnoreCase) >= 0) {
                 return true;
             }
@@ -361,6 +376,10 @@ internal static partial class Program {
                 return false;
             }
 
+            if (TryParseScenarioExecutionContractBoolDirective(request, "requires_no_tool_execution", out var requiresNoToolExecution)) {
+                return requiresNoToolExecution;
+            }
+
             return request.IndexOf("requires a response without tool execution", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -375,10 +394,7 @@ internal static partial class Program {
                 return false;
             }
 
-            // Keep this heuristic language-neutral for routing, but still guard a known blocker-preface
-            // phrase family that regressed in live host runs.
-            if (draft.IndexOf("i can do that, but", StringComparison.OrdinalIgnoreCase) < 0
-                && draft.IndexOf("i can do that but", StringComparison.OrdinalIgnoreCase) < 0) {
+            if (!LooksLikeOperationalRequestShape(request)) {
                 return false;
             }
 
@@ -402,7 +418,17 @@ internal static partial class Program {
             }
 
             var overlapRatio = requestUnique.Count == 0 ? 0d : (double)sharedCount / requestUnique.Count;
-            return overlapRatio >= 0.1d;
+            if (overlapRatio < 0.1d) {
+                return false;
+            }
+
+            if (LooksLikeEvidenceDenseDraft(draft)) {
+                return false;
+            }
+
+            var draftNovelTokenCount = Math.Max(0, draftUnique.Count - sharedCount);
+            var noveltyRatio = draftUnique.Count == 0 ? 0d : (double)draftNovelTokenCount / draftUnique.Count;
+            return noveltyRatio >= 0.45d;
         }
 
         private static bool ContainsQuestionSignal(string text) {
@@ -411,6 +437,99 @@ internal static partial class Program {
                    || value.IndexOf('？', StringComparison.Ordinal) >= 0
                    || value.IndexOf('¿', StringComparison.Ordinal) >= 0
                    || value.IndexOf('؟', StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool LooksLikeOperationalRequestShape(string text) {
+            var value = text ?? string.Empty;
+            if (value.Length == 0) {
+                return false;
+            }
+
+            if (Regex.IsMatch(value, @"\b[\p{L}\p{N}][\p{L}\p{N}\-]*\.[\p{L}\p{N}\.\-]+\b", RegexOptions.CultureInvariant)) {
+                return true;
+            }
+
+            if (Regex.IsMatch(value, @"\b\d{3,}\b", RegexOptions.CultureInvariant)) {
+                return true;
+            }
+
+            if (value.IndexOf('_', StringComparison.Ordinal) >= 0
+                || value.IndexOf('/', StringComparison.Ordinal) >= 0
+                || value.IndexOf('\\', StringComparison.Ordinal) >= 0) {
+                return true;
+            }
+
+            var uppercaseTokenCount = 0;
+            var inToken = false;
+            var tokenStart = 0;
+            for (var i = 0; i <= value.Length; i++) {
+                var ch = i < value.Length ? value[i] : '\0';
+                var isTokenChar = i < value.Length && char.IsLetterOrDigit(ch);
+                if (isTokenChar) {
+                    if (!inToken) {
+                        inToken = true;
+                        tokenStart = i;
+                    }
+                    continue;
+                }
+
+                if (!inToken) {
+                    continue;
+                }
+
+                var token = value.Substring(tokenStart, i - tokenStart);
+                inToken = false;
+                if (token.Length < 2) {
+                    continue;
+                }
+
+                var uppercase = 0;
+                for (var t = 0; t < token.Length; t++) {
+                    if (char.IsUpper(token[t])) {
+                        uppercase++;
+                    }
+                }
+
+                if (uppercase >= 2 || uppercase == token.Length) {
+                    uppercaseTokenCount++;
+                    if (uppercaseTokenCount >= 2) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool LooksLikeEvidenceDenseDraft(string text) {
+            var value = text ?? string.Empty;
+            if (value.Length == 0) {
+                return false;
+            }
+
+            if (Regex.IsMatch(value, @"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", RegexOptions.CultureInvariant)) {
+                return true;
+            }
+
+            var longDigitRuns = 0;
+            var currentDigitRun = 0;
+            for (var i = 0; i < value.Length; i++) {
+                if (char.IsDigit(value[i])) {
+                    currentDigitRun++;
+                    continue;
+                }
+
+                if (currentDigitRun >= 4) {
+                    longDigitRuns++;
+                }
+                currentDigitRun = 0;
+            }
+
+            if (currentDigitRun >= 4) {
+                longDigitRuns++;
+            }
+
+            return longDigitRuns >= 2;
         }
 
         private static bool LooksLikeLinkedFollowUpQuestionWithoutExecution(string userRequest, string assistantDraft) {
@@ -608,52 +727,43 @@ internal static partial class Program {
             }
 
             var minToolCalls = 0;
-            var minToolCallsMatch = Regex.Match(
-                request,
-                @"Minimum tool calls in this turn:\s*(?<count>\d+)",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (minToolCallsMatch.Success
-                && int.TryParse(minToolCallsMatch.Groups["count"].Value, out var parsedMinToolCalls)
-                && parsedMinToolCalls > 0) {
-                minToolCalls = parsedMinToolCalls;
+            if (TryParseScenarioExecutionContractIntDirective(request, "min_tool_calls", out var parsedStructuredMinToolCalls)
+                && parsedStructuredMinToolCalls > 0) {
+                minToolCalls = parsedStructuredMinToolCalls;
+            } else {
+                var minToolCallsMatch = Regex.Match(
+                    request,
+                    @"Minimum tool calls in this turn:\s*(?<count>\d+)",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (minToolCallsMatch.Success
+                    && int.TryParse(minToolCallsMatch.Groups["count"].Value, out var parsedMinToolCalls)
+                    && parsedMinToolCalls > 0) {
+                    minToolCalls = parsedMinToolCalls;
+                }
             }
 
             var minDistinctToolInputValues = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var requiredTools = ParseScenarioContractToolPatterns(
-                request,
-                @"Required tool calls \(all\):\s*(?<patterns>[^\r\n]+)");
-            var requiredAnyTools = ParseScenarioContractToolPatterns(
-                request,
-                @"Required tool calls \(at least one\):\s*(?<patterns>[^\r\n]+)");
-            var distinctMatch = Regex.Match(
-                request,
-                @"Distinct tool input value requirements:\s*(?<requirements>[^\r\n]+)",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (distinctMatch.Success) {
-                var rawRequirements = (distinctMatch.Groups["requirements"].Value ?? string.Empty).Trim();
-                if (rawRequirements.EndsWith(".", StringComparison.Ordinal)) {
-                    rawRequirements = rawRequirements.Substring(0, rawRequirements.Length - 1).TrimEnd();
-                }
+            IReadOnlyList<string> requiredTools;
+            if (!TryParseScenarioExecutionContractToolPatternsDirective(request, "required_tools_all", out requiredTools)) {
+                requiredTools = ParseScenarioContractToolPatterns(
+                    request,
+                    @"Required tool calls \(all\):\s*(?<patterns>[^\r\n]+)");
+            }
 
-                if (rawRequirements.Length > 0) {
-                    var segments = rawRequirements.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    foreach (var segment in segments) {
-                        var pair = segment.Split(">=", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                        if (pair.Length != 2) {
-                            continue;
-                        }
+            IReadOnlyList<string> requiredAnyTools;
+            if (!TryParseScenarioExecutionContractToolPatternsDirective(request, "required_tools_any", out requiredAnyTools)) {
+                requiredAnyTools = ParseScenarioContractToolPatterns(
+                    request,
+                    @"Required tool calls \(at least one\):\s*(?<patterns>[^\r\n]+)");
+            }
 
-                        var key = (pair[0] ?? string.Empty).Trim();
-                        if (key.Length == 0) {
-                            continue;
-                        }
-
-                        if (!int.TryParse(pair[1], out var parsedMinDistinct) || parsedMinDistinct < 0) {
-                            continue;
-                        }
-
-                        minDistinctToolInputValues[key] = parsedMinDistinct;
-                    }
+            if (!TryParseScenarioExecutionContractDistinctInputDirective(request, "distinct_tool_inputs", minDistinctToolInputValues)) {
+                var distinctMatch = Regex.Match(
+                    request,
+                    @"Distinct tool input value requirements:\s*(?<requirements>[^\r\n]+)",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (distinctMatch.Success) {
+                    ParseScenarioDistinctInputRequirements(distinctMatch.Groups["requirements"].Value, minDistinctToolInputValues, stripTrailingPeriod: true);
                 }
             }
 
@@ -672,6 +782,161 @@ internal static partial class Program {
             return true;
         }
 
+        private static bool TryParseScenarioExecutionContractBoolDirective(string userRequest, string key, out bool value) {
+            value = false;
+            if (!TryReadScenarioExecutionContractDirectiveValue(userRequest, key, out var rawValue)) {
+                return false;
+            }
+
+            var normalized = (rawValue ?? string.Empty).Trim();
+            if (normalized.Length == 0) {
+                return false;
+            }
+
+            if (string.Equals(normalized, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "yes", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "1", StringComparison.Ordinal)) {
+                value = true;
+                return true;
+            }
+
+            if (string.Equals(normalized, "false", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "no", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "0", StringComparison.Ordinal)) {
+                value = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseScenarioExecutionContractIntDirective(string userRequest, string key, out int value) {
+            value = 0;
+            if (!TryReadScenarioExecutionContractDirectiveValue(userRequest, key, out var rawValue)) {
+                return false;
+            }
+
+            return int.TryParse((rawValue ?? string.Empty).Trim(), out value);
+        }
+
+        private static bool TryParseScenarioExecutionContractToolPatternsDirective(string userRequest, string key, out IReadOnlyList<string> patterns) {
+            patterns = Array.Empty<string>();
+            if (!TryReadScenarioExecutionContractDirectiveValue(userRequest, key, out var rawValue)) {
+                return false;
+            }
+
+            patterns = ParseScenarioContractCsvPatterns(rawValue);
+            return true;
+        }
+
+        private static bool TryParseScenarioExecutionContractDistinctInputDirective(
+            string userRequest,
+            string key,
+            Dictionary<string, int> destination) {
+            if (destination is null) {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            if (!TryReadScenarioExecutionContractDirectiveValue(userRequest, key, out var rawValue)) {
+                return false;
+            }
+
+            ParseScenarioDistinctInputRequirements(rawValue, destination, stripTrailingPeriod: false);
+            return true;
+        }
+
+        private static bool TryReadScenarioExecutionContractDirectiveValue(string userRequest, string key, out string value) {
+            value = string.Empty;
+            var request = userRequest ?? string.Empty;
+            if (request.Length == 0 || string.IsNullOrWhiteSpace(key)) {
+                return false;
+            }
+
+            var markerIndex = request.IndexOf(ScenarioExecutionContractDirectiveMarker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0) {
+                return false;
+            }
+
+            var tail = request[(markerIndex + ScenarioExecutionContractDirectiveMarker.Length)..];
+            var lines = tail.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
+            for (var i = 0; i < lines.Length; i++) {
+                var line = (lines[i] ?? string.Empty).Trim();
+                if (line.Length == 0) {
+                    continue;
+                }
+
+                if (line.StartsWith("[", StringComparison.Ordinal) && line.EndsWith("]", StringComparison.Ordinal)) {
+                    break;
+                }
+
+                var separator = line.IndexOf(':');
+                if (separator <= 0) {
+                    continue;
+                }
+
+                var candidateKey = line[..separator].Trim();
+                if (!string.Equals(candidateKey, key, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                value = line[(separator + 1)..].Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IReadOnlyList<string> ParseScenarioContractCsvPatterns(string? rawPatterns) {
+            var raw = (rawPatterns ?? string.Empty).Trim();
+            if (raw.Length == 0 || string.Equals(raw, "none", StringComparison.OrdinalIgnoreCase)) {
+                return Array.Empty<string>();
+            }
+
+            var parsed = raw
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            return parsed.Length == 0 ? Array.Empty<string>() : parsed;
+        }
+
+        private static void ParseScenarioDistinctInputRequirements(
+            string? rawRequirements,
+            Dictionary<string, int> destination,
+            bool stripTrailingPeriod) {
+            if (destination is null) {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            var raw = (rawRequirements ?? string.Empty).Trim();
+            if (stripTrailingPeriod && raw.EndsWith(".", StringComparison.Ordinal)) {
+                raw = raw.Substring(0, raw.Length - 1).TrimEnd();
+            }
+
+            if (raw.Length == 0 || string.Equals(raw, "none", StringComparison.OrdinalIgnoreCase)) {
+                return;
+            }
+
+            var segments = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var segment in segments) {
+                var pair = segment.Split(">=", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (pair.Length != 2) {
+                    continue;
+                }
+
+                var key = (pair[0] ?? string.Empty).Trim();
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                if (!int.TryParse(pair[1], out var parsedMinDistinct) || parsedMinDistinct < 0) {
+                    continue;
+                }
+
+                destination[key] = parsedMinDistinct;
+            }
+        }
+
         private static IReadOnlyList<string> ParseScenarioContractToolPatterns(string request, string pattern) {
             var match = Regex.Match(request ?? string.Empty, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (!match.Success) {
@@ -683,16 +948,7 @@ internal static partial class Program {
                 rawPatterns = rawPatterns.Substring(0, rawPatterns.Length - 1).TrimEnd();
             }
 
-            if (rawPatterns.Length == 0) {
-                return Array.Empty<string>();
-            }
-
-            var parsed = rawPatterns
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(static value => !string.IsNullOrWhiteSpace(value))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            return parsed.Length == 0 ? Array.Empty<string>() : parsed;
+            return ParseScenarioContractCsvPatterns(rawPatterns);
         }
 
         private static bool ToolCallSetContainsPattern(IReadOnlyList<ToolCall> calls, string pattern) {

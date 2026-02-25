@@ -155,6 +155,11 @@ Check AD0 reboot
         var prompt = InvokeBuildScenarioTurnPrompt(turn);
 
         Assert.Contains("[Scenario execution contract]", prompt, StringComparison.Ordinal);
+        Assert.Contains("ix:scenario-execution:v1", prompt, StringComparison.Ordinal);
+        Assert.Contains("requires_tool_execution: true", prompt, StringComparison.Ordinal);
+        Assert.Contains("requires_no_tool_execution: false", prompt, StringComparison.Ordinal);
+        Assert.Contains("min_tool_calls: 1", prompt, StringComparison.Ordinal);
+        Assert.Contains("required_tools_any: ad_ldap_query*, ad_*discover*", prompt, StringComparison.Ordinal);
         Assert.Contains("Minimum tool calls in this turn: 1.", prompt, StringComparison.Ordinal);
         Assert.Contains("ad_ldap_query*", prompt, StringComparison.Ordinal);
         Assert.Contains("Do not ask for permission/confirmation before the first required tool call.", prompt, StringComparison.Ordinal);
@@ -188,6 +193,31 @@ Check AD0 reboot
         Assert.Contains("first discovered/source DC", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_pack_info alone is insufficient", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithNoToolContract_EmbedsStructuredNoToolDirective() {
+        const string json = """
+{
+  "name": "no-tool-contract",
+  "turns": [
+    {
+      "user": "Acknowledge selected scope.",
+      "forbid_tools": ["*"]
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "no-tool-contract");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("ix:scenario-execution:v1", prompt, StringComparison.Ordinal);
+        Assert.Contains("requires_tool_execution: false", prompt, StringComparison.Ordinal);
+        Assert.Contains("requires_no_tool_execution: true", prompt, StringComparison.Ordinal);
+        Assert.Contains("forbidden_tools: *", prompt, StringComparison.Ordinal);
+        Assert.Contains("This scenario turn requires a response without tool execution.", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

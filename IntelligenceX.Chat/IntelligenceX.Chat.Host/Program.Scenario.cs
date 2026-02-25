@@ -163,6 +163,15 @@ internal static partial class Program {
 
         var sb = new StringBuilder();
         sb.AppendLine("[Scenario execution contract]");
+        sb.AppendLine("ix:scenario-execution:v1");
+        sb.AppendLine($"requires_tool_execution: {FormatScenarioContractBool(requiresToolExecution)}");
+        sb.AppendLine($"requires_no_tool_execution: {FormatScenarioContractBool(requiresNoToolExecution)}");
+        sb.AppendLine($"min_tool_calls: {minToolCalls}");
+        sb.AppendLine($"min_tool_rounds: {minToolRounds}");
+        sb.AppendLine($"required_tools_all: {FormatScenarioContractCsv(turn.RequireTools)}");
+        sb.AppendLine($"required_tools_any: {FormatScenarioContractCsv(turn.RequireAnyTools)}");
+        sb.AppendLine($"forbidden_tools: {FormatScenarioContractCsv(turn.ForbidTools)}");
+        sb.AppendLine($"distinct_tool_inputs: {FormatScenarioContractDistinctInputRequirements(turn.MinDistinctToolInputValues)}");
         if (requiresNoToolExecution) {
             sb.AppendLine("This scenario turn requires a response without tool execution.");
             sb.AppendLine("- Do not execute any tools in this turn.");
@@ -244,6 +253,43 @@ internal static partial class Program {
         sb.AppendLine("User request:");
         sb.AppendLine(turn.User);
         return sb.ToString();
+    }
+
+    private static string FormatScenarioContractBool(bool value) {
+        return value ? "true" : "false";
+    }
+
+    private static string FormatScenarioContractCsv(IReadOnlyList<string> values) {
+        if (values is null || values.Count == 0) {
+            return "none";
+        }
+
+        var normalized = values
+            .Select(static value => (value ?? string.Empty).Trim())
+            .Where(static value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (normalized.Length == 0) {
+            return "none";
+        }
+
+        return string.Join(", ", normalized);
+    }
+
+    private static string FormatScenarioContractDistinctInputRequirements(IReadOnlyDictionary<string, int> requirements) {
+        if (requirements is null || requirements.Count == 0) {
+            return "none";
+        }
+
+        var normalized = requirements
+            .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(static pair => pair.Key + ">=" + Math.Max(0, pair.Value))
+            .ToArray();
+        if (normalized.Length == 0) {
+            return "none";
+        }
+
+        return string.Join(", ", normalized);
     }
 
     private static bool TurnRequiresToolPrefix(ChatScenarioTurn turn, string prefix) {
