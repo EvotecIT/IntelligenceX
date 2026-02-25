@@ -1381,6 +1381,10 @@ internal sealed partial class ChatServiceSession {
         return transport == OpenAITransportKind.CompatibleHttp;
     }
 
+    private const int MaxReplayToolOutputCharsPerCall = 6_000;
+    private const int MaxReplayToolOutputCharsTotal = 16_000;
+    private const string ReplayOutputCompactionMarker = "ix:replay-output-compacted:v1";
+
     private readonly record struct ReplayToolOutputSelection(string Output, bool MatchedRawCallId);
 
     private static string ResolveToolOutputCallId(
@@ -1518,6 +1522,8 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        selectedOutputsByCallId = CompactReplayOutputsByBudget(replayedCallIdsInOrder, selectedOutputsByCallId);
+
         for (var replayIndex = 0; replayIndex < replayedCallIdsInOrder.Count; replayIndex++) {
             var replayCallId = replayedCallIdsInOrder[replayIndex];
             if (!replayedCallsById.TryGetValue(replayCallId, out var replayCall)) {
@@ -1534,6 +1540,71 @@ internal sealed partial class ChatServiceSession {
         }
 
         return next;
+    }
+
+    private static Dictionary<string, ReplayToolOutputSelection> CompactReplayOutputsByBudget(
+        IReadOnlyList<string> replayedCallIdsInOrder,
+        IReadOnlyDictionary<string, ReplayToolOutputSelection> selectedOutputsByCallId) {
+        var remainingChars = MaxReplayToolOutputCharsTotal;
+        var compactedByCallId = new Dictionary<string, ReplayToolOutputSelection>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < replayedCallIdsInOrder.Count; i++) {
+            var callId = replayedCallIdsInOrder[i];
+            if (string.IsNullOrWhiteSpace(callId) || !selectedOutputsByCallId.TryGetValue(callId, out var selectedOutput)) {
+                continue;
+            }
+
+            if (remainingChars <= 0) {
+                compactedByCallId[callId] = selectedOutput with { Output = string.Empty };
+                continue;
+            }
+
+            var originalOutput = selectedOutput.Output ?? string.Empty;
+            var maxOutputChars = Math.Min(MaxReplayToolOutputCharsPerCall, remainingChars);
+            var compactedOutput = CompactReplayOutputText(originalOutput, maxOutputChars);
+            compactedByCallId[callId] = selectedOutput with { Output = compactedOutput };
+            remainingChars = Math.Max(0, remainingChars - compactedOutput.Length);
+        }
+
+        return compactedByCallId;
+    }
+
+    private static string CompactReplayOutputText(string output, int maxOutputChars) {
+        var source = output ?? string.Empty;
+        if (maxOutputChars <= 0) {
+            return string.Empty;
+        }
+
+        if (source.Length <= maxOutputChars) {
+            return source;
+        }
+
+        var markerLine = $"[{ReplayOutputCompactionMarker} original_chars={source.Length} kept_chars={maxOutputChars}]";
+        var budgetForContent = maxOutputChars - markerLine.Length - 2;
+        if (budgetForContent < 16) {
+            var headOnlyLength = Math.Max(0, maxOutputChars - markerLine.Length - 1);
+            if (headOnlyLength <= 0) {
+                return markerLine.Length > maxOutputChars ? markerLine[..maxOutputChars] : markerLine;
+            }
+
+            var headOnly = source[..Math.Min(source.Length, headOnlyLength)];
+            return headOnly + "\n" + markerLine;
+        }
+
+        var prefixLength = budgetForContent / 2;
+        var suffixLength = budgetForContent - prefixLength;
+        var prefix = source[..prefixLength];
+        var suffix = source[^suffixLength..];
+        return BuildReplayCompactedOutputEnvelope(prefix + suffix, source.Length, maxOutputChars, prefix, suffix);
+    }
+
+    private static string BuildReplayCompactedOutputEnvelope(string output, int originalLength, int maxOutputChars, string? prefix = null,
+        string? suffix = null) {
+        var markerLine = $"[{ReplayOutputCompactionMarker} original_chars={originalLength} kept_chars={maxOutputChars}]";
+        if (prefix is null || suffix is null) {
+            return output.Length == 0 ? markerLine : output + "\n" + markerLine;
+        }
+
+        return prefix + "\n" + markerLine + "\n" + suffix;
     }
 
     private static ChatInput BuildHostReplayReviewInput(

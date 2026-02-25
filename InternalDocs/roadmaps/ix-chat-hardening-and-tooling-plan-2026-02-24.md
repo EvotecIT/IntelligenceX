@@ -223,6 +223,11 @@ Progress:
   - requested vs effective `maxCandidateTools`
   - context-aware budget application flag
   - effective model context length when available
+- Added deterministic replay-output compaction in tool-round replay inputs:
+  - per-call replay output cap (`6,000` chars)
+  - total replay-output cap per replay payload (`16,000` chars)
+  - compaction marker (`ix:replay-output-compacted:v1`) preserved in replayed evidence text
+  - unit coverage for per-call and total-budget compaction behavior
 
 ### WS6: Merge Gates
 Status: in_progress  
