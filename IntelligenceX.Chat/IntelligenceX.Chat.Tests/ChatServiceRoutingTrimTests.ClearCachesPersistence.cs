@@ -13,6 +13,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ClearToolRoutingCachesMethod =
         typeof(ChatServiceSession).GetMethod("ClearToolRoutingCaches", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ClearToolRoutingCaches not found.");
+    private static readonly MethodInfo ResolvePendingActionsStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolvePendingActionsStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolvePendingActionsStorePath not found.");
+    private static readonly MethodInfo ResolveUserIntentStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveUserIntentStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveUserIntentStorePath not found.");
+    private static readonly MethodInfo ResolveDomainIntentStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveDomainIntentStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveDomainIntentStorePath not found.");
+    private static readonly MethodInfo ResolveDomainIntentClarificationStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveDomainIntentClarificationStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveDomainIntentClarificationStorePath not found.");
+    private static readonly MethodInfo ResolveWeightedSubsetStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveWeightedSubsetStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveWeightedSubsetStorePath not found.");
 
     [Fact]
     public void ClearToolRoutingCaches_RemovesPersistedRoutingSnapshots() {
@@ -29,6 +44,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new("dnsclientx_query", "DNS query")
         };
         var subsetTools = new[] { allTools[0], allTools[1] };
+        var actionDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Run failed logons (4625)
+            request: Run failed logons report.
+            mutating: false
+            reply: /act act_001
+            """;
 
         try {
             var session1 = new ChatServiceSession(
@@ -37,6 +61,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
             RememberUserIntentMethod.Invoke(session1, new object?[] { threadId, "Please run forest-wide replication diagnostics." });
             RememberWeightedToolSubsetMethod.Invoke(session1, new object?[] { threadId, subsetTools, allTools.Count });
+            RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, actionDraft });
             session1.RememberPendingDomainIntentClarificationRequestForTesting(threadId);
             session1.RememberPreferredDomainIntentFamilyForTesting(
                 domainThreadId,
@@ -44,7 +69,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 new[] { new ToolOutputDto { CallId = "1", Output = "{\"ok\":true}", Ok = true } },
                 new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
 
+            var pendingPath = Assert.IsType<string>(ResolvePendingActionsStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var userIntentPath = Assert.IsType<string>(ResolveUserIntentStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var domainIntentPath = Assert.IsType<string>(ResolveDomainIntentStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var domainClarificationPath = Assert.IsType<string>(ResolveDomainIntentClarificationStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var weightedSubsetPath = Assert.IsType<string>(ResolveWeightedSubsetStorePathMethod.Invoke(session1, Array.Empty<object>()));
+
             ClearToolRoutingCachesMethod.Invoke(session1, Array.Empty<object>());
+
+            Assert.False(File.Exists(pendingPath));
+            Assert.False(File.Exists(userIntentPath));
+            Assert.False(File.Exists(domainIntentPath));
+            Assert.False(File.Exists(domainClarificationPath));
+            Assert.False(File.Exists(weightedSubsetPath));
 
             var session2 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
