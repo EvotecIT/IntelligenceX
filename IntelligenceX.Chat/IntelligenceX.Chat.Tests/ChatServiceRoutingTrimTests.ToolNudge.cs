@@ -2791,11 +2791,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var message = Assert.IsType<string>(messageObj);
 
         Assert.Contains("ix:replay-output-budget:v1", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("where=tool_replay_input", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reason=output_budget_compaction", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("compacted_calls=1", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("replayed_calls=2", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("per_call_budget=2500", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("total_budget=7000", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("context_aware=true", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("context_tier=small", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("context_length=8192", message, StringComparison.OrdinalIgnoreCase);
     }
 

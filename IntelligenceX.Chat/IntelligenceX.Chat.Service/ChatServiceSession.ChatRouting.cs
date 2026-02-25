@@ -1407,6 +1407,8 @@ internal sealed partial class ChatServiceSession {
     private const int LargeContextMaxReplayToolOutputCharsTotal = 22_000;
     private const string ReplayOutputCompactionMarker = "ix:replay-output-compacted:v1";
     private const string ReplayOutputBudgetStatusMarker = "ix:replay-output-budget:v1";
+    private const string ReplayOutputBudgetStatusWhere = "tool_replay_input";
+    private const string ReplayOutputBudgetStatusReason = "output_budget_compaction";
 
     private readonly record struct PriorToolCallContract(string Name, string ArgumentsJson);
     private readonly record struct ReplayToolOutputSelection(string Output, bool MatchedRawCallId);
@@ -1471,7 +1473,28 @@ internal sealed partial class ChatServiceSession {
         ReplayOutputCompactionStats stats) {
         var contextLength = budget.EffectiveContextLength.HasValue ? budget.EffectiveContextLength.Value.ToString() : "unknown";
         var contextAware = budget.ContextAwareBudgetApplied ? "true" : "false";
-        return $"[{ReplayOutputBudgetStatusMarker} compacted_calls={stats.CompactedCallCount} replayed_calls={stats.ReplayedCallCount} original_chars={stats.OriginalTotalChars} kept_chars={stats.CompactedTotalChars} per_call_budget={budget.MaxOutputCharsPerCall} total_budget={budget.MaxOutputCharsTotal} context_aware={contextAware} context_length={contextLength}]";
+        var contextTier = ResolveReplayOutputCompactionContextTier(budget.EffectiveContextLength);
+        return $"[{ReplayOutputBudgetStatusMarker} where={ReplayOutputBudgetStatusWhere} reason={ReplayOutputBudgetStatusReason} compacted_calls={stats.CompactedCallCount} replayed_calls={stats.ReplayedCallCount} original_chars={stats.OriginalTotalChars} kept_chars={stats.CompactedTotalChars} per_call_budget={budget.MaxOutputCharsPerCall} total_budget={budget.MaxOutputCharsTotal} context_aware={contextAware} context_tier={contextTier} context_length={contextLength}]";
+    }
+
+    private static string ResolveReplayOutputCompactionContextTier(long? effectiveContextLength) {
+        if (!effectiveContextLength.HasValue || effectiveContextLength.Value <= 0) {
+            return "unknown";
+        }
+
+        if (effectiveContextLength.Value <= 8_192) {
+            return "small";
+        }
+
+        if (effectiveContextLength.Value <= 16_384) {
+            return "medium";
+        }
+
+        if (effectiveContextLength.Value <= 32_768) {
+            return "default";
+        }
+
+        return "large";
     }
 
     private static string ResolveToolOutputCallId(
