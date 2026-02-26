@@ -269,13 +269,24 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool HasSingleReadOnlyPendingActionEnvelope(string assistantDraft) {
+        return TryGetSinglePendingActionEnvelopeMutability(assistantDraft, out var mutability)
+               && mutability == ActionMutability.ReadOnly;
+    }
+
+    private static bool TryGetSinglePendingActionEnvelopeMutability(string assistantDraft, out ActionMutability mutability) {
+        mutability = ActionMutability.Unknown;
         var actions = ExtractPendingActions(assistantDraft);
         if (actions.Count != 1) {
             return false;
         }
 
         var action = actions[0];
-        return action.Mutability == ActionMutability.ReadOnly && !string.IsNullOrWhiteSpace(action.Id);
+        if (string.IsNullOrWhiteSpace(action.Id)) {
+            return false;
+        }
+
+        mutability = action.Mutability;
+        return true;
     }
 
     private static bool LooksLikeActionSelectionPayload(string text) {
