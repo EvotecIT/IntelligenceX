@@ -403,7 +403,7 @@ internal sealed partial class ChatServiceSession {
             _workingMemoryCheckpointByThreadId.Clear();
         }
 
-        ClearWorkingMemoryCheckpointSnapshots();
+        ClearPersistedWorkingMemoryCheckpointStore();
     }
 
     private bool ShouldSkipWorkingMemoryAugmentationForStructuredSelection(string threadId, string normalizedFollowUp) {

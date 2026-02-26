@@ -136,7 +136,7 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private void ClearWorkingMemoryCheckpointSnapshots() {
+    private void ClearPersistedWorkingMemoryCheckpointStore() {
         var path = ResolveWorkingMemoryCheckpointStorePath();
         lock (WorkingMemoryCheckpointStoreLock) {
             try {
