@@ -136,6 +136,10 @@ Pack layout:
 - `Analysis/Packs/all-50.json`
 - `Analysis/Packs/all-100.json`
 - `Analysis/Packs/all-500.json`
+- `Analysis/Packs/all-multilang-50.json`
+- `Analysis/Packs/all-multilang-100.json`
+- `Analysis/Packs/all-multilang-500.json`
+- `Analysis/Packs/all-multilang-default.json`
 - `Analysis/Packs/all-security-50.json`
 - `Analysis/Packs/all-security-100.json`
 - `Analysis/Packs/all-security-500.json`
@@ -165,10 +169,12 @@ Packs can include other packs to build tiers without duplicating rule lists:
 
 Recommended tier selection:
 - `all-50`: baseline/default onboarding tier.
+- `all-multilang-50`: baseline for mixed-language repositories that include JavaScript/TypeScript and Python in addition to C#/PowerShell.
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
-- `all-security-50|100|500`: security-focused cross-language tiers (`all-security-50` is the baseline alias tier).
-- For JavaScript/TypeScript and Python coverage, add `javascript-50|100|500` and/or `python-50|100|500` explicitly to `analysis.packs`.
+- `all-multilang-100|500`: broader/strict mixed-language tiers.
+- `all-security-50|100|500`: security-focused cross-language tiers (`all-security-default` remains a compatibility alias; prefer `all-security-50` for onboarding).
+- For language-specific rollouts, you can still add `javascript-50|100|500` and/or `python-50|100|500` explicitly to `analysis.packs`.
 
 The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and
 tier IDs remain stable for policy compatibility as coverage evolves.
@@ -198,7 +204,7 @@ Current built-in runners in `analyze run`:
 - External runners are source-aware: if a language has no matching source files in the workspace, that runner is skipped with a warning.
 - When a runner command is unavailable, `analyze run` reports explicit override guidance (`--dotnet-command`, `--pwsh-command`, `--npx-command`, `--ruff-command`).
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
-  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
+  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), additional excluded directory segments (`exclude-dir:<segment>`), and explicit relative path exclusions (`exclude-path:<relative/path>`).
   - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
   - `IXTOOL001` checks write-capable `ToolDefinition` registrations under `IntelligenceX.Tools/**` and flags schemas that do not use `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
 

@@ -163,6 +163,30 @@ internal static partial class AnalyzeRunCommand {
         return segments;
     }
 
+    private static IReadOnlySet<string> ResolveExcludedPaths(AnalysisRule rule, List<string> warnings) {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var malformedTags = new List<string>();
+        if (rule?.Tags is null || rule.Tags.Count == 0) {
+            return paths;
+        }
+
+        foreach (var tag in rule.Tags) {
+            if (string.IsNullOrWhiteSpace(tag) ||
+                !tag.StartsWith(ExcludedPathTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var normalized = NormalizeExcludedPathTagValue(tag.Substring(ExcludedPathTagPrefix.Length));
+            if (!string.IsNullOrWhiteSpace(normalized)) {
+                paths.Add(normalized);
+            } else {
+                malformedTags.Add(tag);
+            }
+        }
+        AddMalformedTagWarning(rule.Id, malformedTags, ExcludedPathTagPrefix, warnings);
+
+        return paths;
+    }
+
     private static IReadOnlySet<string> ResolveIncludedSourceExtensionsForRules(IEnumerable<AnalysisRule> rules,
         List<string> warnings) {
         var union = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -223,11 +247,12 @@ internal static partial class AnalyzeRunCommand {
         var generatedHeaderMarkers = ResolveGeneratedHeaderMarkers(rule, warnings);
         var generatedHeaderLinesToInspect = ResolveGeneratedHeaderLinesToInspect(rule, warnings);
         var excludedDirectorySegments = ResolveExcludedDirectorySegments(rule, warnings);
+        var excludedPaths = ResolveExcludedPaths(rule, warnings);
 
         return sourceFiles
             .Where(file => IsPathInIncludedExtensions(file.RelativePath, includedExtensions))
             .Where(file => !IsExcludedSourceFile(file.FullPath, file.RelativePath, generatedSuffixes, generatedHeaderMarkers,
-                excludedDirectorySegments, generatedHeaderLinesToInspect, excludedOutputPath))
+                excludedDirectorySegments, excludedPaths, generatedHeaderLinesToInspect, excludedOutputPath))
             .ToList();
     }
 
@@ -268,6 +293,33 @@ internal static partial class AnalyzeRunCommand {
             return null;
         }
         return value;
+    }
+
+    private static string? NormalizeExcludedPathTagValue(string rawValue) {
+        if (string.IsNullOrWhiteSpace(rawValue)) {
+            return null;
+        }
+        var value = rawValue.Trim().Replace('\\', '/').Trim('/');
+        if (value.Length == 0 || Path.IsPathRooted(value)) {
+            return null;
+        }
+
+        var segments = value
+            .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(static segment => segment.Trim())
+            .ToArray();
+        if (segments.Length == 0) {
+            return null;
+        }
+        foreach (var segment in segments) {
+            if (segment.Length == 0 ||
+                segment.Equals(".", StringComparison.Ordinal) ||
+                segment.Equals("..", StringComparison.Ordinal) ||
+                segment.Contains(':', StringComparison.Ordinal)) {
+                return null;
+            }
+        }
+        return string.Join("/", segments);
     }
 
     private static string? NormalizeGeneratedHeaderMarkerTagValue(string rawValue) {
@@ -339,11 +391,15 @@ internal static partial class AnalyzeRunCommand {
 
     private static bool IsExcludedSourceFile(string fullPath, string relativePath, IReadOnlyCollection<string> generatedSuffixes,
         IReadOnlyCollection<string> generatedHeaderMarkers, IReadOnlySet<string> excludedDirectorySegments,
+        IReadOnlySet<string> excludedPaths,
         int generatedHeaderLinesToInspect, string? excludedOutputPath) {
         if (string.IsNullOrWhiteSpace(relativePath)) {
             return true;
         }
         if (ContainsExcludedDirectorySegment(relativePath, excludedDirectorySegments)) {
+            return true;
+        }
+        if (IsPathExcludedByConfiguredPaths(relativePath, excludedPaths)) {
             return true;
         }
         if (IsPathUnderRelativeRoot(relativePath, excludedOutputPath)) {
@@ -394,6 +450,18 @@ internal static partial class AnalyzeRunCommand {
         }
         return normalizedPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
             normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPathExcludedByConfiguredPaths(string relativePath, IReadOnlySet<string> excludedPaths) {
+        if (string.IsNullOrWhiteSpace(relativePath) || excludedPaths is null || excludedPaths.Count == 0) {
+            return false;
+        }
+        foreach (var excludedPath in excludedPaths) {
+            if (IsPathUnderRelativeRoot(relativePath, excludedPath)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool HasGeneratedFileHeader(string fullPath, IReadOnlyCollection<string> generatedHeaderMarkers,

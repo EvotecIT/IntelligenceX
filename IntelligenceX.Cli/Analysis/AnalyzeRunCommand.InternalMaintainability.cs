@@ -48,7 +48,8 @@ internal static partial class AnalyzeRunCommand {
         GeneratedSuffixTagPrefix,
         GeneratedMarkerTagPrefix,
         GeneratedHeaderLinesTagPrefix,
-        ExcludedDirectoryTagPrefix
+        ExcludedDirectoryTagPrefix,
+        ExcludedPathTagPrefix
     };
     private static readonly string[] DuplicationSupportedTagPrefixes = {
         DuplicationWindowLinesTagPrefix,
@@ -58,14 +59,16 @@ internal static partial class AnalyzeRunCommand {
         GeneratedSuffixTagPrefix,
         GeneratedMarkerTagPrefix,
         GeneratedHeaderLinesTagPrefix,
-        ExcludedDirectoryTagPrefix
+        ExcludedDirectoryTagPrefix,
+        ExcludedPathTagPrefix
     };
     private static readonly string[] WriteToolSchemaSupportedTagPrefixes = {
         IncludeExtensionTagPrefix,
         GeneratedSuffixTagPrefix,
         GeneratedMarkerTagPrefix,
         GeneratedHeaderLinesTagPrefix,
-        ExcludedDirectoryTagPrefix
+        ExcludedDirectoryTagPrefix,
+        ExcludedPathTagPrefix
     };
     private static readonly Func<AnalysisRule, bool> NeverMatchInternalRule = static _ => false;
     // Handler order defines first-match precedence when predicates overlap.

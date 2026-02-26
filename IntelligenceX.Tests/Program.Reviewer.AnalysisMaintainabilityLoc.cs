@@ -203,6 +203,70 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalFileSizeRuleCustomExcludedPath() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-excluded-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+            Directory.CreateDirectory(Path.Combine(temp, "Assets"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-lines:700", "include-ext:js", "exclude-path:Assets\\WIZARD.js"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXLOC001"]
+}
+""");
+
+            var lines = Enumerable.Repeat("const value = 1;", 705);
+            File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Assets", "keep.js"), string.Join('\n', lines) + "\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run internal exclude-path exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run internal exclude-path findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(false, content.Contains("Assets/wizard.js", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path custom file");
+            AssertEqual(true, content.Contains("Assets/keep.js", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path still reports other files");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
     private static void TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-newlines-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

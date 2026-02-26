@@ -1,0 +1,12 @@
+{
+  "id": "all-multilang-500",
+  "label": "All Multi-Language Strict (500)",
+  "description": "Strict cross-language coverage for C#, PowerShell, JavaScript/TypeScript, Python, and internal maintainability.",
+  "includes": [
+    "all-multilang-100",
+    "all-500",
+    "javascript-500",
+    "python-500"
+  ],
+  "rules": []
+}

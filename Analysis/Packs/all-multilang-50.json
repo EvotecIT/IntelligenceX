@@ -1,0 +1,11 @@
+{
+  "id": "all-multilang-50",
+  "label": "All Multi-Language Essentials (50)",
+  "description": "Cross-language baseline pack for C#, PowerShell, JavaScript/TypeScript, Python, and internal maintainability.",
+  "includes": [
+    "all-50",
+    "javascript-50",
+    "python-50"
+  ],
+  "rules": []
+}

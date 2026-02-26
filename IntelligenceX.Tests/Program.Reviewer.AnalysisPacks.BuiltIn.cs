@@ -87,6 +87,48 @@ internal static partial class Program {
             "all-security-500 expands all-security-100");
     }
 
+    private static void TestAnalysisPacksAllMultilangTiersResolve() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Packs.ContainsKey("all-multilang-default"), "pack all-multilang-default exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("all-multilang-50"), "pack all-multilang-50 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("all-multilang-100"), "pack all-multilang-100 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("all-multilang-500"), "pack all-multilang-500 exists");
+
+        var multilang50 = catalog.Packs["all-multilang-50"];
+        AssertEqual(true, multilang50.Includes.Any(id => id.Equals("all-50", StringComparison.OrdinalIgnoreCase)),
+            "all-multilang-50 includes all-50");
+        AssertEqual(true, multilang50.Includes.Any(id => id.Equals("javascript-50", StringComparison.OrdinalIgnoreCase)),
+            "all-multilang-50 includes javascript-50");
+        AssertEqual(true, multilang50.Includes.Any(id => id.Equals("python-50", StringComparison.OrdinalIgnoreCase)),
+            "all-multilang-50 includes python-50");
+
+        var defaultPack = catalog.Packs["all-multilang-default"];
+        AssertEqual(true, defaultPack.Includes.Any(id => id.Equals("all-multilang-50", StringComparison.OrdinalIgnoreCase)),
+            "all-multilang-default includes all-multilang-50");
+
+        var all50Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-50" } },
+            catalog);
+        var multilang50Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-multilang-50" } },
+            catalog);
+        var multilang100Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-multilang-100" } },
+            catalog);
+        var multilang500Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-multilang-500" } },
+            catalog);
+
+        AssertEqual(true, multilang50Policy.Rules.Count >= all50Policy.Rules.Count,
+            "all-multilang-50 resolves at least all-50 coverage");
+        AssertEqual(true, multilang100Policy.Rules.Count >= multilang50Policy.Rules.Count,
+            "all-multilang-100 expands all-multilang-50");
+        AssertEqual(true, multilang500Policy.Rules.Count >= multilang100Policy.Rules.Count,
+            "all-multilang-500 expands all-multilang-100");
+    }
+
     private static void TestAnalysisPacksExternalDefaultsResolve() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);

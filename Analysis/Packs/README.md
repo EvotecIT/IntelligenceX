@@ -32,10 +32,13 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - `intelligencex-maintainability-50`, `intelligencex-maintainability-100`, `intelligencex-maintainability-500`
 - Cross-language tiers:
   - `all-50`, `all-100`, `all-500`
+  - `all-multilang-50`, `all-multilang-100`, `all-multilang-500`
   - Note: `all-*` currently targets core tiers (`csharp-*`, `powershell-*`, `intelligencex-maintainability-*`); add `javascript-*` / `python-*` explicitly when desired.
+  - Note: `all-multilang-*` extends `all-*` with JavaScript and Python tiers for broader mixed-language repositories.
 - Compatibility alias:
   - `all-default` (currently includes `all-50`)
-  - `all-security-default` (security baseline; `all-security-*` tiers build on this alias)
+  - `all-security-default` (compatibility baseline; prefer `all-security-50` for tiered onboarding)
+  - `all-multilang-default` (currently includes `all-multilang-50`)
 
 ## Notes on 50/100/500 tiers
 
