@@ -32,6 +32,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesTypeScriptModuleExtension);
         failed += Run("Analyze run duplication language threshold pyi",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesPythonStubExtension);
+        failed += Run("Analyze run duplication default scope includes shell and yaml",
+            TestAnalyzeRunInternalDuplicationDefaultScopeIncludesShellAndYaml);
         failed += Run("Analyze run duplication language-only tag activates rule",
             TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
         failed += Run("Duplication metrics store modern extension language inference",

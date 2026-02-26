@@ -40,6 +40,8 @@ internal static partial class Program {
             TestAnalyzeRunSharedSourceInventoryFallbackDetectsPowerShellSources);
         failed += Run("Analyze run shared source inventory fallback detects csharp sources",
             TestAnalyzeRunSharedSourceInventoryFallbackDetectsCsharpSources);
+        failed += Run("Analyze run shared source inventory fallback detects shell sources",
+            TestAnalyzeRunSharedSourceInventoryFallbackDetectsShellSources);
         failed += Run("Analyze run javascript selectors ignore mismatched tools",
             TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
         failed += Run("Analyze run python selected rule ids ignore mismatched tools",

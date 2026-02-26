@@ -37,6 +37,24 @@ internal static partial class Program {
           "duplicatedLines": 5,
           "duplicatedPercent": 50,
           "fingerprint": "ixdup-pyi"
+        },
+        {
+          "path": "scripts/build.sh",
+          "configuredMaxPercent": 15,
+          "firstDuplicatedLine": 2,
+          "significantLines": 10,
+          "duplicatedLines": 5,
+          "duplicatedPercent": 50,
+          "fingerprint": "ixdup-sh"
+        },
+        {
+          "path": "config/pipeline.yaml",
+          "configuredMaxPercent": 15,
+          "firstDuplicatedLine": 2,
+          "significantLines": 10,
+          "duplicatedLines": 5,
+          "duplicatedPercent": 50,
+          "fingerprint": "ixdup-yaml"
         }
       ]
     }
@@ -58,11 +76,17 @@ internal static partial class Program {
             var files = document?.Rules?[0]?.Files;
             var mtsFile = files?.FirstOrDefault(static file => file.Path.Equals("src/module.mts", StringComparison.Ordinal));
             var pyiFile = files?.FirstOrDefault(static file => file.Path.Equals("src/types.pyi", StringComparison.Ordinal));
+            var shellFile = files?.FirstOrDefault(static file => file.Path.Equals("scripts/build.sh", StringComparison.Ordinal));
+            var yamlFile = files?.FirstOrDefault(static file => file.Path.Equals("config/pipeline.yaml", StringComparison.Ordinal));
 
             AssertEqual("typescript", mtsFile?.Language,
                 "duplication metrics store infers typescript for .mts");
             AssertEqual("python", pyiFile?.Language,
                 "duplication metrics store infers python for .pyi");
+            AssertEqual("shell", shellFile?.Language,
+                "duplication metrics store infers shell for .sh");
+            AssertEqual("yaml", yamlFile?.Language,
+                "duplication metrics store infers yaml for .yaml");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }

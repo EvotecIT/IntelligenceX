@@ -52,6 +52,35 @@ def {{functionName}}({{inputName}}):
 """;
     }
 
+    private static string BuildDuplicateShellSample(string functionName, string inputName) {
+        return $$"""
+{{functionName}}() {
+  local {{inputName}}="$1"
+  local total=0
+  total=$((total + {{inputName}}))
+  total=$((total + 1))
+  total=$((total + 2))
+  total=$((total + 3))
+  total=$((total + 4))
+  echo "$total"
+}
+""";
+    }
+
+    private static string BuildDuplicateYamlSample(string serviceName, string imageName) {
+        return $$"""
+services:
+  {{serviceName}}:
+    image: {{imageName}}
+    restart: always
+    environment:
+      - LOG_LEVEL=info
+      - RETRIES=3
+    ports:
+      - "8080:80"
+""";
+    }
+
     private static string BuildPythonTripleQuoteHashSample(string trailingKeyword) {
         return
             "def compute(input_value):\n" +

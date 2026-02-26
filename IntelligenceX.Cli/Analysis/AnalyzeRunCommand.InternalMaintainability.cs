@@ -34,11 +34,15 @@ internal static partial class AnalyzeRunCommand {
             SourceLanguageConventions.CSharpSourceExtensions.Length +
             SourceLanguageConventions.PowerShellSourceExtensions.Length +
             SourceLanguageConventions.JavaScriptSourceExtensions.Length +
-            SourceLanguageConventions.PythonSourceExtensions.Length);
+            SourceLanguageConventions.PythonSourceExtensions.Length +
+            SourceLanguageConventions.ShellSourceExtensions.Length +
+            SourceLanguageConventions.YamlSourceExtensions.Length);
         extensions.AddRange(SourceLanguageConventions.CSharpSourceExtensions);
         extensions.AddRange(SourceLanguageConventions.PowerShellSourceExtensions);
         extensions.AddRange(SourceLanguageConventions.JavaScriptSourceExtensions);
         extensions.AddRange(SourceLanguageConventions.PythonSourceExtensions);
+        extensions.AddRange(SourceLanguageConventions.ShellSourceExtensions);
+        extensions.AddRange(SourceLanguageConventions.YamlSourceExtensions);
         return extensions.ToArray();
     }
 
