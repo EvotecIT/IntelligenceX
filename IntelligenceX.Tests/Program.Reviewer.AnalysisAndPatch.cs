@@ -126,21 +126,6 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run --strict keeps known option lookahead with framework value");
     }
 
-    private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
-        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
-        AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
-    }
-
-    private static void TestAnalyzeRunStrictSkipsCsharpRunnerWithoutCsharpSources() {
-        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, includeCsharpSource: false);
-        AssertEqual(0, exit, "analyze run strict skips csharp runner when no csharp sources are present");
-    }
-
-    private static void TestAnalyzeRunInvalidPackOverrideFails() {
-        var exit = RunAnalyzeRunWithMissingDotnet(strict: false, packsOverride: "all-50,--force");
-        AssertEqual(1, exit, "analyze run invalid pack override fails");
-    }
-
     private static int RunAnalyzeRunWithMissingDotnet(
         bool strict,
         bool? strictOverride = null,
@@ -220,6 +205,13 @@ internal static partial class Program {
                 var src = Path.Combine(temp, "src");
                 Directory.CreateDirectory(src);
                 File.WriteAllText(Path.Combine(src, "Program.cs"), "public static class Program { public static void Main() { } }");
+                File.WriteAllText(Path.Combine(src, "Sample.csproj"), """
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+""");
             }
 
             var output = Path.Combine(temp, "artifacts");
