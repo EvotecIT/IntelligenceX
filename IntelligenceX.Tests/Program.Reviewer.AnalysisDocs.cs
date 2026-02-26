@@ -69,5 +69,54 @@ internal static partial class Program {
             AssertEqual(false, actualSlug.Any(char.IsWhiteSpace), $"{rule.Id} docs slug has no whitespace");
         }
     }
+
+    private static void TestStaticAnalysisDocsIncludeExtDefaultsStayInSync() {
+        var workspace = ResolveWorkspaceRoot();
+        var docsPath = Path.Combine(workspace, "Docs", "reviewer", "static-analysis.md");
+        var docs = File.ReadAllText(docsPath);
+        var includeExtLine = docs
+            .Split('\n')
+            .FirstOrDefault(static line =>
+                line.Contains("include-ext:<extension>", StringComparison.OrdinalIgnoreCase));
+
+        AssertEqual(false, string.IsNullOrWhiteSpace(includeExtLine),
+            "static-analysis docs include-ext default line exists");
+        if (string.IsNullOrWhiteSpace(includeExtLine)) {
+            return;
+        }
+
+        var expectedDefaults = string.Join(", ",
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.GetDefaultIncludedSourceExtensionsForTests()
+                .Select(static extension => $"`{extension}`"));
+
+        AssertContainsText(includeExtLine, expectedDefaults,
+            "static-analysis include-ext defaults stay in sync with source conventions");
+    }
+
+    private static void TestStaticAnalysisDocsDuplicationLanguageAliasesStayInSync() {
+        var workspace = ResolveWorkspaceRoot();
+        var docsPath = Path.Combine(workspace, "Docs", "reviewer", "static-analysis.md");
+        var docs = File.ReadAllText(docsPath);
+        var duplicationLine = docs
+            .Split('\n')
+            .FirstOrDefault(static line =>
+                line.Contains("max-duplication-percent-<language>", StringComparison.OrdinalIgnoreCase));
+
+        AssertEqual(false, string.IsNullOrWhiteSpace(duplicationLine),
+            "static-analysis docs duplication language line exists");
+        if (string.IsNullOrWhiteSpace(duplicationLine)) {
+            return;
+        }
+
+        var canonicalSegment = string.Join("|",
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.GetDuplicationCanonicalLanguagesForTests());
+        var aliasesSegment = string.Join("|",
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.GetDuplicationAliasLanguagesForTests());
+
+        AssertContainsText(duplicationLine, $"`{canonicalSegment}`",
+            "static-analysis docs canonical duplication languages stay in sync");
+        AssertContainsText(duplicationLine, $"`{aliasesSegment}`",
+            "static-analysis docs duplication aliases stay in sync");
+    }
 }
 #endif

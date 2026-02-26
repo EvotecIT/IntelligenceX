@@ -198,5 +198,62 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalDuplicationRuleWarnsOnUnsupportedLanguageAliasList() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-unsupported-language-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below 25%",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent-ruby:10", "dup-window-lines:5"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "FileA.cs"), BuildDuplicateSample("FileA"));
+            File.WriteAllText(Path.Combine(temp, "FileB.cs"), BuildDuplicateSample("FileB"));
+
+            var output = Path.Combine(temp, "artifacts");
+            var result = RunAnalyzeDuplicationWithConsoleOutput(temp, Path.Combine(temp, ".intelligencex", "reviewer.json"), output);
+
+            AssertEqual(0, result.ExitCode, "analyze run duplication unsupported language tag exit");
+            AssertEqual(true,
+                result.Output.Contains("unsupported duplication language", StringComparison.OrdinalIgnoreCase),
+                "analyze run duplication unsupported language warning");
+            AssertEqual(true,
+                result.Output.Contains("aliases: cs, ps, js, ts, py, sh, bash, zsh, yml", StringComparison.OrdinalIgnoreCase),
+                "analyze run duplication unsupported language warning lists aliases");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
 }
 #endif

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace IntelligenceX.Cli.Analysis;
@@ -48,22 +49,12 @@ internal static partial class AnalyzeRunCommand {
             }
 
             var stripped = StripInlineShellHashComment(rawLine);
-            var normalizedTokens = new List<string>();
-            foreach (Match match in ShellTokenRegex.Matches(stripped)) {
-                if (!match.Success) {
-                    continue;
-                }
-                var normalized = NormalizeShellToken(match.Value);
-                if (string.IsNullOrWhiteSpace(normalized)) {
-                    continue;
-                }
-                normalizedTokens.Add(normalized);
-            }
-            if (normalizedTokens.Count == 0) {
+            var normalizedLine = BuildNormalizedTokenLine(stripped, ShellTokenRegex, NormalizeShellToken);
+            if (string.IsNullOrWhiteSpace(normalizedLine)) {
                 continue;
             }
 
-            result.Add(new SignificantLine(index + 1, string.Join(" ", normalizedTokens)));
+            result.Add(new SignificantLine(index + 1, normalizedLine));
         }
         return result;
     }
@@ -102,24 +93,40 @@ internal static partial class AnalyzeRunCommand {
         var lines = (content ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         for (var index = 0; index < lines.Length; index++) {
             var stripped = StripInlineYamlHashComment(lines[index] ?? string.Empty);
-            var normalizedTokens = new List<string>();
-            foreach (Match match in YamlTokenRegex.Matches(stripped)) {
-                if (!match.Success) {
-                    continue;
-                }
-                var normalized = NormalizeYamlToken(match.Value);
-                if (string.IsNullOrWhiteSpace(normalized)) {
-                    continue;
-                }
-                normalizedTokens.Add(normalized);
-            }
-            if (normalizedTokens.Count == 0) {
+            var normalizedLine = BuildNormalizedTokenLine(stripped, YamlTokenRegex, NormalizeYamlToken);
+            if (string.IsNullOrWhiteSpace(normalizedLine)) {
                 continue;
             }
 
-            result.Add(new SignificantLine(index + 1, string.Join(" ", normalizedTokens)));
+            result.Add(new SignificantLine(index + 1, normalizedLine));
         }
         return result;
+    }
+
+    private static string BuildNormalizedTokenLine(string line, Regex tokenRegex, Func<string, string> normalizeToken) {
+        if (string.IsNullOrWhiteSpace(line) || tokenRegex is null || normalizeToken is null) {
+            return string.Empty;
+        }
+
+        StringBuilder? builder = null;
+        foreach (Match match in tokenRegex.Matches(line)) {
+            if (!match.Success) {
+                continue;
+            }
+
+            var normalized = normalizeToken(match.Value);
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                continue;
+            }
+
+            builder ??= new StringBuilder(line.Length);
+            if (builder.Length > 0) {
+                builder.Append(' ');
+            }
+            builder.Append(normalized);
+        }
+
+        return builder?.ToString() ?? string.Empty;
     }
 
     private static string NormalizeYamlToken(string token) {
@@ -150,6 +157,10 @@ internal static partial class AnalyzeRunCommand {
 
     // Heuristic shell scanner: tracks common expansion contexts where '#' is syntax (not comment).
     // It is not a full shell parser and intentionally keeps behavior conservative for duplication tokenization.
+    // Known limitations (acceptable for duplication-only tokenization):
+    // - does not parse heredoc bodies or ANSI-C strings ($'...')
+    // - may not perfectly model deeply mixed nested shell expansion constructs
+    // - treats comments by lexical boundaries, not full shell grammar execution rules
     private static string StripInlineShellHashComment(string input) {
         if (string.IsNullOrEmpty(input)) {
             return string.Empty;

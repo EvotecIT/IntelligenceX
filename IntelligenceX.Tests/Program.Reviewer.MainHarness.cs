@@ -91,6 +91,10 @@ internal static partial class Program {
         failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
         failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
         failed += Run("Analysis catalog PowerShell docs links", TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern);
+        failed += Run("Static analysis docs include-ext defaults stay in sync",
+            TestStaticAnalysisDocsIncludeExtDefaultsStayInSync);
+        failed += Run("Static analysis docs duplication aliases stay in sync",
+            TestStaticAnalysisDocsDuplicationLanguageAliasesStayInSync);
         failed += Run("PowerShell docs snippets use exported cmdlets", TestPowerShellDocsSnippetsUseExportedCmdlets);
         failed += Run("PowerShell example scripts use exported cmdlets", TestPowerShellExampleScriptsUseExportedCmdlets);
         failed += Run("PowerShell cmdlet source XML docs are rich", TestPowerShellCmdletSourceXmlDocsAreRich);

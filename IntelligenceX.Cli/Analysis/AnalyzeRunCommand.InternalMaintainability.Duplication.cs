@@ -13,6 +13,57 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
+    private static readonly string[] DuplicationCanonicalLanguages = {
+        "csharp",
+        "powershell",
+        "javascript",
+        "typescript",
+        "python",
+        "shell",
+        "yaml"
+    };
+    private static readonly string[] DuplicationAliasLanguages = {
+        "cs",
+        "ps",
+        "js",
+        "ts",
+        "py",
+        "sh",
+        "bash",
+        "zsh",
+        "yml"
+    };
+    private static readonly IReadOnlyDictionary<string, string> DuplicationLanguageAliasMap =
+        BuildDuplicationLanguageAliasMap();
+    private static readonly string DuplicationSupportedLanguagesWarningText =
+        BuildDuplicationSupportedLanguagesWarningText();
+
+    private static IReadOnlyDictionary<string, string> BuildDuplicationLanguageAliasMap() {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        static void AddLanguage(IDictionary<string, string> languageMap, string canonical, params string[] aliases) {
+            languageMap[canonical] = canonical;
+            foreach (var alias in aliases) {
+                languageMap[alias] = canonical;
+            }
+        }
+
+        AddLanguage(map, "csharp", "cs");
+        AddLanguage(map, "powershell", "ps");
+        AddLanguage(map, "javascript", "js");
+        AddLanguage(map, "typescript", "ts");
+        AddLanguage(map, "python", "py");
+        AddLanguage(map, "shell", "sh", "bash", "zsh");
+        AddLanguage(map, "yaml", "yml");
+        return map;
+    }
+
+    private static string BuildDuplicationSupportedLanguagesWarningText() {
+        var canonical = string.Join(", ", DuplicationCanonicalLanguages);
+        var aliases = string.Join(", ", DuplicationAliasLanguages);
+        return $"Supported: {canonical} (aliases: {aliases}).";
+    }
+
     private static DuplicationEvaluationResult RunDuplicationChecks(IReadOnlyList<AnalysisPolicyRule> rules,
         IReadOnlyList<SourceFileEntry> sourceFiles, string? excludedOutputPath, List<string> warnings) {
         var findings = new List<AnalysisFindingItem>();
@@ -248,7 +299,7 @@ internal static partial class AnalyzeRunCommand {
             var language = NormalizeDuplicationLanguage(languageRaw);
             if (string.IsNullOrWhiteSpace(language)) {
                 warnings.Add(
-                    $"Rule {rule.Id} has unsupported duplication language in tag '{tag}'. Supported: csharp, powershell, javascript, typescript, python, shell, yaml.");
+                    $"Rule {rule.Id} has unsupported duplication language in tag '{tag}'. {DuplicationSupportedLanguagesWarningText}");
                 continue;
             }
             if (!double.TryParse(valueRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ||
@@ -279,17 +330,8 @@ internal static partial class AnalyzeRunCommand {
         if (string.IsNullOrWhiteSpace(value)) {
             return null;
         }
-
-        return value.Trim().ToLowerInvariant() switch {
-            "cs" or "csharp" => "csharp",
-            "ps" or "powershell" => "powershell",
-            "js" or "javascript" => "javascript",
-            "ts" or "typescript" => "typescript",
-            "py" or "python" => "python",
-            "sh" or "shell" or "bash" or "zsh" => "shell",
-            "yml" or "yaml" => "yaml",
-            _ => null
-        };
+        var normalized = value.Trim().ToLowerInvariant();
+        return DuplicationLanguageAliasMap.TryGetValue(normalized, out var canonical) ? canonical : null;
     }
 
     private static DuplicationRuleMetrics BuildEmptyDuplicationRuleMetrics(AnalysisPolicyRule policyRule, int windowLines = 0,
