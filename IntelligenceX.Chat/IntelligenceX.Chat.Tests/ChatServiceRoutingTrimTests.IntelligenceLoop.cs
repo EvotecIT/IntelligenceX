@@ -267,7 +267,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData(false, true, false, false, false, "Findings summary without actions.", false)]
     [InlineData(true, false, false, false, false, "Findings summary without actions.", false)]
     [InlineData(true, true, true, false, false, "Findings summary without actions.", false)]
-    [InlineData(true, true, false, false, false, "[Action]\nix:action:v1\nid: act_001\nreply: /act act_001", false)]
+    [InlineData(true, true, false, false, false, "[Action]\nix:action:v1\nid: act_read\nmutating: false\nreply: /act act_read", true)]
+    [InlineData(true, true, false, false, false, "[Action]\nix:action:v1\nid: act_unknown\nreply: /act act_unknown", true)]
+    [InlineData(true, true, false, false, false, "[Action]\nix:action:v1\nid: act_mut\nmutating: true\nreply: /act act_mut", false)]
     [InlineData(true, true, false, false, false, "I can continue once I get one minimal input:\n- time window\n- target DC list\n- then I will execute immediately", false)]
     [InlineData(true, true, false, true, false, "Findings summary without actions.", false)]
     [InlineData(true, true, false, false, true, "Findings summary without actions.", false)]
@@ -288,6 +290,144 @@ public sealed partial class ChatServiceRoutingTrimTests {
             assistantDraft);
 
         Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_SkipsWhenMutatingPendingActionExistsAndReportsMutabilityCounts() {
+        var draft = """
+            [Action]
+            ix:action:v1
+            id: act_read
+            mutating: false
+            reply: /act act_read
+
+            [Action]
+            ix:action:v1
+            id: act_unknown
+            reply: /act act_unknown
+
+            [Action]
+            ix:action:v1
+            id: act_mut
+            mutating: true
+            reply: /act act_mut
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            assistantDraft: draft);
+
+        Assert.False(decision.ShouldAttempt);
+        Assert.Equal("skip_pending_mutating_actions", decision.Reason);
+        Assert.Equal(1, decision.PendingReadOnlyCount);
+        Assert.Equal(1, decision.PendingUnknownCount);
+        Assert.Equal(1, decision.PendingMutatingCount);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_AllowsNonMutatingPendingActionsAndReportsMutabilityCounts() {
+        var draft = """
+            [Action]
+            ix:action:v1
+            id: act_read
+            mutating: false
+            reply: /act act_read
+
+            [Action]
+            ix:action:v1
+            id: act_unknown
+            reply: /act act_unknown
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_pending_non_mutating_actions", decision.Reason);
+        Assert.Equal(1, decision.PendingReadOnlyCount);
+        Assert.Equal(1, decision.PendingUnknownCount);
+        Assert.Equal(0, decision.PendingMutatingCount);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextBeforeNoTextFallback_ReusesPriorDraftWhenCurrentDraftIsEmptyAndToolActivityExists() {
+        var resolved = ChatServiceSession.ResolveAssistantTextBeforeNoTextFallback(
+            assistantDraft: " \n\t",
+            lastNonEmptyAssistantDraft: "Cross-DC matrix ready: AD1 normal, AD2 unexpected reboot signal.",
+            hasToolActivity: true);
+
+        Assert.Equal("Cross-DC matrix ready: AD1 normal, AD2 unexpected reboot signal.", resolved);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextBeforeNoTextFallback_DoesNotReusePriorDraftWithoutToolActivity() {
+        var resolved = ChatServiceSession.ResolveAssistantTextBeforeNoTextFallback(
+            assistantDraft: string.Empty,
+            lastNonEmptyAssistantDraft: "Prior draft",
+            hasToolActivity: false);
+
+        Assert.Equal(string.Empty, resolved);
+    }
+
+    [Theory]
+    [InlineData("[warning] No response text was produced by the model.", true)]
+    [InlineData("<|channel|>commentary\n<|message|>{}", true)]
+    [InlineData("Usable prior draft", false)]
+    public void ResolveAssistantTextBeforeNoTextFallback_SkipsInvalidPriorDraftShapes(string priorDraft, bool expectEmpty) {
+        var resolved = ChatServiceSession.ResolveAssistantTextBeforeNoTextFallback(
+            assistantDraft: string.Empty,
+            lastNonEmptyAssistantDraft: priorDraft,
+            hasToolActivity: true);
+
+        if (expectEmpty) {
+            Assert.Equal(string.Empty, resolved);
+            return;
+        }
+
+        Assert.Equal("Usable prior draft", resolved);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromToolOutputsFallback_BuildsRecoveredSummaryFromToolMetadata() {
+        var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
+            assistantDraft: string.Empty,
+            toolCalls: new[] {
+                new ToolCallDto {
+                    CallId = "call-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = "{}"
+                }
+            },
+            toolOutputs: new[] {
+                new ToolOutputDto {
+                    CallId = "call-1",
+                    Output = "{\"ok\":true}",
+                    SummaryMarkdown = "Cross-DC check complete: AD1 healthy, AD2 has Event 41 signal."
+                }
+            });
+
+        Assert.Contains("Recovered findings from executed tools", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_live_query", text, StringComparison.Ordinal);
+        Assert.Contains("AD2 has Event 41 signal", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromToolOutputsFallback_PreservesNonEmptyAssistantDraft() {
+        var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
+            assistantDraft: "Already have final response.",
+            toolCalls: Array.Empty<ToolCallDto>(),
+            toolOutputs: Array.Empty<ToolOutputDto>());
+
+        Assert.Equal("Already have final response.", text);
     }
 
     [Fact]

@@ -305,6 +305,7 @@ internal sealed partial class ChatServiceSession {
                     ToolRounds: 0,
                     ProjectionFallbackCount: 0,
                     ToolErrors: Array.Empty<ToolErrorMetricDto>(),
+                    AutonomyCounters: Array.Empty<TurnCounterMetricDto>(),
                     ResolvedModel: null);
             }
         }
@@ -399,6 +400,13 @@ internal sealed partial class ChatServiceSession {
         var packCapabilityFallbackReplayUsed = false;
         var noResultPhaseLoopWatchdogUsed = false;
         var interimResultSent = false;
+        var lastNonEmptyAssistantDraft = string.Empty;
+        var nudgeUnknownEnvelopeReplanCount = 0;
+        var noTextRecoveryHitCount = 0;
+        var noTextToolOutputRecoveryHitCount = 0;
+        var proactiveSkipMutatingCount = 0;
+        var proactiveSkipReadOnlyCount = 0;
+        var proactiveSkipUnknownCount = 0;
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
         var supportsSyntheticHostReplayItems = SupportsSyntheticHostReplayItems(_options.OpenAITransport);
@@ -408,10 +416,16 @@ internal sealed partial class ChatServiceSession {
         for (var round = 0; round < maxRounds; round++) {
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
+                var assistantDraft = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+                var controlPayloadDetected = isLocalCompatibleLoopback && LooksLikeRuntimeControlPayloadArtifact(assistantDraft);
+                if (!controlPayloadDetected && !string.IsNullOrWhiteSpace(assistantDraft)) {
+                    lastNonEmptyAssistantDraft = assistantDraft.Trim();
+                }
+
                 var noExtractedRoundState = new NoExtractedToolRoundState(
                     turn: turn,
-                    assistantDraft: EasyChatResult.FromTurn(turn).Text ?? string.Empty,
-                    controlPayloadDetected: false,
+                    assistantDraft: assistantDraft,
+                    controlPayloadDetected: controlPayloadDetected,
                     routedUserRequest: routedUserRequest,
                     executionContractApplies: executionContractApplies,
                     toolDefs: toolDefs,
@@ -434,6 +448,13 @@ internal sealed partial class ChatServiceSession {
                     hostStructuredNextActionReplayUsed: hostStructuredNextActionReplayUsed,
                     packCapabilityFallbackReplayUsed: packCapabilityFallbackReplayUsed,
                     noResultPhaseLoopWatchdogUsed: noResultPhaseLoopWatchdogUsed,
+                    lastNonEmptyAssistantDraft: lastNonEmptyAssistantDraft,
+                    nudgeUnknownEnvelopeReplanCount: nudgeUnknownEnvelopeReplanCount,
+                    noTextRecoveryHitCount: noTextRecoveryHitCount,
+                    noTextToolOutputRecoveryHitCount: noTextToolOutputRecoveryHitCount,
+                    proactiveSkipMutatingCount: proactiveSkipMutatingCount,
+                    proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
+                    proactiveSkipUnknownCount: proactiveSkipUnknownCount,
                     interimResultSent: interimResultSent);
 
                 var noExtractedRecoveryOutcome = await HandleNoExtractedToolCallsRecoveryAsync(
@@ -473,6 +494,8 @@ internal sealed partial class ChatServiceSession {
                         ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref noToolExecutionWatchdogReason, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
                         ref autoPendingActionReplayUsed, ref proactiveFollowUpUsed, ref localNoTextDirectRetryUsed, ref structuredNextActionRetryUsed,
                         ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref packCapabilityFallbackReplayUsed, ref noResultPhaseLoopWatchdogUsed,
+                        ref lastNonEmptyAssistantDraft, ref nudgeUnknownEnvelopeReplanCount, ref noTextRecoveryHitCount, ref noTextToolOutputRecoveryHitCount,
+                        ref proactiveSkipMutatingCount, ref proactiveSkipReadOnlyCount, ref proactiveSkipUnknownCount,
                         ref interimResultSent);
                     continue;
                 }
@@ -516,6 +539,8 @@ internal sealed partial class ChatServiceSession {
                     ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref noToolExecutionWatchdogReason, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
                     ref autoPendingActionReplayUsed, ref proactiveFollowUpUsed, ref localNoTextDirectRetryUsed, ref structuredNextActionRetryUsed,
                     ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref packCapabilityFallbackReplayUsed, ref noResultPhaseLoopWatchdogUsed,
+                    ref lastNonEmptyAssistantDraft, ref nudgeUnknownEnvelopeReplanCount, ref noTextRecoveryHitCount, ref noTextToolOutputRecoveryHitCount,
+                    ref proactiveSkipMutatingCount, ref proactiveSkipReadOnlyCount, ref proactiveSkipUnknownCount,
                     ref interimResultSent);
                 continue;
             }
