@@ -628,7 +628,6 @@ internal sealed partial class ChatServiceSession {
         ClearToolRoutingStatsSnapshots();
         ClearWorkingMemoryCheckpoints();
     }
-
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(
         OpenAITransportKind previousTransport,
         OpenAITransportKind currentTransport,
@@ -671,7 +670,6 @@ internal sealed partial class ChatServiceSession {
             StringComparison.Ordinal);
         return (reconnect, modelChanged);
     }
-
     internal static string? NormalizeRuntimeBaseUrlForComparison(string? baseUrl) {
         var trimmed = (baseUrl ?? string.Empty).Trim();
         if (trimmed.Length == 0) {
