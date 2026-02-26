@@ -388,6 +388,7 @@ internal sealed partial class ChatServiceSession {
 
         var allowUnknownSingleActionCompactFollowUp = actions.Count == 1
                                                       && actions[0].Mutability == ActionMutability.Unknown
+                                                      && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)
                                                       && IsCompactUnknownPendingActionFollowUpWithCtaContext(trimmed, callToActionTokens);
 
         // Fail closed for actions that are not explicitly marked read-only unless this is a compact
