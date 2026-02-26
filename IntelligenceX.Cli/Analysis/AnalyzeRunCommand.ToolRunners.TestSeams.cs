@@ -119,4 +119,8 @@ internal static partial class AnalyzeRunCommand {
         }
         return IsPathExcludedByConfiguredPaths(relativePath, normalizedExcludedPaths);
     }
+
+    internal static string? NormalizeExcludedPathTagValueForTests(string rawValue) {
+        return NormalizeExcludedPathTagValue(rawValue);
+    }
 }

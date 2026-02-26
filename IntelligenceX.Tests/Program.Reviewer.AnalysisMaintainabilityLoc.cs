@@ -273,6 +273,14 @@ internal static partial class Program {
     }
 
     private static void TestAnalyzeRunInternalFileSizeRuleExcludePathNormalizesRepeatedSeparators() {
+        var normalized = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "Assets///wizard.js");
+        AssertEqual("Assets/wizard.js", normalized, "analyze run internal exclude-path canonical path collapse");
+
+        var normalizedMixed = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "Assets\\\\wizard.js");
+        AssertEqual("Assets/wizard.js", normalizedMixed, "analyze run internal exclude-path canonical slash variants");
+
         var matched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
             "Assets//wizard.js",
             "Assets/wizard.js");

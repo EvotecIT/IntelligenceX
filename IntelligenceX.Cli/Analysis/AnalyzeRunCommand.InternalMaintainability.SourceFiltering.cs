@@ -300,7 +300,7 @@ internal static partial class AnalyzeRunCommand {
         if (string.IsNullOrWhiteSpace(rawValue)) {
             return null;
         }
-        var value = rawValue.Trim().Replace('\\', '/').Trim('/');
+        var value = CollapseRepeatedPathSeparators(rawValue.Trim().Replace('\\', '/')).Trim('/');
         if (value.Length == 0 || Path.IsPathRooted(value)) {
             return null;
         }
@@ -321,6 +321,16 @@ internal static partial class AnalyzeRunCommand {
             }
         }
         return string.Join("/", segments);
+    }
+
+    private static string CollapseRepeatedPathSeparators(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return value;
+        }
+        while (value.Contains("//", StringComparison.Ordinal)) {
+            value = value.Replace("//", "/", StringComparison.Ordinal);
+        }
+        return value;
     }
 
     private static string? NormalizeGeneratedHeaderMarkerTagValue(string rawValue) {
