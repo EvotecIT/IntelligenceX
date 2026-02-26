@@ -211,7 +211,7 @@ internal static partial class Program {
             Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
             Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
             Directory.CreateDirectory(Path.Combine(temp, "Assets"));
-            Directory.CreateDirectory(Path.Combine(temp, "Assets", "wizard.js"));
+            Directory.CreateDirectory(Path.Combine(temp, "Assets", "generated"));
 
             File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
 {
@@ -232,7 +232,7 @@ internal static partial class Program {
   "description": "Flags oversized source files.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["max-lines:700", "include-ext:js", "exclude-path:Assets\\WIZARD.js"]
+  "tags": ["max-lines:700", "include-ext:js", "exclude-path:Assets\\WIZARD.js", "exclude-path:Assets/generated"]
 }
 """);
 
@@ -247,7 +247,7 @@ internal static partial class Program {
             var lines = Enumerable.Repeat("const value = 1;", 705);
             File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js"), string.Join('\n', lines) + "\n");
             File.WriteAllText(Path.Combine(temp, "Assets", "keep.js"), string.Join('\n', lines) + "\n");
-            File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js", "map.js"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Assets", "generated", "map.js"), string.Join('\n', lines) + "\n");
 
             var output = Path.Combine(temp, "artifacts");
             var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
@@ -264,7 +264,7 @@ internal static partial class Program {
                 "analyze run internal exclude-path custom file");
             AssertEqual(true, content.Contains("\"path\": \"Assets/keep.js\"", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal exclude-path still reports other files");
-            AssertEqual(true, content.Contains("\"path\": \"Assets/wizard.js/map.js\"", StringComparison.OrdinalIgnoreCase),
+            AssertEqual(true, content.Contains("\"path\": \"Assets/generated/map.js\"", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal exclude-path does not exclude subpath");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
