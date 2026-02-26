@@ -156,6 +156,7 @@ public sealed partial class MainWindow : Window {
                     _isAuthenticated = done.Ok;
                     if (!done.Ok) {
                         _authenticatedAccountId = null;
+                        ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
                     }
                     _isConnected = _client is not null;
                     _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
@@ -422,12 +423,36 @@ public sealed partial class MainWindow : Window {
         }
 
         if (RequiresInteractiveSignInForCurrentTransport() && !refreshSucceeded) {
+            if (ShouldAttemptQueuedPromptDispatchAfterVerificationFailure(
+                    requiresInteractiveSignIn: true,
+                    queuedPromptCount: queuedPromptCount,
+                    loginInProgress: _loginInProgress)) {
+                _isAuthenticated = true;
+                await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
+                await SetActivityAsync("Sign-in callback succeeded. Retrying queued prompt while account verification catches up.").ConfigureAwait(false);
+                await HandlePostLoginCompletionAsync().ConfigureAwait(false);
+                return;
+            }
+
             await SetStatusAsync(SessionStatus.SignInRequired()).ConfigureAwait(false);
             await SetActivityAsync("Post-login verification did not confirm account state. Use Sign In or Switch Account.").ConfigureAwait(false);
             return;
         }
 
+        if (queuedPromptCount == 0) {
+            ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
+        }
+
         await HandlePostLoginCompletionAsync().ConfigureAwait(false);
+    }
+
+    internal static bool ShouldAttemptQueuedPromptDispatchAfterVerificationFailure(
+        bool requiresInteractiveSignIn,
+        int queuedPromptCount,
+        bool loginInProgress) {
+        return requiresInteractiveSignIn
+               && queuedPromptCount > 0
+               && !loginInProgress;
     }
 
     private static string SummarizeErrorForStatus(string? message) {
@@ -540,6 +565,7 @@ public sealed partial class MainWindow : Window {
                 TotalTokens: metrics.Usage?.TotalTokens,
                 CachedPromptTokens: metrics.Usage?.CachedPromptTokens,
                 ReasoningTokens: metrics.Usage?.ReasoningTokens,
+                AutonomyCounters: NormalizeTurnCounterMetrics(metrics.AutonomyCounters),
                 Model: string.IsNullOrWhiteSpace(metrics.Model) ? null : metrics.Model.Trim(),
                 RequestedModel: string.IsNullOrWhiteSpace(metrics.RequestedModel) ? null : metrics.RequestedModel.Trim(),
                 Transport: string.IsNullOrWhiteSpace(metrics.Transport) ? null : metrics.Transport.Trim(),
@@ -557,11 +583,58 @@ public sealed partial class MainWindow : Window {
                + (metrics.Usage?.TotalTokens is null ? string.Empty : " tokens=" + metrics.Usage.TotalTokens.Value.ToString(CultureInfo.InvariantCulture))
                + " tools=" + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
                + " rounds=" + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture)
+               + FormatAutonomyCounterTraceSegment(metrics.AutonomyCounters)
                + (string.IsNullOrWhiteSpace(metrics.RequestedModel) ? string.Empty : " requestedModel=" + metrics.RequestedModel.Trim())
                + (string.IsNullOrWhiteSpace(metrics.Model) ? string.Empty : " model=" + metrics.Model.Trim())
                + (string.IsNullOrWhiteSpace(metrics.Transport) ? string.Empty : " transport=" + metrics.Transport.Trim())
                + (string.IsNullOrWhiteSpace(metrics.EndpointHost) ? string.Empty : " endpoint=" + metrics.EndpointHost.Trim())
                + " outcome=" + (metrics.Outcome ?? "unknown");
+    }
+
+    private static IReadOnlyList<TurnCounterMetricDto> NormalizeTurnCounterMetrics(IReadOnlyList<TurnCounterMetricDto>? counters) {
+        if (counters is null || counters.Count == 0) {
+            return Array.Empty<TurnCounterMetricDto>();
+        }
+
+        var normalized = new List<TurnCounterMetricDto>(counters.Count);
+        for (var i = 0; i < counters.Count; i++) {
+            var current = counters[i];
+            var name = (current.Name ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            var count = Math.Max(0, current.Count);
+            if (count <= 0) {
+                continue;
+            }
+
+            normalized.Add(new TurnCounterMetricDto {
+                Name = name,
+                Count = count
+            });
+        }
+
+        return normalized.Count == 0 ? Array.Empty<TurnCounterMetricDto>() : normalized;
+    }
+
+    private static string FormatAutonomyCounterTraceSegment(IReadOnlyList<TurnCounterMetricDto>? counters) {
+        if (counters is null || counters.Count == 0) {
+            return string.Empty;
+        }
+
+        var parts = new List<string>(counters.Count);
+        for (var i = 0; i < counters.Count; i++) {
+            var current = counters[i];
+            var name = (current.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || current.Count <= 0) {
+                continue;
+            }
+
+            parts.Add(name + "=" + current.Count.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return parts.Count == 0 ? string.Empty : " autonomy={" + string.Join(", ", parts) + "}";
     }
 
     private async Task PublishOptionsStateSafeAsync() {

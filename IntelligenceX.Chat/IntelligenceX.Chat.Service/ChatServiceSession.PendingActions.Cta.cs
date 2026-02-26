@@ -27,6 +27,10 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<string>();
         }
 
+        if (ContainsInvalidUnicodeSequence(draft)) {
+            return Array.Empty<string>();
+        }
+
         var phrases = ExtractQuotedPhrases(draft);
         if (phrases.Count == 0) {
             return Array.Empty<string>();
@@ -89,6 +93,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ContainsInvalidUnicodeSequence(raw)) {
+            return false;
+        }
+
         // Guardrails must run on raw input (pre-normalization) to avoid normalization widening matches.
         if (raw.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0) {
             return false;
@@ -114,6 +122,27 @@ internal sealed partial class ChatServiceSession {
             if (string.Equals(request, token, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsInvalidUnicodeSequence(string text) {
+        var value = text ?? string.Empty;
+        for (var i = 0; i < value.Length; i++) {
+            var current = value[i];
+            if (!char.IsSurrogate(current)) {
+                continue;
+            }
+
+            if (char.IsHighSurrogate(current)
+                && i + 1 < value.Length
+                && char.IsLowSurrogate(value[i + 1])) {
+                i++;
+                continue;
+            }
+
+            return true;
         }
 
         return false;

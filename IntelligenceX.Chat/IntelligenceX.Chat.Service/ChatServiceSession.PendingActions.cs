@@ -386,9 +386,16 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Fail closed for actions that are not explicitly marked read-only.
-        // Unknown mutability can still represent state-changing operations.
-        if (actions.Count == 1 && RequiresExplicitPendingActionSelection(actions[0])) {
+        var allowUnknownSingleActionCompactFollowUp = actions.Count == 1
+                                                      && actions[0].Mutability == ActionMutability.Unknown
+                                                      && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)
+                                                      && IsCompactUnknownPendingActionFollowUpWithCtaContext(trimmed, callToActionTokens);
+
+        // Fail closed for actions that are not explicitly marked read-only unless this is a compact
+        // continuation follow-up in an assistant CTA context for a single unknown action.
+        if (actions.Count == 1
+            && RequiresExplicitPendingActionSelection(actions[0])
+            && !allowUnknownSingleActionCompactFollowUp) {
             reason = "mutating_action_requires_explicit_selection";
             return false;
         }
@@ -402,6 +409,12 @@ internal sealed partial class ChatServiceSession {
             && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)) {
             match = actions[0];
             reason = "cta_echo_selection";
+            return true;
+        }
+
+        if (allowUnknownSingleActionCompactFollowUp) {
+            match = actions[0];
+            reason = "unknown_single_compact_follow_up_with_cta_context";
             return true;
         }
 
@@ -421,6 +434,33 @@ internal sealed partial class ChatServiceSession {
 
     private static bool RequiresExplicitPendingActionSelection(PendingAction action) {
         return action.Mutability != ActionMutability.ReadOnly;
+    }
+
+    private static bool IsCompactUnknownPendingActionFollowUpWithCtaContext(string userText, IReadOnlyList<string> callToActionTokens) {
+        if (callToActionTokens is null || callToActionTokens.Count == 0) {
+            return false;
+        }
+
+        var normalized = (userText ?? string.Empty).Trim();
+        if (ContainsInvalidUnicodeSequence(normalized)) {
+            return false;
+        }
+        if (!LooksLikeContinuationFollowUp(normalized)) {
+            return false;
+        }
+
+        for (var i = 0; i < callToActionTokens.Count; i++) {
+            if (ContainsInvalidUnicodeSequence(callToActionTokens[i])) {
+                return false;
+            }
+        }
+
+        if (ContainsQuestionSignal(normalized) || LooksLikeStructuredPendingActionConfirmationInput(normalized)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 10);
+        return tokenCount is >= 2 and <= 6;
     }
 
     private static bool TryMatchPendingActionByIntentOverlap(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {

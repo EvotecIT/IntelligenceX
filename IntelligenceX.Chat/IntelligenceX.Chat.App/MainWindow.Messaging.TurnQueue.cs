@@ -528,15 +528,34 @@ public sealed partial class MainWindow : Window {
         return _isSending || _turnStartupInProgress;
     }
 
+    private bool TryConsumeQueuedPromptUsageLimitBypassAfterSwitchAccount() {
+        if (!_queuedPromptUsageLimitBypassAfterSwitchAccount) {
+            return false;
+        }
+
+        _queuedPromptUsageLimitBypassAfterSwitchAccount = false;
+        return true;
+    }
+
+    private void ClearQueuedPromptUsageLimitBypassAfterSwitchAccount() {
+        _queuedPromptUsageLimitBypassAfterSwitchAccount = false;
+    }
+
     private async Task<bool> TryDispatchQueuedPromptAfterLoginAsync(bool honorAutoDispatch = true) {
         if (IsTurnDispatchInProgress() || !IsEffectivelyAuthenticatedForCurrentTransport() || _loginInProgress || (honorAutoDispatch && !_queueAutoDispatchEnabled)) {
             return false;
         }
 
         if (IsActiveUsageLimitDispatchBlocked(out var retryAfterMinutes)) {
-            await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
-            await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(retryAfterMinutes)).ConfigureAwait(false);
-            return false;
+            if (TryConsumeQueuedPromptUsageLimitBypassAfterSwitchAccount()) {
+                ClearUsageLimitDispatchBlockForActiveAccount();
+            } else {
+                await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
+                await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(retryAfterMinutes)).ConfigureAwait(false);
+                return false;
+            }
+        } else {
+            ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
         }
 
         if (!TryDequeuePromptAfterLogin(out var queuedTurn)) {
@@ -568,6 +587,7 @@ public sealed partial class MainWindow : Window {
         }
 
         if (GetQueuedPromptAfterLoginCount() == 0) {
+            ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
             return false;
         }
 

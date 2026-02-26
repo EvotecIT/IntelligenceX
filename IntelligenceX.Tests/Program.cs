@@ -80,6 +80,12 @@ internal static partial class Program {
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);
         failed += Run("Native request body deduplicates replay pairs", TestNativeRequestBodyDeduplicatesReplayPairsAndStripsLegacyArguments);
         failed += Run("AppServer transport normalizes replay input items", TestAppServerTransportNormalizesReplayInputItems);
+        failed += Run("Native input normalization converts function call to custom tool call",
+            TestNativeInputNormalizationConvertsFunctionCallToCustomToolCall);
+        failed += Run("Native input normalization converts function call output to custom output",
+            TestNativeInputNormalizationConvertsFunctionCallOutputToCustomOutput);
+        failed += Run("Native canonical request builder normalizes history tool calls",
+            TestNativeBuildCanonicalRequestMessagesNormalizesHistoryToolCalls);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);
