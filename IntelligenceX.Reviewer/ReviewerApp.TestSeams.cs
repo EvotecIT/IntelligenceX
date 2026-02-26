@@ -57,6 +57,11 @@ public static partial class ReviewerApp {
         ReviewSettings settings, CancellationToken cancellationToken = default) =>
         AutoResolveStaleThreadsAsync(github, null, threads, settings, cancellationToken);
 
+    /// <summary>Test-only forwarder for stale-thread auto-resolution with explicit fallback token client.</summary>
+    internal static Task AutoResolveStaleThreadsForTestsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken = default) =>
+        AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken);
+
     /// <summary>Test-only forwarder for thread assessment prompt rendering.</summary>
     internal static string BuildThreadAssessmentPromptForTests(PullRequestContext context,
         IReadOnlyList<PullRequestReviewThread> threads, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,

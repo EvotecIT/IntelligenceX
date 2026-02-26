@@ -235,31 +235,82 @@ public static partial class ReviewerApp {
 
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
+        Exception? primaryError;
         try {
             await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
             return (true, null);
         } catch (Exception ex) {
-            var isForbidden = IsIntegrationForbidden(ex);
-            if (fallbackGithub is not null && isForbidden) {
-                try {
-                    await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
-                    return (true, null);
-                } catch (Exception fallbackEx) {
-                    // Only log after the integration-forbidden path actually fails (avoid false alarms).
-                    LogIntegrationForbiddenHint();
-                    return (false, fallbackEx.Message);
-                }
+            primaryError = ex;
+        }
+
+        Exception? fallbackError = null;
+        if (fallbackGithub is not null) {
+            try {
+                await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+                return (true, null);
+            } catch (Exception ex) {
+                fallbackError = ex;
             }
-            if (isForbidden) {
-                LogIntegrationForbiddenHint();
-            }
-            return (false, ex.Message);
+        }
+
+        var confirmedResolved = await TryConfirmThreadResolvedAsync(fallbackGithub ?? github, github, threadId, cancellationToken)
+            .ConfigureAwait(false);
+        if (confirmedResolved) {
+            return (true, null);
+        }
+
+        if (IsIntegrationForbidden(primaryError) || (fallbackError is not null && IsIntegrationForbidden(fallbackError))) {
+            LogIntegrationForbiddenHint();
+        }
+
+        return (false, BuildThreadResolveError(primaryError, fallbackError));
+    }
+
+    private static async Task<bool> TryConfirmThreadResolvedAsync(GitHubClient preferredGithub,
+        GitHubClient? secondaryGithub, string threadId, CancellationToken cancellationToken) {
+        var preferredState = await TryGetThreadResolvedStateAsync(preferredGithub, threadId, cancellationToken)
+            .ConfigureAwait(false);
+        if (preferredState == true) {
+            return true;
+        }
+
+        if (secondaryGithub is null || ReferenceEquals(preferredGithub, secondaryGithub)) {
+            return false;
+        }
+
+        var secondaryState = await TryGetThreadResolvedStateAsync(secondaryGithub, threadId, cancellationToken)
+            .ConfigureAwait(false);
+        return secondaryState == true;
+    }
+
+    private static async Task<bool?> TryGetThreadResolvedStateAsync(GitHubClient github, string threadId,
+        CancellationToken cancellationToken) {
+        try {
+            var thread = await github.GetPullRequestReviewThreadAsync(threadId, maxComments: 1, cancellationToken)
+                .ConfigureAwait(false);
+            return thread?.IsResolved;
+        } catch {
+            return null;
         }
     }
 
+    private static string BuildThreadResolveError(Exception primaryError, Exception? fallbackError) {
+        if (fallbackError is null) {
+            return primaryError.Message;
+        }
+        return $"primary: {primaryError.Message}; fallback: {fallbackError.Message}";
+    }
+
+    internal static bool IsIntegrationForbiddenForTests(Exception ex) => IsIntegrationForbidden(ex);
+
+    internal static string BuildThreadResolveErrorForTests(Exception primaryError, Exception? fallbackError) =>
+        BuildThreadResolveError(primaryError, fallbackError);
+
     private static bool IsIntegrationForbidden(Exception ex) {
         if (ex.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("\"FORBIDDEN\"", StringComparison.OrdinalIgnoreCase)) {
+            ex.Message.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("INSUFFICIENT_SCOPES", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("requires one of the following scopes", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);

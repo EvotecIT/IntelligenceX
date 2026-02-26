@@ -92,6 +92,13 @@ internal static partial class Program {
             .GetResult();
     }
 
+    private static void CallAutoResolveStaleThreads(GitHubClient github, GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) {
+        ReviewerApp.AutoResolveStaleThreadsForTestsAsync(github, fallbackGithub, threads, settings, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+    }
+
     private static string CallBuildThreadAssessmentPrompt(PullRequestContext context,
         IReadOnlyList<PullRequestReviewThread> threads, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         string? diffNote) {
@@ -129,6 +136,14 @@ internal static partial class Program {
             .GetAwaiter()
             .GetResult();
         return (result.Files, result.DiffNote);
+    }
+
+    private static bool CallIsIntegrationForbidden(Exception ex) {
+        return ReviewerApp.IsIntegrationForbiddenForTests(ex);
+    }
+
+    private static string CallBuildThreadResolveError(Exception primaryError, Exception? fallbackError) {
+        return ReviewerApp.BuildThreadResolveErrorForTests(primaryError, fallbackError);
     }
 }
 #endif

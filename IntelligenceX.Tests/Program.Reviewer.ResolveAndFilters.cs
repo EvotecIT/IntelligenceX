@@ -190,6 +190,63 @@ internal static partial class Program {
         AssertEqual("https://github.company.local", defaultBase.GetLeftPart(UriPartial.Authority), "base uri default");
     }
 
+    private static void TestResolveThreadsRunnerTreatsAlreadyResolvedAsSuccess() {
+        var listed = 0;
+        var resolveAttempts = 0;
+        var stateLookups = 0;
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (request.Body.Contains("reviewThreads(first:50", StringComparison.Ordinal)) {
+                listed++;
+                return new HttpResponse(BuildGraphQlThreadsResponse("Fix", "src/Foo.cs", 10, "intelligencex-review",
+                    "thread1", isResolved: false, isOutdated: true, totalComments: 1));
+            }
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                resolveAttempts++;
+                return new HttpResponse(
+                    "{\"errors\":[{\"type\":\"UNPROCESSABLE\",\"message\":\"Pull request review thread is already resolved.\"}],\"data\":{\"resolveReviewThread\":null}}");
+            }
+            if (request.Body.Contains("node(id:$id)", StringComparison.Ordinal)) {
+                stateLookups++;
+                return new HttpResponse("{\"data\":{\"node\":{\"isResolved\":true}}}");
+            }
+            return null;
+        });
+
+        var args = new[] {
+            "--repo", "owner/repo",
+            "--pr", "1",
+            "--github-token", "token",
+            "--api-base-url", server.BaseUri.ToString().TrimEnd('/')
+        };
+
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        using var outWriter = new StringWriter();
+        using var errWriter = new StringWriter();
+        Console.SetOut(outWriter);
+        Console.SetError(errWriter);
+        int exitCode;
+        try {
+            exitCode = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.RunAsync(args).GetAwaiter().GetResult();
+        } finally {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
+
+        var output = outWriter.ToString() + errWriter.ToString();
+        AssertEqual(0, exitCode, "resolve threads runner exit");
+        AssertEqual(1, listed, "resolve threads runner list count");
+        AssertEqual(1, resolveAttempts, "resolve threads runner resolve attempts");
+        AssertEqual(1, stateLookups, "resolve threads runner state lookups");
+        AssertContainsText(output, "Resolved 1 thread(s).", "resolve threads runner resolved output");
+        if (output.Contains("Failed to resolve thread", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected already-resolved fallback state check to avoid failure output.");
+        }
+    }
+
     private static void TestFilterFilesIncludeOnly() {
         var files = BuildFiles("src/app.cs", "docs/readme.md", "tests/test.cs");
         var filtered = ReviewerApp.FilterFilesByPaths(files, new[] { "src/**", "tests/*.cs" }, Array.Empty<string>());

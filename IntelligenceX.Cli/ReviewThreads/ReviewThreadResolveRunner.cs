@@ -77,6 +77,11 @@ internal static class ReviewThreadResolveRunner {
                 await client.ResolveThreadAsync(thread.Id, tokenSource).ConfigureAwait(false);
                 resolved++;
             } catch (Exception ex) {
+                var resolvedState = await client.TryGetThreadResolvedStateAsync(thread.Id, tokenSource).ConfigureAwait(false);
+                if (resolvedState == true) {
+                    resolved++;
+                    continue;
+                }
                 failed++;
                 Console.Error.WriteLine($"Failed to resolve thread {thread.Id}: {ex.Message}");
             }
@@ -578,6 +583,33 @@ internal static class ReviewThreadResolveRunner {
 }")
                 .Add("variables", new JsonObject().Add("id", threadId));
             await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task<bool?> TryGetThreadResolvedStateAsync(string threadId, CancellationToken cancellationToken) {
+            if (string.IsNullOrWhiteSpace(threadId)) {
+                return null;
+            }
+            var payload = new JsonObject()
+                .Add("query", @"query($id:ID!){
+  node(id:$id){
+    ... on PullRequestReviewThread{
+      isResolved
+    }
+  }
+}")
+                .Add("variables", new JsonObject().Add("id", threadId));
+            try {
+                var response = await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
+                var threadNode = response.AsObject()?
+                    .GetObject("data")?
+                    .GetObject("node");
+                if (threadNode is null) {
+                    return null;
+                }
+                return threadNode.GetBoolean("isResolved");
+            } catch {
+                return null;
+            }
         }
 
         private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
