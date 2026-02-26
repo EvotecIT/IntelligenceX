@@ -251,13 +251,12 @@ internal static partial class Program {
             File.WriteAllText(Path.Combine(temp, "Assets", "generated", "map.js"), string.Join('\n', lines) + "\n");
 
             var output = Path.Combine(temp, "artifacts");
-            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
-                "--workspace", temp,
-                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
-                "--out", output
-            }).GetAwaiter().GetResult();
+            var result = RunAnalyzeWithConsoleOutput(temp, Path.Combine(temp, ".intelligencex", "reviewer.json"), output);
 
-            AssertEqual(0, exit, "analyze run internal exclude-path exit");
+            AssertEqual(0, result.ExitCode, "analyze run internal exclude-path exit");
+            AssertEqual(true, result.Output.Contains("uses exact exclude-path matches", StringComparison.OrdinalIgnoreCase) &&
+                result.Output.Contains("'Assets/WIZARD.js'", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path warning lists normalized exact matches");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             AssertEqual(true, File.Exists(findingsPath), "analyze run internal exclude-path findings exists");
             var content = File.ReadAllText(findingsPath);

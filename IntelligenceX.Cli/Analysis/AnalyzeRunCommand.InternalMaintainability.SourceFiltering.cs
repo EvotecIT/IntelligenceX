@@ -183,6 +183,17 @@ internal static partial class AnalyzeRunCommand {
             }
         }
         AddMalformedTagWarning(rule.Id, malformedTags, ExcludedPathTagPrefix, warnings);
+        if (paths.Count > 0) {
+            var sample = string.Join(", ", paths
+                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxTagWarningDetails)
+                .Select(static path => $"'{path}'"));
+            var suffix = paths.Count > MaxTagWarningDetails
+                ? $" (+{paths.Count - MaxTagWarningDetails} more)"
+                : string.Empty;
+            warnings.Add(
+                $"Rule {rule.Id} uses exact exclude-path matches: {sample}{suffix}. Matching is case-insensitive and non-recursive.");
+        }
 
         return paths;
     }
