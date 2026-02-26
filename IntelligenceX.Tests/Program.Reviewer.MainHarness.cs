@@ -404,6 +404,8 @@ internal static partial class Program {
             TestAnalyzeRunExternalFailureMessageRecognizesToolSpecificUnavailableMarkers);
         failed += Run("Analyze run external runner supports configured unavailable markers",
             TestAnalyzeRunExternalFailureMessageSupportsConfiguredUnavailableMarkers);
+        failed += Run("Analyze run external runner configured markers refresh on environment change",
+            TestAnalyzeRunExternalFailureMessageConfiguredMarkersRefreshOnEnvironmentChange);
         failed += Run("Analyze run workspace source detection skips excluded directories",
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
@@ -414,6 +416,8 @@ internal static partial class Program {
             TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions);
         failed += Run("Analyze run workspace source inventory keeps tracked extensions only",
             TestAnalyzeRunWorkspaceSourceInventoryKeepsTrackedExtensionsOnly);
+        failed += Run("Analyze run shared source inventory falls back when scan limit reached",
+            TestAnalyzeRunSharedSourceInventoryFallsBackWhenScanLimitReached);
         failed += Run("Analyze run javascript selectors ignore mismatched tools",
             TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
         failed += Run("Analyze run python selected rule ids ignore mismatched tools",

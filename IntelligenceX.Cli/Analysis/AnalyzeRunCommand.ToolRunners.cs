@@ -271,12 +271,14 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        var skippedSourceEnumerations = 0;
-        var hasJavaScriptSources = sourceInventory is null
-            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations,
-                SourceLanguageConventions.JavaScriptSourceExtensions)
-            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations,
-                SourceLanguageConventions.JavaScriptSourceExtensions);
+        var hasJavaScriptSources = TryDetectSourceFiles(
+            workspace,
+            sourceInventory,
+            "JavaScript/TypeScript",
+            warnings,
+            out var skippedSourceEnumerations,
+            out _,
+            SourceLanguageConventions.JavaScriptSourceExtensions);
         if (!hasJavaScriptSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
@@ -322,12 +324,14 @@ internal static partial class AnalyzeRunCommand {
             warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
             return new RunnerResult(true, string.Empty);
         }
-        var skippedSourceEnumerations = 0;
-        var hasPythonSources = sourceInventory is null
-            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations,
-                SourceLanguageConventions.PythonSourceExtensions)
-            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations,
-                SourceLanguageConventions.PythonSourceExtensions);
+        var hasPythonSources = TryDetectSourceFiles(
+            workspace,
+            sourceInventory,
+            "Python",
+            warnings,
+            out var skippedSourceEnumerations,
+            out _,
+            SourceLanguageConventions.PythonSourceExtensions);
         if (!hasPythonSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
@@ -373,6 +377,31 @@ internal static partial class AnalyzeRunCommand {
 
         Console.WriteLine($"Ruff SARIF: {sarifPath}");
         return new RunnerResult(true, string.Empty);
+    }
+
+    private static bool TryDetectSourceFiles(
+        string workspace,
+        WorkspaceSourceInventory? sourceInventory,
+        string languageLabel,
+        List<string> warnings,
+        out int skippedSourceEnumerations,
+        out bool usedDirectFallback,
+        params string[] extensions) {
+        usedDirectFallback = false;
+        var scanLimitReached = false;
+        var found = sourceInventory is null
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations, extensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations, out scanLimitReached, extensions);
+
+        if (!found && sourceInventory is not null && scanLimitReached) {
+            usedDirectFallback = true;
+            warnings.Add(
+                $"Shared source inventory reached the configured file limit ({sourceInventory.MaxScannedFiles}); falling back to direct {languageLabel} source detection.");
+            found = WorkspaceContainsAnySourceFileWithoutScanLimit(workspace, out var directSkipped, extensions);
+            skippedSourceEnumerations += directSkipped;
+        }
+
+        return found;
     }
 
     private static List<string> BuildJavaScriptRunnerArgs(string sarifPath, IReadOnlyList<ExternalToolRuleSelector> selectors) {
