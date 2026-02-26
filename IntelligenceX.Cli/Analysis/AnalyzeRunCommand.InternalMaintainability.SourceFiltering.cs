@@ -456,12 +456,8 @@ internal static partial class AnalyzeRunCommand {
         if (string.IsNullOrWhiteSpace(relativePath) || excludedPaths is null || excludedPaths.Count == 0) {
             return false;
         }
-        foreach (var excludedPath in excludedPaths) {
-            if (IsPathUnderRelativeRoot(relativePath, excludedPath)) {
-                return true;
-            }
-        }
-        return false;
+        var normalizedPath = relativePath.Replace('\\', '/').Trim('/');
+        return normalizedPath.Length > 0 && excludedPaths.Contains(normalizedPath);
     }
 
     private static bool HasGeneratedFileHeader(string fullPath, IReadOnlyCollection<string> generatedHeaderMarkers,
