@@ -308,6 +308,8 @@ internal static partial class Program {
         AssertEqual(1, callCount, "exactly one replay call retained");
         AssertEqual(1, outputCount, "exactly one replay output retained");
         AssertEqual(1, diagnosticCount, "diagnostic item retained");
+    }
+
     private static void TestNativeInputNormalizationConvertsFunctionCallToCustomToolCall() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;

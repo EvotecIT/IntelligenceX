@@ -550,12 +550,6 @@ internal sealed partial class OpenAINativeTransport {
         return filtered;
     }
 
-    private static bool IsToolCallInputType(string type) {
-        return string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static bool IsToolOutputInputType(string type) {
         return string.Equals(type, "custom_tool_call_output", StringComparison.OrdinalIgnoreCase)
                || string.Equals(type, "tool_call_output", StringComparison.OrdinalIgnoreCase)

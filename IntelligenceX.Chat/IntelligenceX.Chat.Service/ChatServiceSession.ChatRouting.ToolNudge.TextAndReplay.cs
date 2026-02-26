@@ -139,12 +139,11 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {
-        var request = (userRequest ?? string.Empty).Trim();
-        if (request.Length == 0 || request.Length > 240) {
-            return false;
-        }
-
-        if (request.Contains('\n', StringComparison.Ordinal) || request.Contains('\r', StringComparison.Ordinal)) {
+        // Continuation expansion may include a newline-delimited context block (for example:
+        // "<prior intent>\nFollow-up: <compact reply>"). Normalize it so contextual-anchor
+        // checks remain effective and language-neutral.
+        var request = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+        if (request.Length == 0 || request.Length > 480) {
             return false;
         }
 
@@ -160,8 +159,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var tokenCount = CountLetterDigitTokens(request, maxTokens: 28);
-        if (tokenCount < 2 || tokenCount > 24) {
+        var tokenCount = CountLetterDigitTokens(request, maxTokens: 36);
+        if (tokenCount < 2 || tokenCount > 32) {
             return false;
         }
 

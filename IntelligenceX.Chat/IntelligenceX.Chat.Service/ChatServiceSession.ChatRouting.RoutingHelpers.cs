@@ -108,6 +108,49 @@ internal sealed partial class ChatServiceSession {
             $"[tool-nudge] outcome={outcome} reason={reason} kind={kind} routing={routing} nudge={nudgeState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
     }
 
+    private static void TraceAutonomyTelemetryCounters(
+        string requestId,
+        string threadId,
+        int nudgeUnknownEnvelopeReplanCount,
+        int noTextRecoveryHitCount,
+        int noTextToolOutputRecoveryHitCount,
+        int proactiveSkipMutatingCount,
+        int proactiveSkipReadOnlyCount,
+        int proactiveSkipUnknownCount) {
+        var normalizedRequestId = string.IsNullOrWhiteSpace(requestId) ? "-" : requestId.Trim();
+        var normalizedThreadId = string.IsNullOrWhiteSpace(threadId) ? "-" : threadId.Trim();
+        Console.Error.WriteLine(
+            $"[autonomy-counters] request={normalizedRequestId} thread={normalizedThreadId} nudge_replan_unknown={Math.Max(0, nudgeUnknownEnvelopeReplanCount)} no_text_recovery_hits={Math.Max(0, noTextRecoveryHitCount)} no_text_tool_output_recovery_hits={Math.Max(0, noTextToolOutputRecoveryHitCount)} proactive_skip_mutating={Math.Max(0, proactiveSkipMutatingCount)} proactive_skip_readonly={Math.Max(0, proactiveSkipReadOnlyCount)} proactive_skip_unknown={Math.Max(0, proactiveSkipUnknownCount)}");
+    }
+
+    private static IReadOnlyList<TurnCounterMetricDto> BuildAutonomyCounterMetrics(
+        int nudgeUnknownEnvelopeReplanCount,
+        int noTextRecoveryHitCount,
+        int noTextToolOutputRecoveryHitCount,
+        int proactiveSkipMutatingCount,
+        int proactiveSkipReadOnlyCount,
+        int proactiveSkipUnknownCount) {
+        var counters = new List<TurnCounterMetricDto>(capacity: 6);
+        Add("nudge_replan_unknown_pending_action_envelope", nudgeUnknownEnvelopeReplanCount);
+        Add("no_text_recovery_hits", noTextRecoveryHitCount);
+        Add("no_text_tool_output_recovery_hits", noTextToolOutputRecoveryHitCount);
+        Add("proactive_skip_mutating", proactiveSkipMutatingCount);
+        Add("proactive_skip_readonly", proactiveSkipReadOnlyCount);
+        Add("proactive_skip_unknown", proactiveSkipUnknownCount);
+        return counters.Count == 0 ? Array.Empty<TurnCounterMetricDto>() : counters;
+
+        void Add(string name, int count) {
+            if (count <= 0) {
+                return;
+            }
+
+            counters.Add(new TurnCounterMetricDto {
+                Name = name,
+                Count = count
+            });
+        }
+    }
+
     private static IReadOnlyList<ToolErrorMetricDto> BuildToolErrorMetrics(
         IReadOnlyList<ToolCallDto> calls,
         IReadOnlyList<ToolOutputDto> outputs) {

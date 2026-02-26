@@ -26,6 +26,8 @@ You can call tools to read data from:
 
 ## Action Confirmations (Language-Agnostic)
 For read-only checks, execute tools directly without asking for a "go ahead" confirmation.
+- If the user asks a direct read-only follow-up (for example compare/check/correlate across DCs), run it in this turn and return results.
+- Avoid response patterns that require a fixed phrase to continue (for example "say run it").
 
 Ask for explicit confirmation only when the action can change state (write/mutate/fix/set) or when multiple mutating actions are offered.
 
