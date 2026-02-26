@@ -78,6 +78,7 @@ internal static partial class Program {
         failed += Run("Analysis packs: all-security includes language security packs", TestAnalysisPacksAllSecurityIncludesPowerShell);
         failed += Run("Analysis packs: powershell-default resolves", TestAnalysisPacksPowerShellDefaultResolves);
         failed += Run("Analysis packs: external defaults resolve", TestAnalysisPacksExternalDefaultsResolve);
+        failed += Run("Analysis packs: external language tiers resolve", TestAnalysisPacksExternalLanguageTiersResolve);
         failed += Run("Analysis packs: powershell-50 resolves to 50 rules", TestAnalysisPacksPowerShell50ResolvesTo50Rules);
         failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
         failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
@@ -418,6 +419,10 @@ internal static partial class Program {
             TestAnalyzeRunWorkspaceSourceInventoryKeepsTrackedExtensionsOnly);
         failed += Run("Analyze run shared source inventory falls back when scan limit reached",
             TestAnalyzeRunSharedSourceInventoryFallsBackWhenScanLimitReached);
+        failed += Run("Analyze run shared source inventory fallback detects powershell sources",
+            TestAnalyzeRunSharedSourceInventoryFallbackDetectsPowerShellSources);
+        failed += Run("Analyze run shared source inventory fallback detects csharp sources",
+            TestAnalyzeRunSharedSourceInventoryFallbackDetectsCsharpSources);
         failed += Run("Analyze run javascript selectors ignore mismatched tools",
             TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
         failed += Run("Analyze run python selected rule ids ignore mismatched tools",
@@ -443,6 +448,8 @@ internal static partial class Program {
             TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
+        failed += Run("Analyze run strict skips csharp runner without csharp sources",
+            TestAnalyzeRunStrictSkipsCsharpRunnerWithoutCsharpSources);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",

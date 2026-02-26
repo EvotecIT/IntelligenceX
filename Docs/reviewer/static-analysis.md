@@ -124,6 +124,12 @@ Pack layout:
 - `Analysis/Packs/powershell-50.json`
 - `Analysis/Packs/powershell-100.json`
 - `Analysis/Packs/powershell-500.json`
+- `Analysis/Packs/javascript-50.json`
+- `Analysis/Packs/javascript-100.json`
+- `Analysis/Packs/javascript-500.json`
+- `Analysis/Packs/python-50.json`
+- `Analysis/Packs/python-100.json`
+- `Analysis/Packs/python-500.json`
 - `Analysis/Packs/intelligencex-maintainability-50.json`
 - `Analysis/Packs/intelligencex-maintainability-100.json`
 - `Analysis/Packs/intelligencex-maintainability-500.json`
@@ -158,6 +164,7 @@ Recommended tier selection:
 - `all-50`: baseline/default onboarding tier.
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
+- For JavaScript/TypeScript and Python coverage, add `javascript-50|100|500` and/or `python-50|100|500` explicitly to `analysis.packs`.
 
 The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and
 tier IDs remain stable for policy compatibility as coverage evolves.
@@ -184,6 +191,7 @@ Current built-in runners in `analyze run`:
 - JS/TS: ESLint via `npx` when JavaScript/TypeScript rules are selected (SARIF output).
   - ESLint severity mapping is normalized to ESLint's 3-level model: `critical|error|high -> error`, `warning|warn|medium|info|information|low|suggestion -> warn`, `none -> off`.
 - Python: Ruff via `ruff` when Python rules are selected (SARIF output).
+- External runners are source-aware: if a language has no matching source files in the workspace, that runner is skipped with a warning.
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
   - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).

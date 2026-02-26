@@ -1,0 +1,10 @@
+{
+  "id": "javascript-500",
+  "label": "JavaScript Strict (500)",
+  "description": "JavaScript/TypeScript strict tier. Builds on javascript-100 and expands as catalog coverage increases.",
+  "includes": [
+    "javascript-100"
+  ],
+  "rules": []
+}
+

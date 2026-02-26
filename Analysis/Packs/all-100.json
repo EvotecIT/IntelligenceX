@@ -1,7 +1,7 @@
 {
   "id": "all-100",
   "label": "All Standard (100)",
-  "description": "Cross-language standard pack. Includes each language standard tier.",
+  "description": "Cross-language standard pack. Includes core standard tiers (C#, PowerShell, internal maintainability).",
   "includes": [
     "csharp-100",
     "powershell-100",
