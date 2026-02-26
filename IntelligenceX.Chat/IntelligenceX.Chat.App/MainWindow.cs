@@ -504,6 +504,7 @@ public sealed partial class MainWindow : Window {
         long? TotalTokens,
         long? CachedPromptTokens,
         long? ReasoningTokens,
+        IReadOnlyList<TurnCounterMetricDto> AutonomyCounters,
         string? Model,
         string? RequestedModel,
         string? Transport,

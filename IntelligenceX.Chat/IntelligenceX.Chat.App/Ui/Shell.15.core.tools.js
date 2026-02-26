@@ -2783,6 +2783,23 @@
           ? ", tokens " + formatTokenCount(totalTokens)
           : "";
         parts.push("Last turn: " + outcome + " in " + durationText + ", tools " + callsText + queueWaitText + tokenText + ".");
+
+        var autonomyCounters = Array.isArray(metrics.autonomyCounters) ? metrics.autonomyCounters : [];
+        if (autonomyCounters.length > 0) {
+          var counterParts = [];
+          for (var c = 0; c < autonomyCounters.length; c++) {
+            var counter = autonomyCounters[c] || {};
+            var counterName = String(counter.name || "").trim();
+            var counterCount = Number(counter.count);
+            if (!counterName || !Number.isFinite(counterCount) || counterCount <= 0) {
+              continue;
+            }
+            counterParts.push(counterName + "=" + Math.floor(counterCount));
+          }
+          if (counterParts.length > 0) {
+            parts.push("Autonomy counters: " + counterParts.join(", ") + ".");
+          }
+        }
       }
 
       var latencySummary = state.latencySummary;

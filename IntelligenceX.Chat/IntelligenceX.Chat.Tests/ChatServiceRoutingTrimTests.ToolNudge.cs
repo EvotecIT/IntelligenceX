@@ -156,7 +156,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForSingleUnknownMutabilityPendingActionEnvelopeWithoutContinuationSubset() {
+    public void ShouldAttemptToolExecutionNudge_TriggersForSingleUnknownMutabilityPendingActionEnvelopeWithoutContinuationSubset() {
         var userRequest = "Run replication diagnostics now.";
         var assistantDraft = """
             Proceeding now.
@@ -174,7 +174,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         var value = Assert.IsType<bool>(result);
-        Assert.False(value);
+        Assert.True(value);
     }
 
     [Fact]

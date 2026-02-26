@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -26,7 +28,14 @@ internal sealed partial class ChatServiceSession {
         int ToolRounds,
         int ProjectionFallbackCount,
         IReadOnlyList<ToolErrorMetricDto> ToolErrors,
+        IReadOnlyList<TurnCounterMetricDto> AutonomyCounters,
         string? ResolvedModel);
+    internal sealed record ProactiveFollowUpReviewDecision(
+        bool ShouldAttempt,
+        string Reason,
+        int PendingReadOnlyCount,
+        int PendingUnknownCount,
+        int PendingMutatingCount);
 
     private static (bool ParallelTools, bool AllowMutatingParallel, string Mode) ResolveParallelToolExecutionMode(ChatRequestOptions? options,
         bool serviceDefaultParallelTools,
@@ -244,22 +253,287 @@ internal sealed partial class ChatServiceSession {
         bool hasToolActivity,
         bool proactiveFollowUpUsed,
         string assistantDraft) {
+        return ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled,
+            hasToolActivity,
+            proactiveFollowUpUsed,
+            assistantDraft).ShouldAttempt;
+    }
+
+    internal static ProactiveFollowUpReviewDecision ResolveProactiveFollowUpReviewDecision(
+        bool proactiveModeEnabled,
+        bool hasToolActivity,
+        bool proactiveFollowUpUsed,
+        string assistantDraft) {
         if (!proactiveModeEnabled || !hasToolActivity || proactiveFollowUpUsed) {
-            return false;
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: false,
+                Reason: !proactiveModeEnabled
+                    ? "skip_proactive_mode_disabled"
+                    : !hasToolActivity
+                        ? "skip_no_tool_activity"
+                        : "skip_proactive_follow_up_already_used",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
         }
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0 || draft.Length > 2800) {
-            return false;
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: false,
+                Reason: draft.Length == 0 ? "skip_empty_assistant_draft" : "skip_assistant_draft_too_long",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
         }
 
         if (draft.Contains(ProactiveFollowUpMarker, StringComparison.OrdinalIgnoreCase)
             || draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)
             || draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: false,
+                Reason: "skip_proactive_or_review_marker_present",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        var pendingActions = ExtractPendingActions(draft);
+        if (pendingActions.Count == 0) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_no_pending_actions",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        var pendingReadOnlyCount = 0;
+        var pendingUnknownCount = 0;
+        var pendingMutatingCount = 0;
+        for (var i = 0; i < pendingActions.Count; i++) {
+            switch (pendingActions[i].Mutability) {
+                case ActionMutability.ReadOnly:
+                    pendingReadOnlyCount++;
+                    break;
+                case ActionMutability.Mutating:
+                    pendingMutatingCount++;
+                    break;
+                default:
+                    pendingUnknownCount++;
+                    break;
+            }
+        }
+
+        if (pendingMutatingCount > 0) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: false,
+                Reason: "skip_pending_mutating_actions",
+                PendingReadOnlyCount: pendingReadOnlyCount,
+                PendingUnknownCount: pendingUnknownCount,
+                PendingMutatingCount: pendingMutatingCount);
+        }
+
+        return new ProactiveFollowUpReviewDecision(
+            ShouldAttempt: true,
+            Reason: "allow_pending_non_mutating_actions",
+            PendingReadOnlyCount: pendingReadOnlyCount,
+            PendingUnknownCount: pendingUnknownCount,
+            PendingMutatingCount: pendingMutatingCount);
+    }
+
+    internal static string ResolveAssistantTextBeforeNoTextFallback(
+        string assistantDraft,
+        string lastNonEmptyAssistantDraft,
+        bool hasToolActivity) {
+        var normalizedAssistantDraft = assistantDraft ?? string.Empty;
+        var current = normalizedAssistantDraft.Trim();
+        if (current.Length > 0) {
+            return normalizedAssistantDraft;
+        }
+
+        if (!hasToolActivity) {
+            return normalizedAssistantDraft;
+        }
+
+        var prior = (lastNonEmptyAssistantDraft ?? string.Empty).Trim();
+        if (prior.Length == 0
+            || prior.StartsWith("[warning] No response text was produced", StringComparison.OrdinalIgnoreCase)
+            || LooksLikeRuntimeControlPayloadArtifact(prior)) {
+            return normalizedAssistantDraft;
+        }
+
+        return prior;
+    }
+
+    internal static string ResolveAssistantTextFromToolOutputsFallback(
+        string assistantDraft,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs) {
+        var normalizedAssistantDraft = assistantDraft ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(normalizedAssistantDraft)) {
+            return normalizedAssistantDraft;
+        }
+
+        if (toolOutputs is null || toolOutputs.Count == 0) {
+            return normalizedAssistantDraft;
+        }
+
+        var toolNamesByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (toolCalls is { Count: > 0 }) {
+            for (var i = 0; i < toolCalls.Count; i++) {
+                var call = toolCalls[i];
+                var callId = (call.CallId ?? string.Empty).Trim();
+                var toolName = (call.Name ?? string.Empty).Trim();
+                if (callId.Length == 0 || toolName.Length == 0) {
+                    continue;
+                }
+
+                toolNamesByCallId[callId] = toolName;
+            }
+        }
+
+        var bulletLines = new List<string>(capacity: Math.Min(3, toolOutputs.Count));
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            if (bulletLines.Count >= 3) {
+                break;
+            }
+
+            var output = toolOutputs[i];
+            var summary = BuildToolOutputFallbackSummary(output);
+            if (summary.Length == 0) {
+                continue;
+            }
+
+            var callId = (output.CallId ?? string.Empty).Trim();
+            var toolName = toolNamesByCallId.TryGetValue(callId, out var name)
+                ? name
+                : "tool";
+            bulletLines.Add("- `" + toolName + "`: " + summary);
+        }
+
+        if (bulletLines.Count == 0) {
+            return normalizedAssistantDraft;
+        }
+
+        var remainingCount = Math.Max(0, toolOutputs.Count - bulletLines.Count);
+        var builder = new StringBuilder();
+        builder.AppendLine("Recovered findings from executed tools (model returned no text):");
+        for (var i = 0; i < bulletLines.Count; i++) {
+            builder.AppendLine(bulletLines[i]);
+        }
+
+        if (remainingCount > 0) {
+            builder.Append("... and ")
+                .Append(remainingCount.ToString())
+                .Append(" more tool output(s).");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildToolOutputFallbackSummary(ToolOutputDto output) {
+        var summaryMarkdown = TruncateToolOutputSummary((output.SummaryMarkdown ?? string.Empty).Trim(), maxChars: 220);
+        if (summaryMarkdown.Length > 0) {
+            return summaryMarkdown;
+        }
+
+        var errorText = TruncateToolOutputSummary((output.Error ?? string.Empty).Trim(), maxChars: 220);
+        if (errorText.Length > 0) {
+            return "error: " + errorText;
+        }
+
+        var errorCode = (output.ErrorCode ?? string.Empty).Trim();
+        if (errorCode.Length > 0) {
+            return "error code " + errorCode;
+        }
+
+        var raw = (output.Output ?? string.Empty).Trim();
+        if (raw.Length == 0) {
+            return output.Ok is false ? "returned an empty error payload." : "completed successfully.";
+        }
+
+        if (TryExtractPreferredJsonSummary(raw, out var jsonSummary)) {
+            return TruncateToolOutputSummary(jsonSummary, maxChars: 220);
+        }
+
+        if (LooksLikeJsonPayload(raw)) {
+            return output.Ok is false ? "returned structured error output." : "returned structured output.";
+        }
+
+        return TruncateToolOutputSummary(raw, maxChars: 220);
+    }
+
+    private static bool TryExtractPreferredJsonSummary(string raw, out string summary) {
+        summary = string.Empty;
+        if (!LooksLikeJsonPayload(raw)) {
             return false;
         }
 
-        return ExtractPendingActions(draft).Count == 0;
+        try {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (TryGetJsonString(root, "summary_markdown", out summary)
+                || TryGetJsonString(root, "summary", out summary)
+                || TryGetJsonString(root, "message", out summary)
+                || TryGetJsonString(root, "error", out summary)) {
+                return true;
+            }
+
+            if (root.TryGetProperty("failure", out var failure)
+                && failure.ValueKind == JsonValueKind.Object
+                && (TryGetJsonString(failure, "message", out summary)
+                    || TryGetJsonString(failure, "code", out summary))) {
+                return true;
+            }
+
+            if (root.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array) {
+                summary = "returned " + rows.GetArrayLength().ToString() + " row(s).";
+                return true;
+            }
+
+            return false;
+        } catch (JsonException) {
+            return false;
+        }
+    }
+
+    private static bool TryGetJsonString(JsonElement obj, string propertyName, out string value) {
+        value = string.Empty;
+        if (!obj.TryGetProperty(propertyName, out var node) || node.ValueKind != JsonValueKind.String) {
+            return false;
+        }
+
+        var candidate = (node.GetString() ?? string.Empty).Trim();
+        if (candidate.Length == 0) {
+            return false;
+        }
+
+        value = candidate;
+        return true;
+    }
+
+    private static bool LooksLikeJsonPayload(string text) {
+        var value = (text ?? string.Empty).TrimStart();
+        return value.StartsWith("{") || value.StartsWith("[");
+    }
+
+    private static string TruncateToolOutputSummary(string text, int maxChars) {
+        var normalized = CollapseWhitespace((text ?? string.Empty).Trim());
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.Length <= maxChars || maxChars <= 4) {
+            return normalized;
+        }
+
+        return normalized.Substring(0, maxChars - 3).TrimEnd() + "...";
     }
 
     internal static string BuildProactiveFollowUpReviewPrompt(string userRequest, string assistantDraft) {

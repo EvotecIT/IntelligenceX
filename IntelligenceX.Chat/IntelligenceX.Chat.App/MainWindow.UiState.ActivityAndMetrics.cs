@@ -205,6 +205,7 @@ public sealed partial class MainWindow : Window {
             return null;
         }
 
+        var autonomyCounters = BuildAutonomyCounterState(snapshot.AutonomyCounters);
         return new {
             completedLocal = EnsureUtc(snapshot.CompletedUtc).ToLocalTime().ToString(_timestampFormat, CultureInfo.InvariantCulture),
             durationMs = snapshot.DurationMs,
@@ -228,10 +229,33 @@ public sealed partial class MainWindow : Window {
             totalTokens = snapshot.TotalTokens,
             cachedPromptTokens = snapshot.CachedPromptTokens,
             reasoningTokens = snapshot.ReasoningTokens,
+            autonomyCounters,
             model = snapshot.Model ?? string.Empty,
             transport = snapshot.Transport ?? string.Empty,
             endpointHost = snapshot.EndpointHost ?? string.Empty
         };
+    }
+
+    private static object[] BuildAutonomyCounterState(IReadOnlyList<TurnCounterMetricDto>? counters) {
+        if (counters is null || counters.Count == 0) {
+            return Array.Empty<object>();
+        }
+
+        var items = new List<object>(counters.Count);
+        for (var i = 0; i < counters.Count; i++) {
+            var current = counters[i];
+            var name = (current.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || current.Count <= 0) {
+                continue;
+            }
+
+            items.Add(new {
+                name,
+                count = current.Count
+            });
+        }
+
+        return items.Count == 0 ? Array.Empty<object>() : items.ToArray();
     }
 
     private string BuildActivityTimelineLabel(ChatStatusMessage status, string activityText) {

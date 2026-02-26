@@ -201,10 +201,15 @@ internal sealed partial class ChatServiceSession {
         var echoedCallToAction = UserMatchesAssistantCallToAction(request, draft);
         var compactFollowUp = LooksLikeCompactFollowUp(request);
         var contextualFollowUp = !compactFollowUp && LooksLikeContextualFollowUpForExecutionNudge(request, draft);
-        var hasSingleReadOnlyPendingActionEnvelope = HasSingleReadOnlyPendingActionEnvelope(draft);
+        var draftReferencesFollowUp = AssistantDraftReferencesUserRequest(request, draft);
+        var hasSinglePendingActionEnvelope = TryGetSinglePendingActionEnvelopeMutability(draft, out var singlePendingActionMutability);
+        var hasSingleNonMutatingPendingActionEnvelope = hasSinglePendingActionEnvelope
+                                                        && singlePendingActionMutability != ActionMutability.Mutating;
         if (!usedContinuationSubset && !echoedCallToAction && !contextualFollowUp) {
-            if (hasSingleReadOnlyPendingActionEnvelope && !ContainsQuestionSignal(draft)) {
-                reason = "single_readonly_pending_action_envelope";
+            if (hasSingleNonMutatingPendingActionEnvelope && !ContainsQuestionSignal(draft)) {
+                reason = singlePendingActionMutability == ActionMutability.Unknown
+                    ? "single_unknown_pending_action_envelope"
+                    : "single_readonly_pending_action_envelope";
                 return true;
             }
 
@@ -235,8 +240,10 @@ internal sealed partial class ChatServiceSession {
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
         if (hasStructuredOutput) {
-            if (hasSingleReadOnlyPendingActionEnvelope && !asksAnotherQuestion) {
-                reason = "structured_draft_single_readonly_pending_action_envelope";
+            if (hasSingleNonMutatingPendingActionEnvelope && !asksAnotherQuestion) {
+                reason = singlePendingActionMutability == ActionMutability.Unknown
+                    ? "structured_draft_single_unknown_pending_action_envelope"
+                    : "structured_draft_single_readonly_pending_action_envelope";
                 return true;
             }
 
@@ -245,6 +252,14 @@ internal sealed partial class ChatServiceSession {
             // is formatted as an explicit option/bullet on its own line.
             if (echoedCallToAction && UserMatchesAssistantCallToAction(request, draft, onlyBulletContext: true)) {
                 reason = "structured_draft_with_explicit_bullet_cta";
+                return true;
+            }
+
+            // Continuation turns can include concise promise/planning drafts in list form.
+            // If the draft still anchors to the follow-up context and does not ask another
+            // question, run one corrective nudge so execution happens in the same turn.
+            if (!hasSinglePendingActionEnvelope && contextualFollowUp && draftReferencesFollowUp && !asksAnotherQuestion) {
+                reason = "structured_draft_contextual_follow_up";
                 return true;
             }
 
@@ -267,7 +282,7 @@ internal sealed partial class ChatServiceSession {
 
         // Avoid overriding already-good short completions (for example "You're welcome.").
         // Only retry tool execution when the assistant draft still appears tied to the user's follow-up.
-        if (echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft)) {
+        if (echoedCallToAction || draftReferencesFollowUp) {
             reason = echoedCallToAction ? "cta_echo_linked_to_follow_up" : "assistant_draft_references_follow_up";
             return true;
         }
@@ -276,14 +291,20 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool HasSingleReadOnlyPendingActionEnvelope(string assistantDraft) {
+    private static bool TryGetSinglePendingActionEnvelopeMutability(string assistantDraft, out ActionMutability mutability) {
+        mutability = ActionMutability.Unknown;
         var actions = ExtractPendingActions(assistantDraft);
         if (actions.Count != 1) {
             return false;
         }
 
         var action = actions[0];
-        return action.Mutability == ActionMutability.ReadOnly && !string.IsNullOrWhiteSpace(action.Id);
+        if (string.IsNullOrWhiteSpace(action.Id)) {
+            return false;
+        }
+
+        mutability = action.Mutability;
+        return true;
     }
 
     private static bool LooksLikeActionSelectionPayload(string text) {

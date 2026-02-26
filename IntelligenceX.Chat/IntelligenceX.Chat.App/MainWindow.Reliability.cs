@@ -703,6 +703,7 @@ public sealed partial class MainWindow : Window {
             TotalTokens: totalTokens,
             CachedPromptTokens: cachedPromptTokens,
             ReasoningTokens: reasoningTokens,
+            AutonomyCounters: Array.Empty<TurnCounterMetricDto>(),
             Model: string.IsNullOrWhiteSpace(model) ? null : model.Trim(),
             RequestedModel: string.IsNullOrWhiteSpace(requestedModel) ? null : requestedModel.Trim(),
             Transport: string.IsNullOrWhiteSpace(transport) ? null : transport.Trim(),

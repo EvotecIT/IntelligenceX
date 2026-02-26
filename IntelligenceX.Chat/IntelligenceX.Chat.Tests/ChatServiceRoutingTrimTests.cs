@@ -633,6 +633,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForExpandedContinuationContextWithLineBreak() {
+        var userRequest = """
+            Check AD0, AD1 and AD2 for a shared reboot-cause pattern and return one compact matrix.
+            Follow-up: go ahead?
+            """;
+        var assistantDraft = "On it - proceeding now with the cross-DC reboot-cause sweep and matrix summary.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForStructuredContextualFollowUpWithoutContinuationSubset() {
+        var userRequest = """
+            Check AD0, AD1 and AD2 for a shared reboot-cause pattern and return one compact matrix.
+            Follow-up: go ahead?
+            """;
+        var assistantDraft = """
+            Inventory is in; target DCs:
+            - AD0
+            - AD1
+            - AD2
+            I will return a side-by-side reboot matrix.
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForLongContextualFollowUpWhenDraftIsCapabilityBlockerWithoutContinuationSubset() {
         var userRequest = "Please proceed with the failed logon report on ADO Security and include a concise summary of top impacted accounts.";
         var assistantDraft = "I can't query remote ADO live logs directly without machine access.";

@@ -246,6 +246,13 @@ internal sealed partial class ChatServiceSession {
         var localNoTextDirectRetryUsed = false;
         var isLocalCompatibleLoopback = _options.OpenAITransport == OpenAITransportKind.CompatibleHttp
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
+        var lastNonEmptyAssistantDraft = string.Empty;
+        var nudgeUnknownEnvelopeReplanCount = 0;
+        var noTextRecoveryHitCount = 0;
+        var noTextToolOutputRecoveryHitCount = 0;
+        var proactiveSkipMutatingCount = 0;
+        var proactiveSkipReadOnlyCount = 0;
+        var proactiveSkipUnknownCount = 0;
 
         var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
         for (var round = 0; round < maxRounds; round++) {
@@ -255,6 +262,8 @@ internal sealed partial class ChatServiceSession {
                 var controlPayloadDetected = isLocalCompatibleLoopback && LooksLikeRuntimeControlPayloadArtifact(text);
                 if (controlPayloadDetected) {
                     text = string.Empty;
+                } else if (!string.IsNullOrWhiteSpace(text)) {
+                    lastNonEmptyAssistantDraft = text.Trim();
                 }
 
                 if (!autoPendingActionReplayUsed
@@ -289,7 +298,8 @@ internal sealed partial class ChatServiceSession {
                 var suppressLocalToolRecoveryRetries = isLocalCompatibleLoopback
                                                        && !executionContractApplies
                                                        && toolCalls.Count == 0
-                                                       && toolOutputs.Count == 0;
+                                                       && toolOutputs.Count == 0
+                                                       && string.IsNullOrWhiteSpace(text);
                 if (suppressLocalToolRecoveryRetries) {
                     executionNudgeReason = "local_runtime_recovery_disabled";
                 } else if (!executionNudgeUsed) {
@@ -304,6 +314,12 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (shouldAttemptExecutionNudge) {
+                    if (string.Equals(executionNudgeReason, "single_unknown_pending_action_envelope", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(executionNudgeReason, "structured_draft_single_unknown_pending_action_envelope",
+                            StringComparison.OrdinalIgnoreCase)) {
+                        nudgeUnknownEnvelopeReplanCount++;
+                    }
+
                     TraceToolExecutionNudgeDecision(
                         userRequest: routedUserRequest,
                         usedContinuationSubset: usedContinuationSubset,
@@ -519,11 +535,23 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                if (ShouldAttemptProactiveFollowUpReview(
-                        proactiveModeEnabled: proactiveModeEnabled,
-                        hasToolActivity: hasToolActivity,
-                        proactiveFollowUpUsed: proactiveFollowUpUsed,
-                        assistantDraft: text)) {
+                var proactiveDecision = ResolveProactiveFollowUpReviewDecision(
+                    proactiveModeEnabled: proactiveModeEnabled,
+                    hasToolActivity: hasToolActivity,
+                    proactiveFollowUpUsed: proactiveFollowUpUsed,
+                    assistantDraft: text);
+                if (!proactiveDecision.ShouldAttempt
+                    && string.Equals(proactiveDecision.Reason, "skip_pending_mutating_actions", StringComparison.OrdinalIgnoreCase)) {
+                    proactiveSkipMutatingCount++;
+                    if (proactiveDecision.PendingReadOnlyCount > 0) {
+                        proactiveSkipReadOnlyCount++;
+                    }
+                    if (proactiveDecision.PendingUnknownCount > 0) {
+                        proactiveSkipUnknownCount++;
+                    }
+                }
+
+                if (proactiveDecision.ShouldAttempt) {
                     proactiveFollowUpUsed = true;
                     var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text);
                     turn = await RunReviewOnlyModelPhaseWithProgressAsync(
@@ -543,6 +571,9 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 text = AppendTurnCompletionNotice(text, turn);
+                if (!string.IsNullOrWhiteSpace(text)) {
+                    lastNonEmptyAssistantDraft = text.Trim();
+                }
 
                 // Capture pending actions from the finalized assistant text so confirmation routing stays aligned
                 // with what the user actually sees (including contract fallback substitutions).
@@ -551,6 +582,24 @@ internal sealed partial class ChatServiceSession {
                 if (_options.Redact) {
                     text = RedactText(text);
                 }
+
+                var textBeforeNoTextFallbackWasEmpty = string.IsNullOrWhiteSpace(text);
+                text = ResolveAssistantTextBeforeNoTextFallback(
+                    assistantDraft: text,
+                    lastNonEmptyAssistantDraft: lastNonEmptyAssistantDraft,
+                    hasToolActivity: hasToolActivity);
+                if (hasToolActivity && textBeforeNoTextFallbackWasEmpty && !string.IsNullOrWhiteSpace(text)) {
+                    noTextRecoveryHitCount++;
+                }
+                var textBeforeToolOutputFallbackWasEmpty = string.IsNullOrWhiteSpace(text);
+                text = ResolveAssistantTextFromToolOutputsFallback(
+                    assistantDraft: text,
+                    toolCalls: toolCalls,
+                    toolOutputs: toolOutputs);
+                if (hasToolActivity && textBeforeToolOutputFallbackWasEmpty && !string.IsNullOrWhiteSpace(text)) {
+                    noTextToolOutputRecoveryHitCount++;
+                }
+
 
                 if (string.IsNullOrWhiteSpace(text)) {
                     var shouldAttemptLocalNoTextDirectRetry = !localNoTextDirectRetryUsed
@@ -585,6 +634,23 @@ internal sealed partial class ChatServiceSession {
                         baseUrl: _options.OpenAIBaseUrl);
                 }
 
+                TraceAutonomyTelemetryCounters(
+                    requestId: request.RequestId,
+                    threadId: threadId,
+                    nudgeUnknownEnvelopeReplanCount: nudgeUnknownEnvelopeReplanCount,
+                    noTextRecoveryHitCount: noTextRecoveryHitCount,
+                    noTextToolOutputRecoveryHitCount: noTextToolOutputRecoveryHitCount,
+                    proactiveSkipMutatingCount: proactiveSkipMutatingCount,
+                    proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
+                    proactiveSkipUnknownCount: proactiveSkipUnknownCount);
+                var autonomyCounters = BuildAutonomyCounterMetrics(
+                    nudgeUnknownEnvelopeReplanCount: nudgeUnknownEnvelopeReplanCount,
+                    noTextRecoveryHitCount: noTextRecoveryHitCount,
+                    noTextToolOutputRecoveryHitCount: noTextToolOutputRecoveryHitCount,
+                    proactiveSkipMutatingCount: proactiveSkipMutatingCount,
+                    proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
+                    proactiveSkipUnknownCount: proactiveSkipUnknownCount);
+
                 var result = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -601,6 +667,7 @@ internal sealed partial class ChatServiceSession {
                     ToolRounds: toolRounds,
                     ProjectionFallbackCount: projectionFallbackCount,
                     ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs),
+                    AutonomyCounters: autonomyCounters,
                     ResolvedModel: resolvedModel);
             }
 
@@ -705,6 +772,15 @@ internal sealed partial class ChatServiceSession {
                 toolCalls.Count,
                 toolOutputs.Count)
             .ConfigureAwait(false);
+        TraceAutonomyTelemetryCounters(
+            requestId: request.RequestId,
+            threadId: threadId,
+            nudgeUnknownEnvelopeReplanCount: nudgeUnknownEnvelopeReplanCount,
+            noTextRecoveryHitCount: noTextRecoveryHitCount,
+            noTextToolOutputRecoveryHitCount: noTextToolOutputRecoveryHitCount,
+            proactiveSkipMutatingCount: proactiveSkipMutatingCount,
+            proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
+            proactiveSkipUnknownCount: proactiveSkipUnknownCount);
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
     }

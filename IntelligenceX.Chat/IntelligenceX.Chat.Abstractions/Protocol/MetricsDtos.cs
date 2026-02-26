@@ -54,6 +54,10 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// </summary>
     public IReadOnlyList<ToolErrorMetricDto>? ToolErrors { get; init; }
     /// <summary>
+    /// Optional autonomy/runtime counters for this turn.
+    /// </summary>
+    public IReadOnlyList<TurnCounterMetricDto>? AutonomyCounters { get; init; }
+    /// <summary>
     /// Effective model identifier used for the turn.
     /// </summary>
     public string? Model { get; init; }
@@ -120,6 +124,20 @@ public sealed record ToolErrorMetricDto {
     public required string ErrorCode { get; init; }
     /// <summary>
     /// Number of occurrences for this tool/error-code pair in the turn.
+    /// </summary>
+    public int Count { get; init; }
+}
+
+/// <summary>
+/// Generic turn-level counter metric.
+/// </summary>
+public sealed record TurnCounterMetricDto {
+    /// <summary>
+    /// Stable counter name.
+    /// </summary>
+    public required string Name { get; init; }
+    /// <summary>
+    /// Counter value for the turn.
     /// </summary>
     public int Count { get; init; }
 }

@@ -451,7 +451,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionWhenUserEchoesAssistantCallToAction() {
+    public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserEchoesAssistantCallToAction() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
             If you say "run now", I'll execute it.
@@ -468,7 +468,49 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
         var expanded = Assert.IsType<string>(result);
 
-        Assert.Equal("run now", expanded);
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionForCompactFollowUpWhenAssistantProvidedCtaContext() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            If you say "run now", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionForCompactFollowUpWithoutCtaContext() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_unknown_single
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_unknown_single
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("go ahead", expanded);
     }
 
     [Fact]
