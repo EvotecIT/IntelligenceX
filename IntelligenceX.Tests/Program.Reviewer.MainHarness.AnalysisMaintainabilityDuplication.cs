@@ -32,6 +32,34 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesTypeScriptModuleExtension);
         failed += Run("Analyze run duplication language threshold pyi",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesPythonStubExtension);
+        failed += Run("Analyze run duplication default scope includes shell and yaml",
+            TestAnalyzeRunInternalDuplicationDefaultScopeIncludesShellAndYaml);
+        failed += Run("Analyze run duplication language threshold sh",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellExtension);
+        failed += Run("Analyze run duplication language threshold yml",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlExtension);
+        failed += Run("Analyze run duplication language threshold bash alias",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndBashExtension);
+        failed += Run("Analyze run duplication language threshold zsh alias",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndZshExtension);
+        failed += Run("Analyze run duplication language threshold yaml alias",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlAliasAndYamlExtension);
+        failed += Run("Analyze run duplication ignores shell shebang and comments",
+            TestAnalyzeRunInternalDuplicationIgnoresShellShebangAndCommentOnlyLines);
+        failed += Run("Analyze run duplication ignores yaml comments",
+            TestAnalyzeRunInternalDuplicationIgnoresYamlCommentOnlyLines);
+        failed += Run("Analyze run duplication shell hash in parameter expansion",
+            TestAnalyzeRunInternalDuplicationShellHashInParameterExpansionDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell hash in double prefix removal",
+            TestAnalyzeRunInternalDuplicationShellHashInDoublePrefixRemovalDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell hash in arithmetic expression",
+            TestAnalyzeRunInternalDuplicationShellHashInArithmeticDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell word-internal hash",
+            TestAnalyzeRunInternalDuplicationShellWordInternalHashDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell escaped hash",
+            TestAnalyzeRunInternalDuplicationShellEscapedHashDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication yaml escaped single quote hash",
+            TestAnalyzeRunInternalDuplicationYamlEscapedSingleQuoteHashDoesNotTriggerCommentStripping);
         failed += Run("Analyze run duplication language-only tag activates rule",
             TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
         failed += Run("Duplication metrics store modern extension language inference",

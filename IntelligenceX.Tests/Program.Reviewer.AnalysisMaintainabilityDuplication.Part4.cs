@@ -2,128 +2,8 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
-    private static void TestAnalyzeRunInternalDuplicationTokenizesTypeScriptModuleExtension() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-ts-mts-tokenized-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(temp);
-        try {
-            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
-            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
-            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
-
-            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
-{
-  "analysis": {
-    "enabled": true,
-    "packs": ["intelligencex-maintainability-default"]
-  }
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
-{
-  "id": "IXDUP001",
-  "language": "internal",
-  "tool": "IntelligenceX.Maintainability",
-  "toolRuleId": "IXDUP001",
-  "title": "Source files should keep duplicated code below 15%",
-  "description": "Flags files with high duplication percentages.",
-  "category": "Maintainability",
-  "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:15", "dup-window-lines:4", "include-ext:mts"]
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
-{
-  "id": "intelligencex-maintainability-default",
-  "label": "IntelligenceX Maintainability",
-  "rules": ["IXDUP001"]
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "file-a.mts"), BuildDuplicateJavaScriptSample("sumAlpha", "alphaInput"));
-            File.WriteAllText(Path.Combine(temp, "file-b.mts"), BuildDuplicateJavaScriptSample("sumBeta", "betaInput"));
-
-            var output = Path.Combine(temp, "artifacts");
-            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
-                "--workspace", temp,
-                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
-                "--out", output
-            }).GetAwaiter().GetResult();
-
-            AssertEqual(0, exit, "analyze run duplication tokenized mts exit");
-            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
-            AssertEqual(true, File.Exists(findingsPath), "analyze run duplication tokenized mts findings exists");
-            var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".mts",
-                "analyze run duplication tokenized mts includes duplication finding");
-        } finally {
-            DeleteDirectoryIfExistsWithRetries(temp);
-        }
-    }
-
-    private static void TestAnalyzeRunInternalDuplicationTokenizesPythonStubExtension() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-py-pyi-tokenized-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(temp);
-        try {
-            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
-            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
-            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
-
-            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
-{
-  "analysis": {
-    "enabled": true,
-    "packs": ["intelligencex-maintainability-default"]
-  }
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
-{
-  "id": "IXDUP001",
-  "language": "internal",
-  "tool": "IntelligenceX.Maintainability",
-  "toolRuleId": "IXDUP001",
-  "title": "Source files should keep duplicated code below 15%",
-  "description": "Flags files with high duplication percentages.",
-  "category": "Maintainability",
-  "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:15", "dup-window-lines:4", "include-ext:pyi"]
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
-{
-  "id": "intelligencex-maintainability-default",
-  "label": "IntelligenceX Maintainability",
-  "rules": ["IXDUP001"]
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "file_a.pyi"), BuildDuplicatePythonSample("compute_alpha", "input_alpha"));
-            File.WriteAllText(Path.Combine(temp, "file_b.pyi"), BuildDuplicatePythonSample("compute_beta", "input_beta"));
-
-            var output = Path.Combine(temp, "artifacts");
-            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
-                "--workspace", temp,
-                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
-                "--out", output
-            }).GetAwaiter().GetResult();
-
-            AssertEqual(0, exit, "analyze run duplication tokenized pyi exit");
-            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
-            AssertEqual(true, File.Exists(findingsPath), "analyze run duplication tokenized pyi findings exists");
-            var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".pyi",
-                "analyze run duplication tokenized pyi includes duplication finding");
-        } finally {
-            DeleteDirectoryIfExistsWithRetries(temp);
-        }
-    }
-
-    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesTypeScriptModuleExtension() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-mts-" + Guid.NewGuid().ToString("N"));
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndBashExtension() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-bash-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
             Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
@@ -149,7 +29,7 @@ internal static partial class Program {
   "description": "Flags files with high duplication percentages.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:100", "max-duplication-percent-typescript:15", "dup-window-lines:4", "include-ext:mts"]
+  "tags": ["max-duplication-percent:100", "max-duplication-percent-bash:15", "dup-window-lines:4", "include-ext:bash"]
 }
 """);
 
@@ -161,8 +41,8 @@ internal static partial class Program {
 }
 """);
 
-            File.WriteAllText(Path.Combine(temp, "file-a.mts"), BuildDuplicateJavaScriptSample("sumAlpha", "alphaInput"));
-            File.WriteAllText(Path.Combine(temp, "file-b.mts"), BuildDuplicateJavaScriptSample("sumBeta", "betaInput"));
+            File.WriteAllText(Path.Combine(temp, "build-a.bash"), BuildDuplicateShellSample("run_alpha", "input_alpha"));
+            File.WriteAllText(Path.Combine(temp, "build-b.bash"), BuildDuplicateShellSample("run_beta", "input_beta"));
 
             var output = Path.Combine(temp, "artifacts");
             var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
@@ -171,23 +51,23 @@ internal static partial class Program {
                 "--out", output
             }).GetAwaiter().GetResult();
 
-            AssertEqual(0, exit, "analyze run duplication language threshold mts exit");
+            AssertEqual(0, exit, "analyze run duplication language threshold bash exit");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".mts",
-                "analyze run duplication language threshold mts uses typescript override");
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".bash",
+                "analyze run duplication language threshold bash uses shell alias override");
 
             var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
             var metricsContent = File.ReadAllText(metricsPath);
             AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
-                "analyze run duplication language threshold mts emits per-file configured threshold");
+                "analyze run duplication language threshold bash emits per-file configured threshold");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
-    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesPythonStubExtension() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-pyi-" + Guid.NewGuid().ToString("N"));
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndZshExtension() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-zsh-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
             Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
@@ -213,7 +93,7 @@ internal static partial class Program {
   "description": "Flags files with high duplication percentages.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:100", "max-duplication-percent-python:15", "dup-window-lines:4", "include-ext:pyi"]
+  "tags": ["max-duplication-percent:100", "max-duplication-percent-zsh:15", "dup-window-lines:4", "include-ext:zsh"]
 }
 """);
 
@@ -225,8 +105,8 @@ internal static partial class Program {
 }
 """);
 
-            File.WriteAllText(Path.Combine(temp, "file_a.pyi"), BuildDuplicatePythonSample("compute_alpha", "input_alpha"));
-            File.WriteAllText(Path.Combine(temp, "file_b.pyi"), BuildDuplicatePythonSample("compute_beta", "input_beta"));
+            File.WriteAllText(Path.Combine(temp, "build-a.zsh"), BuildDuplicateShellSample("run_alpha", "input_alpha"));
+            File.WriteAllText(Path.Combine(temp, "build-b.zsh"), BuildDuplicateShellSample("run_beta", "input_beta"));
 
             var output = Path.Combine(temp, "artifacts");
             var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
@@ -235,23 +115,23 @@ internal static partial class Program {
                 "--out", output
             }).GetAwaiter().GetResult();
 
-            AssertEqual(0, exit, "analyze run duplication language threshold pyi exit");
+            AssertEqual(0, exit, "analyze run duplication language threshold zsh exit");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".pyi",
-                "analyze run duplication language threshold pyi uses python override");
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".zsh",
+                "analyze run duplication language threshold zsh uses shell alias override");
 
             var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
             var metricsContent = File.ReadAllText(metricsPath);
             AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
-                "analyze run duplication language threshold pyi emits per-file configured threshold");
+                "analyze run duplication language threshold zsh emits per-file configured threshold");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
-    private static void TestAnalyzeRunInternalDuplicationDefaultScopeIncludesShellAndYaml() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-default-scope-shell-yaml-" + Guid.NewGuid().ToString("N"));
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlAliasAndYamlExtension() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-yaml-alias-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
             Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
@@ -277,7 +157,7 @@ internal static partial class Program {
   "description": "Flags files with high duplication percentages.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:10", "dup-window-lines:4"]
+  "tags": ["max-duplication-percent:100", "max-duplication-percent-yml:15", "dup-window-lines:4", "include-ext:yaml"]
 }
 """);
 
@@ -289,10 +169,8 @@ internal static partial class Program {
 }
 """);
 
-            File.WriteAllText(Path.Combine(temp, "build-a.sh"), BuildDuplicateShellSample("run_alpha", "input_alpha"));
-            File.WriteAllText(Path.Combine(temp, "build-b.sh"), BuildDuplicateShellSample("run_beta", "input_beta"));
-            File.WriteAllText(Path.Combine(temp, "config-a.yml"), BuildDuplicateYamlSample("api_alpha", "demo/api:latest"));
-            File.WriteAllText(Path.Combine(temp, "config-b.yml"), BuildDuplicateYamlSample("api_beta", "demo/api:stable"));
+            File.WriteAllText(Path.Combine(temp, "config-a.yaml"), BuildDuplicateYamlSample("api_alpha", "demo/api:latest"));
+            File.WriteAllText(Path.Combine(temp, "config-b.yaml"), BuildDuplicateYamlSample("api_beta", "demo/api:stable"));
 
             var output = Path.Combine(temp, "artifacts");
             var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
@@ -301,84 +179,23 @@ internal static partial class Program {
                 "--out", output
             }).GetAwaiter().GetResult();
 
-            AssertEqual(0, exit, "analyze run duplication default scope shell+yaml exit");
+            AssertEqual(0, exit, "analyze run duplication language threshold yaml alias exit");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".sh",
-                "analyze run duplication default scope includes shell extension");
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".yml",
-                "analyze run duplication default scope includes yaml extension");
-        } finally {
-            DeleteDirectoryIfExistsWithRetries(temp);
-        }
-    }
-
-    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellExtension() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-sh-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(temp);
-        try {
-            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
-            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
-            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
-
-            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
-{
-  "analysis": {
-    "enabled": true,
-    "packs": ["intelligencex-maintainability-default"]
-  }
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
-{
-  "id": "IXDUP001",
-  "language": "internal",
-  "tool": "IntelligenceX.Maintainability",
-  "toolRuleId": "IXDUP001",
-  "title": "Source files should keep duplicated code below threshold",
-  "description": "Flags files with high duplication percentages.",
-  "category": "Maintainability",
-  "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:100", "max-duplication-percent-shell:15", "dup-window-lines:4", "include-ext:sh"]
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
-{
-  "id": "intelligencex-maintainability-default",
-  "label": "IntelligenceX Maintainability",
-  "rules": ["IXDUP001"]
-}
-""");
-
-            File.WriteAllText(Path.Combine(temp, "build-a.sh"), BuildDuplicateShellSample("run_alpha", "input_alpha"));
-            File.WriteAllText(Path.Combine(temp, "build-b.sh"), BuildDuplicateShellSample("run_beta", "input_beta"));
-
-            var output = Path.Combine(temp, "artifacts");
-            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
-                "--workspace", temp,
-                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
-                "--out", output
-            }).GetAwaiter().GetResult();
-
-            AssertEqual(0, exit, "analyze run duplication language threshold sh exit");
-            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
-            var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".sh",
-                "analyze run duplication language threshold sh uses shell override");
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".yaml",
+                "analyze run duplication language threshold yaml extension uses yml alias override");
 
             var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
             var metricsContent = File.ReadAllText(metricsPath);
             AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
-                "analyze run duplication language threshold sh emits per-file configured threshold");
+                "analyze run duplication language threshold yaml alias emits per-file configured threshold");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
 
-    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlExtension() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-yml-" + Guid.NewGuid().ToString("N"));
+    private static void TestAnalyzeRunInternalDuplicationIgnoresShellShebangAndCommentOnlyLines() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-shell-comments-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
             Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
@@ -404,7 +221,7 @@ internal static partial class Program {
   "description": "Flags files with high duplication percentages.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["max-duplication-percent:100", "max-duplication-percent-yaml:15", "dup-window-lines:4", "include-ext:yml"]
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:sh"]
 }
 """);
 
@@ -416,8 +233,10 @@ internal static partial class Program {
 }
 """);
 
-            File.WriteAllText(Path.Combine(temp, "config-a.yml"), BuildDuplicateYamlSample("api_alpha", "demo/api:latest"));
-            File.WriteAllText(Path.Combine(temp, "config-b.yml"), BuildDuplicateYamlSample("api_beta", "demo/api:stable"));
+            File.WriteAllText(Path.Combine(temp, "file-a.sh"),
+                "#!/usr/bin/env bash\n# shared-comment one\n# shared-comment two\necho \"alpha\"\n");
+            File.WriteAllText(Path.Combine(temp, "file-b.sh"),
+                "#!/usr/bin/env bash\n# shared-comment one\n# shared-comment two\nprintf \"beta\"\n");
 
             var output = Path.Combine(temp, "artifacts");
             var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
@@ -426,16 +245,231 @@ internal static partial class Program {
                 "--out", output
             }).GetAwaiter().GetResult();
 
-            AssertEqual(0, exit, "analyze run duplication language threshold yml exit");
+            AssertEqual(0, exit, "analyze run duplication shell shebang comments exit");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             var findings = ReadFindingsRulePathPairs(findingsPath);
-            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".yml",
-                "analyze run duplication language threshold yml uses yaml override");
+            AssertNoFinding(findings, "IXDUP001",
+                "analyze run duplication shell shebang comments do not produce false positive");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
 
-            var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
-            var metricsContent = File.ReadAllText(metricsPath);
-            AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
-                "analyze run duplication language threshold yml emits per-file configured threshold");
+    private static void TestAnalyzeRunInternalDuplicationIgnoresYamlCommentOnlyLines() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-yaml-comments-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:yaml"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file-a.yaml"),
+                "# shared-comment one\n# shared-comment two\nservice: alpha\n");
+            File.WriteAllText(Path.Combine(temp, "file-b.yaml"),
+                "# shared-comment one\n# shared-comment two\nservice: beta\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication yaml comments exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertNoFinding(findings, "IXDUP001",
+                "analyze run duplication yaml comments do not produce false positive");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellHashInParameterExpansionDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-param-expansion-hash",
+            "local trimmed=\"${base#prefix}\" && echo ready",
+            "local trimmed=\"${base#prefix}\" || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellHashInDoublePrefixRemovalDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-param-double-prefix-hash",
+            "local trimmed=\"${base##prefix}\" && echo ready",
+            "local trimmed=\"${base##prefix}\" || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellHashInArithmeticDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-arithmetic-hash",
+            "local converted=$((16#FF + 1)) && echo ready",
+            "local converted=$((16#FF + 1)) || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellWordInternalHashDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-word-internal-hash",
+            "echo alpha#beta && echo ready",
+            "echo alpha#beta || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellEscapedHashDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-escaped-hash",
+            "echo \\#tag && echo ready",
+            "echo \\#tag || echo ready");
+    }
+
+    private static void AssertShellHashContextDoesNotCauseFalseDuplication(string testCaseName, string lineA, string lineB) {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-" + testCaseName + "-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:sh"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file-a.sh"), $"local base=\"$1\"\n{lineA}\n");
+            File.WriteAllText(Path.Combine(temp, "file-b.sh"), $"local base=\"$1\"\n{lineB}\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication shell hash context exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertNoFinding(findings, "IXDUP001",
+                "analyze run duplication shell hash context does not produce false positive");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationYamlEscapedSingleQuoteHashDoesNotTriggerCommentStripping() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-yaml-escaped-single-quote-hash-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:yaml"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "config-a.yaml"), """
+kind: config
+data: {'note': 'it''s #not-comment', marker: true}
+""");
+            File.WriteAllText(Path.Combine(temp, "config-b.yaml"), """
+kind: config
+data: {'note': 'it''s #not-comment', marker: false}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication yaml escaped single quote hash exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertNoFinding(findings, "IXDUP001",
+                "analyze run duplication yaml escaped single quote hash does not produce false positive");
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }

@@ -31,6 +31,17 @@ internal static class SourceLanguageConventions {
         ".pyi"
     };
 
+    internal static readonly string[] ShellSourceExtensions = {
+        ".sh",
+        ".bash",
+        ".zsh"
+    };
+
+    internal static readonly string[] YamlSourceExtensions = {
+        ".yml",
+        ".yaml"
+    };
+
     internal static readonly string JavaScriptEslintExtensionsArg =
         string.Join(",", JavaScriptSourceExtensions);
 
@@ -54,6 +65,14 @@ internal static class SourceLanguageConventions {
 
     internal static bool IsPythonExtension(string? extension) {
         return HasExtension(PythonSourceExtensions, extension);
+    }
+
+    internal static bool IsShellExtension(string? extension) {
+        return HasExtension(ShellSourceExtensions, extension);
+    }
+
+    internal static bool IsYamlExtension(string? extension) {
+        return HasExtension(YamlSourceExtensions, extension);
     }
 
     internal static bool IsTrackedSourceExtension(string? extension) {
@@ -113,6 +132,14 @@ internal static class SourceLanguageConventions {
             map[extension] = "python";
         }
 
+        foreach (var extension in ShellSourceExtensions) {
+            map[extension] = "shell";
+        }
+
+        foreach (var extension in YamlSourceExtensions) {
+            map[extension] = "yaml";
+        }
+
         return map;
     }
 
@@ -128,6 +155,12 @@ internal static class SourceLanguageConventions {
             set.Add(extension);
         }
         foreach (var extension in PythonSourceExtensions) {
+            set.Add(extension);
+        }
+        foreach (var extension in ShellSourceExtensions) {
+            set.Add(extension);
+        }
+        foreach (var extension in YamlSourceExtensions) {
             set.Add(extension);
         }
 

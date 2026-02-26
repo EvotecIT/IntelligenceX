@@ -7,7 +7,7 @@ This document describes the current IntelligenceX static analysis model and onbo
 - Keep analysis decisions in one place (`reviewer.json`).
 - Avoid modifying user repos unless explicitly requested.
 - Allow easy opt-in, opt-out, and per-rule toggles with descriptions.
-- Support multiple languages over time (C#, PowerShell, JS/TS, Python).
+- Support multiple languages over time (C#, PowerShell, JS/TS, Python), with internal maintainability checks also covering Shell and YAML source files.
 
 ## User Experience (Onboarding)
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
@@ -179,6 +179,17 @@ Recommended tier selection:
 The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and
 tier IDs remain stable for policy compatibility as coverage evolves.
 
+### Internal Maintainability Language Coverage
+Internal maintainability rules (`IXLOC001`, `IXDUP001`) scan tracked source extensions directly and currently include:
+- C# (`.cs`)
+- PowerShell (`.ps1`, `.psm1`, `.psd1`)
+- JavaScript/TypeScript (`.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`)
+- Python (`.py`, `.pyi`)
+- Shell (`.sh`, `.bash`, `.zsh`)
+- YAML (`.yml`, `.yaml`)
+
+This means oversized-file and duplication checks apply to Shell/YAML repositories even when no external analyzer runner is configured for those languages.
+
 ## Temporary Analyzer Config Generation
 During analysis runs, configs are generated or synthesized at runtime and cleaned up at the end. Examples:
 - C#: `.editorconfig` with `dotnet_diagnostic.<rule>.severity` entries.
@@ -205,7 +216,9 @@ Current built-in runners in `analyze run`:
 - When a runner command is unavailable, `analyze run` reports explicit override guidance (`--dotnet-command`, `--pwsh-command`, `--npx-command`, `--ruff-command`).
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), additional excluded directory segments (`exclude-dir:<segment>`), and explicit exact-file relative path exclusions (`exclude-path:<relative/file/path>`).
-  - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
+  - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python|shell|yaml` plus short aliases `cs|ps|js|ts|py|sh|bash|zsh|yml`; canonical key is `yaml` with `yml` as alias).
+    - Example tags: `["dup-window-lines:6", "max-duplication-percent-shell:20", "max-duplication-percent-yml:15"]`
+  - Shell and YAML tokenization strips shebang/comment-only noise before computing significant lines to reduce false-positive duplication from shared headers.
   - `IXTOOL001` checks write-capable `ToolDefinition` registrations under `IntelligenceX.Tools/**` and flags schemas that do not use `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
 
 Advanced environment knobs:
@@ -215,7 +228,7 @@ Advanced environment knobs:
   - `IXTOOL003` checks tool source files under `IntelligenceX.Tools/**` and flags direct `max_results` metadata writes (for example `meta.Add("max_results", ...)` or `meta["max_results"] = ...`) instead of `AddMaxResultsMeta(...)`.
   - `IXTOOL004` checks tool source files under `IntelligenceX.Tools/**` (excluding `IntelligenceX.Tools/IntelligenceX.Tools.Tests/**` and `IntelligenceX.Tools/IntelligenceX.Tools.Common/ToolArgs.cs`) and flags legacy `ToolArgs.GetPositiveOptionBoundedInt32OrDefault(...)` usage instead of the canonical `ToolArgs.GetOptionBoundedInt32(...)` overload with explicit non-positive behavior.
   - `IXTOOL005` checks EventLog tool source files under `IntelligenceX.Tools/IntelligenceX.Tools.EventLog/**` and flags ambiguous `max_results` helper paths (`ResolveBoundedOptionLimit(..., "max_results", ...)` and `ResolveMaxResults(...)`) instead of explicit `ResolveOptionBoundedMaxResults(...)` or `ResolveCappedMaxResults(...)`.
-  - Internal maintainability checks support `include-ext:<extension>` tags to scope analyzed file extensions per rule (default: `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`).
+  - Internal maintainability checks support `include-ext:<extension>` tags to scope analyzed file extensions per rule (default: `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, `.py`, `.pyi`, `.sh`, `.bash`, `.zsh`, `.yml`, `.yaml`).
   - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json`, `Analysis/Catalog/rules/internal/IXDUP001.json`, `Analysis/Catalog/rules/internal/IXTOOL001.json`, `Analysis/Catalog/rules/internal/IXTOOL002.json`, `Analysis/Catalog/rules/internal/IXTOOL003.json`, `Analysis/Catalog/rules/internal/IXTOOL004.json`, and `Analysis/Catalog/rules/internal/IXTOOL005.json`).
   - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
   - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.

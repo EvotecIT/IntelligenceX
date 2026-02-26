@@ -379,42 +379,6 @@ internal static partial class Program {
         }
     }
 
-    private static void TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions() {
-        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(workspace);
-        try {
-            var src = Path.Combine(workspace, "src");
-            Directory.CreateDirectory(src);
-            File.WriteAllText(Path.Combine(src, "main.mts"), "export const answer = 42;");
-
-            var scripts = Path.Combine(workspace, "scripts");
-            Directory.CreateDirectory(scripts);
-            File.WriteAllText(Path.Combine(scripts, "tool.pyi"), "def answer() -> int: ...");
-
-            var inventory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.DiscoverWorkspaceSourceInventoryForTests(workspace);
-            AssertEqual(0, inventory.SkippedEnumerations, "source inventory diagnostics has zero skipped paths in healthy workspace");
-
-            var hasTypeScript = false;
-            var hasPython = false;
-            foreach (var extension in inventory.Extensions) {
-                if (string.Equals(extension, ".mts", StringComparison.OrdinalIgnoreCase)) {
-                    hasTypeScript = true;
-                } else if (string.Equals(extension, ".pyi", StringComparison.OrdinalIgnoreCase)) {
-                    hasPython = true;
-                }
-            }
-
-            AssertEqual(true, hasTypeScript, "source inventory captures modern TypeScript module extension");
-            AssertEqual(true, hasPython, "source inventory captures Python stub extension");
-        } finally {
-            try {
-                Directory.Delete(workspace, recursive: true);
-            } catch {
-                // Best-effort cleanup for temp harness directories.
-            }
-        }
-    }
-
     private static void TestAnalyzeRunWorkspaceSourceInventoryKeepsTrackedExtensionsOnly() {
         var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-filtered-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
@@ -422,22 +386,27 @@ internal static partial class Program {
             var src = Path.Combine(workspace, "src");
             Directory.CreateDirectory(src);
             File.WriteAllText(Path.Combine(src, "main.ts"), "export const answer = 42;");
+            File.WriteAllText(Path.Combine(src, "deploy.yaml"), "name: test\n");
             File.WriteAllText(Path.Combine(src, "notes.randomext"), "ignored");
 
             var inventory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.DiscoverWorkspaceSourceInventoryForTests(workspace);
             AssertEqual(0, inventory.SkippedEnumerations, "source inventory tracked-only diagnostics has zero skipped paths");
 
             var hasTypeScript = false;
+            var hasYaml = false;
             var hasRandomExtension = false;
             foreach (var extension in inventory.Extensions) {
                 if (string.Equals(extension, ".ts", StringComparison.OrdinalIgnoreCase)) {
                     hasTypeScript = true;
+                } else if (string.Equals(extension, ".yaml", StringComparison.OrdinalIgnoreCase)) {
+                    hasYaml = true;
                 } else if (string.Equals(extension, ".randomext", StringComparison.OrdinalIgnoreCase)) {
                     hasRandomExtension = true;
                 }
             }
 
             AssertEqual(true, hasTypeScript, "source inventory retains tracked extension");
+            AssertEqual(true, hasYaml, "source inventory retains tracked yaml extension");
             AssertEqual(false, hasRandomExtension, "source inventory ignores untracked extensions");
         } finally {
             try {
@@ -534,6 +503,38 @@ internal static partial class Program {
             AssertContainsText(string.Join("\n", fallbackResult.Warnings),
                 "Shared source inventory reached the configured file limit (0); falling back to direct C# source detection.",
                 "shared source inventory fallback emits csharp scan-limit warning");
+        } finally {
+            Environment.SetEnvironmentVariable(maxFilesEnv, previousValue);
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunSharedSourceInventoryFallbackDetectsShellSources() {
+        const string maxFilesEnv = "INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES";
+        var previousValue = Environment.GetEnvironmentVariable(maxFilesEnv);
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-fallback-shell-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            Environment.SetEnvironmentVariable(maxFilesEnv, "0");
+            var scripts = Path.Combine(workspace, "scripts");
+            Directory.CreateDirectory(scripts);
+            File.WriteAllText(Path.Combine(scripts, "build.sh"), "echo ok");
+
+            var fallbackResult = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.TryDetectSourceFilesWithSharedInventoryForTests(
+                workspace,
+                "Shell",
+                ".sh",
+                ".bash",
+                ".zsh");
+            AssertEqual(true, fallbackResult.Found, "shared source inventory fallback finds shell sources when scan limit is reached");
+            AssertEqual(true, fallbackResult.UsedDirectFallback, "shared source inventory fallback uses direct detection for shell");
+            AssertContainsText(string.Join("\n", fallbackResult.Warnings),
+                "Shared source inventory reached the configured file limit (0); falling back to direct Shell source detection.",
+                "shared source inventory fallback emits shell scan-limit warning");
         } finally {
             Environment.SetEnvironmentVariable(maxFilesEnv, previousValue);
             try {
