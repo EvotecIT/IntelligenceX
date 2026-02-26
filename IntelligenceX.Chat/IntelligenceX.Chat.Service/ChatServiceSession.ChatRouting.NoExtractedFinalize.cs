@@ -515,10 +515,10 @@ internal sealed partial class ChatServiceSession {
                     && string.Equals(proactiveDecision.Reason, "skip_pending_mutating_actions", StringComparison.OrdinalIgnoreCase)) {
                     proactiveSkipMutatingCount++;
                     if (proactiveDecision.PendingReadOnlyCount > 0) {
-                        proactiveSkipReadOnlyCount++;
+                        proactiveSkipReadOnlyCount += proactiveDecision.PendingReadOnlyCount;
                     }
                     if (proactiveDecision.PendingUnknownCount > 0) {
-                        proactiveSkipUnknownCount++;
+                        proactiveSkipUnknownCount += proactiveDecision.PendingUnknownCount;
                     }
                 }
 
@@ -579,11 +579,6 @@ internal sealed partial class ChatServiceSession {
                 RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHints);
                 RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHints);
                 RememberWorkingMemoryCheckpoint(threadId, userIntent, routedUserRequest, toolCalls, toolOutputs, mutatingToolHints);
-                RememberPendingActions(threadId, text);
-
-                if (_options.Redact) {
-                    text = RedactText(text);
-                }
 
                 var textBeforeNoTextFallback = text;
                 text = ResolveAssistantTextBeforeNoTextFallback(
@@ -634,6 +629,11 @@ internal sealed partial class ChatServiceSession {
                         transport: _options.OpenAITransport,
                         baseUrl: _options.OpenAIBaseUrl);
                 }
+
+                if (_options.Redact) {
+                    text = RedactText(text);
+                }
+                RememberPendingActions(threadId, text);
 
                 if (!string.IsNullOrWhiteSpace(text) && !LooksLikeRuntimeControlPayloadArtifact(text)) {
                     lastNonEmptyAssistantDraft = text.Trim();
