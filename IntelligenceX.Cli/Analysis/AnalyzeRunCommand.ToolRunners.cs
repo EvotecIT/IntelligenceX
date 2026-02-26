@@ -43,7 +43,12 @@ internal static partial class AnalyzeRunCommand {
                 Console.WriteLine(result.StdErr.Trim());
             }
             if (result.ExitCode != 0) {
-                return new RunnerResult(false, $"dotnet build returned exit code {result.ExitCode}.");
+                return new RunnerResult(false,
+                    BuildExternalRunnerFailureMessage(
+                        "C#",
+                        options.DotnetCommand,
+                        "--dotnet-command",
+                        result));
             }
             if (!File.Exists(sarifPath)) {
                 warnings.Add("Roslyn SARIF file was not generated.");
@@ -85,7 +90,12 @@ internal static partial class AnalyzeRunCommand {
                 Console.WriteLine(result.StdErr.Trim());
             }
             if (result.ExitCode != 0) {
-                return new RunnerResult(false, $"dotnet build returned exit code {result.ExitCode}.");
+                return new RunnerResult(false,
+                    BuildExternalRunnerFailureMessage(
+                        "C#",
+                        options.DotnetCommand,
+                        "--dotnet-command",
+                        result));
             }
             if (File.Exists(partPath)) {
                 sarifParts.Add(partPath);
@@ -274,7 +284,11 @@ internal static partial class AnalyzeRunCommand {
             }
             if (result.ExitCode != 0) {
                 return new PowerShellRunnerResult(false,
-                    $"PowerShell analysis returned exit code {result.ExitCode}.", Array.Empty<AnalysisFindingItem>());
+                    BuildExternalRunnerFailureMessage(
+                        "PowerShell",
+                        options.PowerShellCommand,
+                        "--pwsh-command",
+                        result), Array.Empty<AnalysisFindingItem>());
             }
             var findings = ReadFindingsJson(findingsPath);
             Console.WriteLine($"PowerShell findings: {findings.Count} item(s).");

@@ -47,6 +47,11 @@ Optional flags:
 - `--ruff-command <path>`: override `ruff` executable path.
 - `--strict`: return non-zero exit code if any analyzer runner fails.
 
+Environment knobs:
+- `INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES`: max files scanned by shared source inventory before direct per-language fallback (default `200000`).
+- `INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS`: global custom command-unavailable marker list (comma/semicolon/newline-separated).
+- `INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS_<TOOL>`: command-specific markers (`<TOOL>` normalized to uppercase alphanumeric/underscore, for example `_NPX`, `_RUFF`, `_DOTNET`, `_PWSH`).
+
 ## Export analyzer configs
 
 ```bash

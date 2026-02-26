@@ -192,10 +192,15 @@ Current built-in runners in `analyze run`:
   - ESLint severity mapping is normalized to ESLint's 3-level model: `critical|error|high -> error`, `warning|warn|medium|info|information|low|suggestion -> warn`, `none -> off`.
 - Python: Ruff via `ruff` when Python rules are selected (SARIF output).
 - External runners are source-aware: if a language has no matching source files in the workspace, that runner is skipped with a warning.
+- When a runner command is unavailable, `analyze run` reports explicit override guidance (`--dotnet-command`, `--pwsh-command`, `--npx-command`, `--ruff-command`).
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
   - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
   - `IXTOOL001` checks write-capable `ToolDefinition` registrations under `IntelligenceX.Tools/**` and flags schemas that do not use `WithWriteGovernanceDefaults()` or `WithWriteGovernanceAndAuthenticationProbe()`.
+
+Advanced environment knobs:
+- `INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES` sets shared source-inventory scan cap before per-language fallback (default `200000`).
+- `INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS` and `INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS_<TOOL>` add custom unavailable-command markers (comma/semicolon/newline-separated).
   - `IXTOOL002` checks AD `ToolDefinition` registrations with required `domain_name` and flags tools that do not use canonical required-domain helper paths.
   - `IXTOOL003` checks tool source files under `IntelligenceX.Tools/**` and flags direct `max_results` metadata writes (for example `meta.Add("max_results", ...)` or `meta["max_results"] = ...`) instead of `AddMaxResultsMeta(...)`.
   - `IXTOOL004` checks tool source files under `IntelligenceX.Tools/**` (excluding `IntelligenceX.Tools/IntelligenceX.Tools.Tests/**` and `IntelligenceX.Tools/IntelligenceX.Tools.Common/ToolArgs.cs`) and flags legacy `ToolArgs.GetPositiveOptionBoundedInt32OrDefault(...)` usage instead of the canonical `ToolArgs.GetOptionBoundedInt32(...)` overload with explicit non-positive behavior.

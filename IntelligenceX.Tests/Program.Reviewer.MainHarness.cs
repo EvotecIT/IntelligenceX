@@ -448,6 +448,10 @@ internal static partial class Program {
             TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
+        failed += Run("Analyze run missing dotnet reports unavailable command guidance",
+            TestAnalyzeRunMissingDotnetReportsUnavailableCommandGuidance);
+        failed += Run("Analyze run missing powershell reports unavailable command guidance",
+            TestAnalyzeRunMissingPowerShellReportsUnavailableCommandGuidance);
         failed += Run("Analyze run strict skips csharp runner without csharp sources",
             TestAnalyzeRunStrictSkipsCsharpRunnerWithoutCsharpSources);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);
