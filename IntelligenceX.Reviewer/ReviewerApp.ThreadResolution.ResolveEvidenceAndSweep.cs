@@ -245,6 +245,9 @@ public static partial class ReviewerApp {
 
         Exception? fallbackError = null;
         if (fallbackGithub is not null) {
+            // Intentionally attempt fallback for any primary failure:
+            // this avoids leaving addressed threads unresolved when primary token behavior differs from
+            // GITHUB_TOKEN (permissions, intermittent auth, or environment-specific app scopes).
             try {
                 await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
                 return (true, null);
@@ -307,13 +310,59 @@ public static partial class ReviewerApp {
         BuildThreadResolveError(primaryError, fallbackError);
 
     private static bool IsIntegrationForbidden(Exception ex) {
-        if (ex.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("INSUFFICIENT_SCOPES", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("requires one of the following scopes", StringComparison.OrdinalIgnoreCase)) {
+        if (HasIntegrationForbiddenToken(ex.Message)) {
             return true;
         }
+
+        if (TryGetGraphQlErrorsFromExceptionMessage(ex.Message, out var errors)) {
+            foreach (var error in errors) {
+                var errorObj = error.AsObject();
+                if (errorObj is null) {
+                    continue;
+                }
+                if (HasIntegrationForbiddenToken(errorObj.GetString("type")) ||
+                    HasIntegrationForbiddenToken(errorObj.GetString("message")) ||
+                    HasIntegrationForbiddenToken(errorObj.GetObject("extensions")?.GetString("code"))) {
+                    return true;
+                }
+            }
+        }
+
         return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
+    }
+
+    private static bool HasIntegrationForbiddenToken(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        return value.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("INSUFFICIENT_SCOPES", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("requires one of the following scopes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetGraphQlErrorsFromExceptionMessage(string message, out JsonArray errors) {
+        errors = new JsonArray();
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+        var start = message.IndexOf('{');
+        var end = message.LastIndexOf('}');
+        if (start < 0 || end <= start) {
+            return false;
+        }
+        JsonValue? parsed;
+        try {
+            parsed = JsonLite.Parse(message.Substring(start, end - start + 1));
+        } catch {
+            return false;
+        }
+        var parsedErrors = parsed?.AsObject()?.GetArray("errors");
+        if (parsedErrors is null || parsedErrors.Count == 0) {
+            return false;
+        }
+        errors = parsedErrors;
+        return true;
     }
 
     private static void LogIntegrationForbiddenHint() {

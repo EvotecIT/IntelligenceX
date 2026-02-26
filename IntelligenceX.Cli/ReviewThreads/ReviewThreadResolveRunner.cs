@@ -607,7 +607,8 @@ internal static class ReviewThreadResolveRunner {
                     return null;
                 }
                 return threadNode.GetBoolean("isResolved");
-            } catch {
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Warning: failed to confirm state for thread {threadId}: {ex.Message}");
                 return null;
             }
         }
