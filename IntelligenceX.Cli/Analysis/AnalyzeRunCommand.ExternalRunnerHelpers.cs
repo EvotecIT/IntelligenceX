@@ -8,6 +8,8 @@ namespace IntelligenceX.Cli.Analysis;
 internal static partial class AnalyzeRunCommand {
     private const string CommandUnavailableMarkersEnvVar = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS";
     private const string CommandUnavailableMarkersEnvVarPrefix = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS_";
+    private const string SourceInventoryMaxFilesEnvVar = "INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES";
+    private const int DefaultSourceInventoryMaxFiles = 200000;
     private static readonly string[] CommonCommandUnavailableMarkers = {
         "not recognized as an internal or external command",
         "is not recognized as an internal or external command",
@@ -26,19 +28,26 @@ internal static partial class AnalyzeRunCommand {
                 "no module named ruff"
             }
         };
+    private static readonly object CommandUnavailableMarkerCacheLock = new();
+    private static readonly Dictionary<string, (string RawValue, IReadOnlyList<string> Markers)> CommandUnavailableMarkerCache =
+        new(StringComparer.Ordinal);
     private static readonly char[] PathSeparators = {
         Path.DirectorySeparatorChar,
         Path.AltDirectorySeparatorChar
     };
 
     private sealed class WorkspaceSourceInventory {
-        public WorkspaceSourceInventory(HashSet<string> extensions, int skippedEnumerations) {
+        public WorkspaceSourceInventory(HashSet<string> extensions, int skippedEnumerations, bool scanLimitReached, int maxScannedFiles) {
             Extensions = extensions ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             SkippedEnumerations = Math.Max(0, skippedEnumerations);
+            ScanLimitReached = scanLimitReached;
+            MaxScannedFiles = Math.Max(0, maxScannedFiles);
         }
 
         public HashSet<string> Extensions { get; }
         public int SkippedEnumerations { get; }
+        public bool ScanLimitReached { get; }
+        public int MaxScannedFiles { get; }
     }
 
     private static string BuildExternalRunnerFailureMessage(string languageLabel, string command, string optionName, CommandResult result) {
@@ -82,10 +91,8 @@ internal static partial class AnalyzeRunCommand {
             }
         }
 
-        foreach (var marker in GetConfiguredCommandUnavailableMarkers(command)) {
-            if (text.Contains(marker, StringComparison.Ordinal)) {
-                return true;
-            }
+        if (ContainsAnyConfiguredCommandUnavailableMarker(command, text)) {
+            return true;
         }
 
         return false;
@@ -132,24 +139,24 @@ internal static partial class AnalyzeRunCommand {
         return Path.GetFileNameWithoutExtension(fileName).Trim().ToLowerInvariant();
     }
 
-    private static IEnumerable<string> GetConfiguredCommandUnavailableMarkers(string command) {
-        foreach (var marker in ParseCommandUnavailableMarkersFromEnvironment(CommandUnavailableMarkersEnvVar)) {
-            yield return marker;
+    private static bool ContainsAnyConfiguredCommandUnavailableMarker(string command, string text) {
+        var globalMarkers = GetCommandUnavailableMarkersFromEnvironment(CommandUnavailableMarkersEnvVar);
+        if (ContainsAnyMarker(text, globalMarkers)) {
+            return true;
         }
 
         var commandKey = ResolveCommandKey(command);
         if (string.IsNullOrWhiteSpace(commandKey)) {
-            yield break;
+            return false;
         }
 
         var envName = BuildCommandUnavailableMarkersEnvVarName(commandKey);
         if (string.IsNullOrWhiteSpace(envName)) {
-            yield break;
+            return false;
         }
 
-        foreach (var marker in ParseCommandUnavailableMarkersFromEnvironment(envName)) {
-            yield return marker;
-        }
+        var commandMarkers = GetCommandUnavailableMarkersFromEnvironment(envName);
+        return ContainsAnyMarker(text, commandMarkers);
     }
 
     private static string BuildCommandUnavailableMarkersEnvVarName(string commandKey) {
@@ -169,24 +176,68 @@ internal static partial class AnalyzeRunCommand {
         return CommandUnavailableMarkersEnvVarPrefix + normalized;
     }
 
-    private static IEnumerable<string> ParseCommandUnavailableMarkersFromEnvironment(string variableName) {
+    private static IReadOnlyList<string> GetCommandUnavailableMarkersFromEnvironment(string variableName) {
         if (string.IsNullOrWhiteSpace(variableName)) {
-            yield break;
+            return Array.Empty<string>();
         }
 
-        var raw = Environment.GetEnvironmentVariable(variableName);
+        var raw = Environment.GetEnvironmentVariable(variableName) ?? string.Empty;
+        lock (CommandUnavailableMarkerCacheLock) {
+            if (CommandUnavailableMarkerCache.TryGetValue(variableName, out var cached) &&
+                string.Equals(cached.RawValue, raw, StringComparison.Ordinal)) {
+                return cached.Markers;
+            }
+
+            var parsed = ParseCommandUnavailableMarkers(raw);
+            CommandUnavailableMarkerCache[variableName] = (raw, parsed);
+            return parsed;
+        }
+    }
+
+    private static IReadOnlyList<string> ParseCommandUnavailableMarkers(string raw) {
         if (string.IsNullOrWhiteSpace(raw)) {
-            yield break;
+            return Array.Empty<string>();
         }
 
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var parsed = new List<string>();
         var parts = raw.Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts) {
             var normalized = (part ?? string.Empty).Trim().ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(normalized)) {
+            if (string.IsNullOrWhiteSpace(normalized) || !seen.Add(normalized)) {
                 continue;
             }
-            yield return normalized;
+            parsed.Add(normalized);
         }
+
+        return parsed;
+    }
+
+    private static bool ContainsAnyMarker(string text, IReadOnlyList<string> markers) {
+        if (string.IsNullOrWhiteSpace(text) || markers is null || markers.Count == 0) {
+            return false;
+        }
+
+        foreach (var marker in markers) {
+            if (text.Contains(marker, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int ResolveSourceInventoryMaxFiles() {
+        var raw = Environment.GetEnvironmentVariable(SourceInventoryMaxFilesEnvVar);
+        if (string.IsNullOrWhiteSpace(raw)) {
+            return DefaultSourceInventoryMaxFiles;
+        }
+
+        if (!int.TryParse(raw.Trim(), out var parsedValue)) {
+            return DefaultSourceInventoryMaxFiles;
+        }
+
+        return Math.Max(0, parsedValue);
     }
 
     private static bool WorkspaceContainsAnySourceFile(string workspace, params string[] extensions) {
@@ -198,11 +249,26 @@ internal static partial class AnalyzeRunCommand {
         return WorkspaceContainsAnySourceFile(sourceInventory, out skippedEnumerations, extensions);
     }
 
+    private static bool WorkspaceContainsAnySourceFileWithoutScanLimit(string workspace, out int skippedEnumerations,
+        params string[] extensions) {
+        var sourceInventory = DiscoverWorkspaceSourceInventory(workspace, maxScannedFiles: int.MaxValue);
+        return WorkspaceContainsAnySourceFile(sourceInventory, out skippedEnumerations, extensions);
+    }
+
     private static bool WorkspaceContainsAnySourceFile(
         WorkspaceSourceInventory? sourceInventory,
         out int skippedEnumerations,
         params string[] extensions) {
+        return WorkspaceContainsAnySourceFile(sourceInventory, out skippedEnumerations, out _, extensions);
+    }
+
+    private static bool WorkspaceContainsAnySourceFile(
+        WorkspaceSourceInventory? sourceInventory,
+        out int skippedEnumerations,
+        out bool scanLimitReached,
+        params string[] extensions) {
         skippedEnumerations = sourceInventory?.SkippedEnumerations ?? 0;
+        scanLimitReached = sourceInventory?.ScanLimitReached ?? false;
         if (sourceInventory is null) {
             return false;
         }
@@ -222,16 +288,26 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static WorkspaceSourceInventory? DiscoverWorkspaceSourceInventory(string workspace) {
+        return DiscoverWorkspaceSourceInventory(workspace, ResolveSourceInventoryMaxFiles());
+    }
+
+    private static WorkspaceSourceInventory? DiscoverWorkspaceSourceInventory(string workspace, int maxScannedFiles) {
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace)) {
             return null;
         }
 
         var skippedEnumerations = 0;
         var discoveredExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        maxScannedFiles = Math.Max(0, maxScannedFiles);
+        var scanLimitReached = false;
+        var scannedFiles = 0;
+        if (maxScannedFiles == 0) {
+            return new WorkspaceSourceInventory(discoveredExtensions, skippedEnumerations, scanLimitReached: true, maxScannedFiles);
+        }
         var pending = new Stack<string>();
         pending.Push(workspace);
 
-        while (pending.Count > 0) {
+        while (pending.Count > 0 && !scanLimitReached) {
             var directory = pending.Pop();
 
             IEnumerable<string>? subdirectories = null;
@@ -267,6 +343,12 @@ internal static partial class AnalyzeRunCommand {
             }
 
             foreach (var path in files) {
+                if (scannedFiles >= maxScannedFiles) {
+                    scanLimitReached = true;
+                    break;
+                }
+                scannedFiles++;
+
                 if (IsPathUnderExcludedDirectorySegment(workspace, path)) {
                     continue;
                 }
@@ -278,7 +360,7 @@ internal static partial class AnalyzeRunCommand {
             }
         }
 
-        return new WorkspaceSourceInventory(discoveredExtensions, skippedEnumerations);
+        return new WorkspaceSourceInventory(discoveredExtensions, skippedEnumerations, scanLimitReached, maxScannedFiles);
     }
 
     private static HashSet<string> NormalizeSourceExtensions(params string[] extensions) {

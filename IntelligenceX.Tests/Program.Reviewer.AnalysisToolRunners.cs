@@ -240,6 +240,46 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunExternalFailureMessageConfiguredMarkersRefreshOnEnvironmentChange() {
+        const string globalEnv = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS";
+        var previousGlobal = Environment.GetEnvironmentVariable(globalEnv);
+        try {
+            Environment.SetEnvironmentVariable(globalEnv, "missing-marker-one");
+            var firstMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+                languageLabel: "Python",
+                command: "ruff",
+                optionName: "--ruff-command",
+                exitCode: 2,
+                stdOut: string.Empty,
+                stdErr: "missing-marker-one");
+            AssertContainsText(firstMessage, "analysis command 'ruff' is unavailable",
+                "external runner configured markers classify first env marker");
+
+            Environment.SetEnvironmentVariable(globalEnv, "missing-marker-two");
+            var staleMarkerMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+                languageLabel: "Python",
+                command: "ruff",
+                optionName: "--ruff-command",
+                exitCode: 2,
+                stdOut: string.Empty,
+                stdErr: "missing-marker-one");
+            AssertContainsText(staleMarkerMessage, "analysis returned exit code 2",
+                "external runner marker cache refresh drops stale env marker");
+
+            var updatedMarkerMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+                languageLabel: "Python",
+                command: "ruff",
+                optionName: "--ruff-command",
+                exitCode: 2,
+                stdOut: string.Empty,
+                stdErr: "missing-marker-two");
+            AssertContainsText(updatedMarkerMessage, "analysis command 'ruff' is unavailable",
+                "external runner marker cache refresh picks up updated env marker");
+        } finally {
+            Environment.SetEnvironmentVariable(globalEnv, previousGlobal);
+        }
+    }
+
     private static void TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories() {
         var workspace = Path.Combine(Path.GetTempPath(), "ix-source-detect-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
@@ -378,6 +418,40 @@ internal static partial class Program {
             AssertEqual(true, hasTypeScript, "source inventory retains tracked extension");
             AssertEqual(false, hasRandomExtension, "source inventory ignores untracked extensions");
         } finally {
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunSharedSourceInventoryFallsBackWhenScanLimitReached() {
+        const string maxFilesEnv = "INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES";
+        var previousValue = Environment.GetEnvironmentVariable(maxFilesEnv);
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-fallback-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            Environment.SetEnvironmentVariable(maxFilesEnv, "0");
+            var src = Path.Combine(workspace, "src");
+            Directory.CreateDirectory(src);
+            File.WriteAllText(Path.Combine(src, "main.ts"), "export const answer = 42;");
+
+            var inventory = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.DiscoverWorkspaceSourceInventoryForTests(workspace);
+            AssertEqual(true, inventory.ScanLimitReached, "source inventory reports scan-limit reached when max files is zero");
+            AssertEqual(0, inventory.MaxScannedFiles, "source inventory reports configured max files");
+
+            var fallbackResult = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.TryDetectSourceFilesWithSharedInventoryForTests(
+                workspace,
+                "JavaScript/TypeScript",
+                ".ts");
+            AssertEqual(true, fallbackResult.Found, "shared source inventory fallback finds source files when scan limit is reached");
+            AssertEqual(true, fallbackResult.UsedDirectFallback, "shared source inventory uses direct fallback when scan limit is reached");
+            AssertContainsText(string.Join("\n", fallbackResult.Warnings),
+                "Shared source inventory reached the configured file limit (0); falling back to direct JavaScript/TypeScript source detection.",
+                "shared source inventory fallback emits scan-limit warning");
+        } finally {
+            Environment.SetEnvironmentVariable(maxFilesEnv, previousValue);
             try {
                 Directory.Delete(workspace, recursive: true);
             } catch {

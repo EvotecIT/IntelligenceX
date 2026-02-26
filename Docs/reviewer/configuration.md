@@ -379,6 +379,7 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 - `failOnUnavailable`: fail when no result files match configured inputs or when result parsing fails.
 - `failOnNoEnabledRules`: fail when `analysis.packs` selects zero rules.
 - `includeOutsidePackRules`: when `true`, all findings from non-enabled rules can still fail the gate; explicit `ruleIds` always remain eligible.
+  Gate output `Outside-pack findings` included/ignored counts are post-filter scoped (after `types`/`ruleIds` gate filters).
 - `failOnHotspotsToReview`: when `true`, security hotspots in `to-review` state can fail the gate (after `minSeverity`/`types` filtering).
 
 `analysis.run.strict` controls `intelligencex analyze run` exit semantics:

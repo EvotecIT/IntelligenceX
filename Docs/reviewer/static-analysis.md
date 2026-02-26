@@ -253,6 +253,7 @@ If you enable `intelligencex-maintainability-default` in an existing repository,
 `IXTOOL005` defaults to `warning` severity and is intended to keep EventLog `max_results` helper semantics explicit and stable.
 To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001","IXTOOL002","IXTOOL003","IXTOOL004","IXTOOL005"]`).
 Explicit gate rule IDs are still evaluated even when `analysis.gate.includeOutsidePackRules` is `false`.
+When gate output reports `Outside-pack findings: ... (included/ignored)`, those included/ignored counts are scoped to findings that remain in gate scope after type/ruleId filtering.
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 

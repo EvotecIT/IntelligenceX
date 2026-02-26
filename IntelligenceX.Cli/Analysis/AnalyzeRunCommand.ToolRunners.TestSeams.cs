@@ -67,17 +67,33 @@ internal static partial class AnalyzeRunCommand {
         return (found, skippedEnumerations);
     }
 
-    internal static (IReadOnlyList<string> Extensions, int SkippedEnumerations) DiscoverWorkspaceSourceInventoryForTests(
+    internal static (IReadOnlyList<string> Extensions, int SkippedEnumerations, bool ScanLimitReached, int MaxScannedFiles)
+        DiscoverWorkspaceSourceInventoryForTests(
         string workspace) {
         var inventory = DiscoverWorkspaceSourceInventory(workspace);
         if (inventory is null) {
-            return (Array.Empty<string>(), 0);
+            return (Array.Empty<string>(), 0, false, 0);
         }
 
         var extensions = inventory.Extensions
             .OrderBy(static extension => extension, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        return (extensions, inventory.SkippedEnumerations);
+        return (extensions, inventory.SkippedEnumerations, inventory.ScanLimitReached, inventory.MaxScannedFiles);
+    }
+
+    internal static (bool Found, int SkippedEnumerations, bool UsedDirectFallback, IReadOnlyList<string> Warnings)
+        TryDetectSourceFilesWithSharedInventoryForTests(string workspace, string languageLabel, params string[] extensions) {
+        var inventory = DiscoverWorkspaceSourceInventory(workspace);
+        var warnings = new List<string>();
+        var found = TryDetectSourceFiles(
+            workspace,
+            inventory,
+            languageLabel,
+            warnings,
+            out var skippedEnumerations,
+            out var usedDirectFallback,
+            extensions);
+        return (found, skippedEnumerations, usedDirectFallback, warnings);
     }
 
     internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(
