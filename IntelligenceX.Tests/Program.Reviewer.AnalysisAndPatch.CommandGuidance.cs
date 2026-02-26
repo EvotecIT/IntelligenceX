@@ -2,6 +2,8 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static readonly object AnalyzeRunCommandOutputCaptureLock = new();
+
     private static void TestAnalyzeRunMissingDotnetReportsUnavailableCommandGuidance() {
         var (exit, output) = RunAnalyzeRunWithMissingDotnetAndCaptureOutput(strict: true);
         AssertEqual(1, exit, "analyze run strict missing dotnet exits failure");
@@ -97,29 +99,31 @@ internal static partial class Program {
         bool strictBeforeFramework = false,
         string? frameworkOverride = null,
         bool includeCsharpSource = true) {
-        var originalOut = Console.Out;
-        var originalError = Console.Error;
-        using var outWriter = new StringWriter();
-        using var errWriter = new StringWriter();
-        Console.SetOut(outWriter);
-        Console.SetError(errWriter);
-        try {
-            var exitCode = RunAnalyzeRunWithMissingDotnet(
-                strict,
-                strictOverride,
-                strictOverrideEqualsSyntax,
-                packsOverride,
-                strictBeforePacks,
-                strictOverrideRawValue,
-                strictBeforeFramework,
-                frameworkOverride,
-                includeCsharpSource);
-            outWriter.Flush();
-            errWriter.Flush();
-            return (exitCode, outWriter.ToString() + errWriter.ToString());
-        } finally {
-            Console.SetOut(originalOut);
-            Console.SetError(originalError);
+        lock (AnalyzeRunCommandOutputCaptureLock) {
+            var originalOut = Console.Out;
+            var originalError = Console.Error;
+            using var outWriter = new StringWriter();
+            using var errWriter = new StringWriter();
+            Console.SetOut(outWriter);
+            Console.SetError(errWriter);
+            try {
+                var exitCode = RunAnalyzeRunWithMissingDotnet(
+                    strict,
+                    strictOverride,
+                    strictOverrideEqualsSyntax,
+                    packsOverride,
+                    strictBeforePacks,
+                    strictOverrideRawValue,
+                    strictBeforeFramework,
+                    frameworkOverride,
+                    includeCsharpSource);
+                outWriter.Flush();
+                errWriter.Flush();
+                return (exitCode, outWriter.ToString() + errWriter.ToString());
+            } finally {
+                Console.SetOut(originalOut);
+                Console.SetError(originalError);
+            }
         }
     }
 }
