@@ -82,6 +82,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldSkipWorkingMemoryAugmentationForStructuredSelection(normalizedThreadId, normalizedFollowUp)) {
+            return false;
+        }
+
         var normalizedRouted = (routedUserRequest ?? string.Empty).Trim();
         if (!string.Equals(normalizedFollowUp, normalizedRouted, StringComparison.Ordinal)) {
             return false;
@@ -400,6 +404,63 @@ internal sealed partial class ChatServiceSession {
         }
 
         ClearWorkingMemoryCheckpointSnapshots();
+    }
+
+    private bool ShouldSkipWorkingMemoryAugmentationForStructuredSelection(string threadId, string normalizedFollowUp) {
+        if (TryParseExplicitActSelection(normalizedFollowUp, out _, out _)) {
+            return true;
+        }
+
+        if (TryReadActionSelectionIntent(normalizedFollowUp, out _, out _)) {
+            return true;
+        }
+
+        if (TryParseDomainIntentMarkerSelection(normalizedFollowUp, DomainIntentMarker, out _)
+            || TryParseDomainIntentChoiceMarkerSelection(normalizedFollowUp, out _)
+            || TryNormalizeDomainIntentFamily(normalizedFollowUp, out _)
+            || TryParseDomainIntentFamilyFromDomainScopePayload(normalizedFollowUp, out _)) {
+            return true;
+        }
+
+        return HasFreshPendingDomainIntentClarificationForWorkingMemory(threadId)
+               && TryParsePendingDomainIntentClarificationSelection(normalizedFollowUp, out _);
+    }
+
+    private bool HasFreshPendingDomainIntentClarificationForWorkingMemory(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        long clarificationSeenTicks;
+        lock (_toolRoutingContextLock) {
+            _pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(normalizedThreadId, out clarificationSeenTicks);
+        }
+
+        if (clarificationSeenTicks <= 0) {
+            if (!TryLoadPendingDomainIntentClarificationSnapshot(normalizedThreadId, out clarificationSeenTicks)) {
+                return false;
+            }
+
+            lock (_toolRoutingContextLock) {
+                _pendingDomainIntentClarificationSeenUtcTicks[normalizedThreadId] = clarificationSeenTicks;
+                TrimWeightedRoutingContextsNoLock();
+            }
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        if (!TryGetUtcDateTimeFromTicks(clarificationSeenTicks, out var clarificationSeenUtc)
+            || clarificationSeenUtc > nowUtc
+            || nowUtc - clarificationSeenUtc > DomainIntentClarificationContextMaxAge) {
+            lock (_toolRoutingContextLock) {
+                _pendingDomainIntentClarificationSeenUtcTicks.Remove(normalizedThreadId);
+            }
+
+            RemovePendingDomainIntentClarificationSnapshot(normalizedThreadId);
+            return false;
+        }
+
+        return true;
     }
 
     internal void RememberWorkingMemoryCheckpointForTesting(

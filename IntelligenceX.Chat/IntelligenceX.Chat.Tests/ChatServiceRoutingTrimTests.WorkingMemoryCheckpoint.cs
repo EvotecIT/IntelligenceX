@@ -69,4 +69,50 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(augmented);
         Assert.Equal("Analyze DNS + AD context and compare anomalies.\nFollow-up: run now", routedFromCheckpoint);
     }
+
+    [Fact]
+    public void WorkingMemoryCheckpoint_DoesNotAugmentStructuredActionSelectionPayload() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        const string threadId = "thread-working-memory-structured-action";
+        const string payload = "{\"ix_action_selection\":{\"id\":\"act_domain_scope_public\",\"request\":{\"ix_domain_scope\":{\"family\":\"public_domain\"}},\"mutating\":false}}";
+
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Run AD replication + failed-logon diagnostics across DCs and summarize top risks.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary", "eventlog_live_query" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: replication failures were concentrated on DC02." });
+
+        var augmented = session.TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
+            threadId,
+            userRequest: payload,
+            routedUserRequest: payload,
+            out var routedFromCheckpoint);
+
+        Assert.False(augmented);
+        Assert.Equal(payload, routedFromCheckpoint);
+    }
+
+    [Fact]
+    public void WorkingMemoryCheckpoint_DoesNotAugmentPendingDomainSelectionReply() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        const string threadId = "thread-working-memory-domain-selection";
+
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Run AD replication + failed-logon diagnostics across DCs and summarize top risks.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary", "eventlog_live_query" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: replication failures were concentrated on DC02." });
+        session.RememberPendingDomainIntentClarificationRequestForTesting(threadId);
+
+        var augmented = session.TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
+            threadId,
+            userRequest: "２",
+            routedUserRequest: "２",
+            out var routedFromCheckpoint);
+
+        Assert.False(augmented);
+        Assert.Equal("２", routedFromCheckpoint);
+    }
 }
