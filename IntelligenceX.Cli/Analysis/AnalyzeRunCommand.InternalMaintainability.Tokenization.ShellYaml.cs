@@ -148,6 +148,8 @@ internal static partial class AnalyzeRunCommand {
         return token is ":" or "{" or "}" or "[" or "]" or "," or "." or "-";
     }
 
+    // Heuristic shell scanner: tracks common expansion contexts where '#' is syntax (not comment).
+    // It is not a full shell parser and intentionally keeps behavior conservative for duplication tokenization.
     private static string StripInlineShellHashComment(string input) {
         if (string.IsNullOrEmpty(input)) {
             return string.Empty;
