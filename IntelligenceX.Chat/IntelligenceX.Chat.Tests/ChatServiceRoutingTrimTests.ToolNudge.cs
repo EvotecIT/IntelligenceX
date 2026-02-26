@@ -463,6 +463,45 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForSingleUnknownMutabilityPendingActionEnvelopeWithoutContinuationSubset() {
+        var userRequest = "Run replication diagnostics now.";
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_followup_unknown
+            title: Continue with diagnostics
+            reply: /act act_followup_unknown
+            """;
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(null, args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        Assert.Equal("single_unknown_pending_action_envelope", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForSingleMutatingPendingActionEnvelopeWithoutContinuationSubset_WhenEvaluatingReasonOutput() {
+        var userRequest = "Run replication diagnostics now.";
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_followup_mutating
+            title: Reset replication queue
+            mutating: true
+            reply: /act act_followup_mutating
+            """;
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(null, args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+        Assert.Equal("no_continuation_subset_and_no_cta_or_contextual_follow_up", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
     public void TryBuildStructuredNextActionRetryPrompt_TriggersForContinuationFollowUpWithStructuredNextActions() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         var toolDefinitions = new List<ToolDefinition> {

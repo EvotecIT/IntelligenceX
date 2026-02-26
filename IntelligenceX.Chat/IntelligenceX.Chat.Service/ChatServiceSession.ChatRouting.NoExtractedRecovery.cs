@@ -55,11 +55,20 @@ internal sealed partial class ChatServiceSession {
         var continuationSubsetEscapeUsed = state.ContinuationSubsetEscapeUsed;
         var autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;
         var hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
+        var lastNonEmptyAssistantDraft = state.LastNonEmptyAssistantDraft;
+        var nudgeUnknownEnvelopeReplanCount = state.NudgeUnknownEnvelopeReplanCount;
+        var noTextRecoveryHitCount = state.NoTextRecoveryHitCount;
+        var noTextToolOutputRecoveryHitCount = state.NoTextToolOutputRecoveryHitCount;
+        var proactiveSkipMutatingCount = state.ProactiveSkipMutatingCount;
+        var proactiveSkipReadOnlyCount = state.ProactiveSkipReadOnlyCount;
+        var proactiveSkipUnknownCount = state.ProactiveSkipUnknownCount;
 
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                 var controlPayloadDetected = isLocalCompatibleLoopback && LooksLikeRuntimeControlPayloadArtifact(text);
                 if (controlPayloadDetected) {
                     text = string.Empty;
+                } else if (!string.IsNullOrWhiteSpace(text)) {
+                    lastNonEmptyAssistantDraft = text.Trim();
                 }
 
                 if (!autoPendingActionReplayUsed
@@ -254,6 +263,11 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (shouldAttemptExecutionNudge) {
+                    if (string.Equals(executionNudgeReason, "single_unknown_pending_action_envelope", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(executionNudgeReason, "structured_draft_single_unknown_pending_action_envelope", StringComparison.OrdinalIgnoreCase)) {
+                        nudgeUnknownEnvelopeReplanCount++;
+                    }
+
                     TraceToolExecutionNudgeDecision(
                         userRequest: routedUserRequest,
                         usedContinuationSubset: usedContinuationSubset,
@@ -460,6 +474,13 @@ internal sealed partial class ChatServiceSession {
             state.ContinuationSubsetEscapeUsed = continuationSubsetEscapeUsed;
             state.AutoPendingActionReplayUsed = autoPendingActionReplayUsed;
             state.HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
+            state.LastNonEmptyAssistantDraft = lastNonEmptyAssistantDraft;
+            state.NudgeUnknownEnvelopeReplanCount = nudgeUnknownEnvelopeReplanCount;
+            state.NoTextRecoveryHitCount = noTextRecoveryHitCount;
+            state.NoTextToolOutputRecoveryHitCount = noTextToolOutputRecoveryHitCount;
+            state.ProactiveSkipMutatingCount = proactiveSkipMutatingCount;
+            state.ProactiveSkipReadOnlyCount = proactiveSkipReadOnlyCount;
+            state.ProactiveSkipUnknownCount = proactiveSkipUnknownCount;
         }
     }
 }

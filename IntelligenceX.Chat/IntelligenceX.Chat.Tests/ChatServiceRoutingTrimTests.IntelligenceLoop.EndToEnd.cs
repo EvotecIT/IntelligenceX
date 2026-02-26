@@ -119,6 +119,546 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, resultMessage.Tools.Outputs.Count);
     }
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RecoversToolOutputSummaryWhenModelReturnsNoTextAfterToolExecution() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-call-1",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_no_text_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "cross_dc" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-empty",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "   "
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 3,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult("{" +
+                                              "\"ok\":true," +
+                                              "\"summary_markdown\":\"Cross-DC matrix: AD1 healthy, AD2 has Event 41 signal.\"" +
+                                              "}")));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-no-text-tool-recovery",
+            ThreadId = thread.Id,
+            Text = "Check AD2 against other DCs and summarize similarities.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 3,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("Recovered findings from executed tools", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD2 has Event 41 signal", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No response text was produced", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+
+        var autonomyCounters = GetPropertyValue<List<TurnCounterMetricDto>>(runResult, "AutonomyCounters");
+        Assert.Contains(
+            autonomyCounters,
+            counter => string.Equals(counter.Name, "no_text_tool_output_recovery_hits", StringComparison.Ordinal)
+                       && counter.Count >= 1);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RedactsToolOutputRecoveryFallbackWhenRedactionEnabled() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-call-redact-1",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_no_text_redact_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "cross_dc" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-empty-redact",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "   "
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-extra-redact",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 3,
+            Redact = true,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult("{" +
+                                              "\"ok\":true," +
+                                              "\"summary_markdown\":\"Contact admin@contoso.local for cross-DC drill-down.\"" +
+                                              "}")));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-no-text-tool-recovery-redact",
+            ThreadId = thread.Id,
+            Text = "Check AD2 against other DCs and summarize similarities.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 3,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("[redacted_email]", resultMessage.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("admin@contoso.local", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RecoversFromStructuredPromiseOnlyDraftAndExecutesToolsInSameTurn() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-plan-only",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      Inventory is in; target DCs:
+                                      - AD0
+                                      - AD1
+                                      - AD2
+                                      I will return a side-by-side reboot matrix.
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-call-2",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_cross_dc_matrix",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { scope = "cross_dc" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Cross-DC comparison complete: AD0/AD1 stable, AD2 shows recurring Event 41/6008 pairing."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult("{" +
+                                              "\"ok\":true," +
+                                              "\"summary_markdown\":\"Cross-DC matrix generated from AD0/AD1/AD2 sweep.\"" +
+                                              "}")));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-structured-promise-recovery",
+            ThreadId = thread.Id,
+            Text = """
+                   Check AD0, AD1 and AD2 for a shared reboot-cause pattern and return one compact matrix.
+                   Follow-up: go ahead?
+                   """,
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(3, server.ChatCompletionRequestCount);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("Cross-DC comparison complete", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Single(resultMessage.Tools!.Calls);
+        Assert.Single(resultMessage.Tools.Outputs);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RecomputesPendingActionsAfterRecoveredNoTextDraft() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-call-action-recovery",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_scope_inventory",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { scope = "dc_inventory" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-action-draft",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      Next best read-only action is prepared.
+                                      Use the action block below to continue.
+
+                                      [Action]
+                                      ix:action:v1
+                                      id: act_scope_read
+                                      title: Compare AD2 with AD0/AD1 reboot events
+                                      request: {"query":{"scope":"read_only"}}
+                                      reply: /act act_scope_read
+                                      mutating: false
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-empty-after-proactive",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "   "
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"Inventory ready.\"}")));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-recover-pending-actions-no-text",
+            ThreadId = thread.Id,
+            Text = """
+                   Inventory reboot evidence for AD0, AD1, AD2 and suggest one safe next check.
+                   [Proactive execution mode]
+                   ix:proactive-mode:v1
+                   enabled: true
+                   """,
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(3, server.ChatCompletionRequestCount);
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("ix:action:v1", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/act act_scope_read", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+
+        var expandedSelection = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { thread.Id, "/act act_scope_read" });
+        var expandedText = Assert.IsType<string>(expandedSelection);
+        Assert.Contains("\"ix_action_selection\"", expandedText, StringComparison.Ordinal);
+        Assert.Contains("\"id\":\"act_scope_read\"", expandedText, StringComparison.Ordinal);
+    }
+
     private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
         ChatRequest request, string threadId, CancellationToken cancellationToken) {
         var taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
@@ -221,6 +761,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         private readonly Task _acceptLoop;
         private readonly object _sync = new();
         private readonly List<string> _chatCompletionRequestBodies = new();
+        private readonly Func<int, string>? _chatCompletionResponder;
         private readonly HashSet<int> _dropChatCompletionResponseOnRequestIndices;
         private readonly bool _emitReplayDuplicateToolCallAfterDrop;
         private readonly bool _emitReplayMixedToolCallsAfterDrop;
@@ -233,6 +774,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         private int _successfulChatCompletionResponses;
 
         public DeterministicCompatibleHttpServer(
+            Func<int, string>? chatCompletionResponder = null,
             IEnumerable<int>? dropChatCompletionResponseOnRequestIndices = null,
             bool emitReplayDuplicateToolCallAfterDrop = false,
             bool emitReplayMixedToolCallsAfterDrop = false,
@@ -244,6 +786,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             _listener.Start();
             var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
             BaseUrl = $"http://127.0.0.1:{port}/v1";
+            _chatCompletionResponder = chatCompletionResponder;
             _dropChatCompletionResponseOnRequestIndices = dropChatCompletionResponseOnRequestIndices is null
                 ? new HashSet<int>()
                 : new HashSet<int>(dropChatCompletionResponseOnRequestIndices.Where(static index => index > 0));
@@ -426,6 +969,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
                 code = 200;
                 status = "OK";
+                if (_chatCompletionResponder is not null) {
+                    return _chatCompletionResponder(responseIndex);
+                }
+
                 if (_emitReplayMixedToolCallsAfterDropReordered) {
                     return responseIndex switch {
                         1 => BuildToolCallCompletionBody("call_round_1", "one"),

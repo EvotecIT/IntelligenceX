@@ -47,6 +47,13 @@ internal sealed partial class ChatServiceSession {
             bool hostStructuredNextActionReplayUsed,
             bool packCapabilityFallbackReplayUsed,
             bool noResultPhaseLoopWatchdogUsed,
+            string lastNonEmptyAssistantDraft,
+            int nudgeUnknownEnvelopeReplanCount,
+            int noTextRecoveryHitCount,
+            int noTextToolOutputRecoveryHitCount,
+            int proactiveSkipMutatingCount,
+            int proactiveSkipReadOnlyCount,
+            int proactiveSkipUnknownCount,
             bool interimResultSent) {
             Turn = turn;
             AssistantDraft = assistantDraft;
@@ -73,6 +80,13 @@ internal sealed partial class ChatServiceSession {
             HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
             PackCapabilityFallbackReplayUsed = packCapabilityFallbackReplayUsed;
             NoResultPhaseLoopWatchdogUsed = noResultPhaseLoopWatchdogUsed;
+            LastNonEmptyAssistantDraft = lastNonEmptyAssistantDraft;
+            NudgeUnknownEnvelopeReplanCount = nudgeUnknownEnvelopeReplanCount;
+            NoTextRecoveryHitCount = noTextRecoveryHitCount;
+            NoTextToolOutputRecoveryHitCount = noTextToolOutputRecoveryHitCount;
+            ProactiveSkipMutatingCount = proactiveSkipMutatingCount;
+            ProactiveSkipReadOnlyCount = proactiveSkipReadOnlyCount;
+            ProactiveSkipUnknownCount = proactiveSkipUnknownCount;
             InterimResultSent = interimResultSent;
         }
 
@@ -126,6 +140,20 @@ internal sealed partial class ChatServiceSession {
 
         public bool NoResultPhaseLoopWatchdogUsed { get; set; }
 
+        public string LastNonEmptyAssistantDraft { get; set; }
+
+        public int NudgeUnknownEnvelopeReplanCount { get; set; }
+
+        public int NoTextRecoveryHitCount { get; set; }
+
+        public int NoTextToolOutputRecoveryHitCount { get; set; }
+
+        public int ProactiveSkipMutatingCount { get; set; }
+
+        public int ProactiveSkipReadOnlyCount { get; set; }
+
+        public int ProactiveSkipUnknownCount { get; set; }
+
         public bool InterimResultSent { get; set; }
     }
 
@@ -154,6 +182,13 @@ internal sealed partial class ChatServiceSession {
         ref bool hostStructuredNextActionReplayUsed,
         ref bool packCapabilityFallbackReplayUsed,
         ref bool noResultPhaseLoopWatchdogUsed,
+        ref string lastNonEmptyAssistantDraft,
+        ref int nudgeUnknownEnvelopeReplanCount,
+        ref int noTextRecoveryHitCount,
+        ref int noTextToolOutputRecoveryHitCount,
+        ref int proactiveSkipMutatingCount,
+        ref int proactiveSkipReadOnlyCount,
+        ref int proactiveSkipUnknownCount,
         ref bool interimResultSent) {
         turn = state.Turn;
         routedUserRequest = state.RoutedUserRequest;
@@ -178,6 +213,13 @@ internal sealed partial class ChatServiceSession {
         hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
         packCapabilityFallbackReplayUsed = state.PackCapabilityFallbackReplayUsed;
         noResultPhaseLoopWatchdogUsed = state.NoResultPhaseLoopWatchdogUsed;
+        lastNonEmptyAssistantDraft = state.LastNonEmptyAssistantDraft;
+        nudgeUnknownEnvelopeReplanCount = state.NudgeUnknownEnvelopeReplanCount;
+        noTextRecoveryHitCount = state.NoTextRecoveryHitCount;
+        noTextToolOutputRecoveryHitCount = state.NoTextToolOutputRecoveryHitCount;
+        proactiveSkipMutatingCount = state.ProactiveSkipMutatingCount;
+        proactiveSkipReadOnlyCount = state.ProactiveSkipReadOnlyCount;
+        proactiveSkipUnknownCount = state.ProactiveSkipUnknownCount;
         interimResultSent = state.InterimResultSent;
     }
 }

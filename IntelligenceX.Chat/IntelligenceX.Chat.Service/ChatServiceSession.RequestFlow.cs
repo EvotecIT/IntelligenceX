@@ -235,6 +235,7 @@ internal sealed partial class ChatServiceSession {
             var toolRounds = 0;
             var projectionFallbackCount = 0;
             IReadOnlyList<ToolErrorMetricDto>? toolErrors = null;
+            IReadOnlyList<TurnCounterMetricDto>? autonomyCounters = null;
             var outcome = "ok";
             string? outcomeCode = null;
             var threadIdForDelta = run.ThreadId ?? string.Empty;
@@ -274,6 +275,7 @@ internal sealed partial class ChatServiceSession {
                 toolRounds = result.ToolRounds;
                 projectionFallbackCount = result.ProjectionFallbackCount;
                 toolErrors = result.ToolErrors;
+                autonomyCounters = result.AutonomyCounters;
                 telemetryModel = ResolveEffectiveTurnModelForTelemetry(
                     result.ResolvedModel,
                     requestedModel,
@@ -339,6 +341,7 @@ internal sealed partial class ChatServiceSession {
                         ToolRounds = toolRounds,
                         ProjectionFallbackCount = projectionFallbackCount,
                         ToolErrors = toolErrors is { Count: > 0 } ? toolErrors : null,
+                        AutonomyCounters = autonomyCounters is { Count: > 0 } ? autonomyCounters : null,
                         Model = telemetryModel,
                         RequestedModel = requestedModel,
                         Transport = metricsTransport,
