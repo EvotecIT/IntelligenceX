@@ -8,6 +8,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
         failed += Run("Analyze run internal duplication malformed tags warn",
             TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
+        failed += Run("Analyze run internal duplication unsupported language aliases warn",
+            TestAnalyzeRunInternalDuplicationRuleWarnsOnUnsupportedLanguageAliasList);
         failed += Run("Analyze run internal duplication tokenized javascript",
             TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
         failed += Run("Analyze run internal duplication tokenized mts",
