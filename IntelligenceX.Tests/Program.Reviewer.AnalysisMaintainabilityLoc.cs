@@ -283,6 +283,16 @@ internal static partial class Program {
             "Assets/wizard.js");
         AssertEqual(true, stillMatched, "analyze run internal exclude-path normalizes slash variants");
 
+        var tagSideRepeatedSeparators = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets/wizard.js",
+            "Assets//wizard.js");
+        AssertEqual(true, tagSideRepeatedSeparators, "analyze run internal exclude-path normalizes repeated separators in configured tags");
+
+        var mixedSeparatorsBothSides = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets///wizard.js",
+            "Assets\\\\wizard.js");
+        AssertEqual(true, mixedSeparatorsBothSides, "analyze run internal exclude-path normalizes mixed separators on both sides");
+
         var notMatched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
             "Assets/wizard.backup.js",
             "Assets/wizard.js");
