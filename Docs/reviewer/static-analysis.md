@@ -7,7 +7,7 @@ This document describes the current IntelligenceX static analysis model and onbo
 - Keep analysis decisions in one place (`reviewer.json`).
 - Avoid modifying user repos unless explicitly requested.
 - Allow easy opt-in, opt-out, and per-rule toggles with descriptions.
-- Support multiple languages over time (C#, PowerShell, JS/TS, Python).
+- Support multiple languages over time (C#, PowerShell, JS/TS, Python), with internal maintainability checks also covering Shell and YAML source files.
 
 ## User Experience (Onboarding)
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
@@ -178,6 +178,17 @@ Recommended tier selection:
 
 The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and
 tier IDs remain stable for policy compatibility as coverage evolves.
+
+### Internal Maintainability Language Coverage
+Internal maintainability rules (`IXLOC001`, `IXDUP001`) scan tracked source extensions directly and currently include:
+- C# (`.cs`)
+- PowerShell (`.ps1`, `.psm1`, `.psd1`)
+- JavaScript/TypeScript (`.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`)
+- Python (`.py`, `.pyi`)
+- Shell (`.sh`, `.bash`, `.zsh`)
+- YAML (`.yml`, `.yaml`)
+
+This means oversized-file and duplication checks apply to Shell/YAML repositories even when no external analyzer runner is configured for those languages.
 
 ## Temporary Analyzer Config Generation
 During analysis runs, configs are generated or synthesized at runtime and cleaned up at the end. Examples:
