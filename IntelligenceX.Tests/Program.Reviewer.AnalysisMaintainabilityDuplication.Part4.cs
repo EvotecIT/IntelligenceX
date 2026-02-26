@@ -337,6 +337,20 @@ internal static partial class Program {
             "local converted=$((16#FF + 1)) || echo ready");
     }
 
+    private static void TestAnalyzeRunInternalDuplicationShellWordInternalHashDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-word-internal-hash",
+            "echo alpha#beta && echo ready",
+            "echo alpha#beta || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellEscapedHashDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-escaped-hash",
+            "echo \\#tag && echo ready",
+            "echo \\#tag || echo ready");
+    }
+
     private static void AssertShellHashContextDoesNotCauseFalseDuplication(string testCaseName, string lineA, string lineB) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-" + testCaseName + "-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

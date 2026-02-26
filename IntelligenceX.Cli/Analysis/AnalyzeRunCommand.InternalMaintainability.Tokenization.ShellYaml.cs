@@ -228,7 +228,8 @@ internal static partial class AnalyzeRunCommand {
             if (ch == '#' &&
                 parameterExpansionDepth == 0 &&
                 commandSubstitutionDepth == 0 &&
-                arithmeticExpansionDepth == 0) {
+                arithmeticExpansionDepth == 0 &&
+                IsShellCommentStart(input, i)) {
                 return input.Substring(0, i);
             }
         }
@@ -277,5 +278,26 @@ internal static partial class AnalyzeRunCommand {
             slashCount++;
         }
         return (slashCount & 1) == 1;
+    }
+
+    private static bool IsShellCommentStart(string input, int index) {
+        if (string.IsNullOrEmpty(input) || index < 0 || index >= input.Length) {
+            return false;
+        }
+
+        if (IsEscapedByBackslash(input, index)) {
+            return false;
+        }
+
+        if (index == 0) {
+            return true;
+        }
+
+        var previous = input[index - 1];
+        if (char.IsWhiteSpace(previous)) {
+            return true;
+        }
+
+        return previous is ';' or '(' or ')' or '{' or '}' or '|' or '&';
     }
 }

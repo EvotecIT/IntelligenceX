@@ -54,6 +54,10 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationShellHashInDoublePrefixRemovalDoesNotTriggerCommentStripping);
         failed += Run("Analyze run duplication shell hash in arithmetic expression",
             TestAnalyzeRunInternalDuplicationShellHashInArithmeticDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell word-internal hash",
+            TestAnalyzeRunInternalDuplicationShellWordInternalHashDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell escaped hash",
+            TestAnalyzeRunInternalDuplicationShellEscapedHashDoesNotTriggerCommentStripping);
         failed += Run("Analyze run duplication yaml escaped single quote hash",
             TestAnalyzeRunInternalDuplicationYamlEscapedSingleQuoteHashDoesNotTriggerCommentStripping);
         failed += Run("Analyze run duplication language-only tag activates rule",
