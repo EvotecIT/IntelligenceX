@@ -166,7 +166,6 @@ internal static partial class AnalyzeRunCommand {
     private static IReadOnlySet<string> ResolveExcludedPaths(AnalysisRule rule, List<string> warnings) {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var malformedTags = new List<string>();
-        var normalizedTransforms = new List<(string Raw, string Normalized)>();
         if (rule?.Tags is null || rule.Tags.Count == 0) {
             return paths;
         }
@@ -180,26 +179,11 @@ internal static partial class AnalyzeRunCommand {
             var normalized = NormalizeExcludedPathTagValue(rawValue);
             if (!string.IsNullOrWhiteSpace(normalized)) {
                 paths.Add(normalized);
-                var trimmedRaw = rawValue.Trim();
-                var normalizedRawSeparators = trimmedRaw.Replace('\\', '/').Trim('/');
-                if (!normalizedRawSeparators.Equals(normalized, StringComparison.Ordinal)) {
-                    normalizedTransforms.Add((trimmedRaw, normalized));
-                }
             } else {
                 malformedTags.Add(tag);
             }
         }
         AddMalformedTagWarning(rule.Id, malformedTags, ExcludedPathTagPrefix, warnings);
-        if (normalizedTransforms.Count > 0) {
-            var sample = string.Join(", ", normalizedTransforms
-                .Take(MaxTagWarningDetails)
-                .Select(static item => $"'{item.Raw}' -> '{item.Normalized}'"));
-            var suffix = normalizedTransforms.Count > MaxTagWarningDetails
-                ? $" (+{normalizedTransforms.Count - MaxTagWarningDetails} more)"
-                : string.Empty;
-            warnings.Add(
-                $"Rule {rule.Id} normalized exclude-path values: {sample}{suffix}. Matching is case-insensitive and non-recursive.");
-        }
 
         return paths;
     }
