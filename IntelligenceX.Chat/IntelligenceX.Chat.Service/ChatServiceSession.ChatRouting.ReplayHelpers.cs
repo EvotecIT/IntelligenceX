@@ -5,8 +5,11 @@ using System.Text;
 using System.Text.Json;
 using JsonValueKind = System.Text.Json.JsonValueKind;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
 

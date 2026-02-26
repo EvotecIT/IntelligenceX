@@ -4,6 +4,7 @@ using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
 
