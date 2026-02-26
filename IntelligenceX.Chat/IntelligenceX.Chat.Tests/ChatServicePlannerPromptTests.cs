@@ -90,7 +90,7 @@ public sealed class ChatServicePlannerPromptTests {
 
     [Fact]
     public void SelectWeightedToolSubset_UsesRequestedLimit_WhenPromptHasNoRoutingSignal() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 20; i++) {
             definitions.Add(new ToolDefinition(
@@ -114,7 +114,7 @@ public sealed class ChatServicePlannerPromptTests {
 
     [Fact]
     public void SelectWeightedToolSubset_UsesFullToolSet_WhenWeightedRoutingIsSkippedForShortPrompt() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 20; i++) {
             definitions.Add(new ToolDefinition(
@@ -185,7 +185,7 @@ public sealed class ChatServicePlannerPromptTests {
 
     [Fact]
     public void ResolveMaxCandidateToolsForTurn_PreservesExplicitRequestForCompatibleHttp() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var result = ResolveMaxCandidateToolsForTurnMethod.Invoke(session, new object?[] { 21, OpenAITransportKind.CompatibleHttp, "any-model" });
         var value = Assert.IsType<int>(result);
@@ -245,7 +245,7 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     private static ChatServiceSession BuildSessionWithModelCache(params ModelInfo[] models) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var modelList = new ModelListResult(models, nextCursor: null, raw: new JsonObject(), additional: null);
         var cacheEntry = Activator.CreateInstance(
             ModelListCacheEntryType,

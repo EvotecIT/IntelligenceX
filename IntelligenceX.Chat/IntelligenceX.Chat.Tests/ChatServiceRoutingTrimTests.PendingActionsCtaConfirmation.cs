@@ -19,7 +19,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("\"run now\"")]
     [InlineData("'run now'")]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserEchoesAssistantCallToAction(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -58,7 +58,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantUsesCurlyQuotesForCta() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say “run now”, I'll execute it.
 
@@ -81,7 +81,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantUsesFullWidthQuotesForCta() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say ＂run now＂, I'll execute it.
 
@@ -104,7 +104,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantCtaIncludesTrailingColonInQuote() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now:", I'll execute it.
 
@@ -132,7 +132,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("run now\uFF1A")]
     [InlineData("run now\uFF1B")]
     public void ExpandContinuationUserRequest_DoesNotConfirmWhenAssistantCtaHadTrailingColonButUserRepliesWithPrefix(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now:", I'll execute it.
 
@@ -159,7 +159,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("run now；")]
     [InlineData("`run now`:")]
     public void ExpandContinuationUserRequest_DoesNotConfirmWhenFollowUpLooksLikeAPrefix(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -187,7 +187,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("/run now")]
     [InlineData("run now=1")]
     public void ExpandContinuationUserRequest_DoesNotConfirmWhenUserInputLooksLikeStructuredPayloadOrCommand(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -209,7 +209,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserMatchesActionIntentWithoutCtaEcho() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -230,7 +230,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesShortNonLatinIntentTokens() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -251,7 +251,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenTwoTokenFollowUpEndsWithShortNonLatinIntentToken() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -272,7 +272,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenShortNonLatinIntentTokenIsNonTrailing() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -293,7 +293,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesContiguousNonLatinIntentToken() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -314,7 +314,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenContiguousNonLatinIntentTokenDoesNotMatch() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -335,7 +335,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenUserUsesOnlyShortAsciiTokens() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -356,7 +356,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesNaturalConfirmationWithoutHardcodedPhrase() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -377,7 +377,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesLongContextualConfirmation() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -400,7 +400,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesBestPendingActionByIntentOverlapWhenMultipleActionsAndLongFollowUp() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -431,7 +431,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveMutatingSinglePendingActionForLongNaturalLanguageConfirmation() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -453,7 +453,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveMutatingSinglePendingActionForNaturalLanguageConfirmation() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -473,7 +473,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionForLongNaturalLanguageConfirmation() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -494,7 +494,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserEchoesAssistantCallToAction() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -515,8 +515,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionForCompactFollowUpWhenAssistantProvidedCtaContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+    public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionForCompactNonEchoFollowUpWhenAssistantProvidedCtaContext() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -532,13 +532,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead" });
         var expanded = Assert.IsType<string>(result);
 
-        using var doc = JsonDocument.Parse(expanded);
-        Assert.Equal("act_unknown_single", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+        Assert.Equal("go ahead", expanded);
     }
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveUnknownSinglePendingActionForCompactFollowUpWithoutCtaContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -557,7 +556,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveUnknownPendingActionByIntentOverlapWhenMultipleActionsExist() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -585,7 +584,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesExplicitAct() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -605,7 +604,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesOrdinalSelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -634,7 +633,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("⑴")]
     [InlineData("❶")]
     public void ExpandContinuationUserRequest_ResolvesUnknownSinglePendingActionWhenUserUsesUnicodeOrdinalSelection(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -654,7 +653,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesMutatingSinglePendingActionWhenUserUsesExplicitAct() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -675,7 +674,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesMutatingSinglePendingActionWhenUserUsesOrdinalSelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -696,7 +695,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_PreservesMutatingFlagForExplicitMutatingActionSelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -718,7 +717,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_PreservesReadOnlyFlagForActionSelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1

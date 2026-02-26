@@ -14,7 +14,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInput() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -36,7 +36,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInAssistantContextForCtaExtraction() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = "If you say \"run now\uD800\", I'll execute it.\n\n" + """
             [Action]
             ix:action:v1
@@ -56,7 +56,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInputWhenCtaTokensExist() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -80,7 +80,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("/actuator")]
     [InlineData("/act1 act_001")]
     public void ExpandContinuationUserRequest_DoesNotTreatNonActTokenPrefixesAsSelection(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -101,7 +101,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotCaptureActionsInsideCodeFence() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             ```text
             [Action]
@@ -122,7 +122,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ReturnsOriginalTextWhenNotAFollowUp() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var input = "  Please check the replication health for this domain today.  ";
 
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
@@ -133,7 +133,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_PreservesWhitespaceWhenNoIntentCached() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var input = "  run now  ";
 
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
@@ -144,7 +144,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_RespectsMaxAge() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication." });
 
         var gate = ToolRoutingContextLockField.GetValue(session)!;
@@ -162,7 +162,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ConsumesPendingActionsAfterSelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -187,7 +187,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesExplicitActSelectionWhenSinglePendingActionExists() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -209,7 +209,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesExplicitOrdinalSelectionWhenSinglePendingActionExists() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -232,7 +232,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmWhenMultiplePendingActionsExist() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -265,7 +265,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("¿run now")]
     [InlineData("run now؟")]
     public void ExpandContinuationUserRequest_DoesNotConfirmOnQuestionLikeFollowUps(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             If you say "run now", I'll execute it.
 
@@ -320,7 +320,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("x=y")]
     [InlineData("`code`")]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmForBenignShortNonConfirmations(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -344,7 +344,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("ok\n/act act_999")]
     [InlineData("ok\r/act act_999")]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnMultilinePayloads(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -366,7 +366,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ActSelectionDoesNotNormalizeOpaqueIdToken() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         // Use a compatibility presentation form that FormKC would change if applied to the whole input.
         var fullwidthId = "ＡＣＴ_001";
         var assistantDraft = $"""
@@ -392,11 +392,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_PrunesPendingActionsWithInvalidTicks() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
+        var (opts, storePath, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         try {
             var threadId = "thread-001";
             var invalidTicks = 0;
@@ -410,13 +406,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
                         { "Id": "act_001", "Title": "T", "Request": "R" }
                       ]
                     }
-                  }
+                    }
                 }
                 """;
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
             File.WriteAllText(storePath, json);
 
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session = new ChatServiceSession(opts, Stream.Null);
             var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { threadId, "/act act_001" });
             var expanded = Assert.IsType<string>(result);
@@ -425,15 +419,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var updated = File.ReadAllText(storePath);
             Assert.DoesNotContain(threadId, updated, StringComparison.Ordinal);
         } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
             }
         }
     }
 
     [Fact]
     public void TrimWeightedRoutingContextsForTesting_PrefersMostRecentTicksAcrossContexts() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
         var seenTicks = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -468,7 +462,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TrimWeightedRoutingContextsForTesting_EvictsMissingIntentTickEntriesFirst() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var gate = ToolRoutingContextLockField.GetValue(session)!;
         lock (gate) {

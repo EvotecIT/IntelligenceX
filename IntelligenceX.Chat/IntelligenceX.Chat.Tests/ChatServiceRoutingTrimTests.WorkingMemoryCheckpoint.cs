@@ -52,7 +52,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void WorkingMemoryCheckpoint_DoesNotAugmentWhenRoutedRequestAlreadyExpanded() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberWorkingMemoryCheckpointForTesting(
             threadId: "thread-working-memory-expanded",
             intentAnchor: "Analyze DNS + AD context and compare anomalies.",
@@ -72,7 +72,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void WorkingMemoryCheckpoint_DoesNotAugmentStructuredActionSelectionPayload() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-working-memory-structured-action";
         const string payload = "{\"ix_action_selection\":{\"id\":\"act_domain_scope_public\",\"request\":{\"ix_domain_scope\":{\"family\":\"public_domain\"}},\"mutating\":false}}";
 
@@ -95,7 +95,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void WorkingMemoryCheckpoint_DoesNotAugmentPendingDomainSelectionReply() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-working-memory-domain-selection";
 
         session.RememberWorkingMemoryCheckpointForTesting(

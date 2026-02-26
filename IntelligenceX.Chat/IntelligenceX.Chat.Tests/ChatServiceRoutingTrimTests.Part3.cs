@@ -38,7 +38,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication and LDAP diagnostics." });
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
@@ -51,7 +51,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesActCommandToPendingActionRequest() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pick one:
 
@@ -75,7 +75,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     /// </summary>
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesActCommandFromLoosePendingActionBlock() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             id
             act_repl_now
@@ -97,7 +97,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesMultiLinePendingActionRequest() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -118,7 +118,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesOrdinalSelectionToSecondPendingAction() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -144,7 +144,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveOrdinalWhenMessageIsNotASelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -171,7 +171,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotTreatIdentityAsIdField() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1

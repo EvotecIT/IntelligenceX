@@ -10,7 +10,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenSingleOverlapIsNonTrailing() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -30,7 +30,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesBestPendingActionByIntentOverlapWhenMultipleActionsExist() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -59,7 +59,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveMultiplePendingActionsOnAmbiguousSingleTokenOverlap() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -87,7 +87,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesFallbackBulletChoiceWithoutActionMarker() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Absolutely — want me to pull top 5 recent events, or go straight to a focused cut like:
             - Failed logons (4625)
@@ -107,7 +107,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveFallbackBulletChoiceWithoutPromptContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Options
             - Failed logons (4625)
@@ -123,7 +123,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotTreatInventoryHostBulletsAsFallbackChoices() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             I can query these DCs now:
             - AD0
@@ -140,7 +140,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSingleNumberedFallbackChoiceWithPromptContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
             1. Run failed logon report (4625) on ADO Security
@@ -158,7 +158,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotResolveSingleBulletFallbackChoiceWithPromptContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
             - Run failed logon report (4625) on ADO Security
@@ -173,7 +173,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSingleBulletFallbackChoiceWithInlineActIdWithPromptContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
             - Run failed logon report (4625) on ADO Security (/act act_failed4625)
@@ -191,7 +191,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesSingleNumberedFallbackChoiceWithInlineActIdInParentheses() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
             You can reply with /act act_failed4625 (or just 1) and I'll execute it immediately.
@@ -211,7 +211,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesExplicitActForFallbackChoiceWithInlineActIdInParentheses() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
             You can run one of these follow-up actions:
@@ -236,7 +236,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("/act act_001!")]
     [InlineData("/act act_001?")]
     public void ExpandContinuationUserRequest_ResolvesExplicitActWhenCommandUsesSafeWrappersOrPunctuation(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -259,7 +259,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("/act act_001 please")]
     [InlineData("/act act_001 and summarize")]
     public void ExpandContinuationUserRequest_DoesNotResolveExplicitActWhenCommandHasTrailingText(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             [Action]
             ix:action:v1
@@ -279,7 +279,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void RememberPendingActions_NoMarkerOrFallbackChoices_DoesNotClearExistingActionContext() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var actionDraft = """
             [Action]
             ix:action:v1
@@ -306,7 +306,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void RememberPendingActions_RehydratesReplayActionFromExecutionContractBlockerText() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\",\"mutating\":false}}";
         var blockerText = Assert.IsType<string>(BuildExecutionContractBlockerTextMethod.Invoke(
             null,

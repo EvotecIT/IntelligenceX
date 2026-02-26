@@ -10,11 +10,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
+        var (opts, storePath, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         try {
             var threadId = "thread-001";
             var assistantDraft = """
@@ -29,8 +25,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 reply: /act act_001
                 """;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session1 = new ChatServiceSession(opts, Stream.Null);
             RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, assistantDraft });
 
@@ -48,19 +42,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 selection.GetProperty("request").GetString(),
                 StringComparison.OrdinalIgnoreCase);
         } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
             }
         }
     }
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotConfirmCtaAfterRestartWhenMultiplePendingActionsExist() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
+        var (opts, _, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         try {
             var threadId = "thread-001";
             var assistantDraft = """
@@ -83,8 +73,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 reply: /act act_002
                 """;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session1 = new ChatServiceSession(opts, Stream.Null);
             RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, assistantDraft });
 
@@ -94,19 +82,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
             Assert.Equal("run now", expanded);
         } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
             }
         }
     }
 
     [Fact]
     public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart_WhenPersistedCtaTokenHasWrappers() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
+        var (opts, storePath, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         try {
             var threadId = "thread-001";
             var ticks = DateTime.UtcNow.Ticks;
@@ -130,10 +114,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 }
                 """;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
             File.WriteAllText(storePath, json);
 
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session = new ChatServiceSession(opts, Stream.Null);
             var expandedObj = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { threadId, "run now" });
             var expanded = Assert.IsType<string>(expandedObj);
@@ -143,15 +125,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 "act_001",
                 doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
         } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
             }
         }
     }
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotConfirmWhenUserMatchesNonCtaQuotedPhrase() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
             Note: this is not a CTA. The text "run now" appeared inside an error message.
 
@@ -174,24 +156,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnCorruptPendingActionsStore() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
+        var (opts, storePath, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         try {
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
             File.WriteAllText(storePath, "{ this is not valid json");
 
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session = new ChatServiceSession(opts, Stream.Null);
             var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
             var expanded = Assert.IsType<string>(result);
 
             Assert.Equal("/act act_001", expanded);
         } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
             }
         }
     }

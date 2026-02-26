@@ -12,7 +12,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class ChatServiceDomainAffinityTests {
     [Fact]
     public void TryApplyDomainIntentAffinity_FiltersConflictingDomainFamilyTools() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-domain", "ad_domain");
 
         var tools = new List<ToolDefinition> {
@@ -41,7 +41,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryApplyDomainIntentAffinity_UsesToolMetadataCategory_WhenNamesDoNotUseLegacyPrefixes() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-domain", "ad_domain");
 
         var tools = new List<ToolDefinition> {
@@ -66,7 +66,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryApplyDomainIntentAffinity_DoesNotApplyWhenAffinityIsExpired() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting(
             threadId: "thread-expired",
             family: "ad_domain",
@@ -90,7 +90,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void RememberPreferredDomainIntentFamily_PrefersDominantSuccessfulReadOnlyFamily() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {
             new ToolCallDto { CallId = "1", Name = "ad_scope_discovery", ArgumentsJson = "{}" },
             new ToolCallDto { CallId = "2", Name = "ad_domain_controllers", ArgumentsJson = "{}" },
@@ -113,7 +113,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void RememberPreferredDomainIntentFamily_ClearsAffinityWhenVotesAreAmbiguous() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-ambiguous", "ad_domain");
         var calls = new[] {
             new ToolCallDto { CallId = "1", Name = "ad_scope_discovery", ArgumentsJson = "{}" },
@@ -191,7 +191,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_MapsNumericChoiceToDomainFamily() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -217,7 +217,7 @@ public sealed class ChatServiceDomainAffinityTests {
     public void TryResolvePendingDomainIntentClarificationSelection_MapsUnicodeNumericChoiceToDomainFamily(
         string input,
         string expectedFamily) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-unicode");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -266,7 +266,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesStructuredPayload() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-structured");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -283,7 +283,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesDomainIntentChoiceMarkerPayload() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-marker");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -302,7 +302,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesDomainIntentFamilyMarkerPayload() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-family-marker");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -321,7 +321,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesActionSelectionPayload() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -338,7 +338,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesActionSelectionPayloadWithObjectRequest() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-object-request");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -355,7 +355,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesExplicitActSelectionCommand() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-explicit-act");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -390,7 +390,7 @@ public sealed class ChatServiceDomainAffinityTests {
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
         string input,
         string expectedFamily) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-signal");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -405,7 +405,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_DoesNotResolveWhenTechnicalSignalsConflict() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-conflict");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -418,7 +418,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_DoesNotTreatLowercaseAdAsStandaloneAdSignal() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-lowercase-ad");
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -432,7 +432,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryApplyDomainIntentSignalRoutingHint_FiltersMixedToolsAndRemembersAdPreference() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var tools = new[] {
             new ToolDefinition("ad_scope_discovery", "AD scope"),
             new ToolDefinition("ad_domain_controllers", "AD DCs"),
@@ -458,7 +458,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryApplyDomainIntentSignalRoutingHint_FiltersMixedToolsAndRemembersPublicPreference() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var tools = new[] {
             new ToolDefinition("ad_scope_discovery", "AD scope"),
             new ToolDefinition("dnsclientx_query", "DNS query"),
@@ -483,7 +483,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryApplyDomainIntentSignalRoutingHint_DoesNotApplyWhenSignalsConflict() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var tools = new[] {
             new ToolDefinition("ad_scope_discovery", "AD scope"),
             new ToolDefinition("dnsclientx_query", "DNS query")
@@ -599,7 +599,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void DomainIntentHostGuardrail_BlocksAdScopeHostCallWhenTargetMatchesPublicDomainEvidence() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail", "ad_domain");
         session.RememberThreadToolEvidenceForTesting(
             "thread-guardrail",
@@ -639,7 +639,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void DomainIntentHostGuardrail_AllowsExplicitHostWhenUserProvidesTargetInTurnRequest() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-explicit", "ad_domain");
         session.RememberThreadToolEvidenceForTesting(
             "thread-guardrail-explicit",
@@ -677,7 +677,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void DomainIntentHostGuardrail_AllowsAdScopeHostCallWhenTargetDoesNotMatchPublicDomainEvidence() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-miss", "ad_domain");
         session.RememberThreadToolEvidenceForTesting(
             "thread-guardrail-miss",
