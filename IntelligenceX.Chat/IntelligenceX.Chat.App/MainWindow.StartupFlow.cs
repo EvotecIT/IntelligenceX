@@ -639,6 +639,7 @@ public sealed partial class MainWindow : Window {
         ResetMemoryDiagnosticsState();
 
         var repairedLegacyTranscriptState = LoadConversationsFromState(_appState);
+        RestoreQueuedTurnsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));
         if (repairedLegacyTranscriptState) {
             await PersistAppStateAsync().ConfigureAwait(false);

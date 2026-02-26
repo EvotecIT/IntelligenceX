@@ -389,7 +389,20 @@ internal sealed partial class ChatServiceSession {
         // Defensive rebind: planner routing may temporarily switch threads.
         // Reassert the active conversation thread before each model phase.
         if (!string.IsNullOrWhiteSpace(threadId)) {
-            await client.UseThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+            var requestedThreadId = threadId.Trim();
+            var reboundThreadId = ResolveRecoveredThreadAlias(requestedThreadId);
+            try {
+                await client.UseThreadAsync(reboundThreadId, cancellationToken).ConfigureAwait(false);
+            } catch (Exception ex) when (ShouldRecoverMissingTransportThread(ex)) {
+                var recoveredThread = await client.StartNewThreadAsync(options.Model, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var recoveredThreadId = (recoveredThread.Id ?? string.Empty).Trim();
+                if (recoveredThreadId.Length > 0) {
+                    RememberRecoveredThreadAlias(requestedThreadId, recoveredThreadId);
+                    if (!string.Equals(reboundThreadId, requestedThreadId, StringComparison.Ordinal)) {
+                        RememberRecoveredThreadAlias(reboundThreadId, recoveredThreadId);
+                    }
+                }
+            }
         }
 
         var chatTask = ChatWithToolSchemaRecoveryAsync(client, input, options, cancellationToken);

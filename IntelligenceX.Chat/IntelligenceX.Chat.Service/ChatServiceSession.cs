@@ -30,10 +30,19 @@ internal sealed partial class ChatServiceSession {
     private const int MaxTrackedPendingActionContexts = 256;
     private const int MaxTrackedStructuredNextActionContexts = 256;
     private const int MaxTrackedPlannerThreadContexts = 128;
-    private static readonly TimeSpan UserIntentContextMaxAge = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromMinutes(20);
-    private static readonly TimeSpan StructuredNextActionContextMaxAge = TimeSpan.FromMinutes(20);
-    private static readonly TimeSpan PlannerThreadContextMaxAge = TimeSpan.FromMinutes(30);
+    private const int MaxTrackedDomainIntentFamilyContexts = 256;
+    private const int MaxTrackedDomainIntentClarificationContexts = 256;
+    private const int MaxTrackedThreadRecoveryAliases = 256;
+    private const int MaxTrackedThreadToolEvidenceContexts = 128;
+    private const int MaxToolEvidenceEntriesPerThread = 48;
+    private static readonly TimeSpan UserIntentContextMaxAge = TimeSpan.FromHours(6);
+    private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromHours(8);
+    private static readonly TimeSpan StructuredNextActionContextMaxAge = TimeSpan.FromHours(6);
+    private static readonly TimeSpan PlannerThreadContextMaxAge = TimeSpan.FromHours(6);
+    private static readonly TimeSpan DomainIntentFamilyContextMaxAge = TimeSpan.FromHours(8);
+    private static readonly TimeSpan DomainIntentClarificationContextMaxAge = TimeSpan.FromHours(2);
+    private static readonly TimeSpan ThreadRecoveryAliasContextMaxAge = TimeSpan.FromHours(12);
+    private static readonly TimeSpan ThreadToolEvidenceContextMaxAge = TimeSpan.FromHours(8);
     private static readonly TimeSpan StartupToolHealthPrimeBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan StartupToolHealthHelloWaitBudget = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan NativeUsageRefreshInterval = TimeSpan.FromMinutes(1);
@@ -63,6 +72,14 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, StructuredNextActionSnapshot> _structuredNextActionByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _plannerThreadIdByActiveThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _plannerThreadSeenUtcTicksByActiveThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _domainIntentFamilyByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _domainIntentFamilySeenUtcTicks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _pendingDomainIntentClarificationSeenUtcTicks = new(StringComparer.Ordinal);
+    private readonly object _threadRecoveryAliasLock = new();
+    private readonly Dictionary<string, string> _recoveredThreadAliasesByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _recoveredThreadAliasSeenUtcTicksByThreadId = new(StringComparer.Ordinal);
+    private readonly object _threadToolEvidenceLock = new();
+    private readonly Dictionary<string, Dictionary<string, ThreadToolEvidenceEntry>> _threadToolEvidenceByThreadId = new(StringComparer.Ordinal);
 
     private readonly object _modelListCacheLock = new();
     private ModelListCacheEntry? _modelListCache;
@@ -90,6 +107,7 @@ internal sealed partial class ChatServiceSession {
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default
         };
+        TryRehydrateToolRoutingStats();
     }
 
     private void UpdatePackMetadataIndexes(IReadOnlyList<ToolPackDescriptor> descriptors) {

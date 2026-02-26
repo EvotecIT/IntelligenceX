@@ -8,6 +8,8 @@
     [string] $OutDir = '.\artifacts\chat-live',
     [string[]] $AllowRoot,
     [switch] $NoBuild,
+    [int] $TurnTimeoutSeconds = 900,
+    [int] $ToolTimeoutSeconds = 120,
     [switch] $StopOnFailure,
     [bool] $ContinueOnError = $false,
     [switch] $ParallelTools = $true,
@@ -147,6 +149,8 @@ if ($requiredTags.Count -gt 0) {
 Write-Step ("Scenarios: {0}" -f $scenarioRuns.Count)
 Write-Step ("Expected turns: {0}" -f $ExpectedTurns)
 Write-Step ("Output dir: {0}" -f $resolvedOutDir)
+Write-Step ("Turn timeout (seconds): {0}" -f $TurnTimeoutSeconds)
+Write-Step ("Tool timeout (seconds): {0}" -f $ToolTimeoutSeconds)
 
 $passed = 0
 $failed = 0
@@ -172,6 +176,8 @@ for ($i = 0; $i -lt $scenarioRuns.Count; $i++) {
         ParallelTools = [bool]$ParallelTools
         EchoToolOutputs = [bool]$EchoToolOutputs
         NoBuild = $scenarioNoBuild
+        TurnTimeoutSeconds = $TurnTimeoutSeconds
+        ToolTimeoutSeconds = $ToolTimeoutSeconds
     }
 
     if ($AllowRoot -and $AllowRoot.Count -gt 0) {

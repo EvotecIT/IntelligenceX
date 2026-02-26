@@ -16,5 +16,9 @@ public sealed class ChatAppStateDefaultsTests {
 
         Assert.False(state.ShowAssistantTurnTrace);
         Assert.False(state.ShowAssistantDraftBubbles);
+        Assert.NotNull(state.PendingTurns);
+        Assert.NotNull(state.QueuedTurnsAfterLogin);
+        Assert.Empty(state.PendingTurns);
+        Assert.Empty(state.QueuedTurnsAfterLogin);
     }
 }

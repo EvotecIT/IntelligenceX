@@ -1,0 +1,159 @@
+{
+  "name": "mixed-domain-ambiguity-multilingual-switchback-20-turn",
+  "tags": ["strict", "live", "domain-ambiguity", "mixed", "ad", "dns", "continuation", "multilingual", "compaction", "soak", "long-run", "open-source"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Initial mixed intent requires clarification",
+      "user": "Necesito revisar directorio activo y DNS publico para corp.contoso.com y contoso.com.",
+      "forbid_tools": ["*"],
+      "assert_contains": ["AD", "DNS"]
+    },
+    {
+      "name": "Structured public DNS selection",
+      "user": "[DomainIntent]\nix:domain-intent:v1\nfamily: public_domain",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary", "dnsclientx_pack_info", "domaindetective_pack_info"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Public DNS resolver evidence",
+      "user": "Collect A, AAAA, MX, SPF, and DMARC evidence for contoso.com using 1.1.1.1 and 8.8.8.8.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Public DNS network probes",
+      "user": "Continue with network probes across discovered authoritative hosts and remaining MX hosts in this turn.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["domaindetective_network_probe", "dnsclientx_ping"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Public DNS risk summary",
+      "user": "Summarize DNS findings and unresolved public-domain blockers with UTC markers.",
+      "assert_contains": ["DNS", "UTC"]
+    },
+    {
+      "name": "Switch to AD via action payload",
+      "user": "{\"ix_action_selection\":{\"id\":\"act_domain_scope_ad\",\"title\":\"ad_domain\",\"request\":{\"ix_domain_scope\":{\"family\":\"ad_domain\"}},\"mutating\":false}}",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_*domain*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD cross-DC event evidence",
+      "user": "Collect reboot and availability evidence across at least two discovered DCs in this turn.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD LDAP and ADWS checks",
+      "user": "Validate LDAP and ADWS health for the same AD scope.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*ldap*", "ad_*adws*", "ad_monitoring_probe_run"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD replication continuation",
+      "user": "Continue replication checks on all remaining discovered DCs in this turn.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["ad_*replication*", "ad_monitoring_probe_run"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Boundary summary after first switchback",
+      "user": "Return two bounded sections: AD internal findings and public DNS findings.",
+      "assert_contains": ["AD", "DNS"]
+    },
+    {
+      "name": "Mixed signals again force clarification",
+      "user": "Please do AD LDAP + DNS MX together now.",
+      "forbid_tools": ["*"],
+      "assert_contains": ["ix:domain-intent-choice:v1", "act_domain_scope_ad", "act_domain_scope_public"]
+    },
+    {
+      "name": "Numeric selection with Arabic-Indic digit",
+      "user": "١",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_*domain*", "ad_*ldap*", "ad_*replication*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD event continuation",
+      "user": "Continue EventLog evidence across all remaining DCs for this AD scope.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "forbid_tools": ["dnsclientx_*", "domaindetective_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Switch back to public DNS with fullwidth numeric selection",
+      "user": "２",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary", "dnsclientx_pack_info", "domaindetective_pack_info"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Public DNS auth and mail records",
+      "user": "Run NS, MX, SPF, DKIM, and DMARC checks and highlight concrete risk gaps.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Public DNS continuation over discovered hosts",
+      "user": "Continue network and resolver checks for all remaining discovered hosts in this turn.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["domaindetective_network_probe", "dnsclientx_ping", "dnsclientx_query"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Third mixed-intent clarification checkpoint",
+      "user": "¿Puedes mezclar LDAP y DNS publico en un solo paso?",
+      "forbid_tools": ["*"],
+      "assert_contains": ["ix:domain-intent-choice:v1", "act_domain_scope_ad", "act_domain_scope_public"]
+    },
+    {
+      "name": "Explicit public-domain marker selection",
+      "user": "[DomainIntent]\nix:domain-intent:v1\nfamily: public_domain",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary", "domaindetective_network_probe"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final bounded comparison",
+      "user": "Provide final bounded sections for AD and public DNS, with unresolved blockers and evidence references.",
+      "assert_contains": ["AD", "DNS"]
+    },
+    {
+      "name": "Compact final checklist without follow-up",
+      "user": "Return a compact final checklist with no follow-up questions.",
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}

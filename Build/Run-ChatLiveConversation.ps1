@@ -9,6 +9,8 @@
     [string] $OutDir = '.\artifacts\chat-live',
     [string[]] $AllowRoot,
     [switch] $NoBuild,
+    [int] $TurnTimeoutSeconds = 900,
+    [int] $ToolTimeoutSeconds = 120,
     [bool] $ContinueOnError = $false,
     [switch] $ParallelTools = $true,
     [switch] $EchoToolOutputs = $true,
@@ -206,6 +208,8 @@ if ($ExpectedTurns -gt 0) {
 }
 Write-Step ("Output dir: {0}" -f $resolvedOutDir)
 Write-Step ("Continue on error: {0}" -f $ContinueOnError)
+Write-Step ("Turn timeout (seconds): {0}" -f $TurnTimeoutSeconds)
+Write-Step ("Tool timeout (seconds): {0}" -f $ToolTimeoutSeconds)
 
 $runParams = @{
     ScenarioFile = $resolvedScenarioFile
@@ -214,6 +218,8 @@ $runParams = @{
     ParallelTools = [bool]$ParallelTools
     EchoToolOutputs = [bool]$EchoToolOutputs
     NoBuild = [bool]$NoBuild
+    TurnTimeoutSeconds = $TurnTimeoutSeconds
+    ToolTimeoutSeconds = $ToolTimeoutSeconds
 }
 if ($AllowRoot -and $AllowRoot.Count -gt 0) {
     $runParams['AllowRoot'] = $AllowRoot

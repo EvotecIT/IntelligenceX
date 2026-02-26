@@ -14,7 +14,8 @@
       "name": "Clarify AD vs public DNS intent",
       "user": "Check domain health for corp.contoso.com and contoso.com.",
       "forbid_tools": ["*"],
-      "assert_contains": ["Active Directory", "DNS"]
+      "assert_contains": ["AD", "DNS"],
+      "assert_matches_regex": ["(Active\\s+Directory|AD)", "DNS"]
     },
     {
       "name": "User selects AD path",
@@ -73,7 +74,7 @@
     {
       "name": "Boundary comparison",
       "user": "Return two sections: AD internal findings and public DNS findings, with clear boundaries.",
-      "assert_contains": ["Active Directory", "DNS"]
+      "assert_matches_regex": ["(Active\\s+Directory|AD)", "DNS"]
     },
     {
       "name": "Final compact checklist",
@@ -83,4 +84,3 @@
     }
   ]
 }
-

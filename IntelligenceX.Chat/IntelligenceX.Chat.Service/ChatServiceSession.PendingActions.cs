@@ -446,6 +446,7 @@ internal sealed partial class ChatServiceSession {
         var bestCoverage = 0d;
         var bestLastHitIndex = -1;
         var bestLongestMatchedTokenLength = 0;
+        var bestLongestMatchedTokenContainsNonAscii = false;
         var tieOnBest = false;
 
         for (var i = 0; i < actions.Count; i++) {
@@ -462,6 +463,7 @@ internal sealed partial class ChatServiceSession {
             var hits = 0;
             var lastHitIndex = -1;
             var longestMatchedTokenLength = 0;
+            var longestMatchedTokenContainsNonAscii = false;
             for (var userIndex = 0; userIndex < userTokens.Count; userIndex++) {
                 var userToken = userTokens[userIndex];
                 if (!TokenOverlapsPendingActionIntent(userToken, actionTokens)) {
@@ -470,8 +472,12 @@ internal sealed partial class ChatServiceSession {
 
                 hits++;
                 lastHitIndex = userIndex;
+                var tokenContainsNonAscii = TokenContainsNonAscii(userToken);
                 if (userToken.Length > longestMatchedTokenLength) {
                     longestMatchedTokenLength = userToken.Length;
+                    longestMatchedTokenContainsNonAscii = tokenContainsNonAscii;
+                } else if (userToken.Length == longestMatchedTokenLength && tokenContainsNonAscii) {
+                    longestMatchedTokenContainsNonAscii = true;
                 }
             }
 
@@ -487,6 +493,7 @@ internal sealed partial class ChatServiceSession {
                 bestCoverage = coverage;
                 bestLastHitIndex = lastHitIndex;
                 bestLongestMatchedTokenLength = longestMatchedTokenLength;
+                bestLongestMatchedTokenContainsNonAscii = longestMatchedTokenContainsNonAscii;
                 tieOnBest = false;
                 continue;
             }
@@ -516,7 +523,8 @@ internal sealed partial class ChatServiceSession {
                 userTokenCount: userTokens.Count,
                 hitCount: bestHits,
                 lastHitIndex: bestLastHitIndex,
-                longestMatchedTokenLength: bestLongestMatchedTokenLength)) {
+                longestMatchedTokenLength: bestLongestMatchedTokenLength,
+                longestMatchedTokenContainsNonAscii: bestLongestMatchedTokenContainsNonAscii)) {
             reason = "intent_overlap_single_too_weak";
             return false;
         }
@@ -544,7 +552,12 @@ internal sealed partial class ChatServiceSession {
             $"[pending-action] outcome={outcome} reason={reason} kind={kind} source={source} actions={Math.Max(0, actionsCount)} tokens={tokenCount} selected={selected}");
     }
 
-    private static bool SingleActionIntentOverlapIsStrongEnough(int userTokenCount, int hitCount, int lastHitIndex, int longestMatchedTokenLength) {
+    private static bool SingleActionIntentOverlapIsStrongEnough(
+        int userTokenCount,
+        int hitCount,
+        int lastHitIndex,
+        int longestMatchedTokenLength,
+        bool longestMatchedTokenContainsNonAscii) {
         if (hitCount <= 0 || userTokenCount <= 0 || lastHitIndex < 0) {
             return false;
         }
@@ -563,8 +576,10 @@ internal sealed partial class ChatServiceSession {
 
         if (userTokenCount == 2) {
             // Require the matched token as trailing intent for short two-token follow-ups ("please run").
-            // Also require at least 3 letters/digits so punctuation-only tails never confirm.
-            return lastHitIndex == 1 && longestMatchedTokenLength >= 3;
+            // Keep script-aware minimums so short non-Latin intent tokens remain eligible while
+            // punctuation-only tails still cannot confirm.
+            var minTrailingTokenLength = longestMatchedTokenContainsNonAscii ? 2 : 3;
+            return lastHitIndex == 1 && longestMatchedTokenLength >= minTrailingTokenLength;
         }
 
         // For longer follow-ups with a single overlap hit, keep it conservative:
@@ -572,6 +587,17 @@ internal sealed partial class ChatServiceSession {
         // - overlap must still cover at least one-third of meaningful tokens
         return lastHitIndex == userTokenCount - 1
                && hitCount * 3 >= userTokenCount;
+    }
+
+    private static bool TokenContainsNonAscii(string token) {
+        var value = token ?? string.Empty;
+        for (var i = 0; i < value.Length; i++) {
+            if (value[i] > 127) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string BuildPendingActionIntentText(PendingAction action) {

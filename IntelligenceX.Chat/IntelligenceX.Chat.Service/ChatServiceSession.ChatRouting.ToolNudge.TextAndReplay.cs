@@ -50,12 +50,12 @@ internal sealed partial class ChatServiceSession {
             // Leave as-is.
         }
 
-        // Strip inline-code wrappers (`run now`) without trying to parse markdown fully.
+        // Strip inline-code wrappers (`token`) without trying to parse markdown fully.
         if (normalized.Length >= 2 && normalized[0] == '`' && normalized[^1] == '`') {
             normalized = normalized.Substring(1, normalized.Length - 2).Trim();
         }
 
-        // Trim light punctuation wrappers so "run now?" and "\"run now\"" normalize.
+        // Trim light punctuation wrappers so "token?" and "\"token\"" normalize.
         normalized = normalized.Trim().Trim(
             '"', '\'', '.', '!', '?', ',', '(', ')', 
             '\u201C', '\u201D', // “ ”

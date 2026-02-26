@@ -69,6 +69,20 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
                     summary: "Keep public-domain diagnostics separate from AD directory operations to reduce routing ambiguity.",
                     primaryTools: new[] { "domaindetective_pack_info", "domaindetective_domain_summary" })
             },
+            entityHandoffs: new[] {
+                ToolPackGuidance.EntityHandoff(
+                    id: "domain_context_to_ad_scope",
+                    summary: "Route AD-directory scoped domain investigations to AD tools after domain posture triage.",
+                    entityKinds: new[] { "domain", "dns", "host" },
+                    sourceTools: new[] { "domaindetective_domain_summary", "domaindetective_network_probe", "dnsclientx_query" },
+                    targetTools: new[] { "ad_scope_discovery", "ad_directory_discovery_diagnostics", "ad_object_resolve", "ad_search", "ad_object_get" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("domain", "domain_name", "Use normalized domain name when AD scope is directory-focused."),
+                        ToolPackGuidance.EntityFieldMapping("summary.domain", "domain_name", "Prefer summary domain output when present."),
+                        ToolPackGuidance.EntityFieldMapping("host", "domain_controller", "Use host/FQDN as domain controller hint when AD follow-up is requested.")
+                    },
+                    notes: "When user intent targets LDAP/DC/replication/GPO workflows, switch from DomainDetective to AD pack execution.")
+            },
             toolCatalog: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Keep summary + analysis availability fields as authoritative evidence for domain posture reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only. This pack currently returns direct evidence payloads.",

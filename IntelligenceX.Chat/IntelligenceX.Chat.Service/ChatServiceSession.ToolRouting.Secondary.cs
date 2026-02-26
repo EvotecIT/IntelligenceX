@@ -105,29 +105,7 @@ internal sealed partial class ChatServiceSession {
             throw new ArgumentException("activeThreadId is required.", nameof(activeThreadId));
         }
 
-        var nowTicks = DateTime.UtcNow.Ticks;
-        string? plannerThreadId = null;
-        lock (_toolRoutingContextLock) {
-            if (_plannerThreadIdByActiveThreadId.TryGetValue(normalizedActiveThreadId, out var trackedPlannerThreadId)) {
-                plannerThreadId = trackedPlannerThreadId;
-                if (_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(normalizedActiveThreadId, out var trackedTicks)
-                    && trackedTicks > DateTime.MinValue.Ticks
-                    && trackedTicks <= DateTime.MaxValue.Ticks) {
-                    var age = DateTime.UtcNow - new DateTime(trackedTicks, DateTimeKind.Utc);
-                    if (age > PlannerThreadContextMaxAge) {
-                        plannerThreadId = null;
-                        _plannerThreadIdByActiveThreadId.Remove(normalizedActiveThreadId);
-                        _plannerThreadSeenUtcTicksByActiveThreadId.Remove(normalizedActiveThreadId);
-                    }
-                }
-            }
-
-            if (plannerThreadId is not null) {
-                _plannerThreadSeenUtcTicksByActiveThreadId[normalizedActiveThreadId] = nowTicks;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(plannerThreadId)) {
+        if (TryResolvePlannerThreadContext(normalizedActiveThreadId, out var plannerThreadId)) {
             try {
                 return await client.UseThreadAsync(plannerThreadId, cancellationToken).ConfigureAwait(false);
             } catch {
@@ -139,7 +117,7 @@ internal sealed partial class ChatServiceSession {
                 model: model,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        RememberPlannerThreadContext(normalizedActiveThreadId, plannerThread.Id, nowTicks);
+        RememberPlannerThreadContext(normalizedActiveThreadId, plannerThread.Id, DateTime.UtcNow.Ticks);
 
         // StartNewThreadAsync should set the current thread, but make the thread switch explicit to avoid
         // accidental planner prompts polluting the active conversation thread if transport semantics change.
@@ -163,6 +141,7 @@ internal sealed partial class ChatServiceSession {
             _plannerThreadSeenUtcTicksByActiveThreadId[normalizedActiveThreadId] = ticks;
             TrimWeightedRoutingContextsNoLock();
         }
+        PersistPlannerThreadContextSnapshot(normalizedActiveThreadId, normalizedPlannerThreadId, ticks);
     }
 
     private void ForgetPlannerThreadContext(string activeThreadId) {
@@ -175,6 +154,62 @@ internal sealed partial class ChatServiceSession {
             _plannerThreadIdByActiveThreadId.Remove(normalizedActiveThreadId);
             _plannerThreadSeenUtcTicksByActiveThreadId.Remove(normalizedActiveThreadId);
         }
+        RemovePlannerThreadContextSnapshot(normalizedActiveThreadId);
+    }
+
+    private bool TryResolvePlannerThreadContext(string activeThreadId, out string plannerThreadId) {
+        plannerThreadId = string.Empty;
+        var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
+        if (normalizedActiveThreadId.Length == 0) {
+            return false;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        var nowTicks = nowUtc.Ticks;
+        string? trackedPlannerThreadId = null;
+        var evictSnapshot = false;
+
+        lock (_toolRoutingContextLock) {
+            if (_plannerThreadIdByActiveThreadId.TryGetValue(normalizedActiveThreadId, out var cachedPlannerThreadId)
+                && !string.IsNullOrWhiteSpace(cachedPlannerThreadId)) {
+                var cached = cachedPlannerThreadId.Trim();
+                if (_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(normalizedActiveThreadId, out var trackedTicks)
+                    && TryGetUtcDateTimeFromTicks(trackedTicks, out var trackedSeenUtc)
+                    && nowUtc - trackedSeenUtc <= PlannerThreadContextMaxAge) {
+                    trackedPlannerThreadId = cached;
+                } else {
+                    _plannerThreadIdByActiveThreadId.Remove(normalizedActiveThreadId);
+                    _plannerThreadSeenUtcTicksByActiveThreadId.Remove(normalizedActiveThreadId);
+                    evictSnapshot = true;
+                }
+            }
+        }
+
+        if (evictSnapshot) {
+            RemovePlannerThreadContextSnapshot(normalizedActiveThreadId);
+        }
+
+        if (string.IsNullOrWhiteSpace(trackedPlannerThreadId)) {
+            if (!TryLoadPlannerThreadContextSnapshot(normalizedActiveThreadId, out var persistedPlannerThreadId, out _)) {
+                return false;
+            }
+
+            trackedPlannerThreadId = persistedPlannerThreadId;
+        }
+
+        plannerThreadId = trackedPlannerThreadId.Trim();
+        if (plannerThreadId.Length == 0) {
+            RemovePlannerThreadContextSnapshot(normalizedActiveThreadId);
+            return false;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _plannerThreadIdByActiveThreadId[normalizedActiveThreadId] = plannerThreadId;
+            _plannerThreadSeenUtcTicksByActiveThreadId[normalizedActiveThreadId] = nowTicks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+        PersistPlannerThreadContextSnapshot(normalizedActiveThreadId, plannerThreadId, nowTicks);
+        return true;
     }
 
     private IReadOnlyList<ToolDefinition> EnsureMinimumToolSelection(string userRequest, IReadOnlyList<ToolDefinition> allDefinitions,
@@ -509,7 +544,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // Keep follow-up turns unconstrained: short continuation prompts ("run it", "1", "go ahead")
+        // Keep follow-up turns unconstrained: short continuation prompts (for example "1" or other compact follow-up text)
         // should have immediate access to the full toolset.
         if (LooksLikeContinuationFollowUp(normalized)) {
             return true;
@@ -568,5 +603,13 @@ internal sealed partial class ChatServiceSession {
         int DelayBaseMs,
         bool RetryOnTimeout,
         bool RetryOnTransport);
+
+    internal void RememberPlannerThreadContextForTesting(string activeThreadId, string plannerThreadId, long seenUtcTicks) {
+        RememberPlannerThreadContext(activeThreadId, plannerThreadId, seenUtcTicks);
+    }
+
+    internal bool TryResolvePlannerThreadContextForTesting(string activeThreadId, out string plannerThreadId) {
+        return TryResolvePlannerThreadContext(activeThreadId, out plannerThreadId);
+    }
 
 }

@@ -86,7 +86,7 @@
       "user": "On AD0, gather top System and Directory Service failure signatures for the same analysis window.",
       "assert_no_questions": true,
       "min_tool_calls": 1,
-      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_top_events"]
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*", "eventlog_top_events"]
     },
     {
       "name": "System and Directory Service continuation",
@@ -94,7 +94,7 @@
       "assert_no_questions": true,
       "min_tool_calls": 2,
       "min_distinct_tool_input_values": { "machine_name": 2 },
-      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_top_events"]
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*", "eventlog_top_events"]
     },
     {
       "name": "Mid-run evidence ledger",

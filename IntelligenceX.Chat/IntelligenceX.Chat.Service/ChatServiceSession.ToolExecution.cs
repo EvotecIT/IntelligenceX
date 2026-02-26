@@ -162,7 +162,7 @@ internal sealed partial class ChatServiceSession {
 
     private async Task<IReadOnlyList<ToolOutputDto>> ExecuteToolsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolCall> calls,
         bool parallel, bool allowMutatingParallel, IReadOnlyDictionary<string, bool>? mutatingToolHintsByName, int toolTimeoutSeconds,
-        CancellationToken cancellationToken) {
+        string userRequest, CancellationToken cancellationToken) {
         var hasMutatingCalls = HasMutatingToolCallsWithHints(calls, mutatingToolHintsByName, out var mutatingToolNames);
         if (parallel && calls.Count > 1 && hasMutatingCalls && !allowMutatingParallel) {
             parallel = false;
@@ -186,7 +186,7 @@ internal sealed partial class ChatServiceSession {
         if (!parallel || calls.Count <= 1) {
             var outputs = new List<ToolOutputDto>(calls.Count);
             foreach (var call in calls) {
-                var output = await ExecuteToolWithStatusAsync(writer, requestId, threadId, call, toolTimeoutSeconds, cancellationToken)
+                var output = await ExecuteToolWithStatusAsync(writer, requestId, threadId, call, toolTimeoutSeconds, userRequest, cancellationToken)
                     .ConfigureAwait(false);
                 outputs.Add(output);
             }
@@ -258,7 +258,14 @@ internal sealed partial class ChatServiceSession {
             for (var i = 0; i < recoveryIndexes.Length; i++) {
                 var index = recoveryIndexes[i];
                 outputsInCallOrder[index] =
-                    await ExecuteToolWithStatusAsync(writer, requestId, threadId, calls[index], toolTimeoutSeconds, cancellationToken)
+                    await ExecuteToolWithStatusAsync(
+                            writer,
+                            requestId,
+                            threadId,
+                            calls[index],
+                            toolTimeoutSeconds,
+                            userRequest,
+                            cancellationToken)
                         .ConfigureAwait(false);
             }
 
@@ -288,7 +295,7 @@ internal sealed partial class ChatServiceSession {
             try {
                 Interlocked.Increment(ref started);
                 var call = calls[index];
-                output = await ExecuteToolWithStatusAsync(writer, requestId, threadId, call, toolTimeoutSeconds, cancellationToken)
+                output = await ExecuteToolWithStatusAsync(writer, requestId, threadId, call, toolTimeoutSeconds, userRequest, cancellationToken)
                     .ConfigureAwait(false);
             } finally {
                 gate.Release();
