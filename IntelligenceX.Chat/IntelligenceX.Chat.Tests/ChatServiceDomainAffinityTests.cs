@@ -634,6 +634,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
         Assert.True(blocked);
         Assert.Equal("domain_scope_host_guardrail", output.ErrorCode);
+        Assert.False(output.IsTransient);
     }
 
     [Fact]

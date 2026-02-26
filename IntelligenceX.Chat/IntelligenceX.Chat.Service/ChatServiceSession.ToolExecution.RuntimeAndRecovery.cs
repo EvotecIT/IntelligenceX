@@ -23,6 +23,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const string DomainScopeHostGuardrailErrorCode = "domain_scope_host_guardrail";
+
     private static string BuildToolRoundStartedMessage(int roundNumber, int maxRounds, int callCount, bool parallelTools, bool allowMutatingParallel) {
         var round = Math.Max(1, roundNumber);
         var rounds = Math.Max(round, maxRounds);
@@ -340,14 +342,14 @@ internal sealed partial class ChatServiceSession {
 
         var blockedPreview = string.Join(", ", blockedTargets.Take(3));
         var guardrail = ToolOutputEnvelope.Error(
-            errorCode: "domain_scope_host_guardrail",
+            errorCode: DomainScopeHostGuardrailErrorCode,
             error:
             $"Blocked '{call.Name}' host target(s) in ad_domain scope because they match prior public_domain evidence: {blockedPreview}.",
             hints: new[] {
                 "Run ad_scope_discovery or ad_domain_controllers first, then retry AD/eventlog checks with AD-derived hosts.",
                 "If this exact host is intended, include it explicitly in this turn's user request."
             },
-            isTransient: true);
+            isTransient: false);
         output = BuildToolOutputDto(call.CallId, guardrail);
         return true;
     }
@@ -591,6 +593,9 @@ internal sealed partial class ChatServiceSession {
         if (string.Equals(output.ErrorCode, "tool_not_registered", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
+        if (string.Equals(output.ErrorCode, DomainScopeHostGuardrailErrorCode, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
         if (output.IsTransient is true && string.IsNullOrWhiteSpace(output.ErrorCode)) {
             // Some providers/tools mark failures transient without a structured error code.
             // Keep retry behavior resilient for those adapters when retry slots remain.
@@ -627,6 +632,7 @@ internal sealed partial class ChatServiceSession {
                || code.Contains("forbidden", StringComparison.OrdinalIgnoreCase)
                || code.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
                || code.Contains("access_denied", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(code, DomainScopeHostGuardrailErrorCode, StringComparison.OrdinalIgnoreCase)
                || string.Equals(code, "auth_failed", StringComparison.OrdinalIgnoreCase)
                || string.Equals(code, "authentication_failed", StringComparison.OrdinalIgnoreCase)
                || string.Equals(code, "authorization_failed", StringComparison.OrdinalIgnoreCase);

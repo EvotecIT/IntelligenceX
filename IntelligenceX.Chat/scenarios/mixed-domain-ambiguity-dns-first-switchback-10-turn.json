@@ -14,7 +14,7 @@
       "name": "Clarify AD DS vs public DNS intent",
       "user": "Diagnose domain issues for corp.fabrikam.com and fabrikam.com.",
       "forbid_tools": ["*"],
-      "assert_contains": ["DNS"],
+      "assert_contains": ["AD", "DNS"],
       "assert_contains_any": ["Active Directory", "AD DS", "Directorio Activo", "Annuaire Actif"]
     },
     {

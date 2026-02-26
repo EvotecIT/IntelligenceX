@@ -14,6 +14,7 @@
       "name": "Clarify AD vs public DNS intent",
       "user": "Check domain health for corp.contoso.com and contoso.com.",
       "forbid_tools": ["*"],
+      "assert_contains": ["AD", "DNS"],
       "assert_matches_regex": ["(Active\\s+Directory|AD)", "DNS"]
     },
     {

@@ -85,6 +85,23 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void ShouldRetryToolCall_DoesNotRetryDomainScopeGuardrailFailure() {
+        var profile = InvokeResolveRetryProfile("ad_replication_summary");
+        var output = new ToolOutputDto {
+            CallId = "call-3b",
+            Output = "{\"error_code\":\"domain_scope_host_guardrail\",\"error\":\"Blocked host target.\"}",
+            Ok = false,
+            ErrorCode = "domain_scope_host_guardrail",
+            Error = "Blocked host target.",
+            IsTransient = true
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
     public void IsProjectionViewArgumentFailure_DetectsUnsupportedProjectionColumns() {
         var output = new ToolOutputDto {
             CallId = "call-4",
