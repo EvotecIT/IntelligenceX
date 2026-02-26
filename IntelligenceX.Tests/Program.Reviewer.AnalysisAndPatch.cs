@@ -131,6 +131,11 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
     }
 
+    private static void TestAnalyzeRunStrictSkipsCsharpRunnerWithoutCsharpSources() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, includeCsharpSource: false);
+        AssertEqual(0, exit, "analyze run strict skips csharp runner when no csharp sources are present");
+    }
+
     private static void TestAnalyzeRunInvalidPackOverrideFails() {
         var exit = RunAnalyzeRunWithMissingDotnet(strict: false, packsOverride: "all-50,--force");
         AssertEqual(1, exit, "analyze run invalid pack override fails");
@@ -144,7 +149,8 @@ internal static partial class Program {
         bool strictBeforePacks = false,
         string? strictOverrideRawValue = null,
         bool strictBeforeFramework = false,
-        string? frameworkOverride = null) {
+        string? frameworkOverride = null,
+        bool includeCsharpSource = true) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
@@ -210,6 +216,11 @@ internal static partial class Program {
   "rules": ["IXINT001"]
 }
 """);
+            if (includeCsharpSource) {
+                var src = Path.Combine(temp, "src");
+                Directory.CreateDirectory(src);
+                File.WriteAllText(Path.Combine(src, "Program.cs"), "public static class Program { public static void Main() { } }");
+            }
 
             var output = Path.Combine(temp, "artifacts");
             var args = new List<string> {

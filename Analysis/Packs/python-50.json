@@ -1,0 +1,10 @@
+{
+  "id": "python-50",
+  "label": "Python Essentials (50)",
+  "description": "Python essentials tier. Includes python-default and expands as the catalog grows.",
+  "includes": [
+    "python-default"
+  ],
+  "rules": []
+}
+

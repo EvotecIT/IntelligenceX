@@ -83,6 +83,58 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPacksExternalLanguageTiersResolve() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Packs.ContainsKey("javascript-50"), "pack javascript-50 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("javascript-100"), "pack javascript-100 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("javascript-500"), "pack javascript-500 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("python-50"), "pack python-50 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("python-100"), "pack python-100 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("python-500"), "pack python-500 exists");
+
+        var jsDefaultPolicy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "javascript-default" } },
+            catalog);
+        var js50Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "javascript-50" } },
+            catalog);
+        AssertEqual(true, js50Policy.Rules.Count >= jsDefaultPolicy.Rules.Count,
+            "javascript-50 resolves at least javascript-default coverage");
+
+        var pyDefaultPolicy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "python-default" } },
+            catalog);
+        var py50Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "python-50" } },
+            catalog);
+        AssertEqual(true, py50Policy.Rules.Count >= pyDefaultPolicy.Rules.Count,
+            "python-50 resolves at least python-default coverage");
+
+        var js100Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "javascript-100" } },
+            catalog);
+        var js500Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "javascript-500" } },
+            catalog);
+        AssertEqual(true, js100Policy.Rules.Count >= js50Policy.Rules.Count,
+            "javascript-100 expands javascript-50");
+        AssertEqual(true, js500Policy.Rules.Count >= js100Policy.Rules.Count,
+            "javascript-500 expands javascript-100");
+
+        var py100Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "python-100" } },
+            catalog);
+        var py500Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "python-500" } },
+            catalog);
+        AssertEqual(true, py100Policy.Rules.Count >= py50Policy.Rules.Count,
+            "python-100 expands python-50");
+        AssertEqual(true, py500Policy.Rules.Count >= py100Policy.Rules.Count,
+            "python-500 expands python-100");
+    }
+
     private static void TestAnalysisPacksPowerShell50ResolvesTo50Rules() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);

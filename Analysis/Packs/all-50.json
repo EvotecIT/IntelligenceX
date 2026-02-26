@@ -1,7 +1,7 @@
 {
   "id": "all-50",
   "label": "All Essentials (50)",
-  "description": "Cross-language baseline pack. Includes each language essentials tier.",
+  "description": "Cross-language baseline pack. Includes core essentials tiers (C#, PowerShell, internal maintainability).",
   "includes": [
     "csharp-50",
     "powershell-50",

@@ -1,0 +1,10 @@
+{
+  "id": "python-500",
+  "label": "Python Strict (500)",
+  "description": "Python strict tier. Builds on python-100 and expands as catalog coverage increases.",
+  "includes": [
+    "python-100"
+  ],
+  "rules": []
+}
+

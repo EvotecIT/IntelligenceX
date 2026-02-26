@@ -460,6 +460,68 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunSharedSourceInventoryFallbackDetectsPowerShellSources() {
+        const string maxFilesEnv = "INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES";
+        var previousValue = Environment.GetEnvironmentVariable(maxFilesEnv);
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-fallback-ps-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            Environment.SetEnvironmentVariable(maxFilesEnv, "0");
+            var scripts = Path.Combine(workspace, "scripts");
+            Directory.CreateDirectory(scripts);
+            File.WriteAllText(Path.Combine(scripts, "tool.ps1"), "Write-Host 'ok'");
+
+            var fallbackResult = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.TryDetectSourceFilesWithSharedInventoryForTests(
+                workspace,
+                "PowerShell",
+                ".ps1",
+                ".psm1",
+                ".psd1");
+            AssertEqual(true, fallbackResult.Found, "shared source inventory fallback finds PowerShell sources when scan limit is reached");
+            AssertEqual(true, fallbackResult.UsedDirectFallback, "shared source inventory fallback uses direct detection for PowerShell");
+            AssertContainsText(string.Join("\n", fallbackResult.Warnings),
+                "Shared source inventory reached the configured file limit (0); falling back to direct PowerShell source detection.",
+                "shared source inventory fallback emits PowerShell scan-limit warning");
+        } finally {
+            Environment.SetEnvironmentVariable(maxFilesEnv, previousValue);
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunSharedSourceInventoryFallbackDetectsCsharpSources() {
+        const string maxFilesEnv = "INTELLIGENCEX_ANALYSIS_SOURCE_SCAN_MAX_FILES";
+        var previousValue = Environment.GetEnvironmentVariable(maxFilesEnv);
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-source-inventory-fallback-cs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try {
+            Environment.SetEnvironmentVariable(maxFilesEnv, "0");
+            var src = Path.Combine(workspace, "src");
+            Directory.CreateDirectory(src);
+            File.WriteAllText(Path.Combine(src, "Program.cs"), "public static class Program { }");
+
+            var fallbackResult = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.TryDetectSourceFilesWithSharedInventoryForTests(
+                workspace,
+                "C#",
+                ".cs");
+            AssertEqual(true, fallbackResult.Found, "shared source inventory fallback finds csharp sources when scan limit is reached");
+            AssertEqual(true, fallbackResult.UsedDirectFallback, "shared source inventory fallback uses direct detection for csharp");
+            AssertContainsText(string.Join("\n", fallbackResult.Warnings),
+                "Shared source inventory reached the configured file limit (0); falling back to direct C# source detection.",
+                "shared source inventory fallback emits csharp scan-limit warning");
+        } finally {
+            Environment.SetEnvironmentVariable(maxFilesEnv, previousValue);
+            try {
+                Directory.Delete(workspace, recursive: true);
+            } catch {
+                // Best-effort cleanup for temp harness directories.
+            }
+        }
+    }
+
     private static void TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools() {
         var rules = new[] {
             new IntelligenceX.Analysis.AnalysisPolicyRule(

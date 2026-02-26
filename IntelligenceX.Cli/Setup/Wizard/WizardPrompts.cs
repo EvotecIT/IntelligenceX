@@ -284,6 +284,8 @@ internal static class WizardPrompts {
                 "none (disable static analysis)",
                 "all-security-default",
                 "powershell-50",
+                "javascript-50",
+                "python-50",
                 "list available packs",
                 "custom (enter pack ids)"
             };

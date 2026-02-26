@@ -12,7 +12,23 @@ namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
     private static async Task<RunnerResult> RunCsharpAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        AnalysisSettings settings, string? generatedEditorConfig, List<string> warnings) {
+        WorkspaceSourceInventory? sourceInventory, AnalysisSettings settings, string? generatedEditorConfig, List<string> warnings) {
+        var hasCsharpSources = TryDetectSourceFiles(
+            workspace,
+            sourceInventory,
+            "C#",
+            warnings,
+            out var skippedSourceEnumerations,
+            out _,
+            SourceLanguageConventions.CSharpSourceExtensions);
+        if (!hasCsharpSources) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"C# source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
+            warnings.Add("No C# source files detected; skipping Roslyn analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.roslyn.sarif");
         using var overrideScope = PrepareEditorConfigOverride(settings, workspace, generatedEditorConfig, warnings);
 
@@ -221,9 +237,17 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<PowerShellRunnerResult> RunPowerShellAsync(AnalyzeRunOptions options, string workspace,
-        string findingsPath, AnalysisSettings settings, string? generatedSettingsPath, List<string> warnings) {
-        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations,
-                SourceLanguageConventions.PowerShellSourceExtensions)) {
+        string findingsPath, WorkspaceSourceInventory? sourceInventory, AnalysisSettings settings, string? generatedSettingsPath,
+        List<string> warnings) {
+        var hasPowerShellSources = TryDetectSourceFiles(
+            workspace,
+            sourceInventory,
+            "PowerShell",
+            warnings,
+            out var skippedSourceEnumerations,
+            out _,
+            SourceLanguageConventions.PowerShellSourceExtensions);
+        if (!hasPowerShellSources) {
             if (skippedSourceEnumerations > 0) {
                 warnings.Add($"PowerShell source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
             }
