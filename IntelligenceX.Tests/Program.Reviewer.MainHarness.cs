@@ -402,6 +402,8 @@ internal static partial class Program {
             TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
         failed += Run("Analyze run external runner recognizes tool-specific unavailable markers",
             TestAnalyzeRunExternalFailureMessageRecognizesToolSpecificUnavailableMarkers);
+        failed += Run("Analyze run external runner supports configured unavailable markers",
+            TestAnalyzeRunExternalFailureMessageSupportsConfiguredUnavailableMarkers);
         failed += Run("Analyze run workspace source detection skips excluded directories",
             TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
         failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",

@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
+    private const string CommandUnavailableMarkersEnvVar = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS";
+    private const string CommandUnavailableMarkersEnvVarPrefix = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS_";
     private static readonly string[] CommonCommandUnavailableMarkers = {
         "not recognized as an internal or external command",
         "is not recognized as an internal or external command",
@@ -79,6 +82,12 @@ internal static partial class AnalyzeRunCommand {
             }
         }
 
+        foreach (var marker in GetConfiguredCommandUnavailableMarkers(command)) {
+            if (text.Contains(marker, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -121,6 +130,63 @@ internal static partial class AnalyzeRunCommand {
         }
 
         return Path.GetFileNameWithoutExtension(fileName).Trim().ToLowerInvariant();
+    }
+
+    private static IEnumerable<string> GetConfiguredCommandUnavailableMarkers(string command) {
+        foreach (var marker in ParseCommandUnavailableMarkersFromEnvironment(CommandUnavailableMarkersEnvVar)) {
+            yield return marker;
+        }
+
+        var commandKey = ResolveCommandKey(command);
+        if (string.IsNullOrWhiteSpace(commandKey)) {
+            yield break;
+        }
+
+        var envName = BuildCommandUnavailableMarkersEnvVarName(commandKey);
+        if (string.IsNullOrWhiteSpace(envName)) {
+            yield break;
+        }
+
+        foreach (var marker in ParseCommandUnavailableMarkersFromEnvironment(envName)) {
+            yield return marker;
+        }
+    }
+
+    private static string BuildCommandUnavailableMarkersEnvVarName(string commandKey) {
+        if (string.IsNullOrWhiteSpace(commandKey)) {
+            return string.Empty;
+        }
+
+        var chars = commandKey
+            .ToUpperInvariant()
+            .Select(static c => char.IsLetterOrDigit(c) ? c : '_')
+            .ToArray();
+        var normalized = new string(chars).Trim('_');
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return string.Empty;
+        }
+
+        return CommandUnavailableMarkersEnvVarPrefix + normalized;
+    }
+
+    private static IEnumerable<string> ParseCommandUnavailableMarkersFromEnvironment(string variableName) {
+        if (string.IsNullOrWhiteSpace(variableName)) {
+            yield break;
+        }
+
+        var raw = Environment.GetEnvironmentVariable(variableName);
+        if (string.IsNullOrWhiteSpace(raw)) {
+            yield break;
+        }
+
+        var parts = raw.Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts) {
+            var normalized = (part ?? string.Empty).Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                continue;
+            }
+            yield return normalized;
+        }
     }
 
     private static bool WorkspaceContainsAnySourceFile(string workspace, params string[] extensions) {

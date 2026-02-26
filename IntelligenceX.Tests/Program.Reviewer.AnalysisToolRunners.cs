@@ -196,6 +196,50 @@ internal static partial class Program {
             "external runner tool-specific marker does not leak to unrelated command");
     }
 
+    private static void TestAnalyzeRunExternalFailureMessageSupportsConfiguredUnavailableMarkers() {
+        const string globalEnv = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS";
+        const string npxEnv = "INTELLIGENCEX_ANALYSIS_COMMAND_UNAVAILABLE_MARKERS_NPX";
+        var previousGlobal = Environment.GetEnvironmentVariable(globalEnv);
+        var previousNpx = Environment.GetEnvironmentVariable(npxEnv);
+        try {
+            Environment.SetEnvironmentVariable(globalEnv, "missing-custom-executable");
+            Environment.SetEnvironmentVariable(npxEnv, "npx-custom-missing");
+
+            var globalConfiguredMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+                languageLabel: "Python",
+                command: "ruff",
+                optionName: "--ruff-command",
+                exitCode: 2,
+                stdOut: string.Empty,
+                stdErr: "ERROR: missing-custom-executable");
+            AssertContainsText(globalConfiguredMessage, "analysis command 'ruff' is unavailable",
+                "external runner global configured marker classifies unavailable commands");
+
+            var toolConfiguredMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+                languageLabel: "JavaScript/TypeScript",
+                command: "npx",
+                optionName: "--npx-command",
+                exitCode: 2,
+                stdOut: string.Empty,
+                stdErr: "npx-custom-missing");
+            AssertContainsText(toolConfiguredMessage, "analysis command 'npx' is unavailable",
+                "external runner tool-specific configured marker classifies unavailable commands");
+
+            var unrelatedToolMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
+                languageLabel: "Python",
+                command: "ruff",
+                optionName: "--ruff-command",
+                exitCode: 2,
+                stdOut: string.Empty,
+                stdErr: "npx-custom-missing");
+            AssertContainsText(unrelatedToolMessage, "analysis returned exit code 2",
+                "external runner tool-specific configured marker does not leak across tools");
+        } finally {
+            Environment.SetEnvironmentVariable(globalEnv, previousGlobal);
+            Environment.SetEnvironmentVariable(npxEnv, previousNpx);
+        }
+    }
+
     private static void TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories() {
         var workspace = Path.Combine(Path.GetTempPath(), "ix-source-detect-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
