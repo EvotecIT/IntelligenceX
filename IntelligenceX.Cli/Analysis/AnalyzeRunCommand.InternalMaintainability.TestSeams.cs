@@ -4,14 +4,14 @@ namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
     internal static IReadOnlyList<string> GetDefaultIncludedSourceExtensionsForTests() {
-        return DefaultIncludedSourceExtensions;
+        return (string[])DefaultIncludedSourceExtensions.Clone();
     }
 
     internal static IReadOnlyList<string> GetDuplicationCanonicalLanguagesForTests() {
-        return DuplicationCanonicalLanguages;
+        return (string[])DuplicationCanonicalLanguages.Clone();
     }
 
     internal static IReadOnlyList<string> GetDuplicationAliasLanguagesForTests() {
-        return DuplicationAliasLanguages;
+        return (string[])DuplicationAliasLanguages.Clone();
     }
 }

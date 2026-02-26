@@ -42,8 +42,18 @@ internal static partial class AnalyzeRunCommand {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         static void AddLanguage(IDictionary<string, string> languageMap, string canonical, params string[] aliases) {
+            if (languageMap.TryGetValue(canonical, out var existingCanonical) &&
+                !string.Equals(existingCanonical, canonical, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Duplication language alias '{canonical}' is already mapped to '{existingCanonical}'.");
+            }
             languageMap[canonical] = canonical;
             foreach (var alias in aliases) {
+                if (languageMap.TryGetValue(alias, out var existingAliasCanonical) &&
+                    !string.Equals(existingAliasCanonical, canonical, StringComparison.OrdinalIgnoreCase)) {
+                    throw new InvalidOperationException(
+                        $"Duplication language alias '{alias}' is already mapped to '{existingAliasCanonical}'.");
+                }
                 languageMap[alias] = canonical;
             }
         }

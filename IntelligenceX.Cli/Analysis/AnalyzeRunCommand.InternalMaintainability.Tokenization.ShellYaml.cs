@@ -104,7 +104,7 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static string BuildNormalizedTokenLine(string line, Regex tokenRegex, Func<string, string> normalizeToken) {
-        if (string.IsNullOrWhiteSpace(line) || tokenRegex is null || normalizeToken is null) {
+        if (string.IsNullOrWhiteSpace(line)) {
             return string.Empty;
         }
 
