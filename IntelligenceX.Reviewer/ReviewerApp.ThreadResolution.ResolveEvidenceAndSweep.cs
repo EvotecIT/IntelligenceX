@@ -235,34 +235,134 @@ public static partial class ReviewerApp {
 
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
+        Exception? primaryError;
         try {
             await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
             return (true, null);
         } catch (Exception ex) {
-            var isForbidden = IsIntegrationForbidden(ex);
-            if (fallbackGithub is not null && isForbidden) {
-                try {
-                    await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
-                    return (true, null);
-                } catch (Exception fallbackEx) {
-                    // Only log after the integration-forbidden path actually fails (avoid false alarms).
-                    LogIntegrationForbiddenHint();
-                    return (false, fallbackEx.Message);
-                }
+            primaryError = ex;
+        }
+
+        Exception? fallbackError = null;
+        if (fallbackGithub is not null) {
+            // Intentionally attempt fallback for any primary failure:
+            // this avoids leaving addressed threads unresolved when primary token behavior differs from
+            // GITHUB_TOKEN (permissions, intermittent auth, or environment-specific app scopes).
+            try {
+                await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+                return (true, null);
+            } catch (Exception ex) {
+                fallbackError = ex;
             }
-            if (isForbidden) {
-                LogIntegrationForbiddenHint();
-            }
-            return (false, ex.Message);
+        }
+
+        var confirmedResolved = await TryConfirmThreadResolvedAsync(fallbackGithub ?? github, github, threadId, cancellationToken)
+            .ConfigureAwait(false);
+        if (confirmedResolved) {
+            return (true, null);
+        }
+
+        if (IsIntegrationForbidden(primaryError) || (fallbackError is not null && IsIntegrationForbidden(fallbackError))) {
+            LogIntegrationForbiddenHint();
+        }
+
+        return (false, BuildThreadResolveError(primaryError, fallbackError));
+    }
+
+    private static async Task<bool> TryConfirmThreadResolvedAsync(GitHubClient preferredGithub,
+        GitHubClient? secondaryGithub, string threadId, CancellationToken cancellationToken) {
+        var preferredState = await TryGetThreadResolvedStateAsync(preferredGithub, threadId, cancellationToken)
+            .ConfigureAwait(false);
+        if (preferredState == true) {
+            return true;
+        }
+
+        if (secondaryGithub is null || ReferenceEquals(preferredGithub, secondaryGithub)) {
+            return false;
+        }
+
+        var secondaryState = await TryGetThreadResolvedStateAsync(secondaryGithub, threadId, cancellationToken)
+            .ConfigureAwait(false);
+        return secondaryState == true;
+    }
+
+    private static async Task<bool?> TryGetThreadResolvedStateAsync(GitHubClient github, string threadId,
+        CancellationToken cancellationToken) {
+        try {
+            var thread = await github.GetPullRequestReviewThreadAsync(threadId, maxComments: 1, cancellationToken)
+                .ConfigureAwait(false);
+            return thread?.IsResolved;
+        } catch {
+            return null;
         }
     }
 
+    private static string BuildThreadResolveError(Exception primaryError, Exception? fallbackError) {
+        if (fallbackError is null) {
+            return primaryError.Message;
+        }
+        return $"primary: {primaryError.Message}; fallback: {fallbackError.Message}";
+    }
+
+    internal static bool IsIntegrationForbiddenForTests(Exception ex) => IsIntegrationForbidden(ex);
+
+    internal static string BuildThreadResolveErrorForTests(Exception primaryError, Exception? fallbackError) =>
+        BuildThreadResolveError(primaryError, fallbackError);
+
     private static bool IsIntegrationForbidden(Exception ex) {
-        if (ex.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("\"FORBIDDEN\"", StringComparison.OrdinalIgnoreCase)) {
+        if (HasIntegrationForbiddenToken(ex.Message)) {
             return true;
         }
+
+        if (TryGetGraphQlErrorsFromExceptionMessage(ex.Message, out var errors)) {
+            foreach (var error in errors) {
+                var errorObj = error.AsObject();
+                if (errorObj is null) {
+                    continue;
+                }
+                if (HasIntegrationForbiddenToken(errorObj.GetString("type")) ||
+                    HasIntegrationForbiddenToken(errorObj.GetString("message")) ||
+                    HasIntegrationForbiddenToken(errorObj.GetObject("extensions")?.GetString("code"))) {
+                    return true;
+                }
+            }
+        }
+
         return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
+    }
+
+    private static bool HasIntegrationForbiddenToken(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        return value.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("INSUFFICIENT_SCOPES", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("requires one of the following scopes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetGraphQlErrorsFromExceptionMessage(string message, out JsonArray errors) {
+        errors = new JsonArray();
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+        var start = message.IndexOf('{');
+        var end = message.LastIndexOf('}');
+        if (start < 0 || end <= start) {
+            return false;
+        }
+        JsonValue? parsed;
+        try {
+            parsed = JsonLite.Parse(message.Substring(start, end - start + 1));
+        } catch {
+            return false;
+        }
+        var parsedErrors = parsed?.AsObject()?.GetArray("errors");
+        if (parsedErrors is null || parsedErrors.Count == 0) {
+            return false;
+        }
+        errors = parsedErrors;
+        return true;
     }
 
     private static void LogIntegrationForbiddenHint() {

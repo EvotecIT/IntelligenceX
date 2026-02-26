@@ -389,6 +389,99 @@ internal static partial class Program {
         AssertEqual(true, resolvedThreadIdObserved, "stale auto-resolve targets thread-old");
     }
 
+    private static void TestAutoResolveStaleThreadsFallbackOnInsufficientScopes() {
+        var primaryResolveAttempts = 0;
+        var fallbackResolveAttempts = 0;
+        using var primaryServer = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (!TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                return null;
+            }
+            primaryResolveAttempts++;
+            return new HttpResponse(
+                "{\"errors\":[{\"type\":\"INSUFFICIENT_SCOPES\",\"message\":\"missing pull_requests:write\"}],\"data\":{\"resolveReviewThread\":null}}");
+        });
+        using var fallbackServer = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (!TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                return null;
+            }
+            fallbackResolveAttempts++;
+            return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread-old\",\"isResolved\":true}}}}");
+        });
+        using var github = new GitHubClient("token", primaryServer.BaseUri.ToString().TrimEnd('/'));
+        using var fallbackGithub = new GitHubClient("token", fallbackServer.BaseUri.ToString().TrimEnd('/'));
+
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 10,
+            ReviewThreadsAutoResolveBotsOnly = true
+        };
+        var staleBotComment = new PullRequestReviewThreadComment(null, null, "Fix this", "intelligencex-review", "src/Foo.cs", 1);
+        var threads = new[] {
+            new PullRequestReviewThread("thread-old", false, true, 1, new[] { staleBotComment })
+        };
+
+        CallAutoResolveStaleThreads(github, fallbackGithub, threads, settings);
+        AssertEqual(1, primaryResolveAttempts, "stale auto-resolve primary resolve attempts");
+        AssertEqual(1, fallbackResolveAttempts, "stale auto-resolve fallback resolve attempts");
+    }
+
+    private static void TestAutoResolveStaleThreadsTreatsAlreadyResolvedAsSuccess() {
+        var resolveAttempts = 0;
+        var stateLookupAttempts = 0;
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                resolveAttempts++;
+                return new HttpResponse(
+                    "{\"errors\":[{\"type\":\"UNPROCESSABLE\",\"message\":\"Pull request review thread is already resolved.\"}],\"data\":{\"resolveReviewThread\":null}}");
+            }
+            if (request.Body.Contains("node(id:$id)", StringComparison.Ordinal)) {
+                stateLookupAttempts++;
+                return new HttpResponse(BuildGraphQlHydratedThreadResponse(
+                    "thread-old",
+                    true,
+                    false,
+                    ("Fix this", "src/Foo.cs", 1, "intelligencex-review")));
+            }
+            return null;
+        });
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 10,
+            ReviewThreadsAutoResolveBotsOnly = true
+        };
+        var staleBotComment = new PullRequestReviewThreadComment(null, null, "Fix this", "intelligencex-review", "src/Foo.cs", 1);
+        var threads = new[] {
+            new PullRequestReviewThread("thread-old", false, true, 1, new[] { staleBotComment })
+        };
+
+        var originalError = Console.Error;
+        using var errorWriter = new StringWriter();
+        Console.SetError(errorWriter);
+        try {
+            CallAutoResolveStaleThreads(github, threads, settings);
+        } finally {
+            Console.SetError(originalError);
+        }
+
+        var errorOutput = errorWriter.ToString();
+        AssertEqual(1, resolveAttempts, "stale auto-resolve already-resolved resolve attempts");
+        AssertEqual(1, stateLookupAttempts, "stale auto-resolve already-resolved state lookup attempts");
+        AssertContainsText(errorOutput, "resolved=1", "stale auto-resolve already-resolved summary resolved");
+        AssertContainsText(errorOutput, "failed=0", "stale auto-resolve already-resolved summary failed");
+        if (errorOutput.Contains("Failed to resolve review thread", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected already-resolved thread to avoid failure logging.");
+        }
+    }
+
     private static void TestAutoResolveMissingInlineEmptyKeys() {
         var resolved = 0;
         var resolvePayloadObserved = false;
@@ -555,6 +648,19 @@ internal static partial class Program {
         AssertEqual<string?>(null, noThreadId, "resolve payload missing id value");
     }
 
+    private static void TestThreadResolveIntegrationForbiddenDetection() {
+        var ex = new InvalidOperationException("GitHub GraphQL request returned errors: {\"errors\":[{\"type\":\"INSUFFICIENT_SCOPES\"}]}");
+        var forbidden = CallIsIntegrationForbidden(ex);
+        AssertEqual(true, forbidden, "integration forbidden detects insufficient scopes");
+    }
+
+    private static void TestThreadResolveErrorFormattingIncludesFallback() {
+        var message = CallBuildThreadResolveError(new InvalidOperationException("primary failed"),
+            new InvalidOperationException("fallback failed"));
+        AssertContainsText(message, "primary: primary failed", "thread resolve error includes primary");
+        AssertContainsText(message, "fallback: fallback failed", "thread resolve error includes fallback");
+    }
+
     private static bool TryGetResolveThreadIdFromGraphQlPayload(string body, out string? threadId) {
         threadId = null;
         if (string.IsNullOrWhiteSpace(body)) {
@@ -581,10 +687,19 @@ internal static partial class Program {
 
     private static string BuildGraphQlHydratedThreadResponse(string threadId,
         params (string Body, string Path, int Line, string Author)[] comments) {
+        return BuildGraphQlHydratedThreadResponse(threadId, false, false, comments);
+    }
+
+    private static string BuildGraphQlHydratedThreadResponse(string threadId, bool isResolved, bool isOutdated,
+        params (string Body, string Path, int Line, string Author)[] comments) {
         var sb = new StringBuilder();
         sb.Append("{\"data\":{\"node\":{\"id\":\"")
             .Append(EscapeJson(threadId))
-            .Append("\",\"isResolved\":false,\"isOutdated\":false,\"comments\":{\"totalCount\":")
+            .Append("\",\"isResolved\":")
+            .Append(isResolved ? "true" : "false")
+            .Append(",\"isOutdated\":")
+            .Append(isOutdated ? "true" : "false")
+            .Append(",\"comments\":{\"totalCount\":")
             .Append(comments.Length)
             .Append(",\"nodes\":[");
         for (var i = 0; i < comments.Length; i++) {

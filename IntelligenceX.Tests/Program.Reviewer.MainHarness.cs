@@ -29,12 +29,18 @@ internal static partial class Program {
         failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
         failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
         failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);
+        failed += Run("Auto-resolve stale threads fallback on insufficient scopes",
+            TestAutoResolveStaleThreadsFallbackOnInsufficientScopes);
+        failed += Run("Auto-resolve stale threads treats already-resolved as success",
+            TestAutoResolveStaleThreadsTreatsAlreadyResolvedAsSuccess);
         failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
         failed += Run("Auto-resolve missing inline bots-only skips hydrated non-bot thread",
             TestAutoResolveMissingInlineBotsOnlySkipsHydratedNonBotThread);
         failed += Run("Auto-resolve missing inline shifted line window", TestAutoResolveMissingInlineSkipsShiftedLineWithinWindow);
         failed += Run("Auto-resolve missing inline signature match", TestAutoResolveMissingInlineSkipsSignatureMatchForRewordedBody);
         failed += Run("Resolve thread payload parser rejects invalid JSON", TestResolveThreadPayloadParserRejectsInvalidJson);
+        failed += Run("Thread resolve integration forbidden detection", TestThreadResolveIntegrationForbiddenDetection);
+        failed += Run("Thread resolve error formatting includes fallback", TestThreadResolveErrorFormattingIncludesFallback);
         failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
         failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
         failed += Run("Auto-resolve missing inline gate empty mapped keys", TestAutoResolveMissingInlineGateRejectsEmptyWhenInlineCommentsPresent);
@@ -576,6 +582,8 @@ internal static partial class Program {
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads default bot logins include managed bots", TestResolveThreadsDefaultBotLoginsIncludeManagedBots);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
+        failed += Run("Resolve-threads runner treats already-resolved as success",
+            TestResolveThreadsRunnerTreatsAlreadyResolvedAsSuccess);
         failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
         failed += Run("OpenAI account order round-robin many accounts", TestOpenAiAccountOrderRoundRobinSupportsManyAccounts);
         failed += Run("OpenAI account order sticky", TestOpenAiAccountOrderSticky);
