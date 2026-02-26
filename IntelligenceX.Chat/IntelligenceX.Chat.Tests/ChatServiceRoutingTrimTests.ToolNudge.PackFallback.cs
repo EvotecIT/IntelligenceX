@@ -547,7 +547,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsReadOnlyFallbackForAdPartialScope() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["ad_environment_discover"] = "active_directory";
         packMap["ad_scope_discovery"] = "active_directory";

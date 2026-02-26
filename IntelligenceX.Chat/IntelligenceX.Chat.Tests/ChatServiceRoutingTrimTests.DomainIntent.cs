@@ -148,7 +148,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_ResolvesDomainIntentClarificationOrdinalSelection() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var clarificationText = Assert.IsType<string>(BuildDomainIntentClarificationTextMethod.Invoke(null, Array.Empty<object?>()));
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-domain-intent", clarificationText });

@@ -17,7 +17,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildWhenNoPartialScopeSignal() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["ad_environment_discover"] = "active_directory";
         packMap["ad_scope_discovery"] = "active_directory";
@@ -52,7 +52,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_PrefersAdDiscoveryBeforeCrossDcEventlogFanOut() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["eventlog_live_stats"] = "eventlog";
         packMap["eventlog_live_query"] = "eventlog";
@@ -103,7 +103,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_KeepsHostScopedEventlogFallbackWhenRequestIsHostTargeted() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["eventlog_live_stats"] = "eventlog";
         packMap["eventlog_live_query"] = "eventlog";
@@ -152,7 +152,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsEventlogLiveQueryFallbackWhenEvtxAccessDeniedWithHostHint() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["eventlog_evtx_find"] = "eventlog";
         packMap["eventlog_live_query"] = "eventlog";
@@ -202,7 +202,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_ResolvesHostHintAgainstPriorDiscoveryOutputs() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["ad_scope_discovery"] = "active_directory";
         packMap["eventlog_evtx_find"] = "eventlog";
@@ -258,7 +258,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildEventlogFallbackWithoutHostHint() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
         packMap["eventlog_evtx_find"] = "eventlog";
         packMap["eventlog_live_query"] = "eventlog";

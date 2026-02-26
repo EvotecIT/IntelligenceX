@@ -224,7 +224,7 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void UpdatePackMetadataIndexes_Throws_WhenDescriptorIdsCollideAfterNormalization() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var descriptors = new[] {
             new ToolPackDescriptor { Id = "event-log", Name = "EventLog A", Tier = ToolCapabilityTier.ReadOnly, SourceKind = "open_source" },
             new ToolPackDescriptor { Id = "event_log", Name = "EventLog B", Tier = ToolCapabilityTier.ReadOnly, SourceKind = "open_source" }

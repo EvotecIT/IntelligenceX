@@ -291,7 +291,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task ExecuteToolWithStatusAsync_DoesNotEmitHeartbeatAfterCancellation() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(registryField);
 
@@ -318,7 +318,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var taskObj = executeToolWithStatusMethod!.Invoke(
             session,
-            new object?[] { writer, "req-001", "thread-001", call, 5, cts.Token });
+            new object?[] { writer, "req-001", "thread-001", call, 5, string.Empty, cts.Token });
         var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
 
         cts.CancelAfter(TimeSpan.FromMilliseconds(10));
@@ -332,7 +332,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task ExecuteToolWithStatusAsync_CancelsPromptlyForNonCooperativeTool() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(registryField);
 
@@ -357,7 +357,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var taskObj = executeToolWithStatusMethod!.Invoke(
             session,
-            new object?[] { writer, "req-002", "thread-002", call, 5, cts.Token });
+            new object?[] { writer, "req-002", "thread-002", call, 5, string.Empty, cts.Token });
         var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
 
         cts.CancelAfter(TimeSpan.FromMilliseconds(10));

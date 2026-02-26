@@ -13,7 +13,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public async Task PhaseProgressLoop_EmitsPlanExecuteReviewInOrder() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
         using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
 
@@ -27,7 +27,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task PhaseProgressLoop_EmitsHeartbeatForLongRunningPhase() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
         using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -47,7 +47,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task PhaseProgressLoop_DoesNotEmitHeartbeatWhenDisabled() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
         using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -71,7 +71,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task PhaseProgressLoop_PropagatesCancellationWhenPhaseTaskIsCanceled() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
         using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
         using var cts = new CancellationTokenSource();
@@ -96,7 +96,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task ToolRoundStatusLifecycle_EmitsRoundStatusesInDeterministicOrder() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
         using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
 

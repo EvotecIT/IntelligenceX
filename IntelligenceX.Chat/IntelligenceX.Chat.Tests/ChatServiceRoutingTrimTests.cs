@@ -245,7 +245,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var stats = new Dictionary<string, (long LastUsedUtcTicks, long LastSuccessUtcTicks)>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < MaxTrackedToolRoutingStats; i++) {
@@ -269,7 +269,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TrimWeightedRoutingContextsForTesting_RemovesMissingAndZeroTickEntriesFirst() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
         var seenTicks = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -297,7 +297,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void UpdateToolRoutingStats_TracksOutputsWhenCallIdsDifferOnlyByWhitespace() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new List<ToolCall> {
             new("  call-001  ", "ad_replication_summary", null, null, new JsonObject())
         };

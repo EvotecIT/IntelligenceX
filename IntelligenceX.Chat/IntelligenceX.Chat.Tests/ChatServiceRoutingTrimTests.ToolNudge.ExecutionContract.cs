@@ -279,7 +279,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildCarryoverStructuredNextActionToolCall_BuildsReadOnlyCallFromRememberedNextAction() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var schema = ToolSchema.Object(
                 ("include_trusts", ToolSchema.Boolean()),
                 ("max_domains", ToolSchema.Integer()))
@@ -322,7 +322,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryBuildCarryoverStructuredNextActionToolCall_DoesNotReplayMutatingCarryover() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var toolDefinitions = new List<ToolDefinition> {
             new("ad_environment_discover", "discover", ToolSchema.Object().NoAdditionalProperties()),
             new("powershell_run", "PowerShell", ToolSchema.Object().NoAdditionalProperties())
@@ -506,7 +506,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForSingleUnknownMutabilityPendingActionEnvelopeWithoutContinuationSubset() {
+    public void ShouldAttemptToolExecutionNudge_TriggersForSingleUnknownMutabilityPendingActionEnvelopeWithoutContinuationSubset_InExecutionContractSuite() {
         var userRequest = "Run replication diagnostics now.";
         var assistantDraft = """
             Proceeding now.
@@ -524,7 +524,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         var value = Assert.IsType<bool>(result);
-        Assert.False(value);
+        Assert.True(value);
     }
 
     [Fact]

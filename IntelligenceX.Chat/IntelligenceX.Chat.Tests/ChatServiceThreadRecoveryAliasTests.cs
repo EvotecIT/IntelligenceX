@@ -8,7 +8,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class ChatServiceThreadRecoveryAliasTests {
     [Fact]
     public void ResolveRecoveredThreadAlias_ReturnsOriginal_WhenNoAliasExists() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var resolved = session.ResolveRecoveredThreadAliasForTesting("thread-a");
 
@@ -17,7 +17,7 @@ public sealed class ChatServiceThreadRecoveryAliasTests {
 
     [Fact]
     public void ResolveRecoveredThreadAlias_FollowsAliasChain_ToLatestRecoveredThread() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberRecoveredThreadAliasForTesting("thread-a", "thread-b");
         session.RememberRecoveredThreadAliasForTesting("thread-b", "thread-c");
 
@@ -28,7 +28,7 @@ public sealed class ChatServiceThreadRecoveryAliasTests {
 
     [Fact]
     public void ResolveRecoveredThreadAlias_DropsExpiredAliasEntries() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberRecoveredThreadAliasForTesting(
             originalThreadId: "thread-old",
             recoveredThreadId: "thread-new",
@@ -41,7 +41,7 @@ public sealed class ChatServiceThreadRecoveryAliasTests {
 
     [Fact]
     public void RememberRecoveredThreadAlias_EvictsOldestAliasInsteadOfClearingAll() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var start = DateTime.UtcNow.AddHours(-6);
         for (var i = 0; i < 260; i++) {
             session.RememberRecoveredThreadAliasForTesting(

@@ -10,7 +10,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class ChatServiceToolEvidenceCacheTests {
     [Fact]
     public void ToolEvidenceCache_BuildsFallbackFromRecentReadOnlyEvidence() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {
             new ToolCallDto {
                 CallId = "call-1",
@@ -57,7 +57,7 @@ public sealed class ChatServiceToolEvidenceCacheTests {
 
     [Fact]
     public void ToolEvidenceCache_DoesNotStoreMutatingToolEvidence() {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {
             new ToolCallDto {
                 CallId = "call-1",
@@ -92,9 +92,7 @@ public sealed class ChatServiceToolEvidenceCacheTests {
 
     [Fact]
     public void ToolEvidenceCache_RehydratesFallbackAfterServiceRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-tool-evidence-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var (_, pendingActionsStorePath, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
         try {
             var writerSession = new ChatServiceSession(
@@ -135,8 +133,8 @@ public sealed class ChatServiceToolEvidenceCacheTests {
             Assert.Contains("domaindetective_domain_summary", text, StringComparison.OrdinalIgnoreCase);
         } finally {
             try {
-                if (Directory.Exists(root)) {
-                    Directory.Delete(root, recursive: true);
+                if (Directory.Exists(persistenceDirectory)) {
+                    Directory.Delete(persistenceDirectory, recursive: true);
                 }
             } catch {
                 // Best effort cleanup only.
