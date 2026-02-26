@@ -66,6 +66,70 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndZshExtension() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-zsh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:100", "max-duplication-percent-zsh:15", "dup-window-lines:4", "include-ext:zsh"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "build-a.zsh"), BuildDuplicateShellSample("run_alpha", "input_alpha"));
+            File.WriteAllText(Path.Combine(temp, "build-b.zsh"), BuildDuplicateShellSample("run_beta", "input_beta"));
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication language threshold zsh exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".zsh",
+                "analyze run duplication language threshold zsh uses shell alias override");
+
+            var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
+            var metricsContent = File.ReadAllText(metricsPath);
+            AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
+                "analyze run duplication language threshold zsh emits per-file configured threshold");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
     private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlAliasAndYamlExtension() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-yaml-alias-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

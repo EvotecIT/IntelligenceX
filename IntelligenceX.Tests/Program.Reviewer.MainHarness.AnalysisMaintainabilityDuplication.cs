@@ -40,6 +40,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlExtension);
         failed += Run("Analyze run duplication language threshold bash alias",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndBashExtension);
+        failed += Run("Analyze run duplication language threshold zsh alias",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndZshExtension);
         failed += Run("Analyze run duplication language threshold yaml alias",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlAliasAndYamlExtension);
         failed += Run("Analyze run duplication ignores shell shebang and comments",
