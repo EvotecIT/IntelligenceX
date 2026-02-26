@@ -35,6 +35,7 @@ internal sealed partial class ChatServiceSession {
             bool executionNudgeUsed,
             bool toolReceiptCorrectionUsed,
             bool noToolExecutionWatchdogUsed,
+            string noToolExecutionWatchdogReason,
             bool executionContractEscapeUsed,
             bool continuationSubsetEscapeUsed,
             bool autoPendingActionReplayUsed,
@@ -60,6 +61,7 @@ internal sealed partial class ChatServiceSession {
             ExecutionNudgeUsed = executionNudgeUsed;
             ToolReceiptCorrectionUsed = toolReceiptCorrectionUsed;
             NoToolExecutionWatchdogUsed = noToolExecutionWatchdogUsed;
+            NoToolExecutionWatchdogReason = noToolExecutionWatchdogReason;
             ExecutionContractEscapeUsed = executionContractEscapeUsed;
             ContinuationSubsetEscapeUsed = continuationSubsetEscapeUsed;
             AutoPendingActionReplayUsed = autoPendingActionReplayUsed;
@@ -101,6 +103,8 @@ internal sealed partial class ChatServiceSession {
 
         public bool NoToolExecutionWatchdogUsed { get; set; }
 
+        public string NoToolExecutionWatchdogReason { get; set; }
+
         public bool ExecutionContractEscapeUsed { get; set; }
 
         public bool ContinuationSubsetEscapeUsed { get; set; }
@@ -138,6 +142,7 @@ internal sealed partial class ChatServiceSession {
         ref bool executionNudgeUsed,
         ref bool toolReceiptCorrectionUsed,
         ref bool noToolExecutionWatchdogUsed,
+        ref string noToolExecutionWatchdogReason,
         ref bool executionContractEscapeUsed,
         ref bool continuationSubsetEscapeUsed,
         ref bool autoPendingActionReplayUsed,
@@ -161,6 +166,7 @@ internal sealed partial class ChatServiceSession {
         executionNudgeUsed = state.ExecutionNudgeUsed;
         toolReceiptCorrectionUsed = state.ToolReceiptCorrectionUsed;
         noToolExecutionWatchdogUsed = state.NoToolExecutionWatchdogUsed;
+        noToolExecutionWatchdogReason = state.NoToolExecutionWatchdogReason;
         executionContractEscapeUsed = state.ExecutionContractEscapeUsed;
         continuationSubsetEscapeUsed = state.ContinuationSubsetEscapeUsed;
         autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;

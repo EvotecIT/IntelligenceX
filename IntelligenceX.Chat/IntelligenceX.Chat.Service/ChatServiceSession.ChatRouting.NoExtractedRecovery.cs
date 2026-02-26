@@ -49,6 +49,7 @@ internal sealed partial class ChatServiceSession {
         var executionNudgeUsed = state.ExecutionNudgeUsed;
         var toolReceiptCorrectionUsed = state.ToolReceiptCorrectionUsed;
         var noToolExecutionWatchdogUsed = state.NoToolExecutionWatchdogUsed;
+        var noToolExecutionWatchdogReason = state.NoToolExecutionWatchdogReason;
         var executionContractEscapeUsed = state.ExecutionContractEscapeUsed;
         var continuationSubsetEscapeUsed = state.ContinuationSubsetEscapeUsed;
         var autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;
@@ -317,9 +318,9 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var shouldAttemptWatchdog = false;
-                var watchdogReason = "not_evaluated";
+                noToolExecutionWatchdogReason = "not_evaluated";
                 if (suppressLocalToolRecoveryRetries) {
-                    watchdogReason = "local_runtime_recovery_disabled";
+                    noToolExecutionWatchdogReason = "local_runtime_recovery_disabled";
                 } else {
                     shouldAttemptWatchdog = ShouldAttemptNoToolExecutionWatchdog(
                         userRequest: routedUserRequest,
@@ -333,7 +334,7 @@ internal sealed partial class ChatServiceSession {
                         executionNudgeUsed: executionNudgeUsed,
                         toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
                         watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
-                        out watchdogReason);
+                        out noToolExecutionWatchdogReason);
                 }
                 TraceNoToolExecutionWatchdogDecision(
                     userRequest: routedUserRequest,
@@ -348,7 +349,7 @@ internal sealed partial class ChatServiceSession {
                     toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
                     watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
                     shouldRetry: shouldAttemptWatchdog,
-                    reason: watchdogReason);
+                    reason: noToolExecutionWatchdogReason);
                 if (shouldAttemptWatchdog) {
                     noToolExecutionWatchdogUsed = true;
                     var watchdogPrompt = BuildNoToolExecutionWatchdogPrompt(routedUserRequest, text);
@@ -453,6 +454,7 @@ internal sealed partial class ChatServiceSession {
             state.ExecutionNudgeUsed = executionNudgeUsed;
             state.ToolReceiptCorrectionUsed = toolReceiptCorrectionUsed;
             state.NoToolExecutionWatchdogUsed = noToolExecutionWatchdogUsed;
+            state.NoToolExecutionWatchdogReason = noToolExecutionWatchdogReason;
             state.ExecutionContractEscapeUsed = executionContractEscapeUsed;
             state.ContinuationSubsetEscapeUsed = continuationSubsetEscapeUsed;
             state.AutoPendingActionReplayUsed = autoPendingActionReplayUsed;

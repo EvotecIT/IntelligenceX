@@ -25,6 +25,7 @@ internal sealed partial class ChatServiceSession {
         bool planExecuteReviewLoop,
         int maxReviewPasses,
         int modelHeartbeatSeconds,
+        int toolTimeoutSeconds,
         bool continuationFollowUpTurn,
         bool compactFollowUpTurn,
         bool proactiveModeEnabled,
@@ -53,6 +54,7 @@ internal sealed partial class ChatServiceSession {
         var reviewPassesUsed = state.ReviewPassesUsed;
         var executionNudgeUsed = state.ExecutionNudgeUsed;
         var noToolExecutionWatchdogUsed = state.NoToolExecutionWatchdogUsed;
+        var noToolExecutionWatchdogReason = state.NoToolExecutionWatchdogReason;
         var autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;
         var proactiveFollowUpUsed = state.ProactiveFollowUpUsed;
         var localNoTextDirectRetryUsed = state.LocalNoTextDirectRetryUsed;
@@ -436,7 +438,7 @@ internal sealed partial class ChatServiceSession {
                 if (executionContractApplies && !hasToolActivity) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
-                        : $"execution_contract_unmet_{watchdogReason}";
+                        : $"execution_contract_unmet_{noToolExecutionWatchdogReason}";
                     text = BuildExecutionContractBlockerText(
                         userRequest: routedUserRequest,
                         assistantDraft: text,
@@ -637,6 +639,7 @@ internal sealed partial class ChatServiceSession {
             state.ReviewPassesUsed = reviewPassesUsed;
             state.ExecutionNudgeUsed = executionNudgeUsed;
             state.NoToolExecutionWatchdogUsed = noToolExecutionWatchdogUsed;
+            state.NoToolExecutionWatchdogReason = noToolExecutionWatchdogReason;
             state.AutoPendingActionReplayUsed = autoPendingActionReplayUsed;
             state.ProactiveFollowUpUsed = proactiveFollowUpUsed;
             state.LocalNoTextDirectRetryUsed = localNoTextDirectRetryUsed;

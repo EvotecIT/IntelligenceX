@@ -387,6 +387,7 @@ internal sealed partial class ChatServiceSession {
         var executionNudgeUsed = false;
         var toolReceiptCorrectionUsed = false;
         var noToolExecutionWatchdogUsed = false;
+        var noToolExecutionWatchdogReason = "not_evaluated";
         var executionContractEscapeUsed = false;
         var continuationSubsetEscapeUsed = false;
         var autoPendingActionReplayUsed = false;
@@ -422,6 +423,7 @@ internal sealed partial class ChatServiceSession {
                     executionNudgeUsed: executionNudgeUsed,
                     toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
                     noToolExecutionWatchdogUsed: noToolExecutionWatchdogUsed,
+                    noToolExecutionWatchdogReason: noToolExecutionWatchdogReason,
                     executionContractEscapeUsed: executionContractEscapeUsed,
                     continuationSubsetEscapeUsed: continuationSubsetEscapeUsed,
                     autoPendingActionReplayUsed: autoPendingActionReplayUsed,
@@ -468,7 +470,7 @@ internal sealed partial class ChatServiceSession {
                 if (noExtractedRecoveryOutcome.Flow == NoExtractedToolRoundFlow.Continue) {
                     RestoreNoExtractedToolRoundState(noExtractedRoundState, ref turn, ref routedUserRequest, ref executionContractApplies, ref toolDefs, ref options,
                         ref usedContinuationSubset, ref toolRounds, ref projectionFallbackCount, ref reviewPassesUsed, ref executionNudgeUsed,
-                        ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
+                        ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref noToolExecutionWatchdogReason, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
                         ref autoPendingActionReplayUsed, ref proactiveFollowUpUsed, ref localNoTextDirectRetryUsed, ref structuredNextActionRetryUsed,
                         ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref packCapabilityFallbackReplayUsed, ref noResultPhaseLoopWatchdogUsed,
                         ref interimResultSent);
@@ -487,6 +489,7 @@ internal sealed partial class ChatServiceSession {
                         planExecuteReviewLoop: planExecuteReviewLoop,
                         maxReviewPasses: maxReviewPasses,
                         modelHeartbeatSeconds: modelHeartbeatSeconds,
+                        toolTimeoutSeconds: toolTimeoutSeconds,
                         continuationFollowUpTurn: continuationFollowUpTurn,
                         compactFollowUpTurn: compactFollowUpTurn,
                         proactiveModeEnabled: proactiveModeEnabled,
@@ -510,7 +513,7 @@ internal sealed partial class ChatServiceSession {
 
                 RestoreNoExtractedToolRoundState(noExtractedRoundState, ref turn, ref routedUserRequest, ref executionContractApplies, ref toolDefs, ref options,
                     ref usedContinuationSubset, ref toolRounds, ref projectionFallbackCount, ref reviewPassesUsed, ref executionNudgeUsed,
-                    ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
+                    ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref noToolExecutionWatchdogReason, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
                     ref autoPendingActionReplayUsed, ref proactiveFollowUpUsed, ref localNoTextDirectRetryUsed, ref structuredNextActionRetryUsed,
                     ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref packCapabilityFallbackReplayUsed, ref noResultPhaseLoopWatchdogUsed,
                     ref interimResultSent);
