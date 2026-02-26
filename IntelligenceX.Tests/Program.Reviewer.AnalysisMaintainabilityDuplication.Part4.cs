@@ -395,5 +395,70 @@ internal static partial class Program {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
+
+    private static void TestAnalyzeRunInternalDuplicationYamlEscapedSingleQuoteHashDoesNotTriggerCommentStripping() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-yaml-escaped-single-quote-hash-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:yaml"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "config-a.yaml"), """
+kind: config
+data: {'note': 'it''s #not-comment', marker: true}
+""");
+            File.WriteAllText(Path.Combine(temp, "config-b.yaml"), """
+kind: config
+data: {'note': 'it''s #not-comment', marker: false}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication yaml escaped single quote hash exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertNoFinding(findings, "IXDUP001",
+                "analyze run duplication yaml escaped single quote hash does not produce false positive");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
 }
 #endif

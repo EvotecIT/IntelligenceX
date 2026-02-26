@@ -244,6 +244,10 @@ internal static partial class AnalyzeRunCommand {
         for (var i = 0; i < input.Length; i++) {
             var ch = input[i];
             if (ch == '\'' && !inDoubleQuote) {
+                if (inSingleQuote && i + 1 < input.Length && input[i + 1] == '\'') {
+                    i++;
+                    continue;
+                }
                 inSingleQuote = !inSingleQuote;
                 continue;
             }
