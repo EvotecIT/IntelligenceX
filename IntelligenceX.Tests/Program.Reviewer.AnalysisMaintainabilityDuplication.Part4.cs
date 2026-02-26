@@ -315,5 +315,85 @@ internal static partial class Program {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
+
+    private static void TestAnalyzeRunInternalDuplicationShellHashInParameterExpansionDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-param-expansion-hash",
+            "local trimmed=\"${base#prefix}\" && echo ready",
+            "local trimmed=\"${base#prefix}\" || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellHashInDoublePrefixRemovalDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-param-double-prefix-hash",
+            "local trimmed=\"${base##prefix}\" && echo ready",
+            "local trimmed=\"${base##prefix}\" || echo ready");
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationShellHashInArithmeticDoesNotTriggerCommentStripping() {
+        AssertShellHashContextDoesNotCauseFalseDuplication(
+            "shell-arithmetic-hash",
+            "local converted=$((16#FF + 1)) && echo ready",
+            "local converted=$((16#FF + 1)) || echo ready");
+    }
+
+    private static void AssertShellHashContextDoesNotCauseFalseDuplication(string testCaseName, string lineA, string lineB) {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-" + testCaseName + "-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:sh"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file-a.sh"), $"local base=\"$1\"\n{lineA}\n");
+            File.WriteAllText(Path.Combine(temp, "file-b.sh"), $"local base=\"$1\"\n{lineB}\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication shell hash context exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertNoFinding(findings, "IXDUP001",
+                "analyze run duplication shell hash context does not produce false positive");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
 }
 #endif

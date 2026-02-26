@@ -48,6 +48,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationIgnoresShellShebangAndCommentOnlyLines);
         failed += Run("Analyze run duplication ignores yaml comments",
             TestAnalyzeRunInternalDuplicationIgnoresYamlCommentOnlyLines);
+        failed += Run("Analyze run duplication shell hash in parameter expansion",
+            TestAnalyzeRunInternalDuplicationShellHashInParameterExpansionDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell hash in double prefix removal",
+            TestAnalyzeRunInternalDuplicationShellHashInDoublePrefixRemovalDoesNotTriggerCommentStripping);
+        failed += Run("Analyze run duplication shell hash in arithmetic expression",
+            TestAnalyzeRunInternalDuplicationShellHashInArithmeticDoesNotTriggerCommentStripping);
         failed += Run("Analyze run duplication language-only tag activates rule",
             TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
         failed += Run("Duplication metrics store modern extension language inference",
