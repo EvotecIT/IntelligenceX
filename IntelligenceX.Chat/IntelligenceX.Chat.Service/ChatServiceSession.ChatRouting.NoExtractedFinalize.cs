@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
@@ -409,6 +410,7 @@ internal sealed partial class ChatServiceSession {
                     return ContinueRound();
                 }
 
+                var hasToolActivity = toolCalls.Count > 0 || toolOutputs.Count > 0;
                 var noResultWatchdogTriggered = false;
                 var trailingPhaseLoopEvents = CountTrailingPhaseLoopEvents(request.RequestId);
                 if (ShouldTriggerNoResultPhaseLoopWatchdog(
@@ -616,10 +618,6 @@ internal sealed partial class ChatServiceSession {
                     ProjectionFallbackCount: projectionFallbackCount,
                     ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs),
                     ResolvedModel: resolvedModel));
-            }
-
-
-
         NoExtractedToolRoundOutcome ContinueRound() {
             PersistState();
             return NoExtractedToolRoundOutcome.ContinueRound();

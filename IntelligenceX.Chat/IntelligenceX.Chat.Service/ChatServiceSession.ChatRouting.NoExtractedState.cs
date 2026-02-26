@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.Tools;
 

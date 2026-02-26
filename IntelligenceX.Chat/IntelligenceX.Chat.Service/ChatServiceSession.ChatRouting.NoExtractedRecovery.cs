@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;

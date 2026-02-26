@@ -397,6 +397,7 @@ internal sealed partial class ChatServiceSession {
                 var recoveredThread = await client.StartNewThreadAsync(options.Model, cancellationToken: cancellationToken).ConfigureAwait(false);
                 var recoveredThreadId = (recoveredThread.Id ?? string.Empty).Trim();
                 if (recoveredThreadId.Length > 0) {
+                    await client.UseThreadAsync(recoveredThreadId, cancellationToken).ConfigureAwait(false);
                     RememberRecoveredThreadAlias(requestedThreadId, recoveredThreadId);
                     if (!string.Equals(reboundThreadId, requestedThreadId, StringComparison.Ordinal)) {
                         RememberRecoveredThreadAlias(reboundThreadId, recoveredThreadId);

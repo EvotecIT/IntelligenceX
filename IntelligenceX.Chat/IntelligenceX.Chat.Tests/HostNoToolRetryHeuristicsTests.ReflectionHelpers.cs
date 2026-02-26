@@ -267,4 +267,3 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         return new ToolCall(callId, name, jsonArgs, args, raw);
     }
 }
-}

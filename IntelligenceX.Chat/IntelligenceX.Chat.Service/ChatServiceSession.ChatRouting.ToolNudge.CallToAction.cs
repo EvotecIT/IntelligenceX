@@ -441,4 +441,3 @@ internal sealed partial class ChatServiceSession {
     }
 
 }
-}
