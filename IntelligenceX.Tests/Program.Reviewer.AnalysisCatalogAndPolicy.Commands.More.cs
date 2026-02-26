@@ -140,7 +140,7 @@ internal static partial class Program {
         var count100 = ParseListedRuleCount(output100, "all-multilang-100");
         var count500 = ParseListedRuleCount(output500, "all-multilang-500");
 
-        AssertEqual(true, count50 >= baselineAll50, "analyze list-rules all-multilang-50 covers all-50 baseline");
+        AssertEqual(true, count50 > baselineAll50, "analyze list-rules all-multilang-50 expands all-50 baseline");
         AssertEqual(true, count100 >= count50, "analyze list-rules all-multilang-100 expands all-multilang-50");
         AssertEqual(true, count500 >= count100, "analyze list-rules all-multilang-500 expands all-multilang-100");
     }

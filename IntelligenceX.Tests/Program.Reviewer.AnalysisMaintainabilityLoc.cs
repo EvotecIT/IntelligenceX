@@ -246,6 +246,7 @@ internal static partial class Program {
 
             var lines = Enumerable.Repeat("const value = 1;", 705);
             File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js.backup.js"), string.Join('\n', lines) + "\n");
             File.WriteAllText(Path.Combine(temp, "Assets", "keep.js"), string.Join('\n', lines) + "\n");
             File.WriteAllText(Path.Combine(temp, "Assets", "generated", "map.js"), string.Join('\n', lines) + "\n");
 
@@ -262,6 +263,8 @@ internal static partial class Program {
             var content = File.ReadAllText(findingsPath);
             AssertEqual(false, content.Contains("\"path\": \"Assets/wizard.js\"", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal exclude-path custom file");
+            AssertEqual(true, content.Contains("\"path\": \"Assets/wizard.js.backup.js\"", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path does not exclude near-prefix file");
             AssertEqual(true, content.Contains("\"path\": \"Assets/keep.js\"", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal exclude-path still reports other files");
             AssertEqual(true, content.Contains("\"path\": \"Assets/generated/map.js\"", StringComparison.OrdinalIgnoreCase),

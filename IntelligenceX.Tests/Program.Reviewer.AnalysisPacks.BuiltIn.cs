@@ -121,8 +121,8 @@ internal static partial class Program {
             new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-multilang-500" } },
             catalog);
 
-        AssertEqual(true, multilang50Policy.Rules.Count >= all50Policy.Rules.Count,
-            "all-multilang-50 resolves at least all-50 coverage");
+        AssertEqual(true, multilang50Policy.Rules.Count > all50Policy.Rules.Count,
+            "all-multilang-50 expands all-50 coverage");
         AssertEqual(true, multilang100Policy.Rules.Count >= multilang50Policy.Rules.Count,
             "all-multilang-100 expands all-multilang-50");
         AssertEqual(true, multilang500Policy.Rules.Count >= multilang100Policy.Rules.Count,
