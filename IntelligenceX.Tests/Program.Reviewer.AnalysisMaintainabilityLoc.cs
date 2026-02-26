@@ -254,9 +254,9 @@ internal static partial class Program {
             var result = RunAnalyzeWithConsoleOutput(temp, Path.Combine(temp, ".intelligencex", "reviewer.json"), output);
 
             AssertEqual(0, result.ExitCode, "analyze run internal exclude-path exit");
-            AssertEqual(true, result.Output.Contains("uses exact exclude-path matches", StringComparison.OrdinalIgnoreCase) &&
-                result.Output.Contains("'Assets/WIZARD.js'", StringComparison.OrdinalIgnoreCase),
-                "analyze run internal exclude-path warning lists normalized exact matches");
+            AssertEqual(true, result.Output.Contains("normalized exclude-path values", StringComparison.OrdinalIgnoreCase) &&
+                result.Output.Contains("'Assets\\WIZARD.js' -> 'Assets/WIZARD.js'", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path warning reports normalized mappings");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             AssertEqual(true, File.Exists(findingsPath), "analyze run internal exclude-path findings exists");
             var content = File.ReadAllText(findingsPath);

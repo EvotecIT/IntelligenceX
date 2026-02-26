@@ -166,6 +166,7 @@ internal static partial class AnalyzeRunCommand {
     private static IReadOnlySet<string> ResolveExcludedPaths(AnalysisRule rule, List<string> warnings) {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var malformedTags = new List<string>();
+        var normalizedTransforms = new List<(string Raw, string Normalized)>();
         if (rule?.Tags is null || rule.Tags.Count == 0) {
             return paths;
         }
@@ -175,24 +176,28 @@ internal static partial class AnalyzeRunCommand {
                 !tag.StartsWith(ExcludedPathTagPrefix, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            var normalized = NormalizeExcludedPathTagValue(tag.Substring(ExcludedPathTagPrefix.Length));
+            var rawValue = tag.Substring(ExcludedPathTagPrefix.Length);
+            var normalized = NormalizeExcludedPathTagValue(rawValue);
             if (!string.IsNullOrWhiteSpace(normalized)) {
                 paths.Add(normalized);
+                var trimmedRaw = rawValue.Trim();
+                if (!trimmedRaw.Equals(normalized, StringComparison.Ordinal)) {
+                    normalizedTransforms.Add((trimmedRaw, normalized));
+                }
             } else {
                 malformedTags.Add(tag);
             }
         }
         AddMalformedTagWarning(rule.Id, malformedTags, ExcludedPathTagPrefix, warnings);
-        if (paths.Count > 0) {
-            var sample = string.Join(", ", paths
-                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+        if (normalizedTransforms.Count > 0) {
+            var sample = string.Join(", ", normalizedTransforms
                 .Take(MaxTagWarningDetails)
-                .Select(static path => $"'{path}'"));
-            var suffix = paths.Count > MaxTagWarningDetails
-                ? $" (+{paths.Count - MaxTagWarningDetails} more)"
+                .Select(static item => $"'{item.Raw}' -> '{item.Normalized}'"));
+            var suffix = normalizedTransforms.Count > MaxTagWarningDetails
+                ? $" (+{normalizedTransforms.Count - MaxTagWarningDetails} more)"
                 : string.Empty;
             warnings.Add(
-                $"Rule {rule.Id} uses exact exclude-path matches: {sample}{suffix}. Matching is case-insensitive and non-recursive.");
+                $"Rule {rule.Id} normalized exclude-path values: {sample}{suffix}. Matching is case-insensitive and non-recursive.");
         }
 
         return paths;
