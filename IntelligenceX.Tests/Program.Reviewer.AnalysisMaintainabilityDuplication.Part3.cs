@@ -312,5 +312,133 @@ internal static partial class Program {
             DeleteDirectoryIfExistsWithRetries(temp);
         }
     }
+
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellExtension() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-sh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:100", "max-duplication-percent-shell:15", "dup-window-lines:4", "include-ext:sh"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "build-a.sh"), BuildDuplicateShellSample("run_alpha", "input_alpha"));
+            File.WriteAllText(Path.Combine(temp, "build-b.sh"), BuildDuplicateShellSample("run_beta", "input_beta"));
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication language threshold sh exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".sh",
+                "analyze run duplication language threshold sh uses shell override");
+
+            var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
+            var metricsContent = File.ReadAllText(metricsPath);
+            AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
+                "analyze run duplication language threshold sh emits per-file configured threshold");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlExtension() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-threshold-yml-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:100", "max-duplication-percent-yaml:15", "dup-window-lines:4", "include-ext:yml"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "config-a.yml"), BuildDuplicateYamlSample("api_alpha", "demo/api:latest"));
+            File.WriteAllText(Path.Combine(temp, "config-b.yml"), BuildDuplicateYamlSample("api_beta", "demo/api:stable"));
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication language threshold yml exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertHasFindingWithPathSuffix(findings, "IXDUP001", ".yml",
+                "analyze run duplication language threshold yml uses yaml override");
+
+            var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
+            var metricsContent = File.ReadAllText(metricsPath);
+            AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
+                "analyze run duplication language threshold yml emits per-file configured threshold");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
 }
 #endif

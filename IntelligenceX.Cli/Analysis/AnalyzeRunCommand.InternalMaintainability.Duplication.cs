@@ -248,7 +248,7 @@ internal static partial class AnalyzeRunCommand {
             var language = NormalizeDuplicationLanguage(languageRaw);
             if (string.IsNullOrWhiteSpace(language)) {
                 warnings.Add(
-                    $"Rule {rule.Id} has unsupported duplication language in tag '{tag}'. Supported: csharp, powershell, javascript, typescript, python.");
+                    $"Rule {rule.Id} has unsupported duplication language in tag '{tag}'. Supported: csharp, powershell, javascript, typescript, python, shell, yaml.");
                 continue;
             }
             if (!double.TryParse(valueRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ||
@@ -286,6 +286,8 @@ internal static partial class AnalyzeRunCommand {
             "js" or "javascript" => "javascript",
             "ts" or "typescript" => "typescript",
             "py" or "python" => "python",
+            "sh" or "shell" or "bash" or "zsh" => "shell",
+            "yml" or "yaml" => "yaml",
             _ => null
         };
     }
