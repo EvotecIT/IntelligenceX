@@ -35,7 +35,7 @@ internal static class SetupAnalysisPacks {
                 continue;
             }
             if (!PackIdRegex.IsMatch(part)) {
-                error = $"Invalid pack id '{part}'. Use comma-separated ids like all-50, all-security-default, powershell-50, javascript-50, python-50.";
+                error = $"Invalid pack id '{part}'. Use comma-separated ids like all-50, all-security-50, all-multilang-50, all-security-default, powershell-50, javascript-50, python-50.";
                 return false;
             }
             if (seen.Add(part)) {

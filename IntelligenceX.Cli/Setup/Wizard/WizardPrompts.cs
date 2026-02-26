@@ -279,6 +279,8 @@ internal static class WizardPrompts {
         while (true) {
             var choices = new List<string> {
                 "(default: all-50)",
+                "all-security-50",
+                "all-multilang-50",
                 "all-100",
                 "all-500",
                 "none (disable static analysis)",

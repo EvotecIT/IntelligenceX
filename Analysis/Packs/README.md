@@ -23,6 +23,7 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - `javascript-security-default`
   - `python-security-default`
   - `all-security-default`
+  - `all-security-50`, `all-security-100`, `all-security-500`
 - Language tiers:
   - `csharp-50`, `csharp-100`, `csharp-500`
   - `powershell-50`, `powershell-100`, `powershell-500`
@@ -31,9 +32,13 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - `intelligencex-maintainability-50`, `intelligencex-maintainability-100`, `intelligencex-maintainability-500`
 - Cross-language tiers:
   - `all-50`, `all-100`, `all-500`
+  - `all-multilang-50`, `all-multilang-100`, `all-multilang-500`
   - Note: `all-*` currently targets core tiers (`csharp-*`, `powershell-*`, `intelligencex-maintainability-*`); add `javascript-*` / `python-*` explicitly when desired.
+  - Note: `all-multilang-*` extends `all-*` with JavaScript and Python tiers for broader mixed-language repositories.
 - Compatibility alias:
   - `all-default` (currently includes `all-50`)
+  - `all-security-default` (compatibility baseline; prefer `all-security-50` for tiered onboarding)
+  - `all-multilang-default` (currently includes `all-multilang-50`)
 
 ## Notes on 50/100/500 tiers
 
@@ -53,6 +58,7 @@ Regenerate C# catalog + C# tiers with:
 `./scripts/update_analysis_catalog.py --repo-root .`
 
 For JavaScript and Python, current `*-50|100|500` tiers are intentionally stable aliases that expand as catalog coverage grows.
+For cross-language security tiers, `all-security-100` and `all-security-500` may also temporarily resolve to the same rule set as lower tiers until additional catalog coverage is promoted.
 
 ## JavaScript/Python catalog
 

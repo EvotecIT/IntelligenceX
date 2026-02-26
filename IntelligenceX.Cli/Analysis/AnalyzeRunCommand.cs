@@ -23,6 +23,7 @@ internal static partial class AnalyzeRunCommand {
     private const string GeneratedSuffixTagPrefix = "generated-suffix:";
     private const string GeneratedMarkerTagPrefix = "generated-marker:";
     private const string ExcludedDirectoryTagPrefix = "exclude-dir:";
+    private const string ExcludedPathTagPrefix = "exclude-path:";
     private static readonly string[] DefaultExcludedDirectorySegments = {
         ".git",
         ".worktrees",
@@ -407,7 +408,7 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
             if (!PackIdRegex.IsMatch(value)) {
-                error = $"Invalid pack id '{value}'. Use comma-separated ids like all-50, all-security-default, powershell-50, javascript-50, python-50.";
+                error = $"Invalid pack id '{value}'. Use comma-separated ids like all-50, all-security-50, all-multilang-50, all-security-default, powershell-50, javascript-50, python-50.";
                 return false;
             }
             if (!packs.Contains(value, StringComparer.OrdinalIgnoreCase)) {

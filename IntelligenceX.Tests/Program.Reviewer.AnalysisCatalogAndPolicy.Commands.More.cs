@@ -47,6 +47,104 @@ internal static partial class Program {
         AssertEqual(true, count500 <= 500, "analyze list-rules all-500 max bound");
     }
 
+    private static void TestAnalyzeListRulesSecurityTierCounts() {
+        var workspace = ResolveWorkspaceRoot();
+        var (exit50, output50) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-security-50",
+            "--format",
+            "json"
+        });
+        var (exit100, output100) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-security-100",
+            "--format",
+            "json"
+        });
+        var (exit500, output500) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-security-500",
+            "--format",
+            "json"
+        });
+
+        AssertEqual(0, exit50, "analyze list-rules all-security-50 exit");
+        AssertEqual(0, exit100, "analyze list-rules all-security-100 exit");
+        AssertEqual(0, exit500, "analyze list-rules all-security-500 exit");
+
+        var count50 = ParseListedRuleCount(output50, "all-security-50");
+        var count100 = ParseListedRuleCount(output100, "all-security-100");
+        var count500 = ParseListedRuleCount(output500, "all-security-500");
+
+        AssertEqual(true, count50 > 0, "analyze list-rules all-security-50 minimum");
+        AssertEqual(true, count100 >= count50, "analyze list-rules all-security-100 expands all-security-50");
+        AssertEqual(true, count500 >= count100, "analyze list-rules all-security-500 expands all-security-100");
+        AssertEqual(true, count500 <= 500, "analyze list-rules all-security-500 max bound");
+    }
+
+    private static void TestAnalyzeListRulesAllMultilangTierCounts() {
+        var workspace = ResolveWorkspaceRoot();
+        var (exitAll50, outputAll50) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-50",
+            "--format",
+            "json"
+        });
+        var (exit50, output50) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-multilang-50",
+            "--format",
+            "json"
+        });
+        var (exit100, output100) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-multilang-100",
+            "--format",
+            "json"
+        });
+        var (exit500, output500) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-multilang-500",
+            "--format",
+            "json"
+        });
+
+        AssertEqual(0, exitAll50, "analyze list-rules all-50 baseline exit");
+        AssertEqual(0, exit50, "analyze list-rules all-multilang-50 exit");
+        AssertEqual(0, exit100, "analyze list-rules all-multilang-100 exit");
+        AssertEqual(0, exit500, "analyze list-rules all-multilang-500 exit");
+
+        var baselineAll50 = ParseListedRuleCount(outputAll50, "all-50");
+        var count50 = ParseListedRuleCount(output50, "all-multilang-50");
+        var count100 = ParseListedRuleCount(output100, "all-multilang-100");
+        var count500 = ParseListedRuleCount(output500, "all-multilang-500");
+
+        AssertEqual(true, count50 > baselineAll50, "analyze list-rules all-multilang-50 expands all-50 baseline");
+        AssertEqual(true, count100 >= count50, "analyze list-rules all-multilang-100 expands all-multilang-50");
+        AssertEqual(true, count500 >= count100, "analyze list-rules all-multilang-500 expands all-multilang-100");
+    }
+
     private static void TestAnalyzeListRulesInvalidFormat() {
         var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
             "list-rules",

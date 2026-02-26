@@ -203,6 +203,126 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalFileSizeRuleCustomExcludedPath() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-excluded-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+            Directory.CreateDirectory(Path.Combine(temp, "Assets"));
+            Directory.CreateDirectory(Path.Combine(temp, "Assets", "generated"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-lines:700", "include-ext:js", "exclude-path:Assets//WIZARD.js", "exclude-path:Assets/generated"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXLOC001"]
+}
+""");
+
+            var lines = Enumerable.Repeat("const value = 1;", 705);
+            File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Assets", "wizard.js.backup.js"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Assets", "keep.js"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Assets", "generated", "map.js"), string.Join('\n', lines) + "\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var result = RunAnalyzeWithConsoleOutput(temp, Path.Combine(temp, ".intelligencex", "reviewer.json"), output);
+
+            AssertEqual(0, result.ExitCode, "analyze run internal exclude-path exit");
+            AssertEqual(false, result.Output.Contains("normalized exclude-path values", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path does not emit normalization noise");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run internal exclude-path findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(false, content.Contains("\"path\": \"Assets/wizard.js\"", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path custom file");
+            AssertEqual(true, content.Contains("\"path\": \"Assets/wizard.js.backup.js\"", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path does not exclude near-prefix file");
+            AssertEqual(true, content.Contains("\"path\": \"Assets/keep.js\"", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path still reports other files");
+            AssertEqual(true, content.Contains("\"path\": \"Assets/generated/map.js\"", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal exclude-path does not exclude subpath");
+        } finally {
+            DeleteDirectoryIfExistsWithRetries(temp);
+        }
+    }
+
+    private static void TestAnalyzeRunInternalFileSizeRuleExcludePathNormalizesRepeatedSeparators() {
+        var normalized = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "Assets///wizard.js");
+        AssertEqual("Assets/wizard.js", normalized, "analyze run internal exclude-path canonical path collapse");
+
+        var normalizedMixed = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "Assets\\\\wizard.js");
+        AssertEqual("Assets/wizard.js", normalizedMixed, "analyze run internal exclude-path canonical slash variants");
+
+        var normalizedRelative = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "Assets/wizard.js");
+        AssertEqual("Assets/wizard.js", normalizedRelative, "analyze run internal exclude-path accepts normal relative path");
+
+        var normalizedUnixRoot = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "/Assets/wizard.js");
+        AssertEqual(null, normalizedUnixRoot, "analyze run internal exclude-path rejects slash-rooted path");
+
+        var normalizedUncPath = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "//server/share/wizard.js");
+        AssertEqual(null, normalizedUncPath, "analyze run internal exclude-path rejects UNC-like rooted path");
+
+        var normalizedDriveRoot = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "C:/Assets/wizard.js");
+        AssertEqual(null, normalizedDriveRoot, "analyze run internal exclude-path rejects drive-rooted path");
+
+        var matched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets//wizard.js",
+            "Assets/wizard.js");
+        AssertEqual(true, matched, "analyze run internal exclude-path normalizes repeated separators");
+
+        var stillMatched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets\\\\wizard.js",
+            "Assets/wizard.js");
+        AssertEqual(true, stillMatched, "analyze run internal exclude-path normalizes slash variants");
+
+        var tagSideRepeatedSeparators = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets/wizard.js",
+            "Assets//wizard.js");
+        AssertEqual(true, tagSideRepeatedSeparators, "analyze run internal exclude-path normalizes repeated separators in configured tags");
+
+        var mixedSeparatorsBothSides = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets///wizard.js",
+            "Assets\\\\wizard.js");
+        AssertEqual(true, mixedSeparatorsBothSides, "analyze run internal exclude-path normalizes mixed separators on both sides");
+
+        var notMatched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets/wizard.backup.js",
+            "Assets/wizard.js");
+        AssertEqual(false, notMatched, "analyze run internal exclude-path remains exact after normalization");
+    }
+
     private static void TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-newlines-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

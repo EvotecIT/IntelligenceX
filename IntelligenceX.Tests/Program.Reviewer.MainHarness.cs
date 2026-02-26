@@ -76,6 +76,8 @@ internal static partial class Program {
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
         failed += Run("Analysis packs: all-security includes language security packs", TestAnalysisPacksAllSecurityIncludesPowerShell);
+        failed += Run("Analysis packs: all-security tiers resolve", TestAnalysisPacksAllSecurityTiersResolve);
+        failed += Run("Analysis packs: all-multilang tiers resolve", TestAnalysisPacksAllMultilangTiersResolve);
         failed += Run("Analysis packs: powershell-default resolves", TestAnalysisPacksPowerShellDefaultResolves);
         failed += Run("Analysis packs: external defaults resolve", TestAnalysisPacksExternalDefaultsResolve);
         failed += Run("Analysis packs: external language tiers resolve", TestAnalysisPacksExternalLanguageTiersResolve);
@@ -116,6 +118,8 @@ internal static partial class Program {
         failed += Run("Analyze list-rules markdown format", TestAnalyzeListRulesMarkdownFormat);
         failed += Run("Analyze list-rules json with pack filter", TestAnalyzeListRulesJsonWithPackFilter);
         failed += Run("Analyze list-rules tier counts", TestAnalyzeListRulesTierCounts);
+        failed += Run("Analyze list-rules security tier counts", TestAnalyzeListRulesSecurityTierCounts);
+        failed += Run("Analyze list-rules all-multilang tier counts", TestAnalyzeListRulesAllMultilangTierCounts);
         failed += Run("Analyze list-rules invalid format", TestAnalyzeListRulesInvalidFormat);
         failed += Run("Analyze list-rules help", TestAnalyzeListRulesHelp);
         failed += Run("Analyze list-rules json warnings to stderr", TestAnalyzeListRulesJsonWarningsToStderr);
@@ -405,6 +409,10 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderLineOverride);
         failed += Run("Analyze run internal custom excluded directory",
             TestAnalyzeRunInternalFileSizeRuleCustomExcludedDirectory);
+        failed += Run("Analyze run internal custom excluded path",
+            TestAnalyzeRunInternalFileSizeRuleCustomExcludedPath);
+        failed += Run("Analyze run internal excluded path normalizes repeated separators",
+            TestAnalyzeRunInternalFileSizeRuleExcludePathNormalizesRepeatedSeparators);
         failed += Run("Analyze run internal file size newline variants",
             TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings);
         failed += Run("Analyze run internal malformed tags warn and fallback",

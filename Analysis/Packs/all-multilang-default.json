@@ -1,0 +1,9 @@
+{
+  "id": "all-multilang-default",
+  "label": "All Multi-Language (Default)",
+  "description": "Compatibility alias for the multi-language baseline tier.",
+  "includes": [
+    "all-multilang-50"
+  ],
+  "rules": []
+}

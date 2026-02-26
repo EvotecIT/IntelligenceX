@@ -19,7 +19,8 @@
     "generated-suffix:.designer.cs",
     "generated-suffix:.generated.cs",
     "generated-suffix:.g.cs",
-    "generated-suffix:.g.i.cs"
+    "generated-suffix:.g.i.cs",
+    "exclude-path:IntelligenceX.Cli/Setup/Web/Assets/wizard.js"
   ],
   "docs": "Docs/reviewer/static-analysis.md"
 }
