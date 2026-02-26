@@ -13,6 +13,15 @@ internal static partial class Program {
             "analyze run strict missing dotnet reports override option guidance");
     }
 
+    private static void TestAnalyzeRunNonStrictMissingDotnetReportsUnavailableCommandGuidance() {
+        var (exit, output) = RunAnalyzeRunWithMissingDotnetAndCaptureOutput(strict: false);
+        AssertEqual(0, exit, "analyze run non-strict missing dotnet exits success");
+        AssertContainsText(output, "analysis command '__ix_missing_dotnet_command__' is unavailable",
+            "analyze run non-strict missing dotnet reports unavailable command guidance");
+        AssertContainsText(output, "--dotnet-command",
+            "analyze run non-strict missing dotnet reports override option guidance");
+    }
+
     private static void TestAnalyzeRunMissingDotnetWithFrameworkReportsUnavailableCommandGuidance() {
         var (exit, output) = RunAnalyzeRunWithMissingDotnetAndCaptureOutput(
             strict: true,
@@ -26,6 +35,24 @@ internal static partial class Program {
     }
 
     private static void TestAnalyzeRunMissingPowerShellReportsUnavailableCommandGuidance() {
+        var (exit, output) = RunAnalyzeRunWithMissingPowerShellAndCaptureOutput(strict: true);
+        AssertEqual(1, exit, "analyze run strict missing powershell exits failure");
+        AssertContainsText(output, "analysis command '__ix_missing_pwsh_command__' is unavailable",
+            "analyze run strict missing powershell reports unavailable command guidance");
+        AssertContainsText(output, "--pwsh-command",
+            "analyze run strict missing powershell reports override option guidance");
+    }
+
+    private static void TestAnalyzeRunNonStrictMissingPowerShellReportsUnavailableCommandGuidance() {
+        var (exit, output) = RunAnalyzeRunWithMissingPowerShellAndCaptureOutput(strict: false);
+        AssertEqual(0, exit, "analyze run non-strict missing powershell exits success");
+        AssertContainsText(output, "analysis command '__ix_missing_pwsh_command__' is unavailable",
+            "analyze run non-strict missing powershell reports unavailable command guidance");
+        AssertContainsText(output, "--pwsh-command",
+            "analyze run non-strict missing powershell reports override option guidance");
+    }
+
+    private static (int ExitCode, string Output) RunAnalyzeRunWithMissingPowerShellAndCaptureOutput(bool strict) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-missing-pwsh-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
@@ -40,11 +67,11 @@ internal static partial class Program {
     "enabled": true,
     "packs": ["powershell-default"],
     "run": {
-      "strict": true
+      "strict": STRICT_VALUE
     }
   }
 }
-""");
+""".Replace("STRICT_VALUE", strict ? "true" : "false", StringComparison.Ordinal));
 
             File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "powershell", "IXPS001.json"), """
 {
@@ -70,20 +97,17 @@ internal static partial class Program {
 
             File.WriteAllText(Path.Combine(temp, "scripts", "sample.ps1"), "Write-Output 'hello'");
 
-            var (exit, output) = RunAnalyzeAndCaptureOutput(new[] {
+            var args = new List<string> {
                 "run",
                 "--workspace", temp,
                 "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
                 "--out", Path.Combine(temp, "artifacts"),
-                "--pwsh-command", "__ix_missing_pwsh_command__",
-                "--strict"
-            });
-
-            AssertEqual(1, exit, "analyze run strict missing powershell exits failure");
-            AssertContainsText(output, "analysis command '__ix_missing_pwsh_command__' is unavailable",
-                "analyze run strict missing powershell reports unavailable command guidance");
-            AssertContainsText(output, "--pwsh-command",
-                "analyze run strict missing powershell reports override option guidance");
+                "--pwsh-command", "__ix_missing_pwsh_command__"
+            };
+            if (strict) {
+                args.Add("--strict");
+            }
+            return RunAnalyzeAndCaptureOutput(args.ToArray());
         } finally {
             DeleteDirectoryIfExistsWithRetries(temp);
         }

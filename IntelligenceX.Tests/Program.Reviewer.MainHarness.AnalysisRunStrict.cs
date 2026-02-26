@@ -27,10 +27,14 @@ internal static partial class Program {
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
         failed += Run("Analyze run missing dotnet reports unavailable command guidance",
             TestAnalyzeRunMissingDotnetReportsUnavailableCommandGuidance);
+        failed += Run("Analyze run non-strict missing dotnet reports unavailable command guidance",
+            TestAnalyzeRunNonStrictMissingDotnetReportsUnavailableCommandGuidance);
         failed += Run("Analyze run missing dotnet with framework reports unavailable command guidance",
             TestAnalyzeRunMissingDotnetWithFrameworkReportsUnavailableCommandGuidance);
         failed += Run("Analyze run missing powershell reports unavailable command guidance",
             TestAnalyzeRunMissingPowerShellReportsUnavailableCommandGuidance);
+        failed += Run("Analyze run non-strict missing powershell reports unavailable command guidance",
+            TestAnalyzeRunNonStrictMissingPowerShellReportsUnavailableCommandGuidance);
         failed += Run("Analyze run strict skips csharp runner without csharp sources",
             TestAnalyzeRunStrictSkipsCsharpRunnerWithoutCsharpSources);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);
