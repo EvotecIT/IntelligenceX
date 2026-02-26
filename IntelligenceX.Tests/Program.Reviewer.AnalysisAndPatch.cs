@@ -140,6 +140,18 @@ internal static partial class Program {
             "analyze run strict missing dotnet reports override option guidance");
     }
 
+    private static void TestAnalyzeRunMissingDotnetWithFrameworkReportsUnavailableCommandGuidance() {
+        var (exit, output) = RunAnalyzeRunWithMissingDotnetAndCaptureOutput(
+            strict: true,
+            strictBeforeFramework: true,
+            frameworkOverride: "net8.0");
+        AssertEqual(1, exit, "analyze run strict missing dotnet with framework exits failure");
+        AssertContainsText(output, "analysis command '__ix_missing_dotnet_command__' is unavailable",
+            "analyze run strict missing dotnet with framework reports unavailable command guidance");
+        AssertContainsText(output, "--dotnet-command",
+            "analyze run strict missing dotnet with framework reports override option guidance");
+    }
+
     private static void TestAnalyzeRunMissingPowerShellReportsUnavailableCommandGuidance() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-missing-pwsh-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -293,6 +305,13 @@ internal static partial class Program {
                 var src = Path.Combine(temp, "src");
                 Directory.CreateDirectory(src);
                 File.WriteAllText(Path.Combine(src, "Program.cs"), "public static class Program { public static void Main() { } }");
+                File.WriteAllText(Path.Combine(src, "Sample.csproj"), """
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+""");
             }
 
             var output = Path.Combine(temp, "artifacts");

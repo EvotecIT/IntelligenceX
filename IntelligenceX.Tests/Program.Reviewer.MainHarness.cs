@@ -450,6 +450,8 @@ internal static partial class Program {
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
         failed += Run("Analyze run missing dotnet reports unavailable command guidance",
             TestAnalyzeRunMissingDotnetReportsUnavailableCommandGuidance);
+        failed += Run("Analyze run missing dotnet with framework reports unavailable command guidance",
+            TestAnalyzeRunMissingDotnetWithFrameworkReportsUnavailableCommandGuidance);
         failed += Run("Analyze run missing powershell reports unavailable command guidance",
             TestAnalyzeRunMissingPowerShellReportsUnavailableCommandGuidance);
         failed += Run("Analyze run strict skips csharp runner without csharp sources",
