@@ -281,6 +281,22 @@ internal static partial class Program {
             "Assets\\\\wizard.js");
         AssertEqual("Assets/wizard.js", normalizedMixed, "analyze run internal exclude-path canonical slash variants");
 
+        var normalizedRelative = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "Assets/wizard.js");
+        AssertEqual("Assets/wizard.js", normalizedRelative, "analyze run internal exclude-path accepts normal relative path");
+
+        var normalizedUnixRoot = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "/Assets/wizard.js");
+        AssertEqual(null, normalizedUnixRoot, "analyze run internal exclude-path rejects slash-rooted path");
+
+        var normalizedUncPath = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "//server/share/wizard.js");
+        AssertEqual(null, normalizedUncPath, "analyze run internal exclude-path rejects UNC-like rooted path");
+
+        var normalizedDriveRoot = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.NormalizeExcludedPathTagValueForTests(
+            "C:/Assets/wizard.js");
+        AssertEqual(null, normalizedDriveRoot, "analyze run internal exclude-path rejects drive-rooted path");
+
         var matched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
             "Assets//wizard.js",
             "Assets/wizard.js");

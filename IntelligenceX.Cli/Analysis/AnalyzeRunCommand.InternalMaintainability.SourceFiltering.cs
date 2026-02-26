@@ -300,8 +300,12 @@ internal static partial class AnalyzeRunCommand {
         if (string.IsNullOrWhiteSpace(rawValue)) {
             return null;
         }
-        var value = CollapseRepeatedPathSeparators(rawValue.Trim().Replace('\\', '/')).Trim('/');
-        if (value.Length == 0 || Path.IsPathRooted(value)) {
+        var normalized = CollapseRepeatedPathSeparators(rawValue.Trim().Replace('\\', '/'));
+        if (normalized.Length == 0 || normalized.StartsWith("/", StringComparison.Ordinal)) {
+            return null;
+        }
+        var value = normalized.Trim('/');
+        if (value.Length == 0) {
             return null;
         }
 
