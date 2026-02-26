@@ -66,6 +66,16 @@ internal sealed partial class ChatServiceSession {
         var userIntent = ExtractIntentUserText(request.Text);
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
+        if (TryAugmentRoutedUserRequestFromWorkingMemoryCheckpoint(threadId, userRequest, routedUserRequest, out var checkpointAugmentedRequest)) {
+            routedUserRequest = checkpointAugmentedRequest;
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: "Recovered compact follow-up context from working-memory checkpoint.")
+                .ConfigureAwait(false);
+        }
         var requestedMaxCandidateTools = request.Options?.MaxCandidateTools;
         var maxCandidateToolDiagnostics = ResolveMaxCandidateToolsDiagnosticsForTurn(requestedMaxCandidateTools, client.TransportKind, selectedModel);
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
@@ -1266,6 +1276,7 @@ internal sealed partial class ChatServiceSession {
                 // with what the user actually sees (including contract fallback substitutions).
                 RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHints);
                 RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHints);
+                RememberWorkingMemoryCheckpoint(threadId, userIntent, routedUserRequest, toolCalls, toolOutputs, mutatingToolHints);
                 RememberPendingActions(threadId, text);
 
                 if (_options.Redact) {

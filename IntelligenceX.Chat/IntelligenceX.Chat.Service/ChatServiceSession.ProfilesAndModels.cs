@@ -626,6 +626,7 @@ internal sealed partial class ChatServiceSession {
         ClearStructuredNextActionSnapshots();
         ClearPlannerThreadContextSnapshots();
         ClearToolRoutingStatsSnapshots();
+        ClearWorkingMemoryCheckpoints();
     }
 
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(
