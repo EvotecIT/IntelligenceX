@@ -23,6 +23,7 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - `javascript-security-default`
   - `python-security-default`
   - `all-security-default`
+  - `all-security-50`, `all-security-100`, `all-security-500`
 - Language tiers:
   - `csharp-50`, `csharp-100`, `csharp-500`
   - `powershell-50`, `powershell-100`, `powershell-500`
@@ -34,6 +35,7 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - Note: `all-*` currently targets core tiers (`csharp-*`, `powershell-*`, `intelligencex-maintainability-*`); add `javascript-*` / `python-*` explicitly when desired.
 - Compatibility alias:
   - `all-default` (currently includes `all-50`)
+  - `all-security-default` (security baseline; `all-security-*` tiers build on this alias)
 
 ## Notes on 50/100/500 tiers
 

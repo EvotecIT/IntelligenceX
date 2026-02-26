@@ -136,6 +136,9 @@ Pack layout:
 - `Analysis/Packs/all-50.json`
 - `Analysis/Packs/all-100.json`
 - `Analysis/Packs/all-500.json`
+- `Analysis/Packs/all-security-50.json`
+- `Analysis/Packs/all-security-100.json`
+- `Analysis/Packs/all-security-500.json`
 - `Analysis/Packs/all-default.json`
 
 Example pack:
@@ -164,6 +167,7 @@ Recommended tier selection:
 - `all-50`: baseline/default onboarding tier.
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
+- `all-security-50|100|500`: security-focused cross-language tiers (`all-security-50` is the baseline alias tier).
 - For JavaScript/TypeScript and Python coverage, add `javascript-50|100|500` and/or `python-50|100|500` explicitly to `analysis.packs`.
 
 The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and

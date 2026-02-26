@@ -1,0 +1,9 @@
+{
+  "id": "all-security-50",
+  "label": "All Security Essentials (50)",
+  "description": "Cross-language security essentials tier. Includes all-security-default and expands as catalog coverage grows.",
+  "includes": [
+    "all-security-default"
+  ],
+  "rules": []
+}

@@ -53,6 +53,40 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPacksAllSecurityTiersResolve() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Packs.ContainsKey("all-security-50"), "pack all-security-50 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("all-security-100"), "pack all-security-100 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("all-security-500"), "pack all-security-500 exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("all-security-default"), "pack all-security-default exists");
+
+        var allSecurity50 = catalog.Packs["all-security-50"];
+        AssertEqual(true, allSecurity50.Includes.Any(id => id.Equals("all-security-default", StringComparison.OrdinalIgnoreCase)),
+            "all-security-50 includes all-security-default");
+
+        var securityDefaultPolicy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-security-default" } },
+            catalog);
+        var security50Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-security-50" } },
+            catalog);
+        var security100Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-security-100" } },
+            catalog);
+        var security500Policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(
+            new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "all-security-500" } },
+            catalog);
+
+        AssertEqual(true, security50Policy.Rules.Count >= securityDefaultPolicy.Rules.Count,
+            "all-security-50 resolves at least all-security-default coverage");
+        AssertEqual(true, security100Policy.Rules.Count >= security50Policy.Rules.Count,
+            "all-security-100 expands all-security-50");
+        AssertEqual(true, security500Policy.Rules.Count >= security100Policy.Rules.Count,
+            "all-security-500 expands all-security-100");
+    }
+
     private static void TestAnalysisPacksExternalDefaultsResolve() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);

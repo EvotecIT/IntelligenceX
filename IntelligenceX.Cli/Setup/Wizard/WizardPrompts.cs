@@ -282,6 +282,7 @@ internal static class WizardPrompts {
                 "all-100",
                 "all-500",
                 "none (disable static analysis)",
+                "all-security-50",
                 "all-security-default",
                 "powershell-50",
                 "javascript-50",

@@ -1,0 +1,9 @@
+{
+  "id": "all-security-500",
+  "label": "All Security Strict (500)",
+  "description": "Cross-language security strict tier. Builds on all-security-100 and expands as catalog coverage increases.",
+  "includes": [
+    "all-security-100"
+  ],
+  "rules": []
+}
