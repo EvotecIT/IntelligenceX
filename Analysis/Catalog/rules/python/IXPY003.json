@@ -1,0 +1,13 @@
+{
+  "id": "IXPY003",
+  "language": "python",
+  "tool": "Ruff",
+  "toolRuleId": "E722",
+  "type": "bug",
+  "title": "Disallow bare except blocks",
+  "description": "Bare except catches BaseException and can hide system-exit and keyboard interrupts.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["correctness", "python"],
+  "docs": "https://docs.astral.sh/ruff/rules/bare-except/"
+}

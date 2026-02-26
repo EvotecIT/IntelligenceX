@@ -136,6 +136,12 @@ public static class AnalysisCatalogLoader {
         if (normalized.Equals("Maintainability", StringComparison.OrdinalIgnoreCase)) {
             return "code-smell";
         }
+        if (normalized.Equals("Globalization", StringComparison.OrdinalIgnoreCase)) {
+            return "code-smell";
+        }
+        if (normalized.Equals("Interoperability", StringComparison.OrdinalIgnoreCase)) {
+            return "bug";
+        }
         if (normalized.Equals("Design", StringComparison.OrdinalIgnoreCase) ||
             normalized.Equals("Performance", StringComparison.OrdinalIgnoreCase) ||
             normalized.Equals("Style", StringComparison.OrdinalIgnoreCase) ||

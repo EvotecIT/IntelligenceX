@@ -16,8 +16,11 @@ Notes:
 - Re-running the sync should be safe and should avoid noisy diffs.
 - This is a repo-level backlog file (not “a TODO for a single PR”). Each PR gets its own collapsible block.
 - Existing PR blocks are matched by PR number and updated in-place.
-- Task items are merged by task text (case-insensitive) so manual checkbox state in `TODO.md` is preserved. If a bot rewords an item, it will appear as a new task.
-- The sync does not delete tasks that disappeared from a PR review; remove them manually if they become stale/noise.
+- Task items are merged by task text (case-insensitive) so manual checkbox state in `TODO.md` is preserved for still-active checklist entries.
+- Sync removes stale entries automatically:
+  - PR blocks are removed when no checklist items are present for that open PR.
+  - Checklist items are removed when they no longer appear in the latest bot output for that PR.
+  - If no open PR has bot checklist tasks, existing bot backlog PR blocks are cleared from the section.
 
 ## Optional: create issues for unchecked items
 

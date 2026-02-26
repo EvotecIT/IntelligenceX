@@ -1,0 +1,13 @@
+{
+  "id": "IXJS004",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-script-url",
+  "type": "vulnerability",
+  "title": "Disallow javascript: URLs",
+  "description": "javascript: URLs can execute script in link targets and are a common XSS vector.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": ["security", "xss", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-script-url"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "IXJS007",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-unused-vars",
+  "type": "code-smell",
+  "title": "Disallow unused variables",
+  "description": "Unused variables increase noise and hide stale code paths that are no longer exercised.",
+  "category": "Maintainability",
+  "defaultSeverity": "info",
+  "tags": ["maintainability", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-unused-vars"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "IXJS008",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "eqeqeq",
+  "type": "bug",
+  "title": "Require strict equality operators",
+  "description": "Loose equality coercion can cause subtle correctness issues; prefer === and !==.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["correctness", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/eqeqeq"
+}

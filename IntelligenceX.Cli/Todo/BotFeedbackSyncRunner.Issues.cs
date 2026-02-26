@@ -1,0 +1,191 @@
+using System;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using IntelligenceX.Cli.GitHub;
+
+namespace IntelligenceX.Cli.Todo;
+
+internal static partial class BotFeedbackSyncRunner {
+    private enum IssueLookupState {
+        NotFound,
+        Exists,
+        Unknown
+    }
+
+    private enum LabelLookupState {
+        Missing,
+        Exists,
+        Unknown
+    }
+
+    private static string BuildTaskId(int prNumber, string url, string text) {
+        using var sha = SHA256.Create();
+        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes($"{prNumber}|{url}|{text}"));
+        return BuildLowerHexPrefix(bytes, 6);
+    }
+
+    internal static string BuildTaskIdForTests(int prNumber, string url, string text) {
+        return BuildTaskId(prNumber, url, text);
+    }
+
+    private static string BuildLowerHexPrefix(byte[] bytes, int byteCount) {
+        if (bytes is null || bytes.Length == 0 || byteCount <= 0) {
+            return string.Empty;
+        }
+
+        var count = Math.Min(byteCount, bytes.Length);
+        return string.Create(count * 2, (bytes, count), static (chars, state) => {
+            const string hex = "0123456789abcdef";
+            for (var i = 0; i < state.count; i++) {
+                var value = state.bytes[i];
+                chars[i * 2] = hex[value >> 4];
+                chars[i * 2 + 1] = hex[value & 0x0F];
+            }
+        });
+    }
+
+    private static string BuildIssueTitle(int prNumber, string taskText) {
+        var prefix = $"Bot feedback (PR #{prNumber})";
+        var trimmedTask = taskText.Trim();
+        if (GetTextElementCount(trimmedTask) > 90) {
+            trimmedTask = TruncateToTextElements(trimmedTask, 90) + "…";
+        }
+        return $"{prefix}: {trimmedTask}";
+    }
+
+    internal static string BuildIssueTitleForTests(int prNumber, string taskText) {
+        return BuildIssueTitle(prNumber, taskText);
+    }
+
+    private static string BuildIssueBody(PrTasks pr, TaskItem task, string id) {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Bot checklist item from PR #{pr.Number}");
+        sb.AppendLine();
+        sb.AppendLine("Task:");
+        sb.AppendLine($"- [ ] {task.Text}");
+        sb.AppendLine();
+        sb.AppendLine($"Source: {task.Url}");
+        if (!string.IsNullOrWhiteSpace(pr.Url)) {
+            sb.AppendLine($"PR: {pr.Url}");
+        }
+        sb.AppendLine();
+        sb.AppendLine($"ix-bot-feedback-id:{id}");
+        return sb.ToString();
+    }
+
+    private static async Task<IssueLookupState> IssueExistsAsync(string repo, string id) {
+        var (code, stdout, _) = await GhCli.RunAsync(BuildIssueExistsArgs(repo, id)).ConfigureAwait(false);
+        return InterpretIssueExistsLookupResult(code, stdout);
+    }
+
+    internal static IReadOnlyList<string> BuildIssueExistsArgsForTests(string repo, string id) {
+        return BuildIssueExistsArgs(repo, id);
+    }
+
+    internal static string InterpretIssueExistsLookupResultForTests(int exitCode, string stdout) {
+        return InterpretIssueExistsLookupResult(exitCode, stdout).ToString();
+    }
+
+    private static string[] BuildIssueExistsArgs(string repo, string id) {
+        var query = $"ix-bot-feedback-id:{id}";
+        return new[] {
+            "issue", "list",
+            "--repo", repo,
+            "--state", "open",
+            "--search", query,
+            "--limit", "1",
+            "--json", "number"
+        };
+    }
+
+    private static IssueLookupState InterpretIssueExistsLookupResult(int exitCode, string stdout) {
+        if (exitCode != 0) {
+            return IssueLookupState.Unknown;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(stdout);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) {
+                return IssueLookupState.Unknown;
+            }
+            return doc.RootElement.GetArrayLength() > 0 ? IssueLookupState.Exists : IssueLookupState.NotFound;
+        } catch {
+            return IssueLookupState.Unknown;
+        }
+    }
+
+    private static int GetTextElementCount(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return 0;
+        }
+        return new StringInfo(value).LengthInTextElements;
+    }
+
+    private static string TruncateToTextElements(string value, int maxTextElements) {
+        if (string.IsNullOrEmpty(value) || maxTextElements <= 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        var enumerator = StringInfo.GetTextElementEnumerator(value);
+        var taken = 0;
+        while (taken < maxTextElements && enumerator.MoveNext()) {
+            sb.Append(enumerator.GetTextElement());
+            taken++;
+        }
+        return sb.ToString();
+    }
+
+    private static async Task EnsureLabelAsync(string repo, string label) {
+        if (string.IsNullOrWhiteSpace(label)) {
+            return;
+        }
+        var lookupState = await ResolveLabelLookupStateAsync(repo, label).ConfigureAwait(false);
+        if (lookupState == LabelLookupState.Exists) {
+            return;
+        }
+
+        // Best-effort label creation. If it fails due to permissions, issue creation will still run without label validation.
+        await GhCli.RunAsync(
+            "label", "create", label,
+            "--repo", repo,
+            "--color", "0e8a16",
+            "--description", "Checklist items imported from bot PR reviews/comments"
+        ).ConfigureAwait(false);
+    }
+
+    internal static string BuildLabelExistsApiPathForTests(string repo, string label) {
+        return BuildLabelExistsApiPath(repo, label);
+    }
+
+    internal static string InterpretLabelLookupStateForTests(int exitCode, string stdout, string stderr) {
+        return InterpretLabelLookupState(exitCode, stdout, stderr).ToString();
+    }
+
+    private static async Task<LabelLookupState> ResolveLabelLookupStateAsync(string repo, string label) {
+        var path = BuildLabelExistsApiPath(repo, label);
+        var (code, stdout, stderr) = await GhCli.RunAsync("api", path).ConfigureAwait(false);
+        return InterpretLabelLookupState(code, stdout, stderr);
+    }
+
+    private static string BuildLabelExistsApiPath(string repo, string label) {
+        return $"repos/{repo}/labels/{Uri.EscapeDataString(label)}";
+    }
+
+    private static LabelLookupState InterpretLabelLookupState(int exitCode, string stdout, string stderr) {
+        if (exitCode == 0) {
+            return LabelLookupState.Exists;
+        }
+
+        var text = ((stderr ?? string.Empty) + "\n" + (stdout ?? string.Empty)).ToLowerInvariant();
+        if (text.Contains("404", StringComparison.Ordinal) ||
+            text.Contains("not found", StringComparison.Ordinal)) {
+            return LabelLookupState.Missing;
+        }
+
+        return LabelLookupState.Unknown;
+    }
+}

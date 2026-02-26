@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -11,7 +10,7 @@ using IntelligenceX.Cli.GitHub;
 
 namespace IntelligenceX.Cli.Todo;
 
-internal static class BotFeedbackSyncRunner {
+internal static partial class BotFeedbackSyncRunner {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly Regex TaskLine = new(@"^\s*[-*]\s+\[(?<state>[ xX])\]\s+(?<text>.+?)\s*$",
         RegexOptions.Compiled);
@@ -66,17 +65,19 @@ internal static class BotFeedbackSyncRunner {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
-        if (prs.Count == 0) {
-            Console.WriteLine("No bot checklist items found in open PRs.");
-            return 0;
-        }
 
         var updated = UpdateTodo(options.TodoPath, prs, out var mergedPrs, out var changed);
         if (changed) {
             File.WriteAllText(options.TodoPath, updated, Utf8NoBom);
-            Console.WriteLine($"Updated {options.TodoPath} with {prs.Count} PR block(s).");
+            Console.WriteLine(
+                prs.Count == 0
+                    ? $"Updated {options.TodoPath}; removed stale bot-feedback PR block(s)."
+                    : $"Updated {options.TodoPath} with {prs.Count} PR block(s).");
         } else {
-            Console.WriteLine($"{options.TodoPath} already up to date.");
+            Console.WriteLine(
+                prs.Count == 0
+                    ? "No bot checklist items found in open PRs."
+                    : $"{options.TodoPath} already up to date.");
         }
 
         if (!options.CreateIssues) {
@@ -102,10 +103,15 @@ internal static class BotFeedbackSyncRunner {
                 break;
             }
             var id = BuildTaskId(pr.Number, task.Url, task.Text);
-            if (await IssueExistsAsync(options.Repo, id).ConfigureAwait(false)) {
+            var issueLookupState = await IssueExistsAsync(options.Repo, id).ConfigureAwait(false);
+            if (issueLookupState == IssueLookupState.Exists) {
                 continue;
             }
-            var title = BuildIssueTitle(pr.Number, pr.Title, task.Text);
+            if (issueLookupState == IssueLookupState.Unknown) {
+                Console.Error.WriteLine($"Skipping issue creation for PR #{pr.Number} task '{task.Text}' because existing-issue lookup failed.");
+                continue;
+            }
+            var title = BuildIssueTitle(pr.Number, task.Text);
             var body = BuildIssueBody(pr, task, id);
             var (code, stdout, stderr) = await GhCli.RunAsync(
                 "issue", "create",
@@ -500,6 +506,13 @@ query($owner: String!, $name: String!, $n: Int!) {
             text = text.Insert(insertAt, string.Join(string.Empty, inserts));
             changed = true;
         }
+
+        var keepPrNumbers = new HashSet<int>(prs.Select(pr => pr.Number));
+        text = RemovePrBlocksNotInSet(text, keepPrNumbers, out var pruned);
+        if (pruned) {
+            changed = true;
+        }
+
         return text;
     }
 
@@ -545,22 +558,8 @@ query($owner: String!, $name: String!, $n: Int!) {
 
     // Internal for tests.
     internal static PrTasks MergeTasks(ExistingPrBlock? existing, PrTasks current) {
-        if (existing is null || existing.Tasks.Count == 0) {
-            // De-dup current tasks by text; OR checked for repeated occurrences.
-            var dedup = new Dictionary<string, TaskItem>(StringComparer.Ordinal);
-            foreach (var t in current.Tasks) {
-                if (!dedup.TryGetValue(t.Text, out var seen)) {
-                    dedup[t.Text] = t;
-                } else {
-                    dedup[t.Text] = new TaskItem(seen.Checked || t.Checked, t.Text, string.IsNullOrWhiteSpace(seen.Url) ? t.Url : seen.Url);
-                }
-            }
-            return current with { Tasks = dedup.Values.ToList() };
-        }
-
-        // Build a map of existing TODO items by text so manual checking in TODO.md is preserved.
         var existingByText = new Dictionary<string, TaskItem>(StringComparer.OrdinalIgnoreCase);
-        foreach (var t in existing.Tasks) {
+        foreach (var t in existing?.Tasks ?? Array.Empty<TaskItem>()) {
             if (string.IsNullOrWhiteSpace(t.Text)) {
                 continue;
             }
@@ -572,33 +571,30 @@ query($owner: String!, $name: String!, $n: Int!) {
         }
 
         var mergedByText = new Dictionary<string, TaskItem>(StringComparer.OrdinalIgnoreCase);
-
-        // Start with existing tasks to preserve manual edits.
-        foreach (var kvp in existingByText) {
-            mergedByText[kvp.Key] = kvp.Value;
-        }
-
-        // Merge in current bot tasks: never downgrade checked -> unchecked.
         foreach (var t in current.Tasks) {
             if (string.IsNullOrWhiteSpace(t.Text)) {
                 continue;
             }
-            if (!mergedByText.TryGetValue(t.Text, out var prev)) {
-                mergedByText[t.Text] = t;
+            if (!mergedByText.TryGetValue(t.Text, out var merged)) {
+                var checkedState = t.Checked;
+                var url = t.Url;
+                if (existingByText.TryGetValue(t.Text, out var existingTask)) {
+                    checkedState = checkedState || existingTask.Checked;
+                    if (string.IsNullOrWhiteSpace(url)) {
+                        url = existingTask.Url;
+                    }
+                }
+                mergedByText[t.Text] = new TaskItem(checkedState, t.Text, url);
                 continue;
             }
-            var url = !string.IsNullOrWhiteSpace(prev.Url) ? prev.Url : t.Url;
-            mergedByText[t.Text] = new TaskItem(prev.Checked || t.Checked, t.Text, url);
+            var mergedChecked = merged.Checked || t.Checked;
+            var mergedUrl = !string.IsNullOrWhiteSpace(merged.Url) ? merged.Url : t.Url;
+            mergedByText[t.Text] = new TaskItem(mergedChecked, merged.Text, mergedUrl);
         }
 
-        // Stable ordering: keep existing order first, then new tasks.
+        // Stable ordering: follow latest bot task order; remove stale tasks no longer in current review output.
         var ordered = new List<TaskItem>();
         var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var t in existing.Tasks) {
-            if (mergedByText.TryGetValue(t.Text, out var merged) && seenKeys.Add(merged.Text)) {
-                ordered.Add(merged);
-            }
-        }
         foreach (var t in current.Tasks) {
             if (mergedByText.TryGetValue(t.Text, out var merged) && seenKeys.Add(merged.Text)) {
                 ordered.Add(merged);
@@ -649,86 +645,4 @@ query($owner: String!, $name: String!, $n: Int!) {
         return (parts[0], parts[1]);
     }
 
-    private static string BuildTaskId(int prNumber, string url, string text) {
-        using var sha = SHA256.Create();
-        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes($"{prNumber}|{url}|{text}"));
-        return Convert.ToHexString(bytes).Substring(0, 12).ToLowerInvariant();
-    }
-
-    private static string BuildIssueTitle(int prNumber, string prTitle, string taskText) {
-        var prefix = $"Bot feedback (PR #{prNumber})";
-        var trimmedTask = taskText.Trim();
-        if (trimmedTask.Length > 90) {
-            trimmedTask = trimmedTask.Substring(0, 90) + "…";
-        }
-        return string.IsNullOrWhiteSpace(prTitle)
-            ? $"{prefix}: {trimmedTask}"
-            : $"{prefix}: {trimmedTask}";
-    }
-
-    private static string BuildIssueBody(PrTasks pr, TaskItem task, string id) {
-        var sb = new StringBuilder();
-        sb.AppendLine($"Bot checklist item from PR #{pr.Number}");
-        sb.AppendLine();
-        sb.AppendLine("Task:");
-        sb.AppendLine($"- [ ] {task.Text}");
-        sb.AppendLine();
-        sb.AppendLine($"Source: {task.Url}");
-        if (!string.IsNullOrWhiteSpace(pr.Url)) {
-            sb.AppendLine($"PR: {pr.Url}");
-        }
-        sb.AppendLine();
-        sb.AppendLine($"ix-bot-feedback-id:{id}");
-        return sb.ToString();
-    }
-
-    private static async Task<bool> IssueExistsAsync(string repo, string id) {
-        var query = $"ix-bot-feedback-id:{id}";
-        var (code, stdout, _) = await GhCli.RunAsync(
-            "issue", "list",
-            "--repo", repo,
-            "--search", query,
-            "--limit", "1",
-            "--json", "number"
-        ).ConfigureAwait(false);
-        if (code != 0) {
-            return false;
-        }
-        try {
-            using var doc = JsonDocument.Parse(stdout);
-            return doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0;
-        } catch {
-            return false;
-        }
-    }
-
-    private static async Task EnsureLabelAsync(string repo, string label) {
-        if (string.IsNullOrWhiteSpace(label)) {
-            return;
-        }
-        var (code, stdout, _) = await GhCli.RunAsync("label", "list", "--repo", repo, "--limit", "200", "--json", "name")
-            .ConfigureAwait(false);
-        if (code == 0) {
-            try {
-                using var doc = JsonDocument.Parse(stdout);
-                if (doc.RootElement.ValueKind == JsonValueKind.Array) {
-                    foreach (var item in doc.RootElement.EnumerateArray()) {
-                        var name = item.TryGetProperty("name", out var n) ? n.GetString() : null;
-                        if (!string.IsNullOrWhiteSpace(name) && name.Equals(label, StringComparison.OrdinalIgnoreCase)) {
-                            return;
-                        }
-                    }
-                }
-            } catch {
-                // ignore
-            }
-        }
-        // Best-effort label creation. If it fails due to permissions, issue creation will still run without label validation.
-        await GhCli.RunAsync(
-            "label", "create", label,
-            "--repo", repo,
-            "--color", "0e8a16",
-            "--description", "Checklist items imported from bot PR reviews/comments"
-        ).ConfigureAwait(false);
-    }
 }

@@ -1,0 +1,13 @@
+{
+  "id": "IXJS001",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-eval",
+  "type": "vulnerability",
+  "title": "Disallow eval()",
+  "description": "Using eval() can execute untrusted input and create command injection risk.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": ["security", "injection", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-eval"
+}

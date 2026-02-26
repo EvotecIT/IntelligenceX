@@ -1,0 +1,13 @@
+{
+  "id": "IXJS002",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-implied-eval",
+  "type": "vulnerability",
+  "title": "Disallow implied eval()",
+  "description": "setTimeout/setInterval string expressions can execute untrusted input like eval().",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": ["security", "injection", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-implied-eval"
+}

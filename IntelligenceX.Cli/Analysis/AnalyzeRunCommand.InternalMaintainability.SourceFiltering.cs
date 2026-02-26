@@ -441,24 +441,7 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static string ResolveLanguageFromPath(string? path) {
-        var extension = Path.GetExtension(path ?? string.Empty);
-        if (string.IsNullOrWhiteSpace(extension)) {
-            return "unknown";
-        }
-        return extension.ToLowerInvariant() switch {
-            ".cs" => "csharp",
-            ".ps1" => "powershell",
-            ".psm1" => "powershell",
-            ".psd1" => "powershell",
-            ".js" => "javascript",
-            ".jsx" => "javascript",
-            ".mjs" => "javascript",
-            ".cjs" => "javascript",
-            ".ts" => "typescript",
-            ".tsx" => "typescript",
-            ".py" => "python",
-            _ => "unknown"
-        };
+        return SourceLanguageConventions.ResolveLanguageFromPath(path);
     }
 
     private static bool HasTagWithPrefix(IReadOnlyList<string>? tags, string prefix) {

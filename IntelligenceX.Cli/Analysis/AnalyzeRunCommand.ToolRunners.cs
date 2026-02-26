@@ -222,6 +222,15 @@ internal static partial class AnalyzeRunCommand {
 
     private static async Task<PowerShellRunnerResult> RunPowerShellAsync(AnalyzeRunOptions options, string workspace,
         string findingsPath, AnalysisSettings settings, string? generatedSettingsPath, List<string> warnings) {
+        if (!WorkspaceContainsAnySourceFile(workspace, out var skippedSourceEnumerations,
+                SourceLanguageConventions.PowerShellSourceExtensions)) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"PowerShell source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
+            warnings.Add("No PowerShell source files detected; skipping PSScriptAnalyzer analysis.");
+            return new PowerShellRunnerResult(true, string.Empty, Array.Empty<AnalysisFindingItem>());
+        }
+
         var settingsPath = ResolvePowerShellSettingsPath(settings, workspace, generatedSettingsPath, warnings);
         if (string.IsNullOrWhiteSpace(settingsPath)) {
             warnings.Add("PowerShell settings could not be resolved; writing empty findings.");
@@ -252,19 +261,32 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<RunnerResult> RunJavaScriptAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        List<string> warnings) {
+        IReadOnlyList<AnalysisPolicyRule> rules, WorkspaceSourceInventory? sourceInventory, List<string> warnings) {
+        var selectors = BuildJavaScriptRuleSelectors(rules);
+        if (selectors.Count == 0) {
+            warnings.Add("No JavaScript/TypeScript rule IDs selected; skipping ESLint analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+        if (selectors.All(static selector => selector.Severity.Equals("off", StringComparison.OrdinalIgnoreCase))) {
+            warnings.Add("All JavaScript/TypeScript rules are disabled by policy severity; skipping ESLint analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+        var skippedSourceEnumerations = 0;
+        var hasJavaScriptSources = sourceInventory is null
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations,
+                SourceLanguageConventions.JavaScriptSourceExtensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations,
+                SourceLanguageConventions.JavaScriptSourceExtensions);
+        if (!hasJavaScriptSources) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"JavaScript/TypeScript source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
+            warnings.Add("No JavaScript/TypeScript source files detected; skipping ESLint analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.eslint.sarif");
-        var args = new List<string> {
-            "--yes",
-            "eslint",
-            ".",
-            "--ext",
-            ".js,.jsx,.mjs,.cjs,.ts,.tsx",
-            "--format",
-            "sarif",
-            "--output-file",
-            sarifPath
-        };
+        var args = BuildJavaScriptRunnerArgs(sarifPath, selectors);
 
         var result = await RunProcessAsync(options.NpxCommand, args, workspace).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(result.StdOut)) {
@@ -277,7 +299,11 @@ internal static partial class AnalyzeRunCommand {
         // ESLint returns 1 when findings are present; this is not a runner failure.
         if (result.ExitCode != 0 && result.ExitCode != 1) {
             return new RunnerResult(false,
-                $"JavaScript/TypeScript analysis returned exit code {result.ExitCode}.");
+                BuildExternalRunnerFailureMessage(
+                    "JavaScript/TypeScript",
+                    options.NpxCommand,
+                    "--npx-command",
+                    result));
         }
 
         if (!File.Exists(sarifPath)) {
@@ -290,23 +316,47 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static async Task<RunnerResult> RunPythonAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
-        List<string> warnings) {
+        IReadOnlyList<AnalysisPolicyRule> rules, WorkspaceSourceInventory? sourceInventory, List<string> warnings) {
+        var selectedRuleIds = BuildPythonSelectedRuleIds(rules);
+        if (selectedRuleIds.Count == 0) {
+            warnings.Add("All Python rules are disabled by policy severity; skipping Ruff analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+        var skippedSourceEnumerations = 0;
+        var hasPythonSources = sourceInventory is null
+            ? WorkspaceContainsAnySourceFile(workspace, out skippedSourceEnumerations,
+                SourceLanguageConventions.PythonSourceExtensions)
+            : WorkspaceContainsAnySourceFile(sourceInventory, out skippedSourceEnumerations,
+                SourceLanguageConventions.PythonSourceExtensions);
+        if (!hasPythonSources) {
+            if (skippedSourceEnumerations > 0) {
+                warnings.Add($"Python source discovery skipped {skippedSourceEnumerations} path(s) due to access or IO errors.");
+            }
+            warnings.Add("No Python source files detected; skipping Ruff analysis.");
+            return new RunnerResult(true, string.Empty);
+        }
+
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.ruff.sarif");
-        var args = new List<string> {
-            "check",
-            ".",
-            "--output-format",
-            "sarif"
-        };
+        var args = BuildPythonRunnerArgs(sarifPath, selectedRuleIds, includeOutputFile: true);
 
         var result = await RunProcessAsync(options.RuffCommand, args, workspace).ConfigureAwait(false);
+        if (result.ExitCode != 0 && result.ExitCode != 1 && IsUnsupportedRuffOutputFileOption(result)) {
+            warnings.Add("Ruff does not support --output-file; falling back to stdout SARIF capture.");
+            args = BuildPythonRunnerArgs(sarifPath, selectedRuleIds, includeOutputFile: false);
+            result = await RunProcessAsync(options.RuffCommand, args, workspace).ConfigureAwait(false);
+        }
         if (!string.IsNullOrWhiteSpace(result.StdErr)) {
             Console.WriteLine(result.StdErr.Trim());
         }
 
         // Ruff returns 1 when findings are present; this is not a runner failure.
         if (result.ExitCode != 0 && result.ExitCode != 1) {
-            return new RunnerResult(false, $"Python analysis returned exit code {result.ExitCode}.");
+            return new RunnerResult(false,
+                BuildExternalRunnerFailureMessage(
+                    "Python",
+                    options.RuffCommand,
+                    "--ruff-command",
+                    result));
         }
 
         if (!string.IsNullOrWhiteSpace(result.StdOut)) {
@@ -325,13 +375,153 @@ internal static partial class AnalyzeRunCommand {
         return new RunnerResult(true, string.Empty);
     }
 
-    internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(
-        string tempScript,
-        string workspace,
-        string findingsPath,
-        string settingsPath,
-        bool strict) {
-        return BuildPowerShellRunnerArgs(tempScript, workspace, findingsPath, settingsPath, strict);
+    private static List<string> BuildJavaScriptRunnerArgs(string sarifPath, IReadOnlyList<ExternalToolRuleSelector> selectors) {
+        var args = new List<string> {
+            "--yes",
+            "eslint",
+            ".",
+            "--ext",
+            SourceLanguageConventions.JavaScriptEslintExtensionsArg,
+            "--format",
+            "sarif",
+            "--output-file",
+            sarifPath
+        };
+        foreach (var selector in selectors.OrderBy(static selector => selector.ToolRuleId, StringComparer.OrdinalIgnoreCase)) {
+            if (string.IsNullOrWhiteSpace(selector.ToolRuleId) || string.IsNullOrWhiteSpace(selector.Severity)) {
+                continue;
+            }
+            args.Add("--rule");
+            args.Add($"{selector.ToolRuleId}:{selector.Severity}");
+        }
+        return args;
+    }
+
+    private static IReadOnlyList<ExternalToolRuleSelector> BuildJavaScriptRuleSelectors(IReadOnlyList<AnalysisPolicyRule> rules) {
+        var selectors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var policyRule in rules ?? Array.Empty<AnalysisPolicyRule>()) {
+            if (!IsPolicyRuleCompatibleWithTool(policyRule, "eslint")) {
+                continue;
+            }
+
+            var toolRuleId = ResolveToolRuleId(policyRule.Rule);
+            if (string.IsNullOrWhiteSpace(toolRuleId)) {
+                continue;
+            }
+
+            var mappedSeverity = MapEslintSeverity(policyRule.Severity);
+            if (selectors.TryGetValue(toolRuleId, out var existing)) {
+                if (GetEslintSeverityRank(mappedSeverity) > GetEslintSeverityRank(existing)) {
+                    selectors[toolRuleId] = mappedSeverity;
+                }
+                continue;
+            }
+            selectors[toolRuleId] = mappedSeverity;
+        }
+
+        return selectors
+            .Select(static pair => new ExternalToolRuleSelector(pair.Key, pair.Value))
+            .ToList();
+    }
+
+    private static string MapEslintSeverity(string? severity) {
+        if (string.IsNullOrWhiteSpace(severity)) {
+            return "warn";
+        }
+        // ESLint has only off|warn|error. We intentionally map all non-blocking IX severities to warn.
+        return severity.Trim().ToLowerInvariant() switch {
+            "critical" => "error",
+            "error" => "error",
+            "high" => "error",
+            "warning" => "warn",
+            "warn" => "warn",
+            "medium" => "warn",
+            "info" => "warn",
+            "information" => "warn",
+            "low" => "warn",
+            "suggestion" => "warn",
+            "none" => "off",
+            _ => "warn"
+        };
+    }
+
+    private static int GetEslintSeverityRank(string? severity) {
+        if (string.IsNullOrWhiteSpace(severity)) {
+            return 1;
+        }
+        return severity.Trim().ToLowerInvariant() switch {
+            "off" => 0,
+            "warn" => 1,
+            "error" => 2,
+            _ => 1
+        };
+    }
+
+    private static List<string> BuildPythonRunnerArgs(string sarifPath, IReadOnlyList<string> selectedRuleIds, bool includeOutputFile) {
+        var args = new List<string> {
+            "check",
+            ".",
+            "--output-format",
+            "sarif"
+        };
+        if (includeOutputFile && !string.IsNullOrWhiteSpace(sarifPath)) {
+            args.Add("--output-file");
+            args.Add(sarifPath);
+        }
+        if (selectedRuleIds is { Count: > 0 }) {
+            args.Add("--select");
+            args.Add(string.Join(",", selectedRuleIds));
+        }
+        return args;
+    }
+
+    private static IReadOnlyList<string> BuildPythonSelectedRuleIds(IReadOnlyList<AnalysisPolicyRule> rules) {
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var policyRule in rules ?? Array.Empty<AnalysisPolicyRule>()) {
+            if (!IsPolicyRuleCompatibleWithTool(policyRule, "ruff")) {
+                continue;
+            }
+
+            if (!IsRuleSeverityEnabled(policyRule.Severity)) {
+                continue;
+            }
+
+            var toolRuleId = ResolveToolRuleId(policyRule.Rule);
+            if (string.IsNullOrWhiteSpace(toolRuleId)) {
+                continue;
+            }
+            selected.Add(toolRuleId);
+        }
+        return selected.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static bool IsRuleSeverityEnabled(string? severity) {
+        return !string.Equals(severity?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUnsupportedRuffOutputFileOption(CommandResult result) {
+        var text = ((result.StdErr ?? string.Empty) + "\n" + (result.StdOut ?? string.Empty)).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        return text.Contains("unexpected argument '--output-file'", StringComparison.Ordinal) ||
+               text.Contains("unexpected argument \"--output-file\"", StringComparison.Ordinal) ||
+               text.Contains("no such option: --output-file", StringComparison.Ordinal) ||
+               text.Contains("unrecognized arguments: --output-file", StringComparison.Ordinal);
+    }
+
+    private static bool IsPolicyRuleCompatibleWithTool(AnalysisPolicyRule? policyRule, string expectedTool) {
+        return policyRule?.Rule is not null &&
+               !string.IsNullOrWhiteSpace(expectedTool) &&
+               expectedTool.Equals(policyRule.Rule.Tool?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveToolRuleId(AnalysisRule rule) {
+        if (rule is null) {
+            return string.Empty;
+        }
+        return string.IsNullOrWhiteSpace(rule.ToolRuleId) ? rule.Id : rule.ToolRuleId;
     }
 
     private static List<string> BuildPowerShellRunnerArgs(

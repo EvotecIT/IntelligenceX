@@ -12,16 +12,25 @@ internal static partial class Program {
         AssertEqual(true, catalog.Packs.ContainsKey("all-security-default"), "pack all-security-default exists");
         AssertEqual(true, catalog.Packs.ContainsKey("powershell-security-default"), "pack powershell-security-default exists");
         AssertEqual(true, catalog.Packs.ContainsKey("csharp-security-default"), "pack csharp-security-default exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("javascript-security-default"), "pack javascript-security-default exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("python-security-default"), "pack python-security-default exists");
 
         var allSecurity = catalog.Packs["all-security-default"];
         AssertEqual(true, allSecurity.Includes.Any(id => id.Equals("powershell-security-default", StringComparison.OrdinalIgnoreCase)),
             "all-security-default includes powershell-security-default");
         AssertEqual(true, allSecurity.Includes.Any(id => id.Equals("csharp-security-default", StringComparison.OrdinalIgnoreCase)),
             "all-security-default includes csharp-security-default");
+        AssertEqual(true, allSecurity.Includes.Any(id => id.Equals("javascript-security-default", StringComparison.OrdinalIgnoreCase)),
+            "all-security-default includes javascript-security-default");
+        AssertEqual(true, allSecurity.Includes.Any(id => id.Equals("python-security-default", StringComparison.OrdinalIgnoreCase)),
+            "all-security-default includes python-security-default");
 
-        var psSecurity = catalog.Packs["powershell-security-default"];
-        foreach (var ruleId in psSecurity.Rules) {
-            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-security-default rule exists: {ruleId}");
+        foreach (var packId in allSecurity.Includes) {
+            AssertEqual(true, catalog.Packs.ContainsKey(packId), $"all-security-default include exists: {packId}");
+            var includedPack = catalog.Packs[packId];
+            foreach (var ruleId in includedPack.Rules) {
+                AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"{packId} rule exists: {ruleId}");
+            }
         }
     }
 
@@ -41,6 +50,36 @@ internal static partial class Program {
         }
         foreach (var ruleId in psDefault.Rules) {
             AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-default rule exists: {ruleId}");
+        }
+    }
+
+    private static void TestAnalysisPacksExternalDefaultsResolve() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Packs.ContainsKey("javascript-default"), "pack javascript-default exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("javascript-security-default"), "pack javascript-security-default exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("python-default"), "pack python-default exists");
+        AssertEqual(true, catalog.Packs.ContainsKey("python-security-default"), "pack python-security-default exists");
+
+        var jsDefault = catalog.Packs["javascript-default"];
+        AssertEqual(true, jsDefault.Includes.Any(id => id.Equals("javascript-security-default", StringComparison.OrdinalIgnoreCase)),
+            "javascript-default includes javascript-security-default");
+        foreach (var include in jsDefault.Includes) {
+            AssertEqual(true, catalog.Packs.ContainsKey(include), $"javascript-default include exists: {include}");
+        }
+        foreach (var ruleId in jsDefault.Rules) {
+            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"javascript-default rule exists: {ruleId}");
+        }
+
+        var pyDefault = catalog.Packs["python-default"];
+        AssertEqual(true, pyDefault.Includes.Any(id => id.Equals("python-security-default", StringComparison.OrdinalIgnoreCase)),
+            "python-default includes python-security-default");
+        foreach (var include in pyDefault.Includes) {
+            AssertEqual(true, catalog.Packs.ContainsKey(include), $"python-default include exists: {include}");
+        }
+        foreach (var ruleId in pyDefault.Rules) {
+            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"python-default rule exists: {ruleId}");
         }
     }
 

@@ -1,0 +1,12 @@
+{
+  "id": "javascript-security-default",
+  "label": "JavaScript Security (Default)",
+  "description": "JavaScript/TypeScript security-focused pack (ESLint core rules).",
+  "includes": [],
+  "rules": [
+    "IXJS001",
+    "IXJS002",
+    "IXJS003",
+    "IXJS004"
+  ]
+}
