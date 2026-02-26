@@ -108,4 +108,15 @@ internal static partial class AnalyzeRunCommand {
     internal static bool IsExpectedProcessExecutionExceptionForTests(Exception ex) {
         return IsExpectedProcessExecutionException(ex);
     }
+
+    internal static bool IsPathExcludedByConfiguredPathsForTests(string relativePath, params string[] excludedPaths) {
+        var normalizedExcludedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in excludedPaths ?? Array.Empty<string>()) {
+            var normalized = NormalizeExcludedPathTagValue(path);
+            if (!string.IsNullOrWhiteSpace(normalized)) {
+                normalizedExcludedPaths.Add(normalized);
+            }
+        }
+        return IsPathExcludedByConfiguredPaths(relativePath, normalizedExcludedPaths);
+    }
 }

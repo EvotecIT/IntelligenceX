@@ -273,6 +273,23 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalFileSizeRuleExcludePathNormalizesRepeatedSeparators() {
+        var matched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets//wizard.js",
+            "Assets/wizard.js");
+        AssertEqual(true, matched, "analyze run internal exclude-path normalizes repeated separators");
+
+        var stillMatched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets\\\\wizard.js",
+            "Assets/wizard.js");
+        AssertEqual(true, stillMatched, "analyze run internal exclude-path normalizes slash variants");
+
+        var notMatched = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsPathExcludedByConfiguredPathsForTests(
+            "Assets/wizard.backup.js",
+            "Assets/wizard.js");
+        AssertEqual(false, notMatched, "analyze run internal exclude-path remains exact after normalization");
+    }
+
     private static void TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-newlines-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

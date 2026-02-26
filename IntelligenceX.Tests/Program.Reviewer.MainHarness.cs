@@ -411,6 +411,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleCustomExcludedDirectory);
         failed += Run("Analyze run internal custom excluded path",
             TestAnalyzeRunInternalFileSizeRuleCustomExcludedPath);
+        failed += Run("Analyze run internal excluded path normalizes repeated separators",
+            TestAnalyzeRunInternalFileSizeRuleExcludePathNormalizesRepeatedSeparators);
         failed += Run("Analyze run internal file size newline variants",
             TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings);
         failed += Run("Analyze run internal malformed tags warn and fallback",
