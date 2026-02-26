@@ -181,7 +181,8 @@ internal static partial class AnalyzeRunCommand {
             if (!string.IsNullOrWhiteSpace(normalized)) {
                 paths.Add(normalized);
                 var trimmedRaw = rawValue.Trim();
-                if (!trimmedRaw.Equals(normalized, StringComparison.Ordinal)) {
+                var normalizedRawSeparators = trimmedRaw.Replace('\\', '/').Trim('/');
+                if (!normalizedRawSeparators.Equals(normalized, StringComparison.Ordinal)) {
                     normalizedTransforms.Add((trimmedRaw, normalized));
                 }
             } else {

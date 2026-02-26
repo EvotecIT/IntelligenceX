@@ -232,7 +232,7 @@ internal static partial class Program {
   "description": "Flags oversized source files.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["max-lines:700", "include-ext:js", "exclude-path:Assets\\WIZARD.js", "exclude-path:Assets/generated"]
+  "tags": ["max-lines:700", "include-ext:js", "exclude-path:Assets//WIZARD.js", "exclude-path:Assets/generated"]
 }
 """);
 
@@ -255,7 +255,7 @@ internal static partial class Program {
 
             AssertEqual(0, result.ExitCode, "analyze run internal exclude-path exit");
             AssertEqual(true, result.Output.Contains("normalized exclude-path values", StringComparison.OrdinalIgnoreCase) &&
-                result.Output.Contains("'Assets\\WIZARD.js' -> 'Assets/WIZARD.js'", StringComparison.OrdinalIgnoreCase),
+                result.Output.Contains("'Assets//WIZARD.js' -> 'Assets/WIZARD.js'", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal exclude-path warning reports normalized mappings");
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             AssertEqual(true, File.Exists(findingsPath), "analyze run internal exclude-path findings exists");

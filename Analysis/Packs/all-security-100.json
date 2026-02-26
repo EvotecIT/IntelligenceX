@@ -1,7 +1,7 @@
 {
   "id": "all-security-100",
   "label": "All Security Standard (100)",
-  "description": "Cross-language security standard tier. Builds on all-security-50 while preserving stable IDs.",
+  "description": "Cross-language security standard tier. Builds on all-security-50 while preserving stable IDs; may initially resolve to the same rule set until catalog coverage expands.",
   "includes": [
     "all-security-50"
   ],

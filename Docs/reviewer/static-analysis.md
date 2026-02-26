@@ -136,13 +136,13 @@ Pack layout:
 - `Analysis/Packs/all-50.json`
 - `Analysis/Packs/all-100.json`
 - `Analysis/Packs/all-500.json`
+- `Analysis/Packs/all-security-50.json`
+- `Analysis/Packs/all-security-100.json`
+- `Analysis/Packs/all-security-500.json`
 - `Analysis/Packs/all-multilang-50.json`
 - `Analysis/Packs/all-multilang-100.json`
 - `Analysis/Packs/all-multilang-500.json`
 - `Analysis/Packs/all-multilang-default.json`
-- `Analysis/Packs/all-security-50.json`
-- `Analysis/Packs/all-security-100.json`
-- `Analysis/Packs/all-security-500.json`
 - `Analysis/Packs/all-default.json`
 
 Example pack:
@@ -169,11 +169,11 @@ Packs can include other packs to build tiers without duplicating rule lists:
 
 Recommended tier selection:
 - `all-50`: baseline/default onboarding tier.
+- `all-security-50|100|500`: security-focused cross-language tiers (`all-security-default` remains a compatibility alias; prefer `all-security-50` for onboarding). Tier IDs are stable and higher tiers may initially resolve to the same rule set until catalog coverage expands.
 - `all-multilang-50`: baseline for mixed-language repositories that include JavaScript/TypeScript and Python in addition to C#/PowerShell.
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
 - `all-multilang-100|500`: broader/strict mixed-language tiers.
-- `all-security-50|100|500`: security-focused cross-language tiers (`all-security-default` remains a compatibility alias; prefer `all-security-50` for onboarding).
 - For language-specific rollouts, you can still add `javascript-50|100|500` and/or `python-50|100|500` explicitly to `analysis.packs`.
 
 The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and

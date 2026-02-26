@@ -58,6 +58,7 @@ Regenerate C# catalog + C# tiers with:
 `./scripts/update_analysis_catalog.py --repo-root .`
 
 For JavaScript and Python, current `*-50|100|500` tiers are intentionally stable aliases that expand as catalog coverage grows.
+For cross-language security tiers, `all-security-100` and `all-security-500` may also temporarily resolve to the same rule set as lower tiers until additional catalog coverage is promoted.
 
 ## JavaScript/Python catalog
 
