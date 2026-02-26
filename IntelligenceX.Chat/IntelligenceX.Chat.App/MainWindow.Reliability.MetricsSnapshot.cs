@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
@@ -68,6 +69,7 @@ public sealed partial class MainWindow : Window {
             TotalTokens: totalTokens,
             CachedPromptTokens: cachedPromptTokens,
             ReasoningTokens: reasoningTokens,
+            AutonomyCounters: Array.Empty<TurnCounterMetricDto>(),
             Model: string.IsNullOrWhiteSpace(model) ? null : model.Trim(),
             RequestedModel: string.IsNullOrWhiteSpace(requestedModel) ? null : requestedModel.Trim(),
             Transport: string.IsNullOrWhiteSpace(transport) ? null : transport.Trim(),

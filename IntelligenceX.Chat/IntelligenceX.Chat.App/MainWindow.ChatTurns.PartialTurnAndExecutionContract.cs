@@ -212,6 +212,10 @@ public sealed partial class MainWindow : Window {
         return true;
     }
 
+    internal static bool ShouldRenderFinalAssistantAsSeparateBubbleAfterInterim() {
+        return false;
+    }
+
     internal static bool ShouldAppendFinalAssistantAfterStreamedDraft(
         bool activeTurnReceivedDelta,
         bool activeTurnInterimResultSeen,

@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.Client;
 
@@ -246,4 +247,3 @@ public sealed partial class MainWindow {
         }
     }
 }
-

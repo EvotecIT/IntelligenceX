@@ -10,7 +10,7 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 /// <summary>
 /// OfficeIMO-backed document writers used by chat export flows.
 /// </summary>
-public static class OfficeImoArtifactWriter {
+public static partial class OfficeImoArtifactWriter {
     private const string SignalFlowLabelAlternation = "Why it matters|Action|Next action|Fix action";
     private static readonly string[] SignalFlowLabels = ["Why it matters", "Action", "Next action", "Fix action"];
     private static readonly char[] DefinitionListRiskyInlineMarkers = ['*', '_', '`', '['];
