@@ -127,8 +127,14 @@ internal static partial class AnalyzeRunCommand {
             return new CommandResult(process.ExitCode, stdOut, stdErr);
         } catch (Win32Exception ex) {
             return new CommandResult(127, string.Empty, ex.Message);
-        } catch (Exception ex) {
+        } catch (Exception ex) when (IsExpectedProcessExecutionException(ex)) {
             return new CommandResult(1, string.Empty, ex.Message);
         }
+    }
+
+    private static bool IsExpectedProcessExecutionException(Exception ex) {
+        return ex is InvalidOperationException or
+            IOException or
+            UnauthorizedAccessException;
     }
 }

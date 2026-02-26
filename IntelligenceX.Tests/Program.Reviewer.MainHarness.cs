@@ -399,6 +399,10 @@ internal static partial class Program {
             TestAnalyzeRunPythonArgsIncludeOutputFileWhenConfigured);
         failed += Run("Analyze run Python output-file fallback detection",
             TestAnalyzeRunPythonOutputFileFallbackDetection);
+        failed += Run("Analyze run process exception classification includes expected exceptions",
+            TestAnalyzeRunProcessExceptionClassificationIncludesExpectedExceptions);
+        failed += Run("Analyze run process exception classification excludes unexpected exceptions",
+            TestAnalyzeRunProcessExceptionClassificationExcludesUnexpectedExceptions);
         failed += Run("Analyze run external runner missing command message classification",
             TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
         failed += Run("Analyze run external runner recognizes tool-specific unavailable markers",

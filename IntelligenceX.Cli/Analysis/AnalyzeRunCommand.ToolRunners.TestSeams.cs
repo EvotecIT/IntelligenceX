@@ -104,4 +104,8 @@ internal static partial class AnalyzeRunCommand {
         bool strict) {
         return BuildPowerShellRunnerArgs(tempScript, workspace, findingsPath, settingsPath, strict);
     }
+
+    internal static bool IsExpectedProcessExecutionExceptionForTests(Exception ex) {
+        return IsExpectedProcessExecutionException(ex);
+    }
 }

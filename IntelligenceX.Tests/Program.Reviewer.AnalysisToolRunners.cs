@@ -140,6 +140,28 @@ internal static partial class Program {
         AssertEqual(false, otherError, "python output-file fallback detection ignores unrelated errors");
     }
 
+    private static void TestAnalyzeRunProcessExceptionClassificationIncludesExpectedExceptions() {
+        AssertEqual(true,
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsExpectedProcessExecutionExceptionForTests(
+                new InvalidOperationException("test")),
+            "process exception classifier includes invalid operation");
+        AssertEqual(true,
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsExpectedProcessExecutionExceptionForTests(
+                new IOException("test")),
+            "process exception classifier includes io exception");
+        AssertEqual(true,
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsExpectedProcessExecutionExceptionForTests(
+                new UnauthorizedAccessException("test")),
+            "process exception classifier includes unauthorized access");
+    }
+
+    private static void TestAnalyzeRunProcessExceptionClassificationExcludesUnexpectedExceptions() {
+        AssertEqual(false,
+            IntelligenceX.Cli.Analysis.AnalyzeRunCommand.IsExpectedProcessExecutionExceptionForTests(
+                new NullReferenceException("test")),
+            "process exception classifier excludes unexpected exceptions");
+    }
+
     private static void TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand() {
         var unavailableMessage = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildExternalRunnerFailureMessageForTests(
             languageLabel: "Python",
