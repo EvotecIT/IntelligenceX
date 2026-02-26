@@ -1,7 +1,7 @@
 {
   "id": "all-500",
   "label": "All Strict (500)",
-  "description": "Cross-language strict pack. Includes each language strict tier.",
+  "description": "Cross-language strict pack. Includes core strict tiers (C#, PowerShell, internal maintainability).",
   "includes": [
     "csharp-500",
     "powershell-500",

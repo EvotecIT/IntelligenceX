@@ -1779,7 +1779,7 @@ function updateAnalysisControls() {
   const hint = $('analysisHint');
   if (hint) {
     hint.textContent = applicable
-      ? 'Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50. Browse packs: intelligencex analyze list-rules --workspace <repo-root> --format markdown. Gate semantics/docs: Docs/reviewer/static-analysis.md'
+      ? 'Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50, javascript-50, python-50. Browse packs: intelligencex analyze list-rules --workspace <repo-root> --format markdown. Gate semantics/docs: Docs/reviewer/static-analysis.md'
       : 'Static analysis settings apply only when generating config from presets (no Config JSON/path override).';
   }
 }

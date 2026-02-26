@@ -27,19 +27,21 @@ internal static partial class AnalyzeRunCommand {
     private const string IncludeExtensionTagPrefix = "include-ext:";
     private const int DefaultDuplicationWindowLines = 8;
     private const double DefaultMaxDuplicationPercent = 25.0;
-    private static readonly string[] DefaultIncludedSourceExtensions = {
-        ".cs",
-        ".ps1",
-        ".psm1",
-        ".psd1",
-        ".js",
-        ".jsx",
-        ".mjs",
-        ".cjs",
-        ".ts",
-        ".tsx",
-        ".py"
-    };
+    private static readonly string[] DefaultIncludedSourceExtensions = BuildDefaultIncludedSourceExtensions();
+
+    private static string[] BuildDefaultIncludedSourceExtensions() {
+        var extensions = new List<string>(
+            SourceLanguageConventions.CSharpSourceExtensions.Length +
+            SourceLanguageConventions.PowerShellSourceExtensions.Length +
+            SourceLanguageConventions.JavaScriptSourceExtensions.Length +
+            SourceLanguageConventions.PythonSourceExtensions.Length);
+        extensions.AddRange(SourceLanguageConventions.CSharpSourceExtensions);
+        extensions.AddRange(SourceLanguageConventions.PowerShellSourceExtensions);
+        extensions.AddRange(SourceLanguageConventions.JavaScriptSourceExtensions);
+        extensions.AddRange(SourceLanguageConventions.PythonSourceExtensions);
+        return extensions.ToArray();
+    }
+
     private static readonly string[] MaxLinesSupportedTagPrefixes = {
         MaxLinesTagPrefix,
         IncludeExtensionTagPrefix,

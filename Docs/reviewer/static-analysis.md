@@ -113,13 +113,23 @@ Packs are curated lists of rule IDs plus optional severity overrides.
 Pack layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
+- `Analysis/Packs/javascript-default.json`
+- `Analysis/Packs/python-default.json`
 - `Analysis/Packs/intelligencex-maintainability-default.json`
+- `Analysis/Packs/javascript-security-default.json`
+- `Analysis/Packs/python-security-default.json`
 - `Analysis/Packs/csharp-50.json`
 - `Analysis/Packs/csharp-100.json`
 - `Analysis/Packs/csharp-500.json`
 - `Analysis/Packs/powershell-50.json`
 - `Analysis/Packs/powershell-100.json`
 - `Analysis/Packs/powershell-500.json`
+- `Analysis/Packs/javascript-50.json`
+- `Analysis/Packs/javascript-100.json`
+- `Analysis/Packs/javascript-500.json`
+- `Analysis/Packs/python-50.json`
+- `Analysis/Packs/python-100.json`
+- `Analysis/Packs/python-500.json`
 - `Analysis/Packs/intelligencex-maintainability-50.json`
 - `Analysis/Packs/intelligencex-maintainability-100.json`
 - `Analysis/Packs/intelligencex-maintainability-500.json`
@@ -154,16 +164,17 @@ Recommended tier selection:
 - `all-50`: baseline/default onboarding tier.
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
+- For JavaScript/TypeScript and Python coverage, add `javascript-50|100|500` and/or `python-50|100|500` explicitly to `analysis.packs`.
 
-The built-in catalog now contains hundreds of C# rules plus PowerShell/internal rules, and tier IDs remain stable
-for policy compatibility as coverage evolves.
+The built-in catalog now contains hundreds of C# rules plus PowerShell, JavaScript, Python, and internal rules, and
+tier IDs remain stable for policy compatibility as coverage evolves.
 
 ## Temporary Analyzer Config Generation
-During analysis runs, configs are generated to a temporary directory and cleaned up at the end. Examples:
+During analysis runs, configs are generated or synthesized at runtime and cleaned up at the end. Examples:
 - C#: `.editorconfig` with `dotnet_diagnostic.<rule>.severity` entries.
 - PowerShell: `PSScriptAnalyzerSettings.psd1` with per-rule severities.
-- JS/TS: `.eslintrc` or flat config with enabled rule IDs.
-- Python: `ruff.toml` or `pyproject.toml` with rule selection.
+- JS/TS: ESLint CLI `--rule <toolRuleId>:<severity>` arguments are built from selected catalog rules.
+- Python: Ruff `--select <toolRuleId,...>` is built from selected catalog rules.
 
 `intelligencex analyze run` executes analysis for configured packs and emits findings artifacts for the reviewer.
 Set `analysis.run.strict=true` in `.intelligencex/reviewer.json` to fail the command on tool runner errors.
@@ -178,7 +189,9 @@ Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
 - JS/TS: ESLint via `npx` when JavaScript/TypeScript rules are selected (SARIF output).
+  - ESLint severity mapping is normalized to ESLint's 3-level model: `critical|error|high -> error`, `warning|warn|medium|info|information|low|suggestion -> warn`, `none -> off`.
 - Python: Ruff via `ruff` when Python rules are selected (SARIF output).
+- External runners are source-aware: if a language has no matching source files in the workspace, that runner is skipped with a warning.
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
   - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
@@ -236,8 +249,7 @@ When `analysis.gate.ruleIds` is configured, the policy also includes:
 - `Gate rule IDs`: explicit gate-targeted rule IDs.
 - `Gate rule outcomes`: per-rule finding counts for those gate-targeted rule IDs.
 
-For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
-`analysis.results.inputs`.
+Teams can still produce SARIF with their preferred external tools and include those files in `analysis.results.inputs`.
 
 ## Migration Note
 If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
@@ -248,6 +260,8 @@ If you enable `intelligencex-maintainability-default` in an existing repository,
 `IXTOOL004` defaults to `warning` severity and is intended to keep option-bounded max-results normalization on the canonical helper path.
 `IXTOOL005` defaults to `warning` severity and is intended to keep EventLog `max_results` helper semantics explicit and stable.
 To gate specific contract rules without widening gate types, set `analysis.gate.ruleIds` (for example `["IXTOOL001","IXTOOL002","IXTOOL003","IXTOOL004","IXTOOL005"]`).
+Explicit gate rule IDs are still evaluated even when `analysis.gate.includeOutsidePackRules` is `false`.
+When gate output reports `Outside-pack findings: ... (included/ignored)`, those included/ignored counts are scoped to findings that remain in gate scope after type/ruleId filtering.
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 

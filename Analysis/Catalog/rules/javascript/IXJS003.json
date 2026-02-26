@@ -1,0 +1,13 @@
+{
+  "id": "IXJS003",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-new-func",
+  "type": "vulnerability",
+  "title": "Disallow Function constructor",
+  "description": "Function constructor dynamically compiles code and can introduce injection vulnerabilities.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": ["security", "injection", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-new-func"
+}

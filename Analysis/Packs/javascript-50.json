@@ -1,0 +1,10 @@
+{
+  "id": "javascript-50",
+  "label": "JavaScript Essentials (50)",
+  "description": "JavaScript/TypeScript essentials tier. Includes javascript-default and expands as the catalog grows.",
+  "includes": [
+    "javascript-default"
+  ],
+  "rules": []
+}
+

@@ -1,0 +1,13 @@
+{
+  "id": "IXPY006",
+  "language": "python",
+  "tool": "Ruff",
+  "toolRuleId": "S101",
+  "type": "security-hotspot",
+  "title": "Use of assert detected",
+  "description": "Assertions may be stripped with optimization flags and should be reviewed in security-sensitive logic.",
+  "category": "Security",
+  "defaultSeverity": "info",
+  "tags": ["security-hotspot", "python"],
+  "docs": "https://docs.astral.sh/ruff/rules/assert/"
+}

@@ -30,6 +30,8 @@ internal static partial class Program {
         failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
         failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);
         failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
+        failed += Run("Auto-resolve missing inline bots-only skips hydrated non-bot thread",
+            TestAutoResolveMissingInlineBotsOnlySkipsHydratedNonBotThread);
         failed += Run("Auto-resolve missing inline shifted line window", TestAutoResolveMissingInlineSkipsShiftedLineWithinWindow);
         failed += Run("Auto-resolve missing inline signature match", TestAutoResolveMissingInlineSkipsSignatureMatchForRewordedBody);
         failed += Run("Resolve thread payload parser rejects invalid JSON", TestResolveThreadPayloadParserRejectsInvalidJson);
@@ -73,8 +75,10 @@ internal static partial class Program {
             TestAnalysisCatalogLoaderTrimPreservesFilesystemRoot);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
-        failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);
+        failed += Run("Analysis packs: all-security includes language security packs", TestAnalysisPacksAllSecurityIncludesPowerShell);
         failed += Run("Analysis packs: powershell-default resolves", TestAnalysisPacksPowerShellDefaultResolves);
+        failed += Run("Analysis packs: external defaults resolve", TestAnalysisPacksExternalDefaultsResolve);
+        failed += Run("Analysis packs: external language tiers resolve", TestAnalysisPacksExternalLanguageTiersResolve);
         failed += Run("Analysis packs: powershell-50 resolves to 50 rules", TestAnalysisPacksPowerShell50ResolvesTo50Rules);
         failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
         failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
@@ -86,6 +90,7 @@ internal static partial class Program {
         failed += Run("OpenAI client C# XML docs are complete", TestOpenAiClientCSharpXmlDocsAreComplete);
         failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
         failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
+        failed += Run("Analysis catalog built-in rules have type classification", TestAnalysisCatalogBuiltInRulesHaveTypes);
         failed += Run("Analysis hotspots render and state snippet", TestAnalysisHotspotsRenderAndStateSnippet);
         failed += Run("Hotspots redact absolute state path", TestAnalysisHotspotsRedactsAbsoluteStatePath);
         failed += Run("Hotspots reviewer state path is workspace-bound", TestAnalysisHotspotsReviewerStatePathIsWorkspaceBound);
@@ -122,6 +127,10 @@ internal static partial class Program {
         failed += Run("Analyze gate minSeverity filters", TestAnalyzeGateMinSeverityFilters);
         failed += Run("Analyze gate ruleIds-only filter narrows scope",
             TestAnalyzeGateRuleIdsFilterCanNarrowScopeWithoutTypes);
+        failed += Run("Analyze gate ruleIds include outside-pack findings",
+            TestAnalyzeGateRuleIdsFilterIncludesOutsidePackFindings);
+        failed += Run("Analyze gate outside-pack summary counts explicit ruleIds with type filter",
+            TestAnalyzeGateOutsidePackSummaryCountsRuleIdIncludesWithTypeFilter);
         failed += Run("Analyze gate ruleIds filter adds to type filtering",
             TestAnalyzeGateRuleIdsFilterAddsToTypeFiltering);
         failed += Run("Analyze gate filters normalize whitespace and case",
@@ -158,6 +167,8 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationScopeChangedFilesIgnoresUnchangedFiles);
         failed += Run("Analyze gate duplication changed-files scope blocks changed file",
             TestAnalyzeGateDuplicationScopeChangedFilesBlocksChangedFiles);
+        failed += Run("Analyze gate duplication changed-files scope without changed-files is unavailable",
+            TestAnalyzeGateDuplicationScopeChangedFilesWithoutChangedFilesIsUnavailable);
         failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate duplication overall delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
@@ -203,6 +214,10 @@ internal static partial class Program {
             TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease);
         failed += Run("Analysis config reader reads duplication maxFilePercentIncrease",
             TestAnalysisConfigReaderReadsDuplicationMaxFilePercentIncrease);
+        failed += Run("Analysis config reader marks duplication scope explicit when provided",
+            TestAnalysisConfigReaderMarksDuplicationScopeAsExplicitWhenProvided);
+        failed += Run("Analysis config reader keeps duplication scope implicit when omitted",
+            TestAnalysisConfigReaderKeepsDuplicationScopeImplicitWhenOmitted);
         failed += Run("Analyze gate changed-files accepts absolute in-workspace path",
             TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace);
         failed += Run("Analyze gate changed-files rejects absolute outside-workspace path",
@@ -262,8 +277,30 @@ internal static partial class Program {
         failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
         failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
-        failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndOrder);
+        failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndDropsStaleTasks);
         failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
+        failed += Run("Todo bot feedback update section removes closed PR blocks", TestBotFeedbackUpdateSectionRemovesClosedPrBlocks);
+        failed += Run("Todo bot feedback update section pruning preserves neighboring details blocks",
+            TestBotFeedbackUpdateSectionPruningDoesNotDeleteNeighboringDetailsBlocks);
+        failed += Run("Todo bot feedback update section clears when no open PR tasks", TestBotFeedbackUpdateSectionWithNoOpenPrsClearsBlocks);
+        failed += Run("Todo bot feedback update section keeps non-PR details blocks when no open PR tasks",
+            TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNonPrDetailsBlocks);
+        failed += Run("Todo bot feedback update section keeps nested non-PR details blocks when no open PR tasks",
+            TestBotFeedbackUpdateSectionWithNoOpenPrsPreservesNestedNonPrDetailsBlocks);
+        failed += Run("Todo bot feedback parse tasks uses merge-blocker sections", TestBotFeedbackParseTasksUsesMergeBlockerSections);
+        failed += Run("Todo bot feedback parse tasks legacy fallback", TestBotFeedbackParseTasksLegacyFallbackWithoutHeaders);
+        failed += Run("Todo bot feedback task id uses lowercase fixed-length hex prefix",
+            TestBotFeedbackTaskIdUsesLowercaseFixedLengthHexPrefix);
+        failed += Run("Todo bot feedback issue exists query scopes open issues",
+            TestBotFeedbackIssueExistsQueryScopesOpenIssues);
+        failed += Run("Todo bot feedback issue lookup interpretation handles unknown state",
+            TestBotFeedbackIssueLookupInterpretationHandlesUnknownState);
+        failed += Run("Todo bot feedback issue title truncates by text elements",
+            TestBotFeedbackIssueTitleTruncatesByTextElements);
+        failed += Run("Todo bot feedback label lookup api path escapes label name",
+            TestBotFeedbackLabelLookupApiPathEscapesLabelName);
+        failed += Run("Todo bot feedback label lookup interpretation handles known states",
+            TestBotFeedbackLabelLookupInterpretationHandlesKnownStates);
         failed += Run("Todo triage index tokenization", TestTriageIndexTokenizeNormalizesAndDropsStopWords);
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
@@ -356,6 +393,40 @@ internal static partial class Program {
         failed += Run("Todo project bootstrap rejects conflicting control issue options", TestProjectBootstrapRejectsConflictingControlIssueOptions);
         failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
+        failed += Run("Analyze run JavaScript args include configured rules", TestAnalyzeRunJavaScriptArgsIncludeConfiguredRules);
+        failed += Run("Analyze run Python args include select rule IDs", TestAnalyzeRunPythonArgsIncludeSelectRuleIds);
+        failed += Run("Analyze run Python args include output file when configured",
+            TestAnalyzeRunPythonArgsIncludeOutputFileWhenConfigured);
+        failed += Run("Analyze run Python output-file fallback detection",
+            TestAnalyzeRunPythonOutputFileFallbackDetection);
+        failed += Run("Analyze run external runner missing command message classification",
+            TestAnalyzeRunExternalFailureMessageClassifiesMissingCommand);
+        failed += Run("Analyze run external runner recognizes tool-specific unavailable markers",
+            TestAnalyzeRunExternalFailureMessageRecognizesToolSpecificUnavailableMarkers);
+        failed += Run("Analyze run external runner supports configured unavailable markers",
+            TestAnalyzeRunExternalFailureMessageSupportsConfiguredUnavailableMarkers);
+        failed += Run("Analyze run external runner configured markers refresh on environment change",
+            TestAnalyzeRunExternalFailureMessageConfiguredMarkersRefreshOnEnvironmentChange);
+        failed += Run("Analyze run workspace source detection skips excluded directories",
+            TestAnalyzeRunWorkspaceSourceDetectionSkipsExcludedDirectories);
+        failed += Run("Analyze run workspace source detection diagnostics default to zero skipped",
+            TestAnalyzeRunWorkspaceSourceDetectionDiagnosticsDefaultToZeroSkipped);
+        failed += Run("Analyze run workspace source detection finds powershell module files",
+            TestAnalyzeRunWorkspaceSourceDetectionFindsPowerShellModuleFiles);
+        failed += Run("Analyze run workspace source inventory captures multiple extensions",
+            TestAnalyzeRunWorkspaceSourceInventoryCapturesMultipleExtensions);
+        failed += Run("Analyze run workspace source inventory keeps tracked extensions only",
+            TestAnalyzeRunWorkspaceSourceInventoryKeepsTrackedExtensionsOnly);
+        failed += Run("Analyze run shared source inventory falls back when scan limit reached",
+            TestAnalyzeRunSharedSourceInventoryFallsBackWhenScanLimitReached);
+        failed += Run("Analyze run shared source inventory fallback detects powershell sources",
+            TestAnalyzeRunSharedSourceInventoryFallbackDetectsPowerShellSources);
+        failed += Run("Analyze run shared source inventory fallback detects csharp sources",
+            TestAnalyzeRunSharedSourceInventoryFallbackDetectsCsharpSources);
+        failed += Run("Analyze run javascript selectors ignore mismatched tools",
+            TestAnalyzeRunJavaScriptSelectorsIgnoreMismatchedTools);
+        failed += Run("Analyze run python selected rule ids ignore mismatched tools",
+            TestAnalyzeRunPythonSelectedRuleIdsIgnoreMismatchedTools);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
         failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);
@@ -377,6 +448,8 @@ internal static partial class Program {
             TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
+        failed += Run("Analyze run strict skips csharp runner without csharp sources",
+            TestAnalyzeRunStrictSkipsCsharpRunnerWithoutCsharpSources);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",
@@ -470,28 +543,7 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaintainabilityWarnsOnUnmappedInternalRule);
         failed += Run("Analyze run internal maintainability warns on ambiguous internal rule match",
             TestAnalyzeRunInternalMaintainabilityWarnsOnAmbiguousInternalRuleMatch);
-        failed += Run("Analyze run internal duplication threshold",
-            TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
-        failed += Run("Analyze run internal duplication malformed tags warn",
-            TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
-        failed += Run("Analyze run internal duplication tokenized javascript",
-            TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
-        failed += Run("Analyze run internal duplication ignores javascript imports",
-            TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports);
-        failed += Run("Analyze run internal duplication ignores PowerShell using statements",
-            TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements);
-        failed += Run("Analyze run internal duplication tokenized python",
-            TestAnalyzeRunInternalDuplicationTokenizesPython);
-        failed += Run("Analyze run internal duplication ignores python imports",
-            TestAnalyzeRunInternalDuplicationIgnoresPythonImports);
-        failed += Run("Analyze run internal duplication python triple-quote comment handling",
-            TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling);
-        failed += Run("Analyze run include-ext is per-rule",
-            TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
-        failed += Run("Analyze run duplication language threshold",
-            TestAnalyzeRunInternalDuplicationLanguageSpecificThreshold);
-        failed += Run("Analyze run duplication language-only tag activates rule",
-            TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
+        failed += RunAnalysisMaintainabilityDuplicationTests();
         failed += RunAnalysisPolicyReportingTests();
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
@@ -534,6 +586,8 @@ internal static partial class Program {
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("Reviewer untrusted PR skips auth store write from env", TestReviewerUntrustedPrSkipsAuthStoreWriteFromEnv);
+        failed += Run("Reviewer GitHub token resolver uses GH_TOKEN fallback", TestReviewerGitHubTokenResolverUsesGhTokenFallback);
+        failed += Run("Reviewer GitHub token resolver prefers GITHUB_TOKEN", TestReviewerGitHubTokenResolverPrefersGithubTokenOverGhToken);
         failed += Run("GitHub context cache", TestGitHubContextCache);
         failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
         failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
@@ -570,6 +624,7 @@ internal static partial class Program {
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
         failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
+        failed += Run("Resolve-threads default bot logins include managed bots", TestResolveThreadsDefaultBotLoginsIncludeManagedBots);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
         failed += Run("OpenAI account order round-robin many accounts", TestOpenAiAccountOrderRoundRobinSupportsManyAccounts);

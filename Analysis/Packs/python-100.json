@@ -1,0 +1,10 @@
+{
+  "id": "python-100",
+  "label": "Python Standard (100)",
+  "description": "Python standard tier. Builds on python-50 while preserving stable IDs.",
+  "includes": [
+    "python-50"
+  ],
+  "rules": []
+}
+

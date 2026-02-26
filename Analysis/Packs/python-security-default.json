@@ -1,0 +1,11 @@
+{
+  "id": "python-security-default",
+  "label": "Python Security (Default)",
+  "description": "Python security-focused pack (Ruff Bandit-compatible rules).",
+  "includes": [],
+  "rules": [
+    "IXPY004",
+    "IXPY005",
+    "IXPY006"
+  ]
+}

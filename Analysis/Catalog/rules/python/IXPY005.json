@@ -1,0 +1,13 @@
+{
+  "id": "IXPY005",
+  "language": "python",
+  "tool": "Ruff",
+  "toolRuleId": "S607",
+  "type": "vulnerability",
+  "title": "Subprocess call with partial executable path",
+  "description": "Relative or partial executable paths can be hijacked through PATH manipulation.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": ["security", "path-hijack", "python"],
+  "docs": "https://docs.astral.sh/ruff/rules/start-process-with-partial-path/"
+}

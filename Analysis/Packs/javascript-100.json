@@ -1,0 +1,10 @@
+{
+  "id": "javascript-100",
+  "label": "JavaScript Standard (100)",
+  "description": "JavaScript/TypeScript standard tier. Builds on javascript-50 while preserving stable IDs.",
+  "includes": [
+    "javascript-50"
+  ],
+  "rules": []
+}
+

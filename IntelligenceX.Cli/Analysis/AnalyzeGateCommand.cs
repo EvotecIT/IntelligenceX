@@ -140,6 +140,7 @@ internal static partial class AnalyzeGateCommand {
         var enabledRuleIds = new HashSet<string>(policy.Rules.Keys, StringComparer.OrdinalIgnoreCase);
         var violations = new List<AnalysisFinding>();
         var outsidePack = 0;
+        var outsidePackIncludedByRuleId = 0;
 
         foreach (var finding in allFindings) {
             if (AnalysisSeverity.Rank(finding.Severity) < minRank) {
@@ -150,16 +151,26 @@ internal static partial class AnalyzeGateCommand {
                 continue;
             }
             var isEnabled = enabledRuleIds.Contains(ruleId);
+            var isExplicitRuleIdMatch = gateRuleIds.Contains(ruleId);
+            var countAsOutsidePackRuleIdInclude = false;
             if (!isEnabled) {
+                // Track outside-pack findings before type/rule filters so summary reporting reflects
+                // total outside-pack exposure, not only the subset that survives gate filters.
                 outsidePack++;
-                if (!analysisSettings.Gate.IncludeOutsidePackRules) {
+                if (!analysisSettings.Gate.IncludeOutsidePackRules && !isExplicitRuleIdMatch) {
                     continue;
+                }
+                if (!analysisSettings.Gate.IncludeOutsidePackRules && isExplicitRuleIdMatch) {
+                    countAsOutsidePackRuleIdInclude = true;
                 }
             }
 
             var type = ResolveRuleType(ruleId, catalog, fallback: "unknown");
             if (!gateFilters.Matches(ruleId, type)) {
                 continue;
+            }
+            if (countAsOutsidePackRuleIdInclude) {
+                outsidePackIncludedByRuleId++;
             }
             violations.Add(finding);
         }
@@ -170,6 +181,7 @@ internal static partial class AnalyzeGateCommand {
             catalog,
             allFindings,
             enabledRuleIds,
+            gateRuleIds,
             minRank,
             gateFilters);
         var hasHotspotFailures = hotspotFailures.Count > 0;
@@ -452,7 +464,7 @@ internal static partial class AnalyzeGateCommand {
                 }
             }
             if (outsidePack > 0) {
-                Console.WriteLine($"- Outside-pack findings: {outsidePack} (ignored)");
+                Console.WriteLine($"- Outside-pack findings: {FormatOutsidePackSummary(analysisSettings, outsidePack, outsidePackIncludedByRuleId)}");
             }
             return Task.FromResult(ExitSuccess);
         }
@@ -486,7 +498,7 @@ internal static partial class AnalyzeGateCommand {
             }
         }
         if (outsidePack > 0) {
-            Console.WriteLine($"- Outside-pack findings: {outsidePack}" + (analysisSettings.Gate.IncludeOutsidePackRules ? " (included)" : " (ignored)"));
+            Console.WriteLine($"- Outside-pack findings: {FormatOutsidePackSummary(analysisSettings, outsidePack, outsidePackIncludedByRuleId)}");
         }
 
         PrintViolationSummary(violations, catalog, maxRules: 10, maxItems: 20);

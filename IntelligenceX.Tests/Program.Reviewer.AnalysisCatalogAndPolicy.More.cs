@@ -373,5 +373,19 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisCatalogBuiltInRulesHaveTypes() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        var missingTypes = catalog.Rules.Values
+            .Where(rule => rule is not null)
+            .Where(rule => string.IsNullOrWhiteSpace(rule.Type))
+            .Select(rule => rule.Id)
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        AssertEqual(0, missingTypes.Length, $"catalog rules without type: {string.Join(", ", missingTypes)}");
+    }
+
     #endif
 }

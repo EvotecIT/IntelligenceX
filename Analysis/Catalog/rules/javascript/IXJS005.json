@@ -1,0 +1,13 @@
+{
+  "id": "IXJS005",
+  "language": "javascript",
+  "tool": "ESLint",
+  "toolRuleId": "no-unsafe-finally",
+  "type": "bug",
+  "title": "Disallow unsafe control flow in finally blocks",
+  "description": "Return/throw/break/continue in finally can suppress exceptions and hide control-flow bugs.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["correctness", "javascript"],
+  "docs": "https://eslint.org/docs/latest/rules/no-unsafe-finally"
+}

@@ -106,10 +106,27 @@ internal static partial class AnalyzeRunCommand {
         var javascriptRules = policy.SelectByLanguage("javascript", "js", "typescript", "ts");
         var pythonRules = policy.SelectByLanguage("python", "py");
         var internalRules = policy.SelectByLanguage("internal");
+        var externalLanguageRuleSelected = csharpRules.Count > 0 ||
+                                           powershellRules.Count > 0 ||
+                                           javascriptRules.Count > 0 ||
+                                           pythonRules.Count > 0;
+        WorkspaceSourceInventory? sourceInventory = null;
+        if (externalLanguageRuleSelected) {
+            sourceInventory = DiscoverWorkspaceSourceInventory(workspace);
+        }
         var runWarnings = new List<string>();
         var runFailures = new List<string>();
         var findings = new List<AnalysisFindingItem>();
         var duplicationRuleMetrics = new List<DuplicationRuleMetrics>();
+        if (sourceInventory is not null && sourceInventory.SkippedEnumerations > 0) {
+            runWarnings.Add(
+                $"Shared source inventory skipped {sourceInventory.SkippedEnumerations} path(s) due to access or IO errors.");
+        }
+        if (sourceInventory is not null && sourceInventory.ScanLimitReached) {
+            runWarnings.Add(
+                $"Shared source inventory reached the configured file limit ({sourceInventory.MaxScannedFiles}); " +
+                "direct per-language fallback detection will run when needed.");
+        }
 
         var tempConfigDirectory = Path.Combine(Path.GetTempPath(), "ix-analysis-run-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempConfigDirectory);
@@ -125,7 +142,7 @@ internal static partial class AnalyzeRunCommand {
                 Path.GetFileName(file).Equals("PSScriptAnalyzerSettings.psd1", StringComparison.OrdinalIgnoreCase));
 
             if (csharpRules.Count > 0) {
-                var csharpResult = await RunCsharpAsync(options, workspace, outputDirectory, settings,
+                var csharpResult = await RunCsharpAsync(options, workspace, outputDirectory, sourceInventory, settings,
                     generatedEditorConfig, runWarnings).ConfigureAwait(false);
                 if (!csharpResult.Success) {
                     runFailures.Add(csharpResult.Message);
@@ -133,7 +150,7 @@ internal static partial class AnalyzeRunCommand {
             }
 
             if (powershellRules.Count > 0) {
-                var psResult = await RunPowerShellAsync(options, workspace, findingsPath, settings,
+                var psResult = await RunPowerShellAsync(options, workspace, findingsPath, sourceInventory, settings,
                     generatedPowerShellSettings, runWarnings).ConfigureAwait(false);
                 if (!psResult.Success) {
                     runFailures.Add(psResult.Message);
@@ -142,13 +159,15 @@ internal static partial class AnalyzeRunCommand {
                 }
             }
             if (javascriptRules.Count > 0) {
-                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, runWarnings).ConfigureAwait(false);
+                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, javascriptRules, sourceInventory, runWarnings)
+                    .ConfigureAwait(false);
                 if (!jsResult.Success) {
                     runFailures.Add(jsResult.Message);
                 }
             }
             if (pythonRules.Count > 0) {
-                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, runWarnings).ConfigureAwait(false);
+                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, pythonRules, sourceInventory, runWarnings)
+                    .ConfigureAwait(false);
                 if (!pyResult.Success) {
                     runFailures.Add(pyResult.Message);
                 }
@@ -388,7 +407,7 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
             if (!PackIdRegex.IsMatch(value)) {
-                error = $"Invalid pack id '{value}'. Use comma-separated ids like all-50, all-security-default, powershell-50.";
+                error = $"Invalid pack id '{value}'. Use comma-separated ids like all-50, all-security-default, powershell-50, javascript-50, python-50.";
                 return false;
             }
             if (!packs.Contains(value, StringComparer.OrdinalIgnoreCase)) {
@@ -498,6 +517,7 @@ internal static partial class AnalyzeRunCommand {
 
     private sealed record RunnerResult(bool Success, string Message);
     private sealed record PowerShellRunnerResult(bool Success, string Message, IReadOnlyList<AnalysisFindingItem> Findings);
+    private sealed record ExternalToolRuleSelector(string ToolRuleId, string Severity);
     private sealed record CommandResult(int ExitCode, string StdOut, string StdErr);
 
     private sealed class FindingsEnvelope {

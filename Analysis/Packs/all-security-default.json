@@ -2,6 +2,11 @@
   "id": "all-security-default",
   "label": "All Security (Default)",
   "description": "Cross-language security-focused pack.",
-  "includes": ["csharp-security-default", "powershell-security-default"],
+  "includes": [
+    "csharp-security-default",
+    "powershell-security-default",
+    "javascript-security-default",
+    "python-security-default"
+  ],
   "rules": []
 }

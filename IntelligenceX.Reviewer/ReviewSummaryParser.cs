@@ -132,9 +132,14 @@ internal static class ReviewSummaryParser {
                 continue;
             }
 
-            if (trimmed.StartsWith("- [ ]", StringComparison.Ordinal)
-                || trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)
-                || trimmed.StartsWith("-", StringComparison.Ordinal)) {
+            if (trimmed.StartsWith("- [ ]", StringComparison.Ordinal)) {
+                return !IsNoneLine(trimmed) && !IsPlaceholderLine(trimmed);
+            }
+            if (trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)) {
+                // Checked checklist items represent already-addressed work and should not block merge.
+                continue;
+            }
+            if (trimmed.StartsWith("-", StringComparison.Ordinal)) {
                 return !IsNoneLine(trimmed) && !IsPlaceholderLine(trimmed);
             }
         }
