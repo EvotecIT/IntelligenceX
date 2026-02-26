@@ -38,6 +38,14 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellExtension);
         failed += Run("Analyze run duplication language threshold yml",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlExtension);
+        failed += Run("Analyze run duplication language threshold bash alias",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesShellAliasAndBashExtension);
+        failed += Run("Analyze run duplication language threshold yaml alias",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThresholdUsesYamlAliasAndYamlExtension);
+        failed += Run("Analyze run duplication ignores shell shebang and comments",
+            TestAnalyzeRunInternalDuplicationIgnoresShellShebangAndCommentOnlyLines);
+        failed += Run("Analyze run duplication ignores yaml comments",
+            TestAnalyzeRunInternalDuplicationIgnoresYamlCommentOnlyLines);
         failed += Run("Analyze run duplication language-only tag activates rule",
             TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
         failed += Run("Duplication metrics store modern extension language inference",

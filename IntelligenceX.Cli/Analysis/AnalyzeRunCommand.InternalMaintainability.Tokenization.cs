@@ -30,6 +30,12 @@ internal static partial class AnalyzeRunCommand {
             if (SourceLanguageConventions.IsPythonExtension(extension)) {
                 return BuildSignificantLinesFromPythonTokens(content);
             }
+            if (SourceLanguageConventions.IsShellExtension(extension)) {
+                return BuildSignificantLinesFromShellTokens(content);
+            }
+            if (SourceLanguageConventions.IsYamlExtension(extension)) {
+                return BuildSignificantLinesFromYamlTokens(content);
+            }
             return BuildSignificantLinesFallback(content);
         } catch (Exception ex) {
             warnings.Add($"Failed to read file for duplication check ({sourceFile.RelativePath}): {ex.Message}");

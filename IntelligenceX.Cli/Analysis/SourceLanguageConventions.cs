@@ -67,6 +67,14 @@ internal static class SourceLanguageConventions {
         return HasExtension(PythonSourceExtensions, extension);
     }
 
+    internal static bool IsShellExtension(string? extension) {
+        return HasExtension(ShellSourceExtensions, extension);
+    }
+
+    internal static bool IsYamlExtension(string? extension) {
+        return HasExtension(YamlSourceExtensions, extension);
+    }
+
     internal static bool IsTrackedSourceExtension(string? extension) {
         var normalized = NormalizeExtension(extension);
         return !string.IsNullOrWhiteSpace(normalized) && TrackedSourceExtensions.Contains(normalized);
