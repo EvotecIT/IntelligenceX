@@ -70,6 +70,29 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesCategoryFamilyAndTagsHints() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "domaindetective_domain_summary",
+                "Domain posture summary.",
+                ToolSchema.Object(("domain", ToolSchema.String("Domain name."))).Required("domain").NoAdditionalProperties(),
+                category: "dns",
+                tags: new[] { "intent:public_domain", "pack:domaindetective" })
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "summarize contoso.com",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("category: dns", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("family: public_domain", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tags: intent:public_domain", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:domaindetective", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesSchemaTokens() {
         var definition = new ToolDefinition(
             "eventlog_top_events",

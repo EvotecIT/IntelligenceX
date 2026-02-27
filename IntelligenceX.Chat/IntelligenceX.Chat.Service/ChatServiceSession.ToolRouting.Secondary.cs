@@ -323,9 +323,21 @@ internal sealed partial class ChatServiceSession {
             }
             var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var hasTableViewProjection);
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
+            var category = ResolvePlannerCategory(definition);
+            var domainIntentFamily = ResolveDomainIntentFamily(definition);
+            var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             sb.Append(i + 1).Append(". ").Append(name);
             if (description.Length > 0) {
                 sb.Append(" :: ").Append(description);
+            }
+            if (category.Length > 0) {
+                sb.Append(" | category: ").Append(category);
+            }
+            if (domainIntentFamily.Length > 0) {
+                sb.Append(" | family: ").Append(domainIntentFamily);
+            }
+            if (plannerTags.Length > 0) {
+                sb.Append(" | tags: ").Append(string.Join(", ", plannerTags));
             }
             if (requiredArguments.Length > 0) {
                 sb.Append(" | required: ").Append(string.Join(", ", requiredArguments));
@@ -340,6 +352,34 @@ internal sealed partial class ChatServiceSession {
         }
 
         return sb.ToString();
+    }
+
+    private static string ResolvePlannerCategory(ToolDefinition definition) {
+        var category = (definition.Category ?? string.Empty).Trim();
+        if (category.Length > 0) {
+            return category;
+        }
+
+        return (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
+    }
+
+    private static string[] ExtractPlannerTags(ToolDefinition definition, int maxCount) {
+        if (definition.Tags.Count == 0 || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var tags = new List<string>(Math.Min(maxCount, definition.Tags.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definition.Tags.Count && tags.Count < maxCount; i++) {
+            var tag = (definition.Tags[i] ?? string.Empty).Trim();
+            if (tag.Length == 0 || !seen.Add(tag)) {
+                continue;
+            }
+
+            tags.Add(tag);
+        }
+
+        return tags.Count == 0 ? Array.Empty<string>() : tags.ToArray();
     }
 
     private static IReadOnlyList<ToolDefinition> ParsePlannerSelectedDefinitions(string plannerText, IReadOnlyList<ToolDefinition> definitions, int limit) {
