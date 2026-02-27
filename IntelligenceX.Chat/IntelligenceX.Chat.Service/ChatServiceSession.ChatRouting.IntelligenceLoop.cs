@@ -21,6 +21,8 @@ internal sealed partial class ChatServiceSession {
     private const string ResponseReviewMarker = "ix:response-review:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
+    // Keep parsing bounded while supporting larger structured request envelopes.
+    private const int MaxProactiveModeScanChars = 4096;
     private sealed record ChatTurnRunResult(
         ChatResultMessage Result,
         TurnUsage? Usage,
@@ -154,18 +156,68 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var tailLength = Math.Min(280, text.Length - markerIndex);
-        if (tailLength <= 0) {
+        var scanLength = Math.Min(MaxProactiveModeScanChars, text.Length - markerIndex);
+        if (scanLength <= 0) {
             return false;
         }
 
-        var tail = text.Substring(markerIndex, tailLength);
-        if (tail.IndexOf("enabled: true", StringComparison.OrdinalIgnoreCase) >= 0) {
+        var scan = text.AsSpan(markerIndex, scanLength);
+        return TryReadStructuredProactiveModeEnabledValue(scan, out enabled);
+    }
+
+    private static bool TryReadStructuredProactiveModeEnabledValue(ReadOnlySpan<char> text, out bool enabled) {
+        enabled = false;
+        while (!text.IsEmpty) {
+            var lineBreakIndex = text.IndexOfAny('\r', '\n');
+            ReadOnlySpan<char> line;
+            if (lineBreakIndex < 0) {
+                line = text;
+                text = ReadOnlySpan<char>.Empty;
+            } else {
+                line = text.Slice(0, lineBreakIndex);
+                var nextIndex = lineBreakIndex + 1;
+                if (nextIndex < text.Length && text[lineBreakIndex] == '\r' && text[nextIndex] == '\n') {
+                    nextIndex++;
+                }
+
+                text = text.Slice(nextIndex);
+            }
+
+            if (TryParseStructuredProactiveModeEnabledLine(line, out enabled)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryParseStructuredProactiveModeEnabledLine(ReadOnlySpan<char> line, out bool enabled) {
+        enabled = false;
+        var trimmed = line.Trim();
+        if (trimmed.IsEmpty || !trimmed.StartsWith("enabled", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var afterKey = trimmed.Slice("enabled".Length).TrimStart();
+        if (afterKey.IsEmpty || (afterKey[0] != ':' && afterKey[0] != '\uFF1A')) {
+            return false;
+        }
+
+        var value = afterKey.Slice(1).Trim();
+        if (value.Length >= 2) {
+            var startsWithDoubleQuote = value[0] == '"';
+            var startsWithSingleQuote = value[0] == '\'';
+            if ((startsWithDoubleQuote && value[^1] == '"') || (startsWithSingleQuote && value[^1] == '\'')) {
+                value = value.Slice(1, value.Length - 2).Trim();
+            }
+        }
+
+        if (value.Equals("true", StringComparison.OrdinalIgnoreCase)) {
             enabled = true;
             return true;
         }
 
-        if (tail.IndexOf("enabled: false", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (value.Equals("false", StringComparison.OrdinalIgnoreCase)) {
             enabled = false;
             return true;
         }
