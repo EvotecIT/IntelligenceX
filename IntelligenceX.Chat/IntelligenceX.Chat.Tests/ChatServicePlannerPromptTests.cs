@@ -131,6 +131,33 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildToolRoutingSearchText_IncludesPackTokensFromNameFallback() {
+        var definition = new ToolDefinition(
+            "ad_get_users",
+            "Read directory users.",
+            ToolSchema.Object(("domain", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties());
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("pack active_directory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack adplayground", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesComputerXAliasForSystemPack() {
+        var definition = new ToolDefinition(
+            "inventory_collect",
+            "Collect host inventory.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            category: "computerx");
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("pack system", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack computerx", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SelectWeightedToolSubset_UsesRequestedLimit_WhenPromptHasNoRoutingSignal() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();

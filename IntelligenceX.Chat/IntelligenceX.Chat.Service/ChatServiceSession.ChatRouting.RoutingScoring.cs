@@ -269,6 +269,8 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        AppendRoutingPackTokens(sb, definition);
+
         var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 12, out var hasTableViewProjection);
         for (var i = 0; i < schemaArguments.Length; i++) {
             sb.Append(' ').Append(schemaArguments[i]);
@@ -287,6 +289,30 @@ internal sealed partial class ChatServiceSession {
         }
 
         return sb.ToString();
+    }
+
+    private static void AppendRoutingPackTokens(StringBuilder sb, ToolDefinition definition) {
+        var category = ResolvePlannerCategory(definition);
+        var packHint = ResolvePlannerPackHint(definition, category);
+        if (packHint.Length == 0) {
+            return;
+        }
+
+        var appended = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AppendPackToken(string value) {
+            var token = (value ?? string.Empty).Trim();
+            if (token.Length == 0 || !appended.Add(token)) {
+                return;
+            }
+
+            sb.Append(" pack ").Append(token);
+            sb.Append(" pack:").Append(token);
+        }
+
+        AppendPackToken(packHint);
+        foreach (var alias in GetNormalizedPackAliases(packHint)) {
+            AppendPackToken(alias);
+        }
     }
 
     private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out bool hasTableViewProjection) {
