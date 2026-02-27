@@ -369,9 +369,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         var tags = new List<string>(Math.Min(maxCount, definition.Tags.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < definition.Tags.Count && tags.Count < maxCount; i++) {
             var tag = (definition.Tags[i] ?? string.Empty).Trim();
-            if (tag.Length == 0) {
+            if (tag.Length == 0 || !seen.Add(tag)) {
                 continue;
             }
 
