@@ -13,10 +13,6 @@ public sealed partial class MainWindow : Window {
         return ToolRunMarkdownFormatter.Format(tools, ResolveToolDisplayName);
     }
 
-    private string BuildToolRunVisualMarkdown(ToolRunDto tools) {
-        return ToolRunMarkdownFormatter.FormatVisualsOnly(tools, ResolveToolDisplayName);
-    }
-
     internal static string BuildToolRunTranscriptMarkdown(
         ToolRunDto tools,
         bool debugMode,
