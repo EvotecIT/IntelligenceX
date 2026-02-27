@@ -5,8 +5,14 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int MaxProactiveVisualizationScanChars = 1024;
 
-    private static bool TryReadProactiveVisualizationAllowNewVisualsFromRequestText(string? requestText, out bool allowNewVisuals) {
+    private static bool TryReadProactiveVisualizationOverridesFromRequestText(
+        string? requestText,
+        out bool hasAllowNewVisualsOverride,
+        out bool allowNewVisuals,
+        out string preferredVisualType) {
+        hasAllowNewVisualsOverride = false;
         allowNewVisuals = false;
+        preferredVisualType = string.Empty;
         var text = requestText ?? string.Empty;
         if (text.Length == 0) {
             return false;
@@ -23,12 +29,23 @@ internal sealed partial class ChatServiceSession {
         }
 
         var scan = text.AsSpan(markerIndex, scanLength);
-        return TryReadStructuredAllowNewVisualsValue(scan, out allowNewVisuals);
+        return TryReadStructuredProactiveVisualizationOverrides(
+            scan,
+            out hasAllowNewVisualsOverride,
+            out allowNewVisuals,
+            out preferredVisualType);
     }
 
-    private static bool TryReadStructuredAllowNewVisualsValue(ReadOnlySpan<char> text, out bool allowNewVisuals) {
+    private static bool TryReadStructuredProactiveVisualizationOverrides(
+        ReadOnlySpan<char> text,
+        out bool hasAllowNewVisualsOverride,
+        out bool allowNewVisuals,
+        out string preferredVisualType) {
+        hasAllowNewVisualsOverride = false;
         allowNewVisuals = false;
+        preferredVisualType = string.Empty;
         var markerLineSeen = false;
+        var hasAnyOverride = false;
         while (!text.IsEmpty) {
             var lineBreakIndex = text.IndexOfAny('\r', '\n');
             ReadOnlySpan<char> line;
@@ -53,36 +70,28 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (LooksLikeStructuredSectionHeader(line)) {
-                return false;
+                break;
             }
 
             if (TryParseStructuredAllowNewVisualsLine(line, out allowNewVisuals)) {
-                return true;
+                hasAllowNewVisualsOverride = true;
+                hasAnyOverride = true;
+                continue;
+            }
+
+            if (TryParseStructuredPreferredVisualLine(line, out var parsedPreferredVisualType)) {
+                preferredVisualType = parsedPreferredVisualType;
+                hasAnyOverride = true;
             }
         }
 
-        return false;
+        return hasAnyOverride;
     }
 
     private static bool TryParseStructuredAllowNewVisualsLine(ReadOnlySpan<char> line, out bool allowNewVisuals) {
         allowNewVisuals = false;
-        var trimmed = line.Trim();
-        if (trimmed.IsEmpty || !trimmed.StartsWith("allow_new_visuals", StringComparison.OrdinalIgnoreCase)) {
+        if (!TryParseStructuredKeyValueLine(line, "allow_new_visuals", out var value)) {
             return false;
-        }
-
-        var afterKey = trimmed.Slice("allow_new_visuals".Length).TrimStart();
-        if (afterKey.IsEmpty || (afterKey[0] != ':' && afterKey[0] != '\uFF1A')) {
-            return false;
-        }
-
-        var value = StripInlineStructuredComment(afterKey.Slice(1).Trim());
-        if (value.Length >= 2) {
-            var startsWithDoubleQuote = value[0] == '"';
-            var startsWithSingleQuote = value[0] == '\'';
-            if ((startsWithDoubleQuote && value[^1] == '"') || (startsWithSingleQuote && value[^1] == '\'')) {
-                value = value.Slice(1, value.Length - 2).Trim();
-            }
         }
 
         if (value.Equals("true", StringComparison.OrdinalIgnoreCase)) {
@@ -96,6 +105,65 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool TryParseStructuredPreferredVisualLine(ReadOnlySpan<char> line, out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        if (!TryParseStructuredKeyValueLine(line, "preferred_visual", out var value)
+            && !TryParseStructuredKeyValueLine(line, "preferred_visual_type", out value)) {
+            return false;
+        }
+
+        if (TryNormalizePreferredVisualType(value, out var normalizedPreferredVisualType)) {
+            preferredVisualType = normalizedPreferredVisualType;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseStructuredKeyValueLine(ReadOnlySpan<char> line, string key, out ReadOnlySpan<char> value) {
+        value = default;
+        var trimmed = line.Trim();
+        if (trimmed.IsEmpty || !trimmed.StartsWith(key, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var afterKey = trimmed.Slice(key.Length).TrimStart();
+        if (afterKey.IsEmpty || (afterKey[0] != ':' && afterKey[0] != '\uFF1A')) {
+            return false;
+        }
+
+        value = UnquoteStructuredValue(StripInlineStructuredComment(afterKey.Slice(1).Trim()));
+        return !value.IsEmpty;
+    }
+
+    private static bool TryNormalizePreferredVisualType(ReadOnlySpan<char> value, out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        var normalized = NormalizeCompactToken(value);
+        switch (normalized) {
+            case "auto":
+                return true;
+            case "ixnetwork":
+            case "network":
+            case "visnetwork":
+                preferredVisualType = "ix-network";
+                return true;
+            case "ixchart":
+            case "chart":
+                preferredVisualType = "ix-chart";
+                return true;
+            case "mermaid":
+            case "diagram":
+                preferredVisualType = "mermaid";
+                return true;
+            case "table":
+            case "markdowntable":
+                preferredVisualType = "table";
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static ReadOnlySpan<char> StripInlineStructuredComment(ReadOnlySpan<char> value) {
@@ -120,6 +188,40 @@ internal sealed partial class ChatServiceSession {
         }
 
         return value.Trim();
+    }
+
+    private static ReadOnlySpan<char> UnquoteStructuredValue(ReadOnlySpan<char> value) {
+        var trimmed = value.Trim();
+        if (trimmed.Length < 2) {
+            return trimmed;
+        }
+
+        var startsWithDoubleQuote = trimmed[0] == '"';
+        var startsWithSingleQuote = trimmed[0] == '\'';
+        if ((startsWithDoubleQuote && trimmed[^1] == '"') || (startsWithSingleQuote && trimmed[^1] == '\'')) {
+            return trimmed.Slice(1, trimmed.Length - 2).Trim();
+        }
+
+        return trimmed;
+    }
+
+    private static string NormalizeCompactToken(ReadOnlySpan<char> value) {
+        if (value.IsEmpty) {
+            return string.Empty;
+        }
+
+        Span<char> buffer = stackalloc char[value.Length];
+        var written = 0;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsWhiteSpace(ch) || ch == '_' || ch == '-') {
+                continue;
+            }
+
+            buffer[written++] = char.ToLowerInvariant(ch);
+        }
+
+        return written == 0 ? string.Empty : new string(buffer.Slice(0, written));
     }
 
     private static bool ContainsFenceLanguage(string text, string language) {
