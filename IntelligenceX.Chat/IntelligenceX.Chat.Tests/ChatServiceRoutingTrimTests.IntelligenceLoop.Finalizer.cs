@@ -124,4 +124,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Same(failure, ex);
     }
+
+    [Fact]
+    public void FinalizePhaseHeartbeatFailure_SuppressesGenericCanceledWhenHeartbeatCancellationIsRequested() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        heartbeatCts.Cancel();
+
+        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: new OperationCanceledException("generic-canceled"),
+            phaseStatus: "phase_review",
+            requestId: "req-intelligence-loop",
+            threadId: "thread-intelligence-loop",
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void FinalizePhaseHeartbeatFailure_SuppressesGenericCanceledWhenRequestCancellationIsRequested() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        outerCts.Cancel();
+
+        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: new OperationCanceledException("generic-canceled"),
+            phaseStatus: "phase_review",
+            requestId: "req-intelligence-loop",
+            threadId: "thread-intelligence-loop",
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token));
+
+        Assert.Null(ex);
+    }
 }
