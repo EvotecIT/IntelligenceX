@@ -80,6 +80,15 @@ internal sealed partial class ChatServiceSession {
             availableToolNames: availableToolNames);
 
         AddPackCapabilityFallbackContract(
+            packId: "dnsclientx",
+            candidateTools: new[] {
+                "dnsclientx_query",
+                "dnsclientx_ping",
+                "dnsclientx_pack_info"
+            },
+            availableToolNames: availableToolNames);
+
+        AddPackCapabilityFallbackContract(
             packId: "testimox",
             candidateTools: new[] {
                 "testimox_rules_list",
@@ -225,6 +234,20 @@ internal sealed partial class ChatServiceSession {
                     partialScopeHints: partialScopeHints,
                     partialScopeReason: partialScopeReason,
                     userRequest: userRequest,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
+            if (TryBuildCrossPublicDnsEvidenceFallbackToolCall(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    sourceTool: sourceTool,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    hasSourceFailureSignal: hasSourceFailureSignal,
                     mutatingToolHintsByName: mutatingToolHintsByName,
                     out toolCall,
                     out reason)) {
@@ -385,6 +408,109 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private bool TryBuildCrossPublicDnsEvidenceFallbackToolCall(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        string sourceTool,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        bool hasSourceFailureSignal,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_public_dns_not_applicable";
+
+        if (!PackIdMatches(sourcePackId, "domaindetective")
+            || !string.Equals(sourceTool, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)
+            || !hasSourceFailureSignal) {
+            reason = "cross_public_dns_source_not_eligible";
+            return false;
+        }
+
+        const string candidateTool = "dnsclientx_query";
+        if (priorCalledTools.Contains(candidateTool)) {
+            reason = "cross_public_dns_query_already_called";
+            return false;
+        }
+
+        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+            reason = "cross_public_dns_query_unavailable";
+            return false;
+        }
+
+        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
+            || !PackIdMatches(candidatePackIdRaw, "dnsclientx")) {
+            reason = "cross_public_dns_query_not_in_dnsclientx_pack";
+            return false;
+        }
+
+        var mutability = ResolveStructuredNextActionMutability(
+            declaredMutability: ActionMutability.Unknown,
+            toolName: candidateTool,
+            toolDefinition: toolDefinition,
+            mutatingToolHintsByName: mutatingToolHintsByName);
+        if (mutability != ActionMutability.ReadOnly) {
+            reason = "cross_public_dns_query_not_read_only";
+            return false;
+        }
+
+        var name = ResolveDnsClientXNameHint(partialScopeHints);
+        if (string.IsNullOrWhiteSpace(name)) {
+            reason = "cross_public_dns_missing_name_hint";
+            return false;
+        }
+
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
+            .Add("name", name);
+        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+            reason = "cross_public_dns_query_missing_required_args";
+            return false;
+        }
+
+        var serializedArguments = JsonLite.Serialize(normalizedArguments);
+        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+        var raw = new JsonObject()
+            .Add("type", "tool_call")
+            .Add("call_id", fallbackCallId)
+            .Add("name", candidateTool)
+            .Add("arguments", serializedArguments);
+
+        toolCall = new ToolCall(
+            callId: fallbackCallId,
+            name: candidateTool,
+            input: serializedArguments,
+            arguments: normalizedArguments,
+            raw: raw);
+        reason = "pack_contract_cross_public_dns_evidence:"
+                 + sourcePackId
+                 + ":"
+                 + partialScopeReason
+                 + "->"
+                 + candidateTool;
+        return true;
+    }
+
+    private static string? ResolveDnsClientXNameHint(JsonObject hints) {
+        var preferred = ReadNonEmptyHint(hints, "domain_name")
+                        ?? ReadNonEmptyHint(hints, "dns_domain_name")
+                        ?? ReadNonEmptyHint(hints, "domain")
+                        ?? ReadNonEmptyHint(hints, "host")
+                        ?? ReadNonEmptyHint(hints, "machine_name")
+                        ?? ReadNonEmptyHint(hints, "computer_name")
+                        ?? ReadNonEmptyHint(hints, "target")
+                        ?? ReadNonEmptyHint(hints, "name");
+        if (string.IsNullOrWhiteSpace(preferred)) {
+            return null;
+        }
+
+        var normalized = preferred.Trim();
+        return normalized.IndexOf(' ') >= 0 ? null : normalized;
+    }
+
     private static bool ShouldPreferAdDiscoveryBeforeEventlogFanOut(
         string sourcePackId,
         string partialScopeReason,
@@ -523,6 +649,28 @@ internal sealed partial class ChatServiceSession {
             if (string.Equals(candidateTool, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
                 if (!string.IsNullOrWhiteSpace(hostOrDomain)) {
                     args.Add("host", hostOrDomain);
+                }
+                return args;
+            }
+        }
+
+        if (PackIdMatches(sourcePackId, "dnsclientx")) {
+            var preferredName = ReadNonEmptyHint(partialScopeHints, "name")
+                                ?? ReadNonEmptyHint(partialScopeHints, "target")
+                                ?? domainName
+                                ?? domain
+                                ?? host
+                                ?? computerName;
+            if (string.Equals(candidateTool, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)) {
+                if (!string.IsNullOrWhiteSpace(preferredName)) {
+                    args.Add("name", preferredName);
+                }
+                return args;
+            }
+
+            if (string.Equals(candidateTool, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
+                if (!string.IsNullOrWhiteSpace(preferredName)) {
+                    args.Add("target", preferredName);
                 }
                 return args;
             }
@@ -768,6 +916,8 @@ internal sealed partial class ChatServiceSession {
         CopyHintIfPresent(sourceArguments, destinationHints, "host");
         CopyHintIfPresent(sourceArguments, destinationHints, "machine_name");
         CopyHintIfPresent(sourceArguments, destinationHints, "computer_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "target");
+        CopyHintIfPresent(sourceArguments, destinationHints, "name");
         CopyHintIfPresent(sourceArguments, destinationHints, "domain_controller");
         CopyHintIfPresent(sourceArguments, destinationHints, "log_name");
         CopyHintIfPresent(sourceArguments, destinationHints, "include_trusts");
@@ -833,6 +983,9 @@ internal sealed partial class ChatServiceSession {
                 break;
             case "domaindetective":
                 AddAlias("domain_detective");
+                break;
+            case "dnsclientx":
+                AddAlias("dns_client_x");
                 break;
             case "testimox":
                 AddAlias("testimo_x");
