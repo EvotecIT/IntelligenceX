@@ -56,6 +56,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void FinalizePhaseHeartbeatFailure_RethrowsUnexpectedFailureWhenCancellationIsAlreadyRequested() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        outerCts.Cancel();
+        var failure = new InvalidOperationException("heartbeat-failed-with-cancellation");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: failure,
+            phaseStatus: "phase_review",
+            requestId: "req-intelligence-loop",
+            threadId: "thread-intelligence-loop",
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token));
+
+        Assert.Same(failure, ex);
+        Assert.Equal("heartbeat-failed-with-cancellation", ex.Message);
+    }
+
+    [Fact]
     public void FinalizePhaseHeartbeatFailure_RethrowsCanceledFailureFromUnrelatedToken() {
         using var heartbeatCts = new CancellationTokenSource();
         using var outerCts = new CancellationTokenSource();
