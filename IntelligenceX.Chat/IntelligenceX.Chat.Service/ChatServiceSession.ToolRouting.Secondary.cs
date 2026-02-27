@@ -406,13 +406,28 @@ internal sealed partial class ChatServiceSession {
             return "dnsclientx";
         }
 
-        var normalizedCategory = NormalizePackId(category);
-        if (string.Equals(normalizedCategory, "activedirectory", StringComparison.OrdinalIgnoreCase)) {
+        if (PackIdMatches(category, "active_directory")) {
             return "active_directory";
         }
 
-        if (string.Equals(normalizedCategory, "dns", StringComparison.OrdinalIgnoreCase)) {
-            return string.Empty;
+        if (PackIdMatches(category, "eventlog")) {
+            return "eventlog";
+        }
+
+        if (PackIdMatches(category, "system")) {
+            return "system";
+        }
+
+        if (PackIdMatches(category, "testimox")) {
+            return "testimox";
+        }
+
+        if (PackIdMatches(category, "domaindetective")) {
+            return "domaindetective";
+        }
+
+        if (PackIdMatches(category, "dnsclientx")) {
+            return "dnsclientx";
         }
 
         return string.Empty;
