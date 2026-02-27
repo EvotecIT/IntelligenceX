@@ -98,7 +98,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Guardrails must run on raw input (pre-normalization) to avoid normalization widening matches.
-        if (raw.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0) {
+        if (ContainsQuestionSignal(raw)) {
             return false;
         }
         if (raw.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) >= 0) {

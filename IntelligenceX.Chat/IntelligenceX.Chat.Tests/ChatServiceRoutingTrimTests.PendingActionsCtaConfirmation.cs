@@ -180,6 +180,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
+    [InlineData("run now?")]
+    [InlineData("run now\uFF1F")]
+    [InlineData("\u00BFrun now")]
+    [InlineData("run now\u061F")]
+    public void ExpandContinuationUserRequest_DoesNotConfirmWhenFollowUpContainsQuestionSignal(string input) {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var assistantDraft = """
+            If you say "run now", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            mutating: false
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
     [InlineData("{run now}")]
     [InlineData("{\"run now\"}")]
     [InlineData("[run now]")]
