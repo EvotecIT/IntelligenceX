@@ -95,6 +95,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task PhaseProgressLoop_PropagatesPhaseTaskFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        var phaseTask = Task.FromException(new InvalidOperationException("phase-failed"));
+        var invokeTask = InvokePhaseProgressLoopAsync(
+            session,
+            writer,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            1,
+            phaseTask);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => invokeTask);
+        Assert.Equal("phase-failed", ex.Message);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Contains("phase_review", statuses);
+    }
+
+    [Fact]
     public async Task ToolRoundStatusLifecycle_EmitsRoundStatusesInDeterministicOrder() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();

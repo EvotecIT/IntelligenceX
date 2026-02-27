@@ -271,21 +271,33 @@ internal sealed partial class ChatServiceSession {
         var sw = Stopwatch.StartNew();
         using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var timer = new PeriodicTimer(heartbeatInterval);
-        var stopHeartbeatTask = phaseTask.ContinueWith(
-            static (_, state) => {
-                try {
-                    ((CancellationTokenSource)state!).Cancel();
-                } catch {
-                    // Best-effort heartbeat stop.
-                }
-            },
-            heartbeatCts,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        var heartbeatTask = RunPhaseHeartbeatLoopAsync(
+            writer,
+            requestId,
+            threadId,
+            heartbeatLabel,
+            sw,
+            phaseTask,
+            timer,
+            heartbeatCts.Token);
+        await Task.WhenAny(phaseTask, heartbeatTask).ConfigureAwait(false);
+        heartbeatCts.Cancel();
+        await heartbeatTask.ConfigureAwait(false);
 
+        await phaseTask.ConfigureAwait(false);
+    }
+
+    private async Task RunPhaseHeartbeatLoopAsync(
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        string heartbeatLabel,
+        Stopwatch sw,
+        Task phaseTask,
+        PeriodicTimer timer,
+        CancellationToken cancellationToken) {
         try {
-            while (await timer.WaitForNextTickAsync(heartbeatCts.Token).ConfigureAwait(false)) {
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false)) {
                 if (phaseTask.IsCompleted) {
                     break;
                 }
@@ -300,13 +312,9 @@ internal sealed partial class ChatServiceSession {
                         message: $"{heartbeatLabel}... ({elapsedSeconds}s)")
                     .ConfigureAwait(false);
             }
-        } catch (OperationCanceledException) when (heartbeatCts.IsCancellationRequested) {
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // Expected when the model phase completes or the turn is canceled.
-        } finally {
-            await stopHeartbeatTask.ConfigureAwait(false);
         }
-
-        await phaseTask.ConfigureAwait(false);
     }
 
     internal async Task<TurnInfo> RunModelPhaseWithProgressAsync(
