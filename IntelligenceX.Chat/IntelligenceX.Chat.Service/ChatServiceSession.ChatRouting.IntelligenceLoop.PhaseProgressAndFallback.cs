@@ -257,7 +257,8 @@ internal sealed partial class ChatServiceSession {
         string heartbeatLabel,
         int heartbeatSeconds,
         CancellationToken cancellationToken,
-        Task phaseTask) {
+        Task phaseTask,
+        Func<CancellationToken, Task>? heartbeatTaskFactory = null) {
         var status = string.IsNullOrWhiteSpace(phaseStatus) ? "thinking" : phaseStatus.Trim();
         if (!string.IsNullOrWhiteSpace(phaseMessage)) {
             await TryWriteStatusAsync(writer, requestId, threadId, status: status, message: phaseMessage).ConfigureAwait(false);
@@ -272,15 +273,17 @@ internal sealed partial class ChatServiceSession {
         var sw = Stopwatch.StartNew();
         using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var timer = new PeriodicTimer(heartbeatInterval);
-        var heartbeatTask = RunPhaseHeartbeatLoopAsync(
-            writer,
-            requestId,
-            threadId,
-            heartbeatLabel,
-            sw,
-            phaseTask,
-            timer,
-            heartbeatCts.Token);
+        var heartbeatTask = heartbeatTaskFactory is null
+            ? RunPhaseHeartbeatLoopAsync(
+                writer,
+                requestId,
+                threadId,
+                heartbeatLabel,
+                sw,
+                phaseTask,
+                timer,
+                heartbeatCts.Token)
+            : heartbeatTaskFactory(heartbeatCts.Token);
         await Task.WhenAny(phaseTask, heartbeatTask).ConfigureAwait(false);
         heartbeatCts.Cancel();
         Exception? heartbeatFailure = null;
@@ -291,13 +294,23 @@ internal sealed partial class ChatServiceSession {
         }
 
         await phaseTask.ConfigureAwait(false);
+        FinalizePhaseHeartbeatFailure(heartbeatFailure, status, requestId, threadId, heartbeatCts.Token, cancellationToken);
+    }
+
+    internal static void FinalizePhaseHeartbeatFailure(
+        Exception? heartbeatFailure,
+        string phaseStatus,
+        string requestId,
+        string threadId,
+        CancellationToken heartbeatCancellationToken,
+        CancellationToken cancellationToken) {
         if (heartbeatFailure is null) {
             return;
         }
 
-        if (ShouldSuppressPhaseHeartbeatFailure(heartbeatFailure, heartbeatCts, cancellationToken)) {
+        if (ShouldSuppressPhaseHeartbeatFailure(heartbeatFailure, heartbeatCancellationToken, cancellationToken)) {
             Trace.TraceWarning(
-                $"Phase heartbeat loop suppressed failure after phase completion: phase={status}; request={requestId}; thread={threadId}; " +
+                $"Phase heartbeat loop suppressed failure after phase completion: phase={phaseStatus}; request={requestId}; thread={threadId}; " +
                 $"error={heartbeatFailure.GetType().Name}: {heartbeatFailure.Message}");
             return;
         }
@@ -305,14 +318,23 @@ internal sealed partial class ChatServiceSession {
         ExceptionDispatchInfo.Capture(heartbeatFailure).Throw();
     }
 
-    private static bool ShouldSuppressPhaseHeartbeatFailure(Exception heartbeatFailure, CancellationTokenSource heartbeatCts,
+    internal static bool ShouldSuppressPhaseHeartbeatFailure(Exception heartbeatFailure, CancellationToken heartbeatCancellationToken,
         CancellationToken cancellationToken) {
         if (heartbeatFailure is IOException) {
             return true;
         }
 
-        return heartbeatFailure is OperationCanceledException
-               && (heartbeatCts.IsCancellationRequested || cancellationToken.IsCancellationRequested);
+        if (heartbeatFailure is not OperationCanceledException canceledException) {
+            return false;
+        }
+
+        var failureToken = canceledException.CancellationToken;
+        if (!failureToken.CanBeCanceled) {
+            return heartbeatCancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested;
+        }
+
+        return (failureToken == heartbeatCancellationToken && heartbeatCancellationToken.IsCancellationRequested)
+               || (failureToken == cancellationToken && cancellationToken.IsCancellationRequested);
     }
 
     private async Task RunPhaseHeartbeatLoopAsync(

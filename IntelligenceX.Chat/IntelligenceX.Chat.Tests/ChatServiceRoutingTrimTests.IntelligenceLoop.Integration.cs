@@ -142,6 +142,82 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task PhaseProgressLoop_UnexpectedHeartbeatFailureIsRethrownWhenPhaseSucceeds() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        async Task FaultingHeartbeatAsync(CancellationToken _) {
+            await Task.Yield();
+            throw new InvalidOperationException("heartbeat-failed");
+        }
+
+        var invokeTask = InvokePhaseProgressLoopAsync(
+            session,
+            writer,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            1,
+            Task.CompletedTask,
+            heartbeatTaskFactory: FaultingHeartbeatAsync);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => invokeTask);
+        Assert.Equal("heartbeat-failed", ex.Message);
+    }
+
+    [Fact]
+    public async Task PhaseProgressLoop_SuppressesCanceledHeartbeatFailureWhenOuterTokenIsCanceled() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        using var outerCts = new CancellationTokenSource();
+        outerCts.Cancel();
+
+        Task CanceledHeartbeatAsync(CancellationToken _) =>
+            Task.FromException(new OperationCanceledException("outer-canceled", innerException: null, outerCts.Token));
+
+        await InvokePhaseProgressLoopAsync(
+            session,
+            writer,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            1,
+            Task.CompletedTask,
+            outerCts.Token,
+            CanceledHeartbeatAsync);
+    }
+
+    [Fact]
+    public void ShouldSuppressPhaseHeartbeatFailure_RequiresMatchingCanceledToken() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        using var unrelatedCts = new CancellationTokenSource();
+
+        heartbeatCts.Cancel();
+        outerCts.Cancel();
+        unrelatedCts.Cancel();
+
+        Assert.True(ChatServiceSession.ShouldSuppressPhaseHeartbeatFailure(
+            new IOException("io"),
+            heartbeatCts.Token,
+            outerCts.Token));
+        Assert.True(ChatServiceSession.ShouldSuppressPhaseHeartbeatFailure(
+            new OperationCanceledException("heartbeat", innerException: null, heartbeatCts.Token),
+            heartbeatCts.Token,
+            outerCts.Token));
+        Assert.True(ChatServiceSession.ShouldSuppressPhaseHeartbeatFailure(
+            new OperationCanceledException("outer", innerException: null, outerCts.Token),
+            heartbeatCts.Token,
+            outerCts.Token));
+        Assert.False(ChatServiceSession.ShouldSuppressPhaseHeartbeatFailure(
+            new OperationCanceledException("unrelated", innerException: null, unrelatedCts.Token),
+            heartbeatCts.Token,
+            outerCts.Token));
+    }
+
+    [Fact]
     public async Task ToolRoundStatusLifecycle_EmitsRoundStatusesInDeterministicOrder() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
@@ -222,7 +298,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     private static async Task InvokePhaseProgressLoopAsync(ChatServiceSession session, StreamWriter writer, string phaseStatus, string phaseMessage,
-        string heartbeatLabel, int heartbeatSeconds, Task phaseTask, CancellationToken cancellationToken = default) {
+        string heartbeatLabel, int heartbeatSeconds, Task phaseTask, CancellationToken cancellationToken = default,
+        Func<CancellationToken, Task>? heartbeatTaskFactory = null) {
         await session.RunPhaseProgressLoopAsync(
             writer,
             "req-intelligence-loop",
@@ -232,7 +309,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             heartbeatLabel,
             heartbeatSeconds,
             cancellationToken,
-            phaseTask);
+            phaseTask,
+            heartbeatTaskFactory);
     }
 
     private static List<string> ParseStatuses(byte[] snapshotBytes) {
