@@ -50,6 +50,46 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task PhaseProgressLoop_ThrowsWhenRequestIdIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => session.RunPhaseProgressLoopAsync(
+            writer,
+            null!,
+            "thread-intelligence-loop",
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            0,
+            CancellationToken.None,
+            Task.CompletedTask));
+
+        Assert.Equal("requestId", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task PhaseProgressLoop_ThrowsWhenThreadIdIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => session.RunPhaseProgressLoopAsync(
+            writer,
+            "req-intelligence-loop",
+            null!,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            0,
+            CancellationToken.None,
+            Task.CompletedTask));
+
+        Assert.Equal("threadId", ex.ParamName);
+    }
+
+    [Fact]
     public async Task PhaseProgressLoopForTesting_ThrowsWhenHeartbeatTaskFactoryIsNull() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
