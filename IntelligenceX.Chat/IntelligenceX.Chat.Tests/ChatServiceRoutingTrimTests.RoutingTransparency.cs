@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Xunit;
@@ -68,6 +69,75 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var strategy = Assert.IsType<string>(result);
 
         Assert.Equal("no_tools", strategy);
+    }
+
+    [Fact]
+    public void ResolveRoutingStrategy_UsesStructuredPlannerInsightWithoutReasonText() {
+        var plannerInsight = CreateToolRoutingInsight(
+            toolName: "ad_replication_summary",
+            confidence: "high",
+            score: 1d,
+            reason: "top ranked by planner",
+            strategyName: "SemanticPlanner");
+        var insights = CreateRoutingInsightsArray(plannerInsight);
+
+        var result = ResolveRoutingStrategyMethod.Invoke(null, new object?[] {
+            true,
+            false,
+            false,
+            insights,
+            4,
+            12
+        });
+
+        Assert.Equal("semantic_planner", Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void HasPlannerInsight_FallsBackToReasonTextWhenStructuredStrategyIsUnknown() {
+        var plannerInsight = CreateToolRoutingInsight(
+            toolName: "ad_replication_summary",
+            confidence: "high",
+            score: 1d,
+            reason: "semantic planner selection",
+            strategyName: "Unknown");
+        var insights = CreateRoutingInsightsArray(plannerInsight);
+
+        var result = HasPlannerInsightMethod.Invoke(null, new object?[] { insights });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ResolveRoutingInsightStrategy_UsesStructuredStrategyWithoutReasonText() {
+        var continuationInsight = CreateToolRoutingInsight(
+            toolName: "ad_replication_summary",
+            confidence: "high",
+            score: 1d,
+            reason: "reused prior subset window",
+            strategyName: "ContinuationSubset");
+
+        var result = ResolveRoutingInsightStrategyMethod.Invoke(
+            null,
+            new object?[] { continuationInsight, "weighted_heuristic" });
+
+        Assert.Equal("continuation_subset", Assert.IsType<string>(result));
+    }
+
+    [Fact]
+    public void ResolveRoutingInsightStrategy_FallsBackToReasonTextWhenStructuredStrategyIsUnknown() {
+        var continuationInsight = CreateToolRoutingInsight(
+            toolName: "ad_replication_summary",
+            confidence: "high",
+            score: 1d,
+            reason: "continuation follow-up reuse",
+            strategyName: "Unknown");
+
+        var result = ResolveRoutingInsightStrategyMethod.Invoke(
+            null,
+            new object?[] { continuationInsight, "weighted_heuristic" });
+
+        Assert.Equal("continuation_subset", Assert.IsType<string>(result));
     }
 
     [Fact]
@@ -219,5 +289,33 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(budget.GetProperty("contextAwareBudgetApplied").GetBoolean());
         Assert.Equal(8192L, budget.GetProperty("effectiveModelContextLength").GetInt64());
         Assert.Equal(JsonValueKind.Null, budget.GetProperty("requested").ValueKind);
+    }
+
+    private static object CreateToolRoutingInsight(string toolName, string confidence, double score, string reason, string strategyName) {
+        var insightType = ResolveRoutingStrategyMethod.GetParameters()[3].ParameterType.GetGenericArguments()[0];
+        var strategyProperty = insightType.GetProperty("Strategy", BindingFlags.Public | BindingFlags.Instance)
+                               ?? throw new InvalidOperationException("ToolRoutingInsight.Strategy property not found.");
+        var strategyType = strategyProperty.PropertyType;
+        var strategyValue = Enum.Parse(strategyType, strategyName, ignoreCase: true);
+
+        var value = Activator.CreateInstance(
+            insightType,
+            toolName,
+            confidence,
+            score,
+            reason,
+            strategyValue);
+
+        return value ?? throw new InvalidOperationException("ToolRoutingInsight instance could not be created.");
+    }
+
+    private static Array CreateRoutingInsightsArray(params object[] insights) {
+        var insightType = ResolveRoutingStrategyMethod.GetParameters()[3].ParameterType.GetGenericArguments()[0];
+        var array = Array.CreateInstance(insightType, insights.Length);
+        for (var i = 0; i < insights.Length; i++) {
+            array.SetValue(insights[i], i);
+        }
+
+        return array;
     }
 }

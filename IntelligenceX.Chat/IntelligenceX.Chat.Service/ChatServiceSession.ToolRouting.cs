@@ -72,7 +72,8 @@ internal sealed partial class ChatServiceSession {
                 ToolName: name.Trim(),
                 Confidence: "high",
                 Score: 1d,
-                Reason: "continuation follow-up reuse"));
+                Reason: "continuation follow-up reuse",
+                Strategy: ToolRoutingInsightStrategy.ContinuationSubset));
         }
 
         return list;

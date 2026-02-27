@@ -86,7 +86,8 @@ internal sealed partial class ChatServiceSession {
                 ToolName: toolScore.Definition.Name,
                 Confidence: confidence,
                 Score: Math.Round(toolScore.Score, 3),
-                Reason: string.Join(", ", reasons)));
+                Reason: string.Join(", ", reasons),
+                Strategy: ToolRoutingInsightStrategy.WeightedHeuristic));
         }
 
         insights.Sort(static (a, b) => b.Score.CompareTo(a.Score));
