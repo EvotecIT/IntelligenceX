@@ -66,6 +66,47 @@ internal static class ToolRunMarkdownFormatter {
         return markdown.Build();
     }
 
+    /// <summary>
+    /// Builds markdown containing first-party visual fences only.
+    /// </summary>
+    /// <param name="tools">Tool run payload.</param>
+    /// <param name="resolveToolDisplayName">Display-name resolver callback.</param>
+    /// <returns>Markdown containing visual fences or empty when none are available.</returns>
+    public static string FormatVisualsOnly(ToolRunDto tools, Func<string?, string> resolveToolDisplayName) {
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(resolveToolDisplayName);
+
+        var markdown = new MarkdownComposer()
+            .Paragraph("**Tool visuals:**")
+            .BlankLine();
+
+        var namesByCallId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var call in tools.Calls) {
+            namesByCallId[call.CallId] = resolveToolDisplayName(call.Name);
+        }
+
+        var hasVisualFences = false;
+        foreach (var output in tools.Outputs) {
+            var visualFences = ExtractFirstPartyVisualFences(BuildRenderHintFences(output));
+            if (visualFences.Count == 0) {
+                continue;
+            }
+
+            hasVisualFences = true;
+            var toolLabel = namesByCallId.TryGetValue(output.CallId, out var name)
+                ? name
+                : $"Call {output.CallId}";
+            markdown.Heading(toolLabel, 4);
+            for (var i = 0; i < visualFences.Count; i++) {
+                var fence = visualFences[i];
+                markdown.CodeFence(fence.Language, fence.Content);
+            }
+            markdown.BlankLine();
+        }
+
+        return hasVisualFences ? markdown.Build() : string.Empty;
+    }
+
     private static bool ShouldIncludeSummary(string summary, bool hasError) {
         if (string.IsNullOrWhiteSpace(summary)) {
             return false;
@@ -294,6 +335,27 @@ internal static class ToolRunMarkdownFormatter {
         } finally {
             outputDoc?.Dispose();
         }
+    }
+
+    private static List<(string Language, string Content)> ExtractFirstPartyVisualFences(
+        IReadOnlyList<(string Language, string Content)> fences) {
+        var selected = new List<(string Language, string Content)>();
+        for (var i = 0; i < fences.Count; i++) {
+            var fence = fences[i];
+            var language = (fence.Language ?? string.Empty).Trim().ToLowerInvariant();
+            if (language.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(language, "mermaid", StringComparison.Ordinal)
+                || string.Equals(language, ChartFenceLanguage, StringComparison.Ordinal)
+                || string.Equals(language, NetworkFenceLanguage, StringComparison.Ordinal)
+                || string.Equals(language, DataViewPayloadFenceLanguage, StringComparison.Ordinal)) {
+                selected.Add(fence);
+            }
+        }
+
+        return selected;
     }
 
     private static IEnumerable<JsonElement> EnumerateRenderHints(JsonElement renderRoot) {

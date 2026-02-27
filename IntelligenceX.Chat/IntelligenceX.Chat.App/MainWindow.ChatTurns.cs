@@ -349,8 +349,11 @@ public sealed partial class MainWindow : Window {
         SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
         ApplyFinalAssistantTurnTimeline(conversation, result.TurnTimelineEvents);
         _assistantStreamingState.ClearReceivedDelta();
-        if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
-            conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now, turn.AssistantModelLabel));
+        if (result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
+            var toolMarkdown = BuildToolRunTranscriptMarkdown(result.Tools);
+            if (!string.IsNullOrWhiteSpace(toolMarkdown)) {
+                conversation.Messages.Add(("Tools", toolMarkdown, DateTime.Now, turn.AssistantModelLabel));
+            }
         }
 
         conversation.UpdatedUtc = DateTime.UtcNow;
@@ -486,4 +489,3 @@ public sealed partial class MainWindow : Window {
             : AssistantTurnOutcome.Error(ex.Message);
     }
 }
-
