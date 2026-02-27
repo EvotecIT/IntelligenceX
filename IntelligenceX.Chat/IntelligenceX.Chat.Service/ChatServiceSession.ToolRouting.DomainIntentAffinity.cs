@@ -409,7 +409,9 @@ internal sealed partial class ChatServiceSession {
         }
 
         var normalized = (userRequest ?? string.Empty).Trim();
-        if (normalized.Length == 0 || LooksLikeContinuationFollowUp(normalized)) {
+        if (normalized.Length == 0
+            || LooksLikeContinuationFollowUp(normalized)
+            || LooksLikeStructuredIntentPayload(normalized)) {
             return;
         }
 

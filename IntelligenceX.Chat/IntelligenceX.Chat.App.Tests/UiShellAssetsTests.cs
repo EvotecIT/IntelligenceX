@@ -353,7 +353,7 @@ public sealed class UiShellAssetsTests {
             "function resolveVisualExportBuildFailureMessage(visualType, format)",
             "function tryCaptureVisualViewCanvasPayload(visualType)",
             "function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx)",
-            "var renderSize = resolveDocxRenderSize(fence.language, docxVisualMaxWidthPx);",
+            "var renderSize = resolveDocxRenderSize(normalizedFenceLanguage, docxVisualMaxWidthPx);",
             "convertSvgPayloadToPng(rendered, themeMode, renderSize)",
             "SVG export is only available for Mermaid diagrams.",
             "Visual export couldn't prepare the image payload before save.",
@@ -378,6 +378,8 @@ public sealed class UiShellAssetsTests {
             "host.style.width = String(exportWidth) + \"px\"",
             "(!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === \"function\"",
             "window.requestAnimationFrame(function()",
+            "normalized === \"network\" || normalized === \"visnetwork\"",
+            "code.language-ix-network, code.language-visnetwork, code.language-network",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"target\")");
     }
@@ -392,7 +394,7 @@ public sealed class UiShellAssetsTests {
 
         Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
         Assert.Contains("pre.querySelector(\"code.language-ix-chart, code.language-chart\")", script, StringComparison.Ordinal);
-        Assert.Contains("pre.querySelector(\"code.language-ix-network\")", script, StringComparison.Ordinal);
+        Assert.Contains("pre.querySelector(\"code.language-ix-network, code.language-visnetwork, code.language-network\")", script, StringComparison.Ordinal);
     }
 
     /// <summary>

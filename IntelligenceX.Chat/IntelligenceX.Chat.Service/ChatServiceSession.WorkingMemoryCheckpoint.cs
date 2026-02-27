@@ -309,7 +309,9 @@ internal sealed partial class ChatServiceSession {
 
     private static string NormalizeWorkingMemoryIntentAnchor(string value) {
         var normalized = (value ?? string.Empty).Trim();
-        if (normalized.Length == 0 || LooksLikeContinuationFollowUp(normalized)) {
+        if (normalized.Length == 0
+            || LooksLikeContinuationFollowUp(normalized)
+            || LooksLikeStructuredIntentPayload(normalized)) {
             return string.Empty;
         }
 

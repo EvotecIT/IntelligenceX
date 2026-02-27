@@ -84,14 +84,14 @@
   }
 
   function getVisualKindLabel(kind) {
-    var normalized = String(kind || "").toLowerCase();
+    var normalized = normalizeVisualType(kind);
     if (normalized === "mermaid") {
       return "Mermaid Diagram";
     }
     if (normalized === "ix-chart" || normalized === "chart") {
       return "Chart";
     }
-    if (normalized === "ix-network") {
+    if (normalized === "ix-network" || normalized === "network" || normalized === "visnetwork") {
       return "Network Diagram";
     }
     return "Visual";
@@ -1503,7 +1503,7 @@
       return;
     }
 
-    var code = pre.querySelector("code.language-ix-network");
+    var code = pre.querySelector("code.language-ix-network, code.language-visnetwork, code.language-network");
     var source = pre.getAttribute("data-ix-network-source");
     if ((!source || source.length === 0) && code) {
       source = normalizeText(code.textContent || "");
@@ -1587,7 +1587,7 @@
   }
 
   function collectIxNetworkBlocks(root) {
-    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-network");
+    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-network, .bubble .markdown-body pre > code.language-visnetwork, .bubble .markdown-body pre > code.language-network");
     if (!codeNodes || codeNodes.length === 0) {
       return [];
     }
@@ -1841,6 +1841,9 @@
     var normalized = String(type || "").trim().toLowerCase();
     if (normalized === "chart") {
       return "ix-chart";
+    }
+    if (normalized === "network" || normalized === "visnetwork") {
+      return "ix-network";
     }
     return normalized;
   }
@@ -3698,7 +3701,7 @@
   }
 
   async function renderVisualFenceForExport(language, source, imageId, themeMode, renderSize) {
-    var normalized = String(language || "").trim().toLowerCase();
+    var normalized = normalizeVisualType(language);
     var content = normalizeText(source || "");
     if (!content) {
       return null;
@@ -3708,7 +3711,7 @@
       return renderMermaidForExport(content, imageId, themeMode);
     }
 
-    if (normalized === "ix-chart" || normalized === "chart") {
+    if (normalized === "ix-chart") {
       if (content.length > ixVisualChartState.maxSourceChars) {
         return null;
       }
@@ -3753,10 +3756,10 @@
         continue;
       }
 
-      var supportedLanguage = fence.language === "mermaid"
-        || fence.language === "ix-chart"
-        || fence.language === "chart"
-        || fence.language === "ix-network";
+      var normalizedFenceLanguage = normalizeVisualType(fence.language);
+      var supportedLanguage = normalizedFenceLanguage === "mermaid"
+        || normalizedFenceLanguage === "ix-chart"
+        || normalizedFenceLanguage === "ix-network";
       if (!supportedLanguage) {
         output.push(line);
         i += 1;
@@ -3777,8 +3780,8 @@
       }
 
       var source = lines.slice(i + 1, closingIndex).join("\n");
-      var renderSize = resolveDocxRenderSize(fence.language, docxVisualMaxWidthPx);
-      var rendered = await renderVisualFenceForExport(fence.language, source, imageCounter + 1, themeMode, renderSize);
+      var renderSize = resolveDocxRenderSize(normalizedFenceLanguage, docxVisualMaxWidthPx);
+      var rendered = await renderVisualFenceForExport(normalizedFenceLanguage, source, imageCounter + 1, themeMode, renderSize);
       if (rendered && rendered.mimeType === "image/svg+xml") {
         rendered = await convertSvgPayloadToPng(rendered, themeMode, renderSize);
       }

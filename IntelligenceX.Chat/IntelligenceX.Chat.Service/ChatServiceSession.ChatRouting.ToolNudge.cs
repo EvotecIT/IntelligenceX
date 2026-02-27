@@ -29,19 +29,6 @@ internal sealed partial class ChatServiceSession {
     private const int FollowUpQuestionMaxTokens = 12;
     private static readonly char[] CallToActionCommaPunctuation = new[] { ',', '\uFF0C', '\u3001', '\u060C' };
     private static readonly char[] CallToActionColonPunctuation = new[] { ':', '\uFF1A', '\uFE13' };
-    // Keep this token set language-inclusive so boolean schema coercion does not depend on English-only replies.
-    private static readonly HashSet<string> FlexibleBooleanTrueTokens = new(StringComparer.OrdinalIgnoreCase) {
-        "yes", "on",
-        "si", "sí", "sim", "oui", "ja", "tak",
-        "да", "نعم", "是", "はい", "예",
-        "evet"
-    };
-    private static readonly HashSet<string> FlexibleBooleanFalseTokens = new(StringComparer.OrdinalIgnoreCase) {
-        "no", "off",
-        "non", "nein", "nie", "não", "nao",
-        "нет", "لا", "否", "いいえ", "아니요",
-        "hayir", "hayır"
-    };
     private enum ActionMutability {
         Unknown = 0,
         ReadOnly = 1,

@@ -62,6 +62,16 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        if (LooksLikeStructuredIntentPayload(intent!)) {
+            lock (_toolRoutingContextLock) {
+                _lastUserIntentByThreadId.Remove(normalizedThreadId);
+                _lastUserIntentSeenUtcTicks.Remove(normalizedThreadId);
+                TrimWeightedRoutingContextsNoLock();
+            }
+            RemoveUserIntentSnapshot(normalizedThreadId);
+            return raw;
+        }
+
         if (intentTicks > 0) {
             if (intentTicks < DateTime.MinValue.Ticks || intentTicks > DateTime.MaxValue.Ticks) {
                 // Defensive: avoid exceptions from ticks->DateTime conversion if ticks are corrupted/out of range.

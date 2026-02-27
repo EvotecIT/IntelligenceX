@@ -12,6 +12,8 @@ namespace IntelligenceX.Chat.App.Markdown;
 internal static class ToolRunMarkdownFormatter {
     private const string DataViewPayloadFenceLanguage = "ix-dataview";
     private const string DataViewPayloadKind = "ix_tool_dataview_v1";
+    private const string ChartFenceLanguage = "ix-chart";
+    private const string NetworkFenceLanguage = "ix-network";
 
     /// <summary>
     /// Builds markdown for tool calls and outputs.
@@ -43,14 +45,16 @@ internal static class ToolRunMarkdownFormatter {
                 AppendFailureDescriptor(markdown, output);
             }
 
-            if (TryBuildDataViewPayload(output, out var dataViewPayloadJson)) {
-                markdown.CodeFence(DataViewPayloadFenceLanguage, dataViewPayloadJson);
+            var renderHintFences = BuildRenderHintFences(output);
+            for (var i = 0; i < renderHintFences.Count; i++) {
+                var fence = renderHintFences[i];
+                markdown.CodeFence(fence.Language, fence.Content);
             }
 
             var summary = NormalizeSummaryMarkdown(output.SummaryMarkdown, toolLabel);
             if (ShouldIncludeSummary(summary, hasError)) {
                 markdown.Raw(summary);
-            } else if (!hasError) {
+            } else if (!hasError && renderHintFences.Count == 0) {
                 markdown.Paragraph("completed");
             }
 
@@ -212,61 +216,207 @@ internal static class ToolRunMarkdownFormatter {
         return hasPipe;
     }
 
-    private static bool TryBuildDataViewPayload(ToolOutputDto output, out string payloadJson) {
-        payloadJson = string.Empty;
-        if (string.IsNullOrWhiteSpace(output.RenderJson) || string.IsNullOrWhiteSpace(output.Output)) {
-            return false;
+    private static List<(string Language, string Content)> BuildRenderHintFences(ToolOutputDto output) {
+        var fences = new List<(string Language, string Content)>();
+        if (string.IsNullOrWhiteSpace(output.RenderJson)) {
+            return fences;
         }
 
+        JsonDocument? outputDoc = null;
+        JsonElement outputRoot = default;
         try {
+            if (!string.IsNullOrWhiteSpace(output.Output)) {
+                outputDoc = JsonDocument.Parse(output.Output);
+                if (outputDoc.RootElement.ValueKind == JsonValueKind.Object) {
+                    outputRoot = outputDoc.RootElement;
+                }
+            }
+
             using var renderDoc = JsonDocument.Parse(output.RenderJson);
-            if (renderDoc.RootElement.ValueKind != JsonValueKind.Object) {
-                return false;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var renderHint in EnumerateRenderHints(renderDoc.RootElement)) {
+                var normalizedKind = NormalizeRenderKind(ReadStringProperty(renderHint, "kind"));
+                if (normalizedKind.Length == 0) {
+                    continue;
+                }
+
+                if (string.Equals(normalizedKind, "table", StringComparison.Ordinal)) {
+                    if (!TryBuildDataViewPayload(
+                            renderHint,
+                            outputRoot,
+                            output.CallId ?? string.Empty,
+                            out var dataViewPayloadJson)) {
+                        continue;
+                    }
+
+                    var dedupeKey = DataViewPayloadFenceLanguage + "\n" + dataViewPayloadJson;
+                    if (seen.Add(dedupeKey)) {
+                        fences.Add((DataViewPayloadFenceLanguage, dataViewPayloadJson));
+                    }
+                    continue;
+                }
+
+                if (!TryBuildCodeRenderFence(
+                        renderHint,
+                        normalizedKind,
+                        outputRoot,
+                        out var language,
+                        out var content)) {
+                    continue;
+                }
+
+                var key = language + "\n" + content;
+                if (seen.Add(key)) {
+                    fences.Add((language, content));
+                }
             }
 
-            var render = renderDoc.RootElement;
-            var kind = ReadStringProperty(render, "kind");
-            if (!string.Equals(kind, "table", StringComparison.OrdinalIgnoreCase)) {
-                return false;
-            }
-
-            var rowsPath = ReadStringProperty(render, "rows_path");
-            if (string.IsNullOrWhiteSpace(rowsPath)) {
-                return false;
-            }
-
-            using var outputDoc = JsonDocument.Parse(output.Output);
-            if (outputDoc.RootElement.ValueKind != JsonValueKind.Object) {
-                return false;
-            }
-
-            if (!TryResolvePath(outputDoc.RootElement, rowsPath, out var rowsNode) || rowsNode.ValueKind != JsonValueKind.Array) {
-                return false;
-            }
-
-            var columns = ReadRenderColumns(render);
-            if (columns.Count == 0) {
-                columns = InferColumnsFromRows(rowsNode);
-            }
-            if (columns.Count == 0) {
-                return false;
-            }
-
-            var matrix = BuildRowsMatrix(rowsNode, columns);
-            if (matrix.Length == 0) {
-                return false;
-            }
-
-            var payload = new Dictionary<string, object?> {
-                ["kind"] = DataViewPayloadKind,
-                ["call_id"] = output.CallId ?? string.Empty,
-                ["rows"] = matrix
-            };
-            payloadJson = JsonSerializer.Serialize(payload);
-            return true;
+            return fences;
         } catch {
+            return fences;
+        } finally {
+            outputDoc?.Dispose();
+        }
+    }
+
+    private static IEnumerable<JsonElement> EnumerateRenderHints(JsonElement renderRoot) {
+        if (renderRoot.ValueKind == JsonValueKind.Object) {
+            yield return renderRoot;
+            yield break;
+        }
+
+        if (renderRoot.ValueKind != JsonValueKind.Array) {
+            yield break;
+        }
+
+        foreach (var item in renderRoot.EnumerateArray()) {
+            if (item.ValueKind == JsonValueKind.Object) {
+                yield return item;
+            }
+        }
+    }
+
+    private static string NormalizeRenderKind(string kind) {
+        var normalized = (kind ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "chart" => ChartFenceLanguage,
+            "network" => NetworkFenceLanguage,
+            "visnetwork" => NetworkFenceLanguage,
+            _ => normalized
+        };
+    }
+
+    private static string NormalizeRenderFenceLanguage(string language, string normalizedKind) {
+        var normalizedLanguage = (language ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalizedLanguage.Length > 0) {
+            if (string.Equals(normalizedLanguage, "chart", StringComparison.Ordinal)) {
+                return ChartFenceLanguage;
+            }
+
+            if (string.Equals(normalizedLanguage, "network", StringComparison.Ordinal)
+                || string.Equals(normalizedLanguage, "visnetwork", StringComparison.Ordinal)) {
+                return NetworkFenceLanguage;
+            }
+
+            return normalizedLanguage;
+        }
+
+        if (string.Equals(normalizedKind, ChartFenceLanguage, StringComparison.Ordinal)
+            || string.Equals(normalizedKind, NetworkFenceLanguage, StringComparison.Ordinal)
+            || string.Equals(normalizedKind, "mermaid", StringComparison.Ordinal)) {
+            return normalizedKind;
+        }
+
+        return "text";
+    }
+
+    private static bool TryBuildCodeRenderFence(
+        JsonElement render,
+        string normalizedKind,
+        JsonElement outputRoot,
+        out string language,
+        out string content) {
+        language = string.Empty;
+        content = string.Empty;
+
+        if (!string.Equals(normalizedKind, "code", StringComparison.Ordinal)
+            && !string.Equals(normalizedKind, "mermaid", StringComparison.Ordinal)
+            && !string.Equals(normalizedKind, ChartFenceLanguage, StringComparison.Ordinal)
+            && !string.Equals(normalizedKind, NetworkFenceLanguage, StringComparison.Ordinal)) {
             return false;
         }
+
+        language = NormalizeRenderFenceLanguage(ReadStringProperty(render, "language"), normalizedKind);
+        if (language.Length == 0) {
+            return false;
+        }
+
+        if (TryGetPropertyValueCaseInsensitive(render, "content", out var inlineContentNode)
+            && inlineContentNode.ValueKind != JsonValueKind.Null
+            && inlineContentNode.ValueKind != JsonValueKind.Undefined) {
+            content = inlineContentNode.ValueKind == JsonValueKind.String
+                ? (inlineContentNode.GetString() ?? string.Empty)
+                : inlineContentNode.GetRawText();
+            content = content.Trim();
+            return content.Length > 0;
+        }
+
+        var contentPath = ReadStringProperty(render, "content_path");
+        if (string.IsNullOrWhiteSpace(contentPath)) {
+            return false;
+        }
+
+        if (outputRoot.ValueKind != JsonValueKind.Object
+            || !TryResolvePath(outputRoot, contentPath, out var contentNode)) {
+            return false;
+        }
+
+        content = contentNode.ValueKind == JsonValueKind.String
+            ? (contentNode.GetString() ?? string.Empty)
+            : contentNode.GetRawText();
+        content = content.Trim();
+        return content.Length > 0;
+    }
+
+    private static bool TryBuildDataViewPayload(
+        JsonElement render,
+        JsonElement outputRoot,
+        string callId,
+        out string payloadJson) {
+        payloadJson = string.Empty;
+        if (outputRoot.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        var rowsPath = ReadStringProperty(render, "rows_path");
+        if (string.IsNullOrWhiteSpace(rowsPath)) {
+            return false;
+        }
+
+        if (!TryResolvePath(outputRoot, rowsPath, out var rowsNode) || rowsNode.ValueKind != JsonValueKind.Array) {
+            return false;
+        }
+
+        var columns = ReadRenderColumns(render);
+        if (columns.Count == 0) {
+            columns = InferColumnsFromRows(rowsNode);
+        }
+        if (columns.Count == 0) {
+            return false;
+        }
+
+        var matrix = BuildRowsMatrix(rowsNode, columns);
+        if (matrix.Length == 0) {
+            return false;
+        }
+
+        var payload = new Dictionary<string, object?> {
+            ["kind"] = DataViewPayloadKind,
+            ["call_id"] = callId,
+            ["rows"] = matrix
+        };
+        payloadJson = JsonSerializer.Serialize(payload);
+        return true;
     }
 
     private static string[][] BuildRowsMatrix(JsonElement rowsNode, IReadOnlyList<(string Key, string Label)> columns) {
