@@ -388,11 +388,13 @@ internal sealed partial class ChatServiceSession {
 
     internal static bool ShouldSuppressPhaseHeartbeatFailure(Exception heartbeatFailure, CancellationToken heartbeatCancellationToken,
         CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(heartbeatFailure);
         return GetPhaseHeartbeatSuppressionReason(heartbeatFailure, heartbeatCancellationToken, cancellationToken) is not null;
     }
 
     internal static string? GetPhaseHeartbeatSuppressionReason(Exception heartbeatFailure, CancellationToken heartbeatCancellationToken,
         CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(heartbeatFailure);
         if (heartbeatFailure is IOException) {
             return PhaseHeartbeatSuppressionReasonIo;
         }
