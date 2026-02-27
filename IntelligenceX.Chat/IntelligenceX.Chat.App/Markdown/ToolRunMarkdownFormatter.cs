@@ -31,15 +31,10 @@ internal static class ToolRunMarkdownFormatter {
             .Paragraph("**Tool outputs:**")
             .BlankLine();
 
-        var namesByCallId = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var call in tools.Calls) {
-            namesByCallId[call.CallId] = resolveToolDisplayName(call.Name);
-        }
+        var namesByCallId = BuildToolNamesByCallId(tools, resolveToolDisplayName);
 
         foreach (var output in tools.Outputs) {
-            var toolLabel = namesByCallId.TryGetValue(output.CallId, out var name)
-                ? name
-                : $"Call {output.CallId}";
+            var toolLabel = ResolveToolLabel(namesByCallId, output.CallId);
             var hasError = !string.IsNullOrWhiteSpace(output.Error) || !string.IsNullOrWhiteSpace(output.ErrorCode) || output.Ok == false;
 
             markdown.Heading(toolLabel, 4);
@@ -48,10 +43,7 @@ internal static class ToolRunMarkdownFormatter {
             }
 
             var renderHintFences = BuildRenderHintFences(output);
-            for (var i = 0; i < renderHintFences.Count; i++) {
-                var fence = renderHintFences[i];
-                markdown.CodeFence(fence.Language, fence.Content);
-            }
+            AppendCodeFences(markdown, renderHintFences);
 
             var summary = NormalizeSummaryMarkdown(output.SummaryMarkdown, toolLabel);
             if (ShouldIncludeSummary(summary, hasError)) {
@@ -80,31 +72,82 @@ internal static class ToolRunMarkdownFormatter {
             .Paragraph("**Tool visuals:**")
             .BlankLine();
 
+        var namesByCallId = BuildToolNamesByCallId(tools, resolveToolDisplayName);
+        var visualGroups = BuildVisualFenceGroupsByCallId(tools.Outputs);
+        if (visualGroups.Count == 0) {
+            return string.Empty;
+        }
+
+        foreach (var visualGroup in visualGroups) {
+            var toolLabel = ResolveToolLabel(namesByCallId, visualGroup.CallId);
+            markdown.Heading(toolLabel, 4);
+            AppendCodeFences(markdown, visualGroup.Fences);
+            markdown.BlankLine();
+        }
+
+        return markdown.Build();
+    }
+
+    private static Dictionary<string, string> BuildToolNamesByCallId(
+        ToolRunDto tools,
+        Func<string?, string> resolveToolDisplayName) {
         var namesByCallId = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var call in tools.Calls) {
             namesByCallId[call.CallId] = resolveToolDisplayName(call.Name);
         }
 
-        var hasVisualFences = false;
-        foreach (var output in tools.Outputs) {
+        return namesByCallId;
+    }
+
+    private static string ResolveToolLabel(IReadOnlyDictionary<string, string> namesByCallId, string? callId) {
+        if (callId is not null
+            && namesByCallId.TryGetValue(callId, out var name)) {
+            return name;
+        }
+
+        return "Call " + callId;
+    }
+
+    private static void AppendCodeFences(
+        MarkdownComposer markdown,
+        IReadOnlyList<(string Language, string Content)> fences) {
+        for (var i = 0; i < fences.Count; i++) {
+            var fence = fences[i];
+            markdown.CodeFence(fence.Language, fence.Content);
+        }
+    }
+
+    private static List<VisualFenceGroup> BuildVisualFenceGroupsByCallId(IReadOnlyList<ToolOutputDto> outputs) {
+        var groups = new List<VisualFenceGroup>();
+        var groupsByCallId = new Dictionary<string, VisualFenceGroup>(StringComparer.Ordinal);
+        for (var i = 0; i < outputs.Count; i++) {
+            var output = outputs[i];
             var visualFences = ExtractFirstPartyVisualFences(BuildRenderHintFences(output));
             if (visualFences.Count == 0) {
                 continue;
             }
 
-            hasVisualFences = true;
-            var toolLabel = namesByCallId.TryGetValue(output.CallId, out var name)
-                ? name
-                : $"Call {output.CallId}";
-            markdown.Heading(toolLabel, 4);
-            for (var i = 0; i < visualFences.Count; i++) {
-                var fence = visualFences[i];
-                markdown.CodeFence(fence.Language, fence.Content);
+            var groupKey = NormalizeCallId(output.CallId);
+            if (!groupsByCallId.TryGetValue(groupKey, out var group)) {
+                group = new VisualFenceGroup(groupKey);
+                groupsByCallId[groupKey] = group;
+                groups.Add(group);
             }
-            markdown.BlankLine();
+
+            for (var j = 0; j < visualFences.Count; j++) {
+                var fence = visualFences[j];
+                var dedupeKey = BuildRenderHintDeduplicationKey(fence.Language, fence.Content);
+                if (group.SeenFences.Add(dedupeKey)) {
+                    group.Fences.Add(fence);
+                }
+            }
         }
 
-        return hasVisualFences ? markdown.Build() : string.Empty;
+        return groups;
+    }
+
+    private static string NormalizeCallId(string? callId) {
+        return callId ?? string.Empty;
     }
 
     private static bool ShouldIncludeSummary(string summary, bool hasError) {
@@ -705,4 +748,13 @@ internal static class ToolRunMarkdownFormatter {
         }
     }
 
+    private sealed class VisualFenceGroup {
+        public VisualFenceGroup(string callId) {
+            CallId = callId;
+        }
+
+        public string CallId { get; }
+        public List<(string Language, string Content)> Fences { get; } = new();
+        public HashSet<string> SeenFences { get; } = new(StringComparer.Ordinal);
+    }
 }
