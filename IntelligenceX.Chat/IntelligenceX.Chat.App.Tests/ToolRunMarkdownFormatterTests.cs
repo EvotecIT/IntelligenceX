@@ -176,6 +176,33 @@ public sealed class ToolRunMarkdownFormatterTests {
     }
 
     /// <summary>
+    /// Ensures table matrix fallback behavior remains stable for non-object row nodes.
+    /// </summary>
+    [Fact]
+    public void Format_TableRenderHint_PreservesFallbackForNonObjectRows() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c4c",
+                    Name = "testimox_rules_list"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c4c",
+                    Output = "{\"rules_view\":[\"scalar\",[\"array-name\",\"array-status\"],{\"name\":\"ObjectName\",\"status\":\"ObjectStatus\"}]}",
+                    RenderJson = "{\"kind\":\"table\",\"rows_path\":\"rules_view\",\"columns\":[{\"key\":\"name\",\"label\":\"Name\"},{\"key\":\"status\",\"label\":\"Status\"}]}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "TestimoX Rules List");
+
+        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("\"rows\":[[\"Name\",\"Status\"],[\"scalar\",\"\"],[\"array-name\",\"array-status\"],[\"ObjectName\",\"ObjectStatus\"]]", markdown);
+    }
+
+    /// <summary>
     /// Ensures render arrays can emit first-party visual fences and map visnetwork to ix-network.
     /// </summary>
     [Fact]
