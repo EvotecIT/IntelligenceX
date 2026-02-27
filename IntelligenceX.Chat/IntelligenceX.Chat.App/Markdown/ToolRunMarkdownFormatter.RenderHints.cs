@@ -9,6 +9,9 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 namespace IntelligenceX.Chat.App.Markdown;
 
 internal static partial class ToolRunMarkdownFormatter {
+    private const int DedupHashChunkChars = 1024;
+    private const int DedupHashChunkMaxBytes = DedupHashChunkChars * 4;
+
     private static List<(string Language, string Content)> BuildRenderHintFences(ToolOutputDto output) {
         var fences = new List<(string Language, string Content)>();
         if (string.IsNullOrWhiteSpace(output.RenderJson)) {
@@ -208,9 +211,27 @@ internal static partial class ToolRunMarkdownFormatter {
     private static string BuildRenderHintDeduplicationKey(string language, string content) {
         var normalizedLanguage = (language ?? string.Empty).Trim().ToLowerInvariant();
         var value = content ?? string.Empty;
-        var payload = Encoding.UTF8.GetBytes(value);
-        var hash = Convert.ToHexString(SHA256.HashData(payload));
+        var hash = ComputeUtf8Sha256Hex(value);
         return normalizedLanguage + ":" + hash + ":" + value.Length;
+    }
+
+    private static string ComputeUtf8Sha256Hex(string value) {
+        using var incremental = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var encoder = Encoding.UTF8.GetEncoder();
+        Span<byte> buffer = stackalloc byte[DedupHashChunkMaxBytes];
+        var offset = 0;
+        while (offset < value.Length) {
+            var chunkChars = Math.Min(DedupHashChunkChars, value.Length - offset);
+            var span = value.AsSpan(offset, chunkChars);
+            var flush = offset + chunkChars >= value.Length;
+            encoder.Convert(span, buffer, flush, out var charsUsed, out var bytesUsed, out _);
+            if (bytesUsed > 0) {
+                incremental.AppendData(buffer[..bytesUsed]);
+            }
+            offset += charsUsed;
+        }
+
+        return Convert.ToHexString(incremental.GetHashAndReset());
     }
 
     private static void TraceRenderHintWarning(string? callId, string message, Exception ex) {
