@@ -76,7 +76,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var value = afterKey.Slice(1).Trim();
+        var value = StripInlineStructuredComment(afterKey.Slice(1).Trim());
         if (value.Length >= 2) {
             var startsWithDoubleQuote = value[0] == '"';
             var startsWithSingleQuote = value[0] == '\'';
@@ -96,6 +96,30 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static ReadOnlySpan<char> StripInlineStructuredComment(ReadOnlySpan<char> value) {
+        var inSingleQuote = false;
+        var inDoubleQuote = false;
+
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (ch == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+                continue;
+            }
+
+            if (ch == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+                continue;
+            }
+
+            if (!inSingleQuote && !inDoubleQuote && ch == '#') {
+                return value.Slice(0, i).Trim();
+            }
+        }
+
+        return value.Trim();
     }
 
     private static bool ContainsFenceLanguage(string text, string language) {
