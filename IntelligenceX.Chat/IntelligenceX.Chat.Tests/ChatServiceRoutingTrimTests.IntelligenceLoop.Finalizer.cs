@@ -26,13 +26,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var heartbeatCts = new CancellationTokenSource();
         using var outerCts = new CancellationTokenSource();
 
-        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
             heartbeatFailure: new IOException("simulated-io"),
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token);
+            cancellationToken: outerCts.Token));
+
+        Assert.Null(ex);
     }
 
     [Fact]
@@ -73,13 +75,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         heartbeatCts.Cancel();
 
-        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
             heartbeatFailure: new OperationCanceledException("heartbeat-canceled", innerException: null, heartbeatCts.Token),
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token);
+            cancellationToken: outerCts.Token));
+
+        Assert.Null(ex);
     }
 
     [Fact]
@@ -88,12 +92,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         outerCts.Cancel();
 
-        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
             heartbeatFailure: new OperationCanceledException("request-canceled", innerException: null, outerCts.Token),
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token);
+            cancellationToken: outerCts.Token));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void FinalizePhaseHeartbeatFailure_RethrowsGenericCanceledWhenNoCancellationIsRequested() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+
+        Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: new OperationCanceledException("generic-canceled"),
+            phaseStatus: "phase_review",
+            requestId: "req-intelligence-loop",
+            threadId: "thread-intelligence-loop",
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token));
     }
 }
