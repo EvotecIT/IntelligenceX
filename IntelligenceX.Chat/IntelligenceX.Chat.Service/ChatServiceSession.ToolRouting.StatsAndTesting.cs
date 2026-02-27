@@ -419,18 +419,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal void UpdateToolRoutingStatsForTesting(IReadOnlyList<ToolCall> calls, IReadOnlyList<ToolOutputDto> outputs) {
+        ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(outputs);
         UpdateToolRoutingStats(calls, outputs);
     }
 
     internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(userRequest);
         return ExpandContinuationUserRequest(threadId, userRequest);
     }
 
     internal void RememberUserIntentForTesting(string threadId, string userRequest) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(userRequest);
         RememberUserIntent(threadId, userRequest);
     }
 
     internal void RememberPendingActionsForTesting(string threadId, string assistantReply) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(assistantReply);
         RememberPendingActions(threadId, assistantReply);
     }
 
