@@ -282,9 +282,18 @@ internal sealed partial class ChatServiceSession {
             heartbeatCts.Token);
         await Task.WhenAny(phaseTask, heartbeatTask).ConfigureAwait(false);
         heartbeatCts.Cancel();
-        await heartbeatTask.ConfigureAwait(false);
+        Exception? heartbeatFailure = null;
+        try {
+            await heartbeatTask.ConfigureAwait(false);
+        } catch (Exception ex) {
+            heartbeatFailure = ex;
+        }
 
         await phaseTask.ConfigureAwait(false);
+        if (heartbeatFailure is not null) {
+            Trace.TraceWarning(
+                $"Phase heartbeat loop failed after phase completion: {heartbeatFailure.GetType().Name}: {heartbeatFailure.Message}");
+        }
     }
 
     private async Task RunPhaseHeartbeatLoopAsync(

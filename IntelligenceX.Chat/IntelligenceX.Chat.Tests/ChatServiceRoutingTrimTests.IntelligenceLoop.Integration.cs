@@ -118,6 +118,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task PhaseProgressLoop_HeartbeatFailureDoesNotOverridePhaseFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new FailOnSecondWriteCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        async Task FailingPhaseAsync() {
+            await Task.Delay(TimeSpan.FromMilliseconds(1500));
+            throw new InvalidOperationException("phase-failed");
+        }
+
+        var invokeTask = InvokePhaseProgressLoopAsync(
+            session,
+            writer,
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            1,
+            FailingPhaseAsync());
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => invokeTask);
+        Assert.Equal("phase-failed", ex.Message);
+    }
+
+    [Fact]
     public async Task ToolRoundStatusLifecycle_EmitsRoundStatusesInDeterministicOrder() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
@@ -268,6 +292,64 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         value = default;
         return false;
+    }
+
+    private sealed class FailOnSecondWriteCaptureStream : Stream {
+        private readonly MemoryStream _inner = new();
+        private readonly object _sync = new();
+        private int _writeCount;
+
+        public byte[] Snapshot() {
+            lock (_sync) {
+                return _inner.ToArray();
+            }
+        }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => _inner.Length;
+
+        public override long Position {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() {
+            // No-op for capture stream.
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken) {
+            if (cancellationToken.IsCancellationRequested) {
+                return Task.FromCanceled(cancellationToken);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) {
+            lock (_sync) {
+                _writeCount++;
+                if (_writeCount > 1) {
+                    throw new IOException("Simulated heartbeat write failure.");
+                }
+
+                _inner.Write(buffer, offset, count);
+            }
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) {
+            if (cancellationToken.IsCancellationRequested) {
+                return Task.FromCanceled(cancellationToken);
+            }
+
+            Write(buffer, offset, count);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class SynchronizedCaptureStream : Stream {
