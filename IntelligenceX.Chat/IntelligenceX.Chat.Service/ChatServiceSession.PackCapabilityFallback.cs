@@ -602,12 +602,12 @@ internal sealed partial class ChatServiceSession {
             case IntelligenceX.Json.JsonValueKind.String: {
                     var value = (node.AsString() ?? string.Empty).Trim();
                     if (value.Length > 0) {
-                        destination.Add(propertyName, value);
+                        destination[propertyName] = JsonValue.From(value);
                     }
                     break;
                 }
             case IntelligenceX.Json.JsonValueKind.Boolean:
-                destination.Add(propertyName, node.AsBoolean());
+                destination[propertyName] = JsonValue.From(node.AsBoolean());
                 break;
             case IntelligenceX.Json.JsonValueKind.Array: {
                     var array = node.AsArray();
@@ -629,7 +629,7 @@ internal sealed partial class ChatServiceSession {
                     }
 
                     if (copied.Count > 0) {
-                        destination.Add(propertyName, copied);
+                        destination[propertyName] = JsonValue.From(copied);
                     }
                     break;
                 }

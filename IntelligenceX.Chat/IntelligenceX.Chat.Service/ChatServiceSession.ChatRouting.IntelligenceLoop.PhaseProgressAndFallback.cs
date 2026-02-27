@@ -310,7 +310,9 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ContainsToken(string text, string token) {
-        return text.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+        // Treat token as a structured signal only when used as an explicit backticked token.
+        var backticked = "`" + token + "`";
+        return text.IndexOf(backticked, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     internal Task RunPhaseProgressLoopAsync(
