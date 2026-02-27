@@ -592,6 +592,61 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForWhitespacePrefixedFenceLanguage() {
+        var request = """
+            Build a relationship summary with explicit contract:
+            ``` ix-network
+            {"nodes":[],"edges":[]}
+            ```
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForTildeFenceLanguage() {
+        var request = """
+            Render network evidence if needed:
+            ~~~ix-network
+            {"nodes":[],"edges":[]}
+            ~~~
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForDoubleBacktickedLegacyNetworkToken() {
+        var request = "Use ``visnetwork`` only if relationship mapping is necessary.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForMismatchedInlineBacktickDelimiters() {
+        var request = "Use ``visnetwork``` only when relationship mapping is required.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DetectsValidTokenAfterMalformedInlineSequence() {
+        var request = "Malformed token first: ``visnetwork` then valid: `visnetwork`.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CopyChatOptionsWithoutTools_DisablesToolExecutionForReviewPasses() {
         var source = new ChatOptions {
             Model = "gpt-test",

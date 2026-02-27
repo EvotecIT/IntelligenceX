@@ -304,17 +304,6 @@ internal sealed partial class ChatServiceSession {
                || ContainsToken(value, LegacyNetworkFenceLanguage);
     }
 
-    private static bool ContainsFenceLanguage(string text, string language) {
-        var fence = "```" + language;
-        return text.IndexOf(fence, StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    private static bool ContainsToken(string text, string token) {
-        // Treat token as a structured signal only when used as an explicit backticked token.
-        var backticked = "`" + token + "`";
-        return text.IndexOf(backticked, StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
     internal Task RunPhaseProgressLoopAsync(
         StreamWriter writer,
         string requestId,
