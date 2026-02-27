@@ -254,11 +254,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
     [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: true", true, true)]
     [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: false", true, false)]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled:true", true, true)]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled : FALSE", true, false)]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled:\t\"true\"", true, true)]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled\uFF1A false", true, false)]
     [InlineData("no marker", false, false)]
     public void TryReadProactiveModeFromRequestText_ParsesStructuredMarker(string requestText, bool expectedRead, bool expectedEnabled) {
         var result = ChatServiceSession.TryReadProactiveModeFromRequestText(requestText, out var enabled);
         Assert.Equal(expectedRead, result);
         Assert.Equal(expectedEnabled, enabled);
+    }
+
+    [Fact]
+    public void TryReadProactiveModeFromRequestText_ParsesEnabledLineBeyondLegacyTailWindow() {
+        var requestText = "[Proactive execution mode]\nix:proactive-mode:v1\n" + new string('x', 420) + "\nenabled: true";
+
+        var result = ChatServiceSession.TryReadProactiveModeFromRequestText(requestText, out var enabled);
+
+        Assert.True(result);
+        Assert.True(enabled);
     }
 
     [Theory]
