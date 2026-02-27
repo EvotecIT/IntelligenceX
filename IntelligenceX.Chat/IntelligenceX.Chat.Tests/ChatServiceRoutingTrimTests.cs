@@ -339,6 +339,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void LooksLikeCompactAndContinuationFollowUp_RejectQuestionWhenTokenCountExceedsSharedLimit() {
+        var userRequest = "a b c d e f g h i j k l m?";
+        var compact = LooksLikeCompactFollowUpMethod.Invoke(null, new object?[] { userRequest });
+        var continuation = LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.False(Assert.IsType<bool>(compact));
+        Assert.False(Assert.IsType<bool>(continuation));
+    }
+
+    [Fact]
+    public void LooksLikeContinuationFollowUp_AllowsLongerQuestionWindowThanCompactFollowUp() {
+        var userRequest = new string('a', 81) + "?";
+        var compact = LooksLikeCompactFollowUpMethod.Invoke(null, new object?[] { userRequest });
+        var continuation = LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userRequest });
+
+        Assert.False(Assert.IsType<bool>(compact));
+        Assert.True(Assert.IsType<bool>(continuation));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_TreatsCompactFollowUpByShapeNotKeyword() {
         var keywordRequest = "do it";
         var keywordDraft = "Proceeding with do it now.";
