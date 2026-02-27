@@ -300,7 +300,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static async Task InvokePhaseProgressLoopAsync(ChatServiceSession session, StreamWriter writer, string phaseStatus, string phaseMessage,
         string heartbeatLabel, int heartbeatSeconds, Task phaseTask, CancellationToken cancellationToken = default,
         Func<CancellationToken, Task>? heartbeatTaskFactory = null) {
-        await session.RunPhaseProgressLoopAsync(
+        if (heartbeatTaskFactory is null) {
+            await session.RunPhaseProgressLoopAsync(
+                writer,
+                "req-intelligence-loop",
+                "thread-intelligence-loop",
+                phaseStatus,
+                phaseMessage,
+                heartbeatLabel,
+                heartbeatSeconds,
+                cancellationToken,
+                phaseTask);
+            return;
+        }
+
+        await session.RunPhaseProgressLoopForTestingAsync(
             writer,
             "req-intelligence-loop",
             "thread-intelligence-loop",

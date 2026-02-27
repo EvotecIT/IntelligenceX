@@ -248,7 +248,30 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
-    internal async Task RunPhaseProgressLoopAsync(
+    internal Task RunPhaseProgressLoopAsync(
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        string phaseStatus,
+        string? phaseMessage,
+        string heartbeatLabel,
+        int heartbeatSeconds,
+        CancellationToken cancellationToken,
+        Task phaseTask) {
+        return RunPhaseProgressLoopCoreAsync(
+            writer,
+            requestId,
+            threadId,
+            phaseStatus,
+            phaseMessage,
+            heartbeatLabel,
+            heartbeatSeconds,
+            cancellationToken,
+            phaseTask,
+            heartbeatTaskFactory: null);
+    }
+
+    internal Task RunPhaseProgressLoopForTestingAsync(
         StreamWriter writer,
         string requestId,
         string threadId,
@@ -258,7 +281,35 @@ internal sealed partial class ChatServiceSession {
         int heartbeatSeconds,
         CancellationToken cancellationToken,
         Task phaseTask,
-        Func<CancellationToken, Task>? heartbeatTaskFactory = null) {
+        Func<CancellationToken, Task> heartbeatTaskFactory) {
+        if (heartbeatTaskFactory is null) {
+            throw new ArgumentNullException(nameof(heartbeatTaskFactory));
+        }
+
+        return RunPhaseProgressLoopCoreAsync(
+            writer,
+            requestId,
+            threadId,
+            phaseStatus,
+            phaseMessage,
+            heartbeatLabel,
+            heartbeatSeconds,
+            cancellationToken,
+            phaseTask,
+            heartbeatTaskFactory);
+    }
+
+    private async Task RunPhaseProgressLoopCoreAsync(
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        string phaseStatus,
+        string? phaseMessage,
+        string heartbeatLabel,
+        int heartbeatSeconds,
+        CancellationToken cancellationToken,
+        Task phaseTask,
+        Func<CancellationToken, Task>? heartbeatTaskFactory) {
         var status = string.IsNullOrWhiteSpace(phaseStatus) ? "thinking" : phaseStatus.Trim();
         if (!string.IsNullOrWhiteSpace(phaseMessage)) {
             await TryWriteStatusAsync(writer, requestId, threadId, status: status, message: phaseMessage).ConfigureAwait(false);
@@ -333,6 +384,8 @@ internal sealed partial class ChatServiceSession {
             return heartbeatCancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested;
         }
 
+        // The heartbeat loop should throw OCE with either the linked heartbeat token
+        // or the outer request token. Treat other canceled tokens as unexpected.
         return (failureToken == heartbeatCancellationToken && heartbeatCancellationToken.IsCancellationRequested)
                || (failureToken == cancellationToken && cancellationToken.IsCancellationRequested);
     }
