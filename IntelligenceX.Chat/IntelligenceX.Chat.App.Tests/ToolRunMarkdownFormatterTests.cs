@@ -9,6 +9,21 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests for tool-run markdown formatting.
 /// </summary>
 public sealed class ToolRunMarkdownFormatterTests {
+    private static int CountOccurrences(string text, string token) {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(token)) {
+            return 0;
+        }
+
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(token, index, StringComparison.Ordinal)) >= 0) {
+            count++;
+            index += token.Length;
+        }
+
+        return count;
+    }
+
     /// <summary>
     /// Ensures tool summaries render with headings and without list-heading corruption.
     /// </summary>
@@ -161,5 +176,86 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.Contains("```ix-network", markdown);
         Assert.Contains("\"nodes\":[{\"id\":1,\"label\":\"A\"}]", markdown);
         Assert.DoesNotContain("\ncompleted\n", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures malformed output payload JSON does not block inline render-hint code fences.
+    /// </summary>
+    [Fact]
+    public void Format_UsesInlineRenderContentWhenOutputPayloadIsMalformedJson() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c6",
+                    Name = "inline_renderer"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c6",
+                    Output = "not-json",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"text\",\"content\":\"inline-render-content\"}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Inline Renderer");
+
+        Assert.Contains("```text", markdown);
+        Assert.Contains("inline-render-content", markdown);
+    }
+
+    /// <summary>
+    /// Ensures code render-hint content preserves leading/trailing whitespace from source payload strings.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesWhitespaceForCodeRenderHintContentPath() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c7",
+                    Name = "whitespace_renderer"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c7",
+                    Output = "{\"snippet\":\"  keep-leading\\nkeep-trailing  \"}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"text\",\"content_path\":\"snippet\"}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Whitespace Renderer");
+
+        Assert.Contains("```text", markdown);
+        Assert.Contains("  keep-leading", markdown, StringComparison.Ordinal);
+        Assert.Contains("keep-trailing  ", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures duplicate render-hint entries do not emit duplicate first-party visual fences.
+    /// </summary>
+    [Fact]
+    public void Format_DeduplicatesDuplicateRenderHintEntries() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c8",
+                    Name = "duplicate_visuals"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c8",
+                    Output = "{\"chart_payload\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}}}",
+                    RenderJson = "[{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart_payload\"},{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart_payload\"}]"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Duplicate Visuals");
+
+        Assert.Equal(1, CountOccurrences(markdown, "```ix-chart"));
     }
 }
