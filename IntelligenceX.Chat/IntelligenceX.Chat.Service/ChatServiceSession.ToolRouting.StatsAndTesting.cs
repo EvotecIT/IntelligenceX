@@ -182,7 +182,8 @@ internal sealed partial class ChatServiceSession {
     private void TrimWeightedRoutingContextsNoLock() {
         Debug.Assert(Monitor.IsEntered(_toolRoutingContextLock));
 
-        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, planner-thread, and domain-intent contexts share the same
+        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, planner-thread, domain-intent, and pack-preflight
+        // contexts share the same
         // key space (active thread id), so trim all when any grows beyond its cap.
         var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
         var intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
@@ -192,10 +193,11 @@ internal sealed partial class ChatServiceSession {
         var domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
         var domainClarificationRemoveCount =
             _pendingDomainIntentClarificationSeenUtcTicks.Count - MaxTrackedDomainIntentClarificationContexts;
+        var packPreflightRemoveCount = _packPreflightToolNamesByThreadId.Count - MaxTrackedPackPreflightContexts;
         var removeCount = Math.Max(
             Math.Max(
                 Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
-                Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, domainClarificationRemoveCount))),
+                Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, Math.Max(domainClarificationRemoveCount, packPreflightRemoveCount)))),
             0);
         if (removeCount <= 0) {
             return;
@@ -281,6 +283,20 @@ internal sealed partial class ChatServiceSession {
                 removedInvalid = true;
             }
         }
+        foreach (var threadId in _packPreflightToolNamesByThreadId.Keys.ToArray()) {
+            if (!_packPreflightSeenUtcTicks.TryGetValue(threadId, out var ticks) || !TryGetUtcDateTimeFromTicks(ticks, out var seenUtc)) {
+                _packPreflightToolNamesByThreadId.Remove(threadId);
+                _packPreflightSeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+                continue;
+            }
+
+            if (DateTime.UtcNow - seenUtc > PackPreflightContextMaxAge) {
+                _packPreflightToolNamesByThreadId.Remove(threadId);
+                _packPreflightSeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
         if (removedInvalid) {
             weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
             intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
@@ -290,10 +306,11 @@ internal sealed partial class ChatServiceSession {
             domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
             domainClarificationRemoveCount =
                 _pendingDomainIntentClarificationSeenUtcTicks.Count - MaxTrackedDomainIntentClarificationContexts;
+            packPreflightRemoveCount = _packPreflightToolNamesByThreadId.Count - MaxTrackedPackPreflightContexts;
             removeCount = Math.Max(
                 Math.Max(
                     Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
-                    Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, domainClarificationRemoveCount))),
+                    Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, Math.Max(domainClarificationRemoveCount, packPreflightRemoveCount)))),
                 0);
             if (removeCount <= 0) {
                 return;
@@ -317,6 +334,9 @@ internal sealed partial class ChatServiceSession {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _pendingDomainIntentClarificationSeenUtcTicks.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+        foreach (var threadId in _packPreflightToolNamesByThreadId.Keys) {
             seenThreadIds.Add(threadId);
         }
 
@@ -345,6 +365,9 @@ internal sealed partial class ChatServiceSession {
                 if (_pendingDomainIntentClarificationSeenUtcTicks.TryGetValue(threadId, out var clarificationTicks) && clarificationTicks > ticks) {
                     ticks = clarificationTicks;
                 }
+                if (_packPreflightSeenUtcTicks.TryGetValue(threadId, out var preflightTicks) && preflightTicks > ticks) {
+                    ticks = preflightTicks;
+                }
                 return (ThreadId: threadId, Ticks: ticks);
             })
             .OrderBy(item => item.Ticks)
@@ -367,6 +390,8 @@ internal sealed partial class ChatServiceSession {
             _domainIntentFamilyByThreadId.Remove(threadId);
             _domainIntentFamilySeenUtcTicks.Remove(threadId);
             _pendingDomainIntentClarificationSeenUtcTicks.Remove(threadId);
+            _packPreflightToolNamesByThreadId.Remove(threadId);
+            _packPreflightSeenUtcTicks.Remove(threadId);
         }
     }
 

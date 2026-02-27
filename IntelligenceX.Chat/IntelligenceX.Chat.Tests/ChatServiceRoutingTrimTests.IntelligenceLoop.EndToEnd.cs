@@ -658,5 +658,314 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"ix_action_selection\"", expandedText, StringComparison.Ordinal);
         Assert.Contains("\"id\":\"act_scope_read\"", expandedText, StringComparison.Ordinal);
     }
-}
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_InsertsPackPreflightBeforeOperationalToolCalls_WhenMissingInRound() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-insert-1",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_ad_search_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "ad_search",
+                                        arguments = JsonSerializer.Serialize(new { query = "dc inventory" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-insert-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "AD scope complete."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-insert-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool("ad_pack_info", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"ad pack ready\"}")));
+        registry.Register(new RoundTripStubTool("ad_environment_discover", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"scope discovered\"}")));
+        registry.Register(new RoundTripStubTool("ad_search", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"search complete\"}")));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-pack-preflight-insert",
+            ThreadId = thread.Id,
+            Text = "Run AD search and summarize scope.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(2, server.ChatCompletionRequestCount);
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(3, resultMessage.Tools!.Calls.Count);
+        Assert.Equal("ad_pack_info", resultMessage.Tools.Calls[0].Name);
+        Assert.Equal("ad_environment_discover", resultMessage.Tools.Calls[1].Name);
+        Assert.Equal("ad_search", resultMessage.Tools.Calls[2].Name);
+        Assert.StartsWith("host_pack_preflight_", resultMessage.Tools.Calls[0].CallId, StringComparison.Ordinal);
+        Assert.StartsWith("host_pack_preflight_", resultMessage.Tools.Calls[1].CallId, StringComparison.Ordinal);
+        Assert.Equal("call_ad_search_1", resultMessage.Tools.Calls[2].CallId);
+
+        var reviewRequestBody = server.GetChatRequestBody(1);
+        Assert.True(ContainsToolMessageForCallId(reviewRequestBody, resultMessage.Tools.Calls[0].CallId));
+        Assert.True(ContainsToolMessageForCallId(reviewRequestBody, resultMessage.Tools.Calls[1].CallId));
+        Assert.True(ContainsToolMessageForCallId(reviewRequestBody, "call_ad_search_1"));
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_DoesNotRepeatPackPreflightOnSameThreadAfterSuccessfulExecution() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-turn1-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_ad_search_turn1",
+                                    type = "function",
+                                    function = new {
+                                        name = "ad_search",
+                                        arguments = JsonSerializer.Serialize(new { query = "turn1" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-turn1-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Turn 1 complete."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-turn2-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_ad_search_turn2",
+                                    type = "function",
+                                    function = new {
+                                        name = "ad_search",
+                                        arguments = JsonSerializer.Serialize(new { query = "turn2" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            4 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-turn2-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Turn 2 complete."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-preflight-repeat-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            EnableTestimoXPack = false,
+            EnableOfficeImoPack = false
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool("ad_pack_info", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"ad pack ready\"}")));
+        registry.Register(new RoundTripStubTool("ad_environment_discover", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"scope discovered\"}")));
+        registry.Register(new RoundTripStubTool("ad_search", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"search complete\"}")));
+        RegistryField.SetValue(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request1 = new ChatRequest {
+            RequestId = "req-pack-preflight-turn1",
+            ThreadId = thread.Id,
+            Text = "Run AD search, turn 1.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        var request2 = new ChatRequest {
+            RequestId = "req-pack-preflight-turn2",
+            ThreadId = thread.Id,
+            Text = "Run AD search, turn 2.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture1 = new SynchronizedCaptureStream();
+        using var writer1 = new StreamWriter(capture1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer1,
+            request1,
+            thread.Id,
+            CancellationToken.None);
+
+        using var capture2 = new SynchronizedCaptureStream();
+        using var writer2 = new StreamWriter(capture2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer2,
+            request2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(4, server.ChatCompletionRequestCount);
+
+        var resultMessage1 = GetPropertyValue<ChatResultMessage>(runResult1, "Result");
+        Assert.NotNull(resultMessage1.Tools);
+        Assert.Equal(3, resultMessage1.Tools!.Calls.Count);
+        Assert.Contains(resultMessage1.Tools.Calls, call => call.CallId.StartsWith("host_pack_preflight_", StringComparison.Ordinal));
+
+        var resultMessage2 = GetPropertyValue<ChatResultMessage>(runResult2, "Result");
+        Assert.NotNull(resultMessage2.Tools);
+        Assert.Single(resultMessage2.Tools!.Calls);
+        Assert.Equal("ad_search", resultMessage2.Tools.Calls[0].Name);
+        Assert.Equal("call_ad_search_turn2", resultMessage2.Tools.Calls[0].CallId);
+        Assert.DoesNotContain(resultMessage2.Tools.Calls, call => call.CallId.StartsWith("host_pack_preflight_", StringComparison.Ordinal));
+    }
+}

@@ -18,31 +18,115 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
-        if (definitions.Count == 0) {
+        if (definitions.Count == 0 || limit <= 0) {
             return Array.Empty<ToolDefinition>();
         }
 
-        if (limit >= definitions.Count) {
-            return definitions;
-        }
-
-        var selected = new List<ToolDefinition>(Math.Max(1, limit));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < definitions.Count && selected.Count < limit; i++) {
+        var uniqueDefinitions = new List<ToolDefinition>(definitions.Count);
+        var seenToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
             if (definition is null) {
                 continue;
             }
 
             var name = (definition.Name ?? string.Empty).Trim();
-            if (name.Length == 0 || !seen.Add(name)) {
+            if (name.Length == 0 || !seenToolNames.Add(name)) {
                 continue;
             }
 
-            selected.Add(definition);
+            uniqueDefinitions.Add(definition);
+        }
+
+        if (uniqueDefinitions.Count == 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        if (limit >= uniqueDefinitions.Count) {
+            return uniqueDefinitions;
+        }
+
+        // Deterministic but less registration-order-biased fallback:
+        // round-robin one tool per family (prefix) before filling remaining slots.
+        var familyOrder = new List<string>(uniqueDefinitions.Count);
+        var toolsByFamily = new Dictionary<string, Queue<ToolDefinition>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < uniqueDefinitions.Count; i++) {
+            var definition = uniqueDefinitions[i];
+            var family = ResolveDeterministicSubsetFamilyKey(definition.Name);
+            if (!toolsByFamily.TryGetValue(family, out var queue)) {
+                queue = new Queue<ToolDefinition>();
+                toolsByFamily[family] = queue;
+                familyOrder.Add(family);
+            }
+
+            queue.Enqueue(definition);
+        }
+
+        var selected = new List<ToolDefinition>(limit);
+        var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (selected.Count < limit) {
+            var addedInPass = false;
+            for (var familyIndex = 0; familyIndex < familyOrder.Count && selected.Count < limit; familyIndex++) {
+                var family = familyOrder[familyIndex];
+                if (!toolsByFamily.TryGetValue(family, out var queue) || queue.Count == 0) {
+                    continue;
+                }
+
+                var candidate = queue.Dequeue();
+                var candidateName = (candidate.Name ?? string.Empty).Trim();
+                if (candidateName.Length == 0 || !selectedNames.Add(candidateName)) {
+                    continue;
+                }
+
+                selected.Add(candidate);
+                addedInPass = true;
+            }
+
+            if (!addedInPass) {
+                break;
+            }
+        }
+
+        if (selected.Count < limit) {
+            for (var i = 0; i < uniqueDefinitions.Count && selected.Count < limit; i++) {
+                var definition = uniqueDefinitions[i];
+                var name = (definition.Name ?? string.Empty).Trim();
+                if (name.Length == 0 || !selectedNames.Add(name)) {
+                    continue;
+                }
+
+                selected.Add(definition);
+            }
         }
 
         return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
+    }
+
+    private static string ResolveDeterministicSubsetFamilyKey(string? toolName) {
+        const string packInfoSuffix = "_pack_info";
+        const string environmentDiscoverSuffix = "_environment_discover";
+
+        var normalized = (toolName ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.EndsWith(packInfoSuffix, StringComparison.OrdinalIgnoreCase)
+            && normalized.Length > packInfoSuffix.Length) {
+            return normalized[..^packInfoSuffix.Length].ToLowerInvariant();
+        }
+
+        if (normalized.EndsWith(environmentDiscoverSuffix, StringComparison.OrdinalIgnoreCase)
+            && normalized.Length > environmentDiscoverSuffix.Length) {
+            return normalized[..^environmentDiscoverSuffix.Length].ToLowerInvariant();
+        }
+
+        var separator = normalized.IndexOf('_');
+        if (separator > 0) {
+            return normalized[..separator].ToLowerInvariant();
+        }
+
+        return normalized.ToLowerInvariant();
     }
 
     private static List<ToolRoutingInsight> BuildRoutingInsights(IReadOnlyList<ToolScore> scored, IReadOnlyList<ToolDefinition> selectedDefs) {

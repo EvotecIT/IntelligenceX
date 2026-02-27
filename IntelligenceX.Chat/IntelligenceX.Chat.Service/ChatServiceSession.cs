@@ -32,6 +32,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxTrackedPlannerThreadContexts = 128;
     private const int MaxTrackedDomainIntentFamilyContexts = 256;
     private const int MaxTrackedDomainIntentClarificationContexts = 256;
+    private const int MaxTrackedPackPreflightContexts = 256;
     private const int MaxTrackedThreadRecoveryAliases = 256;
     private const int MaxTrackedThreadToolEvidenceContexts = 128;
     private const int MaxToolEvidenceEntriesPerThread = 48;
@@ -41,6 +42,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly TimeSpan PlannerThreadContextMaxAge = TimeSpan.FromHours(6);
     private static readonly TimeSpan DomainIntentFamilyContextMaxAge = TimeSpan.FromHours(8);
     private static readonly TimeSpan DomainIntentClarificationContextMaxAge = TimeSpan.FromHours(2);
+    private static readonly TimeSpan PackPreflightContextMaxAge = TimeSpan.FromHours(8);
     private static readonly TimeSpan ThreadRecoveryAliasContextMaxAge = TimeSpan.FromHours(12);
     private static readonly TimeSpan ThreadToolEvidenceContextMaxAge = TimeSpan.FromHours(8);
     private static readonly TimeSpan StartupToolHealthPrimeBudget = TimeSpan.FromSeconds(6);
@@ -75,6 +77,8 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, string> _domainIntentFamilyByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _domainIntentFamilySeenUtcTicks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _pendingDomainIntentClarificationSeenUtcTicks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string[]> _packPreflightToolNamesByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _packPreflightSeenUtcTicks = new(StringComparer.Ordinal);
     private readonly object _threadRecoveryAliasLock = new();
     private readonly Dictionary<string, string> _recoveredThreadAliasesByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _recoveredThreadAliasSeenUtcTicksByThreadId = new(StringComparer.Ordinal);
