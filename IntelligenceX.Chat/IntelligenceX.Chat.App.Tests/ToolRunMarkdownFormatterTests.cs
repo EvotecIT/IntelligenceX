@@ -1,4 +1,7 @@
 using System;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Markdown;
 using Xunit;
@@ -9,6 +12,11 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests for tool-run markdown formatting.
 /// </summary>
 public sealed class ToolRunMarkdownFormatterTests {
+    private static readonly MethodInfo ComputeUtf8Sha256HexMethod = typeof(ToolRunMarkdownFormatter).GetMethod(
+        "ComputeUtf8Sha256Hex",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ComputeUtf8Sha256Hex method was not found.");
+
     private static int CountOccurrences(string text, string token) {
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(token)) {
             return 0;
@@ -528,5 +536,17 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         Assert.Equal(1, CountOccurrences(markdown, "```text"));
         Assert.Contains(largeSnippet, markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures chunked UTF-8 hashing remains equivalent to canonical UTF-8 SHA-256 for surrogate-boundary content.
+    /// </summary>
+    [Fact]
+    public void ComputeUtf8Sha256Hex_MatchesCanonicalHashForSurrogateBoundaryContent() {
+        var value = new string('a', 1023) + "😀" + new string('b', 1024);
+        var expected = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+        var actual = (string)ComputeUtf8Sha256HexMethod.Invoke(null, new object[] { value })!;
+
+        Assert.Equal(expected, actual);
     }
 }

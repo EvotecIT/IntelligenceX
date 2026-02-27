@@ -217,14 +217,18 @@ internal static partial class ToolRunMarkdownFormatter {
 
     private static string ComputeUtf8Sha256Hex(string value) {
         using var incremental = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var encoder = Encoding.UTF8.GetEncoder();
         Span<byte> buffer = stackalloc byte[DedupHashChunkMaxBytes];
         var offset = 0;
         while (offset < value.Length) {
             var chunkChars = Math.Min(DedupHashChunkChars, value.Length - offset);
             var span = value.AsSpan(offset, chunkChars);
-            var bytesWritten = Encoding.UTF8.GetBytes(span, buffer);
-            incremental.AppendData(buffer[..bytesWritten]);
-            offset += chunkChars;
+            var flush = offset + chunkChars >= value.Length;
+            encoder.Convert(span, buffer, flush, out var charsUsed, out var bytesUsed, out _);
+            if (bytesUsed > 0) {
+                incremental.AppendData(buffer[..bytesUsed]);
+            }
+            offset += charsUsed;
         }
 
         return Convert.ToHexString(incremental.GetHashAndReset());
