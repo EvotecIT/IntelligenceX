@@ -574,6 +574,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForPlainKeywordMentions() {
+        var request = "Could you include a mermaid diagram if useful?";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedLegacyNetworkToken() {
+        var request = "If needed, use `visnetwork` for relationship mapping.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CopyChatOptionsWithoutTools_DisablesToolExecutionForReviewPasses() {
         var source = new ChatOptions {
             Model = "gpt-test",
