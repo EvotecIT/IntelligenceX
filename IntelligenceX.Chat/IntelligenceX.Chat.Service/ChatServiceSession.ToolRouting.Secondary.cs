@@ -324,6 +324,7 @@ internal sealed partial class ChatServiceSession {
             var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var hasTableViewProjection);
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
+            var packHint = ResolvePlannerPackHint(definition, category);
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             sb.Append(i + 1).Append(". ").Append(name);
@@ -332,6 +333,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (category.Length > 0) {
                 sb.Append(" | category: ").Append(category);
+            }
+            if (packHint.Length > 0) {
+                sb.Append(" | pack: ").Append(packHint);
             }
             if (domainIntentFamily.Length > 0) {
                 sb.Append(" | family: ").Append(domainIntentFamily);
@@ -361,6 +365,72 @@ internal sealed partial class ChatServiceSession {
         }
 
         return (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
+    }
+
+    private static string ResolvePlannerPackHint(ToolDefinition definition, string category) {
+        for (var i = 0; i < definition.Tags.Count; i++) {
+            var tag = (definition.Tags[i] ?? string.Empty).Trim();
+            if (!ToolRoutingTaxonomy.TryGetTagKeyValue(tag, out var tagKey, out var tagValue)
+                || !string.Equals(tagKey, "pack", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var normalizedTaggedPack = NormalizePackId(tagValue);
+            if (normalizedTaggedPack.Length > 0) {
+                return normalizedTaggedPack;
+            }
+        }
+
+        var toolName = (definition.Name ?? string.Empty).Trim();
+        if (toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)) {
+            return "active_directory";
+        }
+
+        if (toolName.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase)) {
+            return "eventlog";
+        }
+
+        if (toolName.StartsWith("system_", StringComparison.OrdinalIgnoreCase)) {
+            return "system";
+        }
+
+        if (toolName.StartsWith("testimox_", StringComparison.OrdinalIgnoreCase)) {
+            return "testimox";
+        }
+
+        if (toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase)) {
+            return "domaindetective";
+        }
+
+        if (toolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)) {
+            return "dnsclientx";
+        }
+
+        if (PackIdMatches(category, "active_directory")) {
+            return "active_directory";
+        }
+
+        if (PackIdMatches(category, "eventlog")) {
+            return "eventlog";
+        }
+
+        if (PackIdMatches(category, "system")) {
+            return "system";
+        }
+
+        if (PackIdMatches(category, "testimox")) {
+            return "testimox";
+        }
+
+        if (PackIdMatches(category, "domaindetective")) {
+            return "domaindetective";
+        }
+
+        if (PackIdMatches(category, "dnsclientx")) {
+            return "dnsclientx";
+        }
+
+        return string.Empty;
     }
 
     private static string[] ExtractPlannerTags(ToolDefinition definition, int maxCount) {
