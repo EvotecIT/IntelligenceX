@@ -297,8 +297,9 @@ internal static partial class ToolRunMarkdownFormatter {
             var row = new string[columns.Count];
             switch (rowNode.ValueKind) {
                 case JsonValueKind.Object:
+                    var propertyMap = BuildCaseInsensitivePropertyMap(rowNode);
                     for (var i = 0; i < columns.Count; i++) {
-                        row[i] = TryGetPropertyValueCaseInsensitive(rowNode, columns[i].Key, out var valueNode)
+                        row[i] = TryGetPropertyValueCaseInsensitive(rowNode, columns[i].Key, out var valueNode, propertyMap)
                             ? FormatJsonElement(valueNode)
                             : string.Empty;
                     }
@@ -402,12 +403,24 @@ internal static partial class ToolRunMarkdownFormatter {
     }
 
     private static bool TryGetPropertyValueCaseInsensitive(JsonElement obj, string propertyName, out JsonElement value) {
+        return TryGetPropertyValueCaseInsensitive(obj, propertyName, out value, propertyMap: null);
+    }
+
+    private static bool TryGetPropertyValueCaseInsensitive(
+        JsonElement obj,
+        string propertyName,
+        out JsonElement value,
+        IReadOnlyDictionary<string, JsonElement>? propertyMap) {
         value = default;
         if (obj.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
             return false;
         }
 
         if (obj.TryGetProperty(propertyName, out value)) {
+            return true;
+        }
+
+        if (propertyMap is not null && propertyMap.TryGetValue(propertyName, out value)) {
             return true;
         }
 
@@ -421,6 +434,19 @@ internal static partial class ToolRunMarkdownFormatter {
         }
 
         return false;
+    }
+
+    private static Dictionary<string, JsonElement> BuildCaseInsensitivePropertyMap(JsonElement obj) {
+        var map = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        if (obj.ValueKind != JsonValueKind.Object) {
+            return map;
+        }
+
+        foreach (var prop in obj.EnumerateObject()) {
+            map.TryAdd(prop.Name, prop.Value);
+        }
+
+        return map;
     }
 
     private static string ReadStringProperty(JsonElement obj, string propertyName) {

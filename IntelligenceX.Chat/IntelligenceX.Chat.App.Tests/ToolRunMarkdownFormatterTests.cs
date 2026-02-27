@@ -149,6 +149,33 @@ public sealed class ToolRunMarkdownFormatterTests {
     }
 
     /// <summary>
+    /// Ensures table render columns use case-insensitive row lookup and preserve first-match semantics when casing differs.
+    /// </summary>
+    [Fact]
+    public void Format_TableRenderHint_UsesCaseInsensitiveRowLookupWithStableFirstMatchSemantics() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c4b",
+                    Name = "testimox_rules_list"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c4b",
+                    Output = "{\"rules_view\":[{\"Name\":\"First\",\"name\":\"Second\",\"STATUS\":\"OK\"}]}",
+                    RenderJson = "{\"kind\":\"table\",\"rows_path\":\"rules_view\",\"columns\":[{\"key\":\"NaMe\",\"label\":\"Name\"},{\"key\":\"status\",\"label\":\"Status\"}]}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "TestimoX Rules List");
+
+        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("\"rows\":[[\"Name\",\"Status\"],[\"First\",\"OK\"]]", markdown);
+    }
+
+    /// <summary>
     /// Ensures render arrays can emit first-party visual fences and map visnetwork to ix-network.
     /// </summary>
     [Fact]
