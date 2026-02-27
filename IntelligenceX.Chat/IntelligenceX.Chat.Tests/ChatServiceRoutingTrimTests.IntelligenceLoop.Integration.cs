@@ -317,6 +317,46 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void GetPhaseHeartbeatSuppressionReason_ReportsExpectedReasons() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        using var unrelatedCts = new CancellationTokenSource();
+
+        heartbeatCts.Cancel();
+        outerCts.Cancel();
+        unrelatedCts.Cancel();
+
+        Assert.Equal("io", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+            new IOException("io"),
+            heartbeatCts.Token,
+            outerCts.Token));
+        Assert.Equal("heartbeat-canceled", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+            new OperationCanceledException("heartbeat", innerException: null, heartbeatCts.Token),
+            heartbeatCts.Token,
+            outerCts.Token));
+        Assert.Equal("request-canceled", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+            new OperationCanceledException("outer", innerException: null, outerCts.Token),
+            heartbeatCts.Token,
+            outerCts.Token));
+        Assert.Null(ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+            new OperationCanceledException("unrelated", innerException: null, unrelatedCts.Token),
+            heartbeatCts.Token,
+            outerCts.Token));
+    }
+
+    [Fact]
+    public void GetPhaseHeartbeatSuppressionReason_UsesGenericCanceledWhenTokenIsUnspecified() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        heartbeatCts.Cancel();
+
+        Assert.Equal("canceled", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+            new OperationCanceledException("canceled-without-token"),
+            heartbeatCts.Token,
+            outerCts.Token));
+    }
+
+    [Fact]
     public async Task ToolRoundStatusLifecycle_EmitsRoundStatusesInDeterministicOrder() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
