@@ -9,6 +9,7 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 namespace IntelligenceX.Chat.App.Markdown;
 
 internal static partial class ToolRunMarkdownFormatter {
+    // Keep stack allocation bounded (~4 KB) while reducing encoder/hash call overhead.
     private const int DedupHashChunkChars = 1024;
     private const int DedupHashChunkMaxBytes = DedupHashChunkChars * 4;
 
@@ -215,7 +216,7 @@ internal static partial class ToolRunMarkdownFormatter {
         return normalizedLanguage + ":" + hash + ":" + value.Length;
     }
 
-    private static string ComputeUtf8Sha256Hex(string value) {
+    internal static string ComputeUtf8Sha256Hex(string value) {
         using var incremental = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var encoder = Encoding.UTF8.GetEncoder();
         Span<byte> buffer = stackalloc byte[DedupHashChunkMaxBytes];
