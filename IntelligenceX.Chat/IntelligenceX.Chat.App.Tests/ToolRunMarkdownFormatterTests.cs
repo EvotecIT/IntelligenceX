@@ -403,4 +403,101 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.Contains("#### Call", markdown);
         Assert.DoesNotContain("<unknown>", markdown, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Ensures visual-only formatting preserves first-seen call ordering across grouped headings.
+    /// </summary>
+    [Fact]
+    public void FormatVisualsOnly_PreservesFirstSeenCallOrderAcrossGroups() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c20",
+                    Name = "first_tool"
+                },
+                new ToolCallDto {
+                    CallId = "c21",
+                    Name = "second_tool"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c21",
+                    Output = "{\"chart\":{\"type\":\"bar\",\"data\":{\"labels\":[\"B\"],\"datasets\":[{\"data\":[2]}]}}}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart\"}"
+                },
+                new ToolOutputDto {
+                    CallId = "c20",
+                    Output = "{\"chart\":{\"type\":\"line\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}}}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart\"}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(
+            tools,
+            name => string.Equals(name, "second_tool", StringComparison.Ordinal) ? "Second Tool" : "First Tool");
+        var secondIndex = markdown.IndexOf("#### Second Tool", StringComparison.Ordinal);
+        var firstIndex = markdown.IndexOf("#### First Tool", StringComparison.Ordinal);
+
+        Assert.True(secondIndex >= 0);
+        Assert.True(firstIndex > secondIndex);
+    }
+
+    /// <summary>
+    /// Ensures visual-only formatting deduplicates repeated visual fences across outputs within the same call group.
+    /// </summary>
+    [Fact]
+    public void FormatVisualsOnly_DeduplicatesRepeatedFencesAcrossOutputsForSameCall() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c22",
+                    Name = "dup_tool"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c22",
+                    Output = "{\"chart\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}}}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart\"}"
+                },
+                new ToolOutputDto {
+                    CallId = "c22",
+                    Output = "{\"chart\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}}}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart\"}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(tools, _ => "unused");
+
+        Assert.Equal(1, CountOccurrences(markdown, "```ix-chart"));
+    }
+
+    /// <summary>
+    /// Ensures debug formatting falls back to call-based labels when resolved display names are blank.
+    /// </summary>
+    [Fact]
+    public void Format_FallsBackToCallLabelWhenResolvedDisplayNameIsBlank() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c23",
+                    Name = "blank_name_tool"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c23",
+                    Output = "{}",
+                    SummaryMarkdown = "done"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "   ");
+
+        Assert.Contains("#### Call c23", markdown);
+    }
 }
