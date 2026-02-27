@@ -54,7 +54,11 @@ internal sealed partial class ChatServiceSession {
         var toolNamesByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (toolCalls is { Count: > 0 }) {
             for (var i = 0; i < toolCalls.Count; i++) {
-                var call = toolCalls[i];
+                ToolCallDto? call = toolCalls[i];
+                if (call is null) {
+                    continue;
+                }
+
                 var callId = (call.CallId ?? string.Empty).Trim();
                 var toolName = (call.Name ?? string.Empty).Trim();
                 if (callId.Length == 0 || toolName.Length == 0) {
@@ -66,12 +70,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         var bulletLines = new List<string>(capacity: Math.Min(3, toolOutputs.Count));
+        var usableOutputCount = 0;
         for (var i = 0; i < toolOutputs.Count; i++) {
-            if (bulletLines.Count >= 3) {
-                break;
+            ToolOutputDto? output = toolOutputs[i];
+            if (output is null) {
+                continue;
             }
 
-            var output = toolOutputs[i];
+            usableOutputCount++;
+            if (bulletLines.Count >= 3) {
+                continue;
+            }
+
             var summary = BuildToolOutputFallbackSummary(output);
             if (summary.Length == 0) {
                 continue;
@@ -88,7 +98,7 @@ internal sealed partial class ChatServiceSession {
             return normalizedAssistantDraft;
         }
 
-        var remainingCount = Math.Max(0, toolOutputs.Count - bulletLines.Count);
+        var remainingCount = Math.Max(0, usableOutputCount - bulletLines.Count);
         var builder = new StringBuilder();
         builder.AppendLine("Recovered findings from executed tools (model returned no text):");
         for (var i = 0; i < bulletLines.Count; i++) {
