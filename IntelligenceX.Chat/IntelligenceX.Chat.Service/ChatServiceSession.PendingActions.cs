@@ -16,7 +16,6 @@ internal sealed partial class ChatServiceSession {
     private static readonly Regex LooseActionBlockRegex = new(
         @"(?is)(?:^|\n)\s*id\s*:?\s*(?<id>[^\r\n]+)\s*\r?\n\s*title\s*:?\s*(?<title>[^\r\n]*)\s*\r?\n\s*request\s*:?\s*(?<request>.*?)\r?\n\s*reply\s*:?\s*(?<reply>[^\r\n]+)",
         RegexOptions.CultureInvariant);
-    private static readonly char[] PendingActionConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
     private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
     private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
         new[] { '\\', '{', '}', '[', ']', '<', '>', '=' };
@@ -379,7 +378,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        if (trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0
+        if (ContainsQuestionSignal(trimmed)
             || trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) >= 0
             || LooksLikeStructuredPendingActionConfirmationInput(trimmed)) {
             reason = "follow_up_disqualified_shape";
