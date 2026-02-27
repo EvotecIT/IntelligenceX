@@ -100,13 +100,12 @@ internal static class ToolRunMarkdownFormatter {
     }
 
     private static string ResolveToolLabel(IReadOnlyDictionary<string, string> namesByCallId, string? callId) {
-        if (!string.IsNullOrWhiteSpace(callId)
-            && namesByCallId.TryGetValue(callId, out var name)
-            && !string.IsNullOrWhiteSpace(name)) {
+        if (callId is not null
+            && namesByCallId.TryGetValue(callId, out var name)) {
             return name;
         }
 
-        return "Call " + (string.IsNullOrWhiteSpace(callId) ? "<unknown>" : callId.Trim());
+        return "Call " + callId;
     }
 
     private static void AppendCodeFences(
@@ -148,7 +147,7 @@ internal static class ToolRunMarkdownFormatter {
     }
 
     private static string NormalizeCallId(string? callId) {
-        return string.IsNullOrWhiteSpace(callId) ? string.Empty : callId.Trim();
+        return callId ?? string.Empty;
     }
 
     private static bool ShouldIncludeSummary(string summary, bool hasError) {

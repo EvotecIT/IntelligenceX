@@ -359,4 +359,48 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.Contains("\"type\":\"line\"", markdown);
         Assert.Equal(1, CountOccurrences(markdown, "#### Visual Pack Report"));
     }
+
+    /// <summary>
+    /// Ensures fallback labels for missing call IDs remain backward compatible in debug formatting.
+    /// </summary>
+    [Fact]
+    public void Format_UsesLegacyFallbackLabelWhenCallIdMissing() {
+        var tools = new ToolRunDto {
+            Calls = Array.Empty<ToolCallDto>(),
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = string.Empty,
+                    Output = "{}",
+                    SummaryMarkdown = "done"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "ignored");
+
+        Assert.Contains("#### Call", markdown);
+        Assert.DoesNotContain("<unknown>", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures fallback labels for missing call IDs remain backward compatible in visual-only formatting.
+    /// </summary>
+    [Fact]
+    public void FormatVisualsOnly_UsesLegacyFallbackLabelWhenCallIdMissing() {
+        var tools = new ToolRunDto {
+            Calls = Array.Empty<ToolCallDto>(),
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = string.Empty,
+                    Output = "{\"chart\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}}}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart\"}"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(tools, _ => "ignored");
+
+        Assert.Contains("#### Call", markdown);
+        Assert.DoesNotContain("<unknown>", markdown, StringComparison.OrdinalIgnoreCase);
+    }
 }
