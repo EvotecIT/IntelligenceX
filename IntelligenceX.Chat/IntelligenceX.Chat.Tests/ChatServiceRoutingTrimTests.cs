@@ -324,6 +324,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains(names, static name => string.Equals(name, "ad_replication_summary", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void UpdateToolRoutingStatsForTesting_ThrowsWhenCallsIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => session.UpdateToolRoutingStatsForTesting(null!, new List<ToolOutputDto>()));
+        Assert.Equal("calls", ex.ParamName);
+    }
+
+    [Fact]
+    public void UpdateToolRoutingStatsForTesting_ThrowsWhenOutputsIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => session.UpdateToolRoutingStatsForTesting(new List<ToolCall>(), null!));
+        Assert.Equal("outputs", ex.ParamName);
+    }
+
     [Theory]
     [InlineData("run now")]
     [InlineData("go for it")]

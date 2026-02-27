@@ -49,6 +49,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequestForTesting_ThrowsWhenThreadIdIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => session.ExpandContinuationUserRequestForTesting(null!, "run now"));
+        Assert.Equal("threadId", ex.ParamName);
+    }
+
+    [Fact]
+    public void RememberUserIntentForTesting_ThrowsWhenUserRequestIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => session.RememberUserIntentForTesting("thread-001", null!));
+        Assert.Equal("userRequest", ex.ParamName);
+    }
+
+    [Fact]
+    public void RememberPendingActionsForTesting_ThrowsWhenAssistantReplyIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => session.RememberPendingActionsForTesting("thread-001", null!));
+        Assert.Equal("assistantReply", ex.ParamName);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesActCommandToPendingActionRequest() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """
