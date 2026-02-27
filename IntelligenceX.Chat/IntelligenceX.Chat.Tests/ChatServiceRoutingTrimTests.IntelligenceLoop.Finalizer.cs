@@ -130,6 +130,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
             cancellationToken: outerCts.Token);
     }
 
+    [Fact]
+    public void ShouldSuppressPhaseHeartbeatFailure_ThrowsWhenFailureIsNull() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => ChatServiceSession.ShouldSuppressPhaseHeartbeatFailure(
+            heartbeatFailure: null!,
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token));
+
+        Assert.Equal("heartbeatFailure", ex.ParamName);
+    }
+
+    [Fact]
+    public void GetPhaseHeartbeatSuppressionReason_ThrowsWhenFailureIsNull() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+
+        var ex = Assert.Throws<ArgumentNullException>(() => ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+            heartbeatFailure: null!,
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token));
+
+        Assert.Equal("heartbeatFailure", ex.ParamName);
+    }
+
     private static void AssertSuppressed(Exception failure, CancellationToken heartbeatCancellationToken, CancellationToken cancellationToken) {
         var ex = Record.Exception(() => InvokeFinalize(failure, heartbeatCancellationToken, cancellationToken));
         Assert.Null(ex);

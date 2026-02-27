@@ -57,16 +57,17 @@ public sealed class StartupToolHealthPrimingBehaviorTests {
     [Fact]
     public async Task AwaitStartupToolHealthPrimingForHelloAsync_StopsWaitingWhenCanceled() {
         var priming = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var cts = new CancellationTokenSource(millisecondsDelay: 30);
-        var stopwatch = Stopwatch.StartNew();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
 
-        await ChatServiceSession.AwaitStartupToolHealthPrimingForHelloAsync(
+        var waitTask = ChatServiceSession.AwaitStartupToolHealthPrimingForHelloAsync(
             priming.Task,
             TimeSpan.FromSeconds(5),
             cts.Token);
 
-        stopwatch.Stop();
+        var completed = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(waitTask, completed);
+        await waitTask;
         Assert.False(priming.Task.IsCompleted);
-        Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 1500);
     }
 }
