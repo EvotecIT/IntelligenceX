@@ -280,10 +280,12 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(string userRequest, string assistantDraft) {
-        var requestHasVisualContract = ContainsVisualContractSignal(userRequest);
+        var requestHasVisualContractSignal = ContainsVisualContractSignal(userRequest);
+        var hasStructuredOverride = TryReadProactiveVisualizationAllowNewVisualsFromRequestText(userRequest, out var allowNewVisualsFromOverride);
+        var requestHasVisualContract = requestHasVisualContractSignal || hasStructuredOverride;
         var draftHasVisuals = ContainsVisualContractSignal(assistantDraft);
         return new ProactiveVisualizationPolicy(
-            AllowNewVisuals: requestHasVisualContract,
+            AllowNewVisuals: hasStructuredOverride ? allowNewVisualsFromOverride : requestHasVisualContractSignal,
             DraftHasVisuals: draftHasVisuals,
             RequestHasVisualContract: requestHasVisualContract);
     }
