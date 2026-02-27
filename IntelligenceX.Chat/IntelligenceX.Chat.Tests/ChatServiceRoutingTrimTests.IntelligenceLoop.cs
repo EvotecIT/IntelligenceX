@@ -582,6 +582,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedLegacyNetworkToken() {
         var request = "If needed, use `visnetwork` for relationship mapping.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
