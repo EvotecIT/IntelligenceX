@@ -101,7 +101,8 @@ internal static class ToolRunMarkdownFormatter {
 
     private static string ResolveToolLabel(IReadOnlyDictionary<string, string> namesByCallId, string? callId) {
         if (callId is not null
-            && namesByCallId.TryGetValue(callId, out var name)) {
+            && namesByCallId.TryGetValue(callId, out var name)
+            && !string.IsNullOrWhiteSpace(name)) {
             return name;
         }
 
