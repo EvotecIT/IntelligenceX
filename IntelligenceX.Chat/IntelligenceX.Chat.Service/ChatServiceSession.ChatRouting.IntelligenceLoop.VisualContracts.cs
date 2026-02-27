@@ -9,9 +9,11 @@ internal sealed partial class ChatServiceSession {
         string? requestText,
         out bool hasAllowNewVisualsOverride,
         out bool allowNewVisuals,
+        out bool hasPreferredVisualOverride,
         out string preferredVisualType) {
         hasAllowNewVisualsOverride = false;
         allowNewVisuals = false;
+        hasPreferredVisualOverride = false;
         preferredVisualType = string.Empty;
         var text = requestText ?? string.Empty;
         if (text.Length == 0) {
@@ -33,6 +35,7 @@ internal sealed partial class ChatServiceSession {
             scan,
             out hasAllowNewVisualsOverride,
             out allowNewVisuals,
+            out hasPreferredVisualOverride,
             out preferredVisualType);
     }
 
@@ -40,9 +43,11 @@ internal sealed partial class ChatServiceSession {
         ReadOnlySpan<char> text,
         out bool hasAllowNewVisualsOverride,
         out bool allowNewVisuals,
+        out bool hasPreferredVisualOverride,
         out string preferredVisualType) {
         hasAllowNewVisualsOverride = false;
         allowNewVisuals = false;
+        hasPreferredVisualOverride = false;
         preferredVisualType = string.Empty;
         var markerLineSeen = false;
         var hasAnyOverride = false;
@@ -81,6 +86,7 @@ internal sealed partial class ChatServiceSession {
 
             if (TryParseStructuredPreferredVisualLine(line, out var parsedPreferredVisualType)) {
                 preferredVisualType = parsedPreferredVisualType;
+                hasPreferredVisualOverride = true;
                 hasAnyOverride = true;
             }
         }
@@ -143,6 +149,7 @@ internal sealed partial class ChatServiceSession {
         var normalized = NormalizeCompactToken(value);
         switch (normalized) {
             case "auto":
+                preferredVisualType = "auto";
                 return true;
             case "ixnetwork":
             case "network":

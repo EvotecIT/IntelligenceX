@@ -30,6 +30,7 @@ internal sealed partial class ChatServiceSession {
         bool AllowNewVisuals,
         bool DraftHasVisuals,
         bool RequestHasVisualContract,
+        bool HasPreferredVisualOverride,
         string PreferredVisualType);
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
@@ -242,11 +243,15 @@ internal sealed partial class ChatServiceSession {
         var allowNewVisualsText = visualPolicy.AllowNewVisuals ? "true" : "false";
         var draftHasVisualsText = visualPolicy.DraftHasVisuals ? "true" : "false";
         var requestHasVisualContractText = visualPolicy.RequestHasVisualContract ? "true" : "false";
-        var preferredVisualTypeText = visualPolicy.PreferredVisualType.Length > 0 ? visualPolicy.PreferredVisualType : "auto";
+        var preferredVisualTypeText = visualPolicy.HasPreferredVisualOverride
+            ? visualPolicy.PreferredVisualType
+            : "auto";
+        var hasSpecificPreferredVisualType = visualPolicy.HasPreferredVisualOverride
+            && !string.Equals(visualPolicy.PreferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var visualRequirementLine = visualPolicy.AllowNewVisuals
             ? "- If allow_new_visuals is true, include at most one new visual block and only when it materially compresses complex evidence."
             : "- If allow_new_visuals is false, do not introduce new mermaid/ix-chart/ix-network blocks in this proactive rewrite.";
-        var preferredVisualRequirementLine = visualPolicy.AllowNewVisuals && visualPolicy.PreferredVisualType.Length > 0
+        var preferredVisualRequirementLine = visualPolicy.AllowNewVisuals && hasSpecificPreferredVisualType
             ? "- If preferred_visual is set, prefer that visual format for any newly introduced visual block unless another supported format is clearly better."
             : string.Empty;
         return $$"""
@@ -289,11 +294,13 @@ internal sealed partial class ChatServiceSession {
     private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(string userRequest, string assistantDraft) {
         var requestHasVisualContractSignal = ContainsVisualContractSignal(userRequest);
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
-            out var allowNewVisualsFromOverride, out var preferredVisualType);
+            out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType);
         var requestHasVisualContract = requestHasVisualContractSignal || hasStructuredOverrides;
+        var hasSpecificPreferredVisualType = hasPreferredVisualOverride
+            && !string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var allowNewVisuals = hasAllowNewVisualsOverride
             ? allowNewVisualsFromOverride
-            : preferredVisualType.Length > 0
+            : hasSpecificPreferredVisualType
                 ? true
                 : requestHasVisualContractSignal;
         var draftHasVisuals = ContainsVisualContractSignal(assistantDraft);
@@ -301,6 +308,7 @@ internal sealed partial class ChatServiceSession {
             AllowNewVisuals: allowNewVisuals,
             DraftHasVisuals: draftHasVisuals,
             RequestHasVisualContract: requestHasVisualContract,
+            HasPreferredVisualOverride: hasPreferredVisualOverride,
             PreferredVisualType: preferredVisualType);
     }
 
