@@ -370,10 +370,11 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        if (ShouldSuppressPhaseHeartbeatFailure(heartbeatFailure, heartbeatCancellationToken, cancellationToken)) {
+        var suppressionReason = GetPhaseHeartbeatSuppressionReason(heartbeatFailure, heartbeatCancellationToken, cancellationToken);
+        if (suppressionReason is not null) {
             Trace.TraceWarning(
                 $"Phase heartbeat loop suppressed failure after phase completion: phase={phaseStatus}; request={requestId}; thread={threadId}; " +
-                $"error={heartbeatFailure.GetType().Name}: {heartbeatFailure.Message}");
+                $"reason={suppressionReason}; error={heartbeatFailure}");
             return;
         }
 
@@ -382,23 +383,35 @@ internal sealed partial class ChatServiceSession {
 
     internal static bool ShouldSuppressPhaseHeartbeatFailure(Exception heartbeatFailure, CancellationToken heartbeatCancellationToken,
         CancellationToken cancellationToken) {
+        return GetPhaseHeartbeatSuppressionReason(heartbeatFailure, heartbeatCancellationToken, cancellationToken) is not null;
+    }
+
+    internal static string? GetPhaseHeartbeatSuppressionReason(Exception heartbeatFailure, CancellationToken heartbeatCancellationToken,
+        CancellationToken cancellationToken) {
         if (heartbeatFailure is IOException) {
-            return true;
+            return "io";
         }
 
         if (heartbeatFailure is not OperationCanceledException canceledException) {
-            return false;
+            return null;
         }
 
         var failureToken = canceledException.CancellationToken;
         if (!failureToken.CanBeCanceled) {
-            return heartbeatCancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested;
+            return heartbeatCancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested ? "canceled" : null;
         }
 
         // The heartbeat loop should throw OCE with either the linked heartbeat token
         // or the outer request token. Treat other canceled tokens as unexpected.
-        return (failureToken == heartbeatCancellationToken && heartbeatCancellationToken.IsCancellationRequested)
-               || (failureToken == cancellationToken && cancellationToken.IsCancellationRequested);
+        if (failureToken == heartbeatCancellationToken && heartbeatCancellationToken.IsCancellationRequested) {
+            return "heartbeat-canceled";
+        }
+
+        if (failureToken == cancellationToken && cancellationToken.IsCancellationRequested) {
+            return "request-canceled";
+        }
+
+        return null;
     }
 
     private async Task RunPhaseHeartbeatLoopAsync(
