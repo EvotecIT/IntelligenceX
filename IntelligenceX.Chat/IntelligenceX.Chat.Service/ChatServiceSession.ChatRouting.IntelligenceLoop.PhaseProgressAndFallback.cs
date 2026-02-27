@@ -40,8 +40,8 @@ internal sealed partial class ChatServiceSession {
 
     internal static string ResolveAssistantTextFromToolOutputsFallback(
         string assistantDraft,
-        IReadOnlyList<ToolCallDto> toolCalls,
-        IReadOnlyList<ToolOutputDto> toolOutputs) {
+        IReadOnlyList<ToolCallDto?> toolCalls,
+        IReadOnlyList<ToolOutputDto?> toolOutputs) {
         var normalizedAssistantDraft = assistantDraft ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(normalizedAssistantDraft)) {
             return normalizedAssistantDraft;

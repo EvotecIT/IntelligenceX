@@ -476,16 +476,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ResolveAssistantTextFromToolOutputsFallback_IgnoresNullCallAndOutputEntries() {
         var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
             assistantDraft: string.Empty,
-            toolCalls: new List<ToolCallDto> {
-                null!,
+            toolCalls: new List<ToolCallDto?> {
+                null,
                 new ToolCallDto {
                     CallId = "call-2",
                     Name = "ad_user_find",
                     ArgumentsJson = "{}"
                 }
             },
-            toolOutputs: new List<ToolOutputDto> {
-                null!,
+            toolOutputs: new List<ToolOutputDto?> {
+                null,
                 new ToolOutputDto {
                     CallId = "call-2",
                     Output = "{\"ok\":true}",
@@ -502,13 +502,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ResolveAssistantTextFromToolOutputsFallback_ReturnsEmptyWhenOnlyNullOutputsArePresent() {
         var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
             assistantDraft: string.Empty,
-            toolCalls: Array.Empty<ToolCallDto>(),
-            toolOutputs: new List<ToolOutputDto> {
-                null!,
-                null!
+            toolCalls: Array.Empty<ToolCallDto?>(),
+            toolOutputs: new List<ToolOutputDto?> {
+                null,
+                null
             });
 
         Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromToolOutputsFallback_RemainingCountTracksUsableOutputsOnly() {
+        var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
+            assistantDraft: string.Empty,
+            toolCalls: new List<ToolCallDto?> {
+                new ToolCallDto { CallId = "c1", Name = "tool_a", ArgumentsJson = "{}" },
+                new ToolCallDto { CallId = "c2", Name = "tool_b", ArgumentsJson = "{}" },
+                new ToolCallDto { CallId = "c3", Name = "tool_c", ArgumentsJson = "{}" },
+                new ToolCallDto { CallId = "c4", Name = "tool_d", ArgumentsJson = "{}" },
+                new ToolCallDto { CallId = "c5", Name = "tool_e", ArgumentsJson = "{}" }
+            },
+            toolOutputs: new List<ToolOutputDto?> {
+                new ToolOutputDto { CallId = "c1", Output = "{\"ok\":true}", SummaryMarkdown = "A" },
+                null,
+                new ToolOutputDto { CallId = "c2", Output = "{\"ok\":true}", SummaryMarkdown = "B" },
+                new ToolOutputDto { CallId = "c3", Output = "{\"ok\":true}", SummaryMarkdown = "C" },
+                null,
+                new ToolOutputDto { CallId = "c4", Output = "{\"ok\":true}", SummaryMarkdown = "D" },
+                new ToolOutputDto { CallId = "c5", Output = "{\"ok\":true}", SummaryMarkdown = "E" }
+            });
+
+        Assert.Contains("Recovered findings from executed tools", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("... and 2 more tool output(s).", text, StringComparison.Ordinal);
     }
 
     [Fact]
