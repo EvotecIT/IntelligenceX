@@ -40,9 +40,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
-        RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication and LDAP diagnostics." });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
-        var expanded = Assert.IsType<string>(result);
+        session.RememberUserIntentForTesting("thread-001", "Please run forest-wide replication and LDAP diagnostics.");
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-001", "run now");
 
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
@@ -63,9 +62,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             reply: /act act_001
             """;
 
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
-        var expanded = Assert.IsType<string>(result);
+        session.RememberPendingActionsForTesting("thread-001", assistantDraft);
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-001", "/act act_001");
 
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
     }
@@ -87,9 +85,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             /act act_repl_now
             """;
 
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_repl_now" });
-        var expanded = Assert.IsType<string>(result);
+        session.RememberPendingActionsForTesting("thread-001", assistantDraft);
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-001", "/act act_repl_now");
 
         Assert.Contains("ad_replication_summary", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix_action_selection", expanded, StringComparison.OrdinalIgnoreCase);
@@ -108,9 +105,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             reply: /act act_001
             """;
 
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
-        var expanded = Assert.IsType<string>(result);
+        session.RememberPendingActionsForTesting("thread-001", assistantDraft);
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-001", "/act act_001");
 
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("top 5 errors", expanded, StringComparison.OrdinalIgnoreCase);
@@ -135,9 +131,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             reply: /act act_002
             """;
 
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-002", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-002", "2" });
-        var expanded = Assert.IsType<string>(result);
+        session.RememberPendingActionsForTesting("thread-002", assistantDraft);
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-002", "2");
 
         Assert.Contains("second thing", expanded, StringComparison.OrdinalIgnoreCase);
     }
@@ -161,10 +156,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             reply: /act act_002
             """;
 
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-002", assistantDraft });
+        session.RememberPendingActionsForTesting("thread-002", assistantDraft);
         var input = "2 servers are down";
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-002", input });
-        var expanded = Assert.IsType<string>(result);
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-002", input);
 
         Assert.Equal(input, expanded);
     }
@@ -181,9 +175,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             reply: /act act_001
             """;
 
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
-        var expanded = Assert.IsType<string>(result);
+        session.RememberPendingActionsForTesting("thread-001", assistantDraft);
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-001", "/act act_001");
 
         Assert.DoesNotContain("ix:action-selection:v1", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("/act act_001", expanded);

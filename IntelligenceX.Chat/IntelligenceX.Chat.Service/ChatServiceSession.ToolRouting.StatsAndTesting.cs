@@ -418,6 +418,18 @@ internal sealed partial class ChatServiceSession {
         PersistToolRoutingStatsSnapshot();
     }
 
+    internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest) {
+        return ExpandContinuationUserRequest(threadId, userRequest);
+    }
+
+    internal void RememberUserIntentForTesting(string threadId, string userRequest) {
+        RememberUserIntent(threadId, userRequest);
+    }
+
+    internal void RememberPendingActionsForTesting(string threadId, string assistantReply) {
+        RememberPendingActions(threadId, assistantReply);
+    }
+
     internal double ReadToolRoutingAdjustmentForTesting(string toolName) {
         return ReadToolRoutingAdjustment(toolName);
     }
