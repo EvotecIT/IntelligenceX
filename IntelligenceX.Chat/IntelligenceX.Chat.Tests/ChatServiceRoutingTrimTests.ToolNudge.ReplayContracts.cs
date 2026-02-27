@@ -242,6 +242,57 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDomainDetectiveFallbackFromDnsClientXFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["dnsclientx_query"] = "dnsclientx";
+        packMap["domaindetective_domain_summary"] = "domaindetective";
+
+        var dnsQuerySchema = ToolSchema.Object(
+                ("name", ToolSchema.String("name")))
+            .Required("name")
+            .NoAdditionalProperties();
+        var domainSummarySchema = ToolSchema.Object(
+                ("domain", ToolSchema.String("domain")))
+            .Required("domain")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("dnsclientx_query", "dns query", dnsQuerySchema),
+            new("domaindetective_domain_summary", "domain summary", domainSummarySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-dnsq",
+                Name = "dnsclientx_query",
+                ArgumentsJson = """{"name":"contoso.com"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-dnsq",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["domaindetective_domain_summary"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue dns investigation", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("domaindetective_domain_summary", toolCall.Name);
+        Assert.Contains("\"domain\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross_public_domain", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsTestimoXRunFallbackUsingSelectorHints() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));

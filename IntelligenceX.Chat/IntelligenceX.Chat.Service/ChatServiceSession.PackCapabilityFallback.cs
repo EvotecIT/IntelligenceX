@@ -254,6 +254,20 @@ internal sealed partial class ChatServiceSession {
                 return true;
             }
 
+            if (TryBuildCrossPublicDomainPostureFallbackToolCall(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    sourceTool: sourceTool,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    hasSourceFailureSignal: hasSourceFailureSignal,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
             for (var i = 0; i < packContract.FallbackTools.Length; i++) {
                 var candidateTool = packContract.FallbackTools[i];
                 if (string.Equals(candidateTool, sourceTool, StringComparison.OrdinalIgnoreCase)) {
@@ -494,6 +508,92 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    private bool TryBuildCrossPublicDomainPostureFallbackToolCall(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        string sourceTool,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        bool hasSourceFailureSignal,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_public_domain_not_applicable";
+
+        if (!PackIdMatches(sourcePackId, "dnsclientx")
+            || !string.Equals(sourceTool, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)
+            || !hasSourceFailureSignal) {
+            reason = "cross_public_domain_source_not_eligible";
+            return false;
+        }
+
+        const string candidateTool = "domaindetective_domain_summary";
+        if (priorCalledTools.Contains(candidateTool)) {
+            reason = "cross_public_domain_summary_already_called";
+            return false;
+        }
+
+        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+            reason = "cross_public_domain_summary_unavailable";
+            return false;
+        }
+
+        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
+            || !PackIdMatches(candidatePackIdRaw, "domaindetective")) {
+            reason = "cross_public_domain_summary_not_in_domaindetective_pack";
+            return false;
+        }
+
+        var mutability = ResolveStructuredNextActionMutability(
+            declaredMutability: ActionMutability.Unknown,
+            toolName: candidateTool,
+            toolDefinition: toolDefinition,
+            mutatingToolHintsByName: mutatingToolHintsByName);
+        if (mutability != ActionMutability.ReadOnly) {
+            reason = "cross_public_domain_summary_not_read_only";
+            return false;
+        }
+
+        var domain = ResolveDomainDetectiveDomainHint(partialScopeHints);
+        if (string.IsNullOrWhiteSpace(domain)) {
+            reason = "cross_public_domain_missing_domain_hint";
+            return false;
+        }
+
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
+            .Add("domain", domain);
+        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+            reason = "cross_public_domain_summary_missing_required_args";
+            return false;
+        }
+
+        var serializedArguments = JsonLite.Serialize(normalizedArguments);
+        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+        var raw = new JsonObject()
+            .Add("type", "tool_call")
+            .Add("call_id", fallbackCallId)
+            .Add("name", candidateTool)
+            .Add("arguments", serializedArguments);
+
+        toolCall = new ToolCall(
+            callId: fallbackCallId,
+            name: candidateTool,
+            input: serializedArguments,
+            arguments: normalizedArguments,
+            raw: raw);
+        reason = "pack_contract_cross_public_domain_posture:"
+                 + sourcePackId
+                 + ":"
+                 + partialScopeReason
+                 + "->"
+                 + candidateTool;
+        return true;
+    }
+
     private static string? ResolveDnsClientXNameHint(JsonObject hints) {
         var preferred = ReadNonEmptyHint(hints, "domain_name")
                         ?? ReadNonEmptyHint(hints, "dns_domain_name")
@@ -509,6 +609,21 @@ internal sealed partial class ChatServiceSession {
 
         var normalized = preferred.Trim();
         return normalized.IndexOf(' ') >= 0 ? null : normalized;
+    }
+
+    private static string? ResolveDomainDetectiveDomainHint(JsonObject hints) {
+        var preferred = ReadNonEmptyHint(hints, "domain")
+                        ?? ReadNonEmptyHint(hints, "domain_name")
+                        ?? ReadNonEmptyHint(hints, "dns_domain_name")
+                        ?? ReadNonEmptyHint(hints, "name")
+                        ?? ReadNonEmptyHint(hints, "target")
+                        ?? ReadNonEmptyHint(hints, "host");
+        if (string.IsNullOrWhiteSpace(preferred)) {
+            return null;
+        }
+
+        var normalized = preferred.Trim().TrimEnd('.');
+        return IsLikelyDomainName(normalized) ? normalized : null;
     }
 
     private static bool ShouldPreferAdDiscoveryBeforeEventlogFanOut(
