@@ -112,7 +112,7 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static bool LooksLikeCompactFollowUp(string userRequest) {
+    private static bool LooksLikeFollowUpShape(string userRequest, int maxQuestionChars) {
         var normalized = (userRequest ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
@@ -122,20 +122,26 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (normalized.Length > 80) {
+        if (normalized.Length > maxQuestionChars) {
             return false;
         }
 
-        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 12);
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: FollowUpShapeTokenScanLimit);
         if (tokenCount == 0) {
             return false;
         }
 
-        if (tokenCount <= 6 && normalized.Length <= 64) {
+        if (tokenCount <= FollowUpShapeShortTokenLimit && normalized.Length <= FollowUpShapeShortCharLimit) {
             return true;
         }
 
-        return tokenCount <= FollowUpQuestionMaxTokens && normalized.Length <= 80 && ContainsQuestionSignal(normalized);
+        return tokenCount <= FollowUpQuestionMaxTokens
+               && normalized.Length <= maxQuestionChars
+               && ContainsQuestionSignal(normalized);
+    }
+
+    private static bool LooksLikeCompactFollowUp(string userRequest) {
+        return LooksLikeFollowUpShape(userRequest, CompactFollowUpQuestionCharLimit);
     }
 
     private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {

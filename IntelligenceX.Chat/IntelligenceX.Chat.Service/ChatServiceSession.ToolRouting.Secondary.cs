@@ -554,27 +554,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeContinuationFollowUp(string userRequest) {
-        var normalized = (userRequest ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        if (normalized.Contains('\n', StringComparison.Ordinal) || normalized.Length > 96) {
-            return false;
-        }
-
-        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
-        if (tokenCount == 0) {
-            return false;
-        }
-
-        if (tokenCount <= 6 && normalized.Length <= 64) {
-            return true;
-        }
-
-        return tokenCount <= FollowUpQuestionMaxTokens
-               && normalized.Length <= 96
-               && ContainsQuestionSignal(normalized);
+        return LooksLikeFollowUpShape(userRequest, ContinuationFollowUpQuestionCharLimit);
     }
 
     private sealed class ToolRoutingStats {

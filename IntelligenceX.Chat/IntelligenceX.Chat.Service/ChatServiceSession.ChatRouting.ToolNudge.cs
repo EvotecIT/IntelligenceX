@@ -26,7 +26,12 @@ internal sealed partial class ChatServiceSession {
     private const int MaxStructuredNextActionArgumentsChars = 32_768;
     private const int NoResultPhaseLoopThresholdWithToolActivity = 8;
     private const int NoResultPhaseLoopThresholdWithoutToolActivity = 6;
+    private const int FollowUpShapeTokenScanLimit = 16;
+    private const int FollowUpShapeShortTokenLimit = 6;
+    private const int FollowUpShapeShortCharLimit = 64;
     private const int FollowUpQuestionMaxTokens = 12;
+    private const int CompactFollowUpQuestionCharLimit = 80;
+    private const int ContinuationFollowUpQuestionCharLimit = 96;
     private static readonly char[] CallToActionCommaPunctuation = new[] { ',', '\uFF0C', '\u3001', '\u060C' };
     private static readonly char[] CallToActionColonPunctuation = new[] { ':', '\uFF1A', '\uFE13' };
     private enum ActionMutability {
