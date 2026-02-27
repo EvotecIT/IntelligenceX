@@ -41,15 +41,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void FinalizePhaseHeartbeatFailure_RethrowsUnexpectedFailure() {
         using var heartbeatCts = new CancellationTokenSource();
         using var outerCts = new CancellationTokenSource();
+        var failure = new InvalidOperationException("heartbeat-failed");
 
         var ex = Assert.Throws<InvalidOperationException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new InvalidOperationException("heartbeat-failed"),
+            heartbeatFailure: failure,
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
             cancellationToken: outerCts.Token));
 
+        Assert.Same(failure, ex);
         Assert.Equal("heartbeat-failed", ex.Message);
     }
 
@@ -59,14 +61,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         using var unrelatedCts = new CancellationTokenSource();
         unrelatedCts.Cancel();
+        var failure = new OperationCanceledException("unrelated", innerException: null, unrelatedCts.Token);
 
-        Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new OperationCanceledException("unrelated", innerException: null, unrelatedCts.Token),
+        var ex = Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: failure,
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
             cancellationToken: outerCts.Token));
+
+        Assert.Same(failure, ex);
     }
 
     [Fact]
@@ -107,13 +112,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void FinalizePhaseHeartbeatFailure_RethrowsGenericCanceledWhenNoCancellationIsRequested() {
         using var heartbeatCts = new CancellationTokenSource();
         using var outerCts = new CancellationTokenSource();
+        var failure = new OperationCanceledException("generic-canceled");
 
-        Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new OperationCanceledException("generic-canceled"),
+        var ex = Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: failure,
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
             cancellationToken: outerCts.Token));
+
+        Assert.Same(failure, ex);
     }
 }
