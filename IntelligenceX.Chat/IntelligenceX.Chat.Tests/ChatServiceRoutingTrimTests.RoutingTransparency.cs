@@ -108,6 +108,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(Assert.IsType<bool>(result));
     }
 
+    [Theory]
+    [InlineData("WeightedHeuristic", "weighted_heuristic")]
+    [InlineData("ContinuationSubset", "continuation_subset")]
+    [InlineData("SemanticPlanner", "semantic_planner")]
+    [InlineData("Unknown", "")]
+    public void ResolveRoutingInsightStrategyLabel_MapsStructuredStrategyValues(string strategyName, string expectedLabel) {
+        var strategyValue = CreateToolRoutingInsightStrategy(strategyName);
+
+        var result = ResolveRoutingInsightStrategyLabelMethod.Invoke(null, new[] { strategyValue });
+
+        Assert.Equal(expectedLabel, Assert.IsType<string>(result));
+    }
+
     [Fact]
     public void ResolveRoutingInsightStrategy_UsesStructuredStrategyWithoutReasonText() {
         var continuationInsight = CreateToolRoutingInsight(
@@ -307,6 +320,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
             strategyValue);
 
         return value ?? throw new InvalidOperationException("ToolRoutingInsight instance could not be created.");
+    }
+
+    private static object CreateToolRoutingInsightStrategy(string strategyName) {
+        var insightType = ResolveRoutingStrategyMethod.GetParameters()[3].ParameterType.GetGenericArguments()[0];
+        var strategyProperty = insightType.GetProperty("Strategy", BindingFlags.Public | BindingFlags.Instance)
+                               ?? throw new InvalidOperationException("ToolRoutingInsight.Strategy property not found.");
+        var strategyType = strategyProperty.PropertyType;
+        return Enum.Parse(strategyType, strategyName, ignoreCase: true);
     }
 
     private static Array CreateRoutingInsightsArray(params object[] insights) {

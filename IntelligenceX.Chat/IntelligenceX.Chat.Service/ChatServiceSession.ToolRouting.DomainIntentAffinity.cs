@@ -283,6 +283,15 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private static string ResolveRoutingInsightStrategyLabel(ToolRoutingInsightStrategy strategy) {
+        return strategy switch {
+            ToolRoutingInsightStrategy.WeightedHeuristic => "weighted_heuristic",
+            ToolRoutingInsightStrategy.ContinuationSubset => "continuation_subset",
+            ToolRoutingInsightStrategy.SemanticPlanner => "semantic_planner",
+            _ => string.Empty
+        };
+    }
+
     private static string ResolveRoutingInsightStrategy(ToolRoutingInsight insight, string defaultStrategy) {
         if (TryResolveRoutingInsightStrategyFromStructuredHint(insight, out var structuredStrategy)) {
             return structuredStrategy;
@@ -294,23 +303,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (reason.IndexOf("continuation", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "continuation_subset";
+            return ResolveRoutingInsightStrategyLabel(ToolRoutingInsightStrategy.ContinuationSubset);
         }
 
         if (reason.IndexOf("semantic planner", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "semantic_planner";
+            return ResolveRoutingInsightStrategyLabel(ToolRoutingInsightStrategy.SemanticPlanner);
         }
 
         return defaultStrategy;
     }
 
     private static bool TryResolveRoutingInsightStrategyFromStructuredHint(ToolRoutingInsight insight, out string strategy) {
-        strategy = insight.Strategy switch {
-            ToolRoutingInsightStrategy.WeightedHeuristic => "weighted_heuristic",
-            ToolRoutingInsightStrategy.ContinuationSubset => "continuation_subset",
-            ToolRoutingInsightStrategy.SemanticPlanner => "semantic_planner",
-            _ => string.Empty
-        };
+        strategy = ResolveRoutingInsightStrategyLabel(insight.Strategy);
         return strategy.Length > 0;
     }
 

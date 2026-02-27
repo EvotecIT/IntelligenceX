@@ -129,15 +129,15 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (usedContinuationSubset) {
-            return "continuation_subset";
+            return ResolveRoutingInsightStrategyLabel(ToolRoutingInsightStrategy.ContinuationSubset);
         }
 
         if (HasPlannerInsight(insights)) {
-            return "semantic_planner";
+            return ResolveRoutingInsightStrategyLabel(ToolRoutingInsightStrategy.SemanticPlanner);
         }
 
         if (selectedToolCount < totalToolCount) {
-            return "weighted_heuristic";
+            return ResolveRoutingInsightStrategyLabel(ToolRoutingInsightStrategy.WeightedHeuristic);
         }
 
         return "full_toolset";
