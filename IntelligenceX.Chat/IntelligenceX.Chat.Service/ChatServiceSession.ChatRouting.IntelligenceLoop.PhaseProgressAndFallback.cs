@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
@@ -258,6 +259,7 @@ internal sealed partial class ChatServiceSession {
         int heartbeatSeconds,
         CancellationToken cancellationToken,
         Task phaseTask) {
+        ValidatePhaseProgressLoopArgs(writer, requestId, threadId, phaseTask);
         return RunPhaseProgressLoopCoreAsync(
             writer,
             requestId,
@@ -271,6 +273,7 @@ internal sealed partial class ChatServiceSession {
             heartbeatTaskFactory: null);
     }
 
+    [EditorBrowsable(EditorBrowsableState.Never)]
     internal Task RunPhaseProgressLoopForTestingAsync(
         StreamWriter writer,
         string requestId,
@@ -282,6 +285,7 @@ internal sealed partial class ChatServiceSession {
         CancellationToken cancellationToken,
         Task phaseTask,
         Func<CancellationToken, Task> heartbeatTaskFactory) {
+        ValidatePhaseProgressLoopArgs(writer, requestId, threadId, phaseTask);
         if (heartbeatTaskFactory is null) {
             throw new ArgumentNullException(nameof(heartbeatTaskFactory));
         }
@@ -297,6 +301,13 @@ internal sealed partial class ChatServiceSession {
             cancellationToken,
             phaseTask,
             heartbeatTaskFactory);
+    }
+
+    private static void ValidatePhaseProgressLoopArgs(StreamWriter writer, string requestId, string threadId, Task phaseTask) {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(requestId);
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(phaseTask);
     }
 
     private async Task RunPhaseProgressLoopCoreAsync(

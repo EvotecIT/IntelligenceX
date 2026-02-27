@@ -12,6 +12,65 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
+    public async Task PhaseProgressLoop_ThrowsWhenWriterIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => session.RunPhaseProgressLoopAsync(
+            null!,
+            "req-intelligence-loop",
+            "thread-intelligence-loop",
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            0,
+            CancellationToken.None,
+            Task.CompletedTask));
+
+        Assert.Equal("writer", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task PhaseProgressLoop_ThrowsWhenPhaseTaskIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => session.RunPhaseProgressLoopAsync(
+            writer,
+            "req-intelligence-loop",
+            "thread-intelligence-loop",
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            0,
+            CancellationToken.None,
+            null!));
+
+        Assert.Equal("phaseTask", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task PhaseProgressLoopForTesting_ThrowsWhenHeartbeatTaskFactoryIsNull() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        var ex = await Assert.ThrowsAsync<ArgumentNullException>(() => session.RunPhaseProgressLoopForTestingAsync(
+            writer,
+            "req-intelligence-loop",
+            "thread-intelligence-loop",
+            "phase_review",
+            "Reviewing...",
+            "Reviewing response",
+            1,
+            CancellationToken.None,
+            Task.CompletedTask,
+            null!));
+
+        Assert.Equal("heartbeatTaskFactory", ex.ParamName);
+    }
+
+    [Fact]
     public async Task PhaseProgressLoop_EmitsPlanExecuteReviewInOrder() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var capture = new SynchronizedCaptureStream();
