@@ -500,4 +500,33 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         Assert.Contains("#### Call c23", markdown);
     }
+
+    /// <summary>
+    /// Ensures duplicate large render-hint payloads are still deduplicated in debug formatting.
+    /// </summary>
+    [Fact]
+    public void Format_DeduplicatesLargeRenderHintPayloads() {
+        var largeSnippet = new string('x', 12000);
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c24",
+                    Name = "large_payload_tool"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c24",
+                    Output = "{\"snippet\":\"" + largeSnippet + "\"}",
+                    RenderJson =
+                        "[{\"kind\":\"code\",\"language\":\"text\",\"content_path\":\"snippet\"},{\"kind\":\"code\",\"language\":\"text\",\"content_path\":\"snippet\"}]"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Large Payload Tool");
+
+        Assert.Equal(1, CountOccurrences(markdown, "```text"));
+        Assert.Contains(largeSnippet, markdown, StringComparison.Ordinal);
+    }
 }
