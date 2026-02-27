@@ -113,6 +113,45 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void SelectWeightedToolSubset_NoSignalFallback_DiversifiesAcrossToolFamilies() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 10; i++) {
+            definitions.Add(new ToolDefinition(
+                $"ad_query_{i:D2}",
+                "AD query.",
+                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties()));
+        }
+
+        for (var i = 0; i < 3; i++) {
+            definitions.Add(new ToolDefinition(
+                $"eventlog_query_{i:D2}",
+                "Event query.",
+                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties()));
+        }
+
+        for (var i = 0; i < 3; i++) {
+            definitions.Add(new ToolDefinition(
+                $"system_info_{i:D2}",
+                "System query.",
+                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties()));
+        }
+
+        var args = new object?[] {
+            definitions,
+            "Please summarize release readiness trends for this quarter.",
+            4,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.Equal(4, selected.Count);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_query_00", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_query_00", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "system_info_00", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void SelectWeightedToolSubset_UsesFullToolSet_WhenWeightedRoutingIsSkippedForShortPrompt() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();

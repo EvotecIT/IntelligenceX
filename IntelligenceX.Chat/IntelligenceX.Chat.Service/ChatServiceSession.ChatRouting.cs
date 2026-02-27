@@ -545,12 +545,23 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            var hostPackPreflightCalls = BuildHostPackPreflightCalls(threadId, fullToolDefs, extracted);
+            IReadOnlyList<ToolCall> roundCalls;
+            if (hostPackPreflightCalls.Count == 0) {
+                roundCalls = extracted;
+            } else {
+                var mergedRoundCalls = new List<ToolCall>(hostPackPreflightCalls.Count + extracted.Count);
+                mergedRoundCalls.AddRange(hostPackPreflightCalls);
+                mergedRoundCalls.AddRange(extracted);
+                roundCalls = mergedRoundCalls;
+            }
+
             var priorOutputsByCallId = BuildLatestToolOutputsByCallId(toolOutputs);
             var priorToolCallsByCallId = BuildLatestToolCallContractsByCallId(toolCalls);
-            var callsToExecute = new List<ToolCall>(extracted.Count);
-            var replayRecoveredOutputs = new List<ToolOutputDto>(extracted.Count);
-            for (var callIndex = 0; callIndex < extracted.Count; callIndex++) {
-                var call = extracted[callIndex];
+            var callsToExecute = new List<ToolCall>(roundCalls.Count);
+            var replayRecoveredOutputs = new List<ToolOutputDto>(roundCalls.Count);
+            for (var callIndex = 0; callIndex < roundCalls.Count; callIndex++) {
+                var call = roundCalls[callIndex];
                 if (TryGetReplayRecoveredOutputForCall(call, priorOutputsByCallId, priorToolCallsByCallId, out var replayRecoveredOutput)) {
                     replayRecoveredOutputs.Add(replayRecoveredOutput);
                     continue;
@@ -633,8 +644,9 @@ internal sealed partial class ChatServiceSession {
             }
 
             UpdateToolRoutingStats(callsToExecute, executed);
+            RememberSuccessfulPackPreflightCalls(threadId, callsToExecute, executed);
             var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
-            foreach (var call in extracted) {
+            foreach (var call in roundCalls) {
                 var normalizedCallId = (call.CallId ?? string.Empty).Trim();
                 if (normalizedCallId.Length == 0) {
                     continue;
@@ -650,7 +662,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var normalizedOutputCallId = ResolveToolOutputCallId(
-                    extracted,
+                    roundCalls,
                     executedCallsById,
                     output.CallId,
                     outputIndex);
@@ -671,7 +683,7 @@ internal sealed partial class ChatServiceSession {
 
             var replayInputOutputs = MergeToolRoundReplayOutputs(executed, replayRecoveredOutputs);
             var next = BuildToolRoundReplayInputWithBudget(
-                extracted,
+                roundCalls,
                 executedCallsById,
                 replayInputOutputs,
                 replayOutputCompactionBudget,

@@ -609,6 +609,8 @@ internal sealed partial class ChatServiceSession {
             _domainIntentFamilyByThreadId.Clear();
             _domainIntentFamilySeenUtcTicks.Clear();
             _pendingDomainIntentClarificationSeenUtcTicks.Clear();
+            _packPreflightToolNamesByThreadId.Clear();
+            _packPreflightSeenUtcTicks.Clear();
         }
         _lastUserIntentByThreadId.Clear();
         _lastUserIntentSeenUtcTicks.Clear();
