@@ -218,6 +218,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ResolveRoutingStrategyMethod =
         typeof(ChatServiceSession).GetMethod("ResolveRoutingStrategy", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ResolveRoutingStrategy not found.");
+    private static readonly MethodInfo HasPlannerInsightMethod =
+        typeof(ChatServiceSession).GetMethod("HasPlannerInsight", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("HasPlannerInsight not found.");
+    private static readonly MethodInfo ResolveRoutingInsightStrategyMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveRoutingInsightStrategy", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveRoutingInsightStrategy not found.");
     private static readonly MethodInfo BuildRoutingSelectionMessageMethod =
         typeof(ChatServiceSession).GetMethod("BuildRoutingSelectionMessage", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildRoutingSelectionMessage not found.");

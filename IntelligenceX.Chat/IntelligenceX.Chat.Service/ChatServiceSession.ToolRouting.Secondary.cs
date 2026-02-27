@@ -290,7 +290,8 @@ internal sealed partial class ChatServiceSession {
                 ToolName: name,
                 Confidence: confidence,
                 Score: Math.Round(score, 3),
-                Reason: reason));
+                Reason: reason,
+                Strategy: ToolRoutingInsightStrategy.SemanticPlanner));
         }
 
         return list;
@@ -572,11 +573,23 @@ internal sealed partial class ChatServiceSession {
         int TokenHits,
         double Adjustment);
 
+    private enum ToolRoutingInsightStrategy {
+        Unknown = 0,
+        WeightedHeuristic = 1,
+        ContinuationSubset = 2,
+        SemanticPlanner = 3
+    }
+
     private readonly record struct ToolRoutingInsight(
         string ToolName,
         string Confidence,
         double Score,
-        string Reason);
+        string Reason,
+        ToolRoutingInsightStrategy Strategy) {
+        public ToolRoutingInsight(string ToolName, string Confidence, double Score, string Reason)
+            : this(ToolName, Confidence, Score, Reason, ToolRoutingInsightStrategy.Unknown) {
+        }
+    }
 
     private readonly record struct ToolRetryProfile(
         int MaxAttempts,

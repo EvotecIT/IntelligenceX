@@ -270,6 +270,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         for (var i = 0; i < insights.Count; i++) {
+            if (insights[i].Strategy == ToolRoutingInsightStrategy.SemanticPlanner) {
+                return true;
+            }
+
             var reason = insights[i].Reason ?? string.Empty;
             if (reason.IndexOf("semantic planner", StringComparison.OrdinalIgnoreCase) >= 0) {
                 return true;
@@ -280,6 +284,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string ResolveRoutingInsightStrategy(ToolRoutingInsight insight, string defaultStrategy) {
+        if (TryResolveRoutingInsightStrategyFromStructuredHint(insight, out var structuredStrategy)) {
+            return structuredStrategy;
+        }
+
         var reason = (insight.Reason ?? string.Empty).Trim();
         if (reason.Length == 0) {
             return defaultStrategy;
@@ -294,6 +302,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         return defaultStrategy;
+    }
+
+    private static bool TryResolveRoutingInsightStrategyFromStructuredHint(ToolRoutingInsight insight, out string strategy) {
+        strategy = insight.Strategy switch {
+            ToolRoutingInsightStrategy.WeightedHeuristic => "weighted_heuristic",
+            ToolRoutingInsightStrategy.ContinuationSubset => "continuation_subset",
+            ToolRoutingInsightStrategy.SemanticPlanner => "semantic_planner",
+            _ => string.Empty
+        };
+        return strategy.Length > 0;
     }
 
     private bool TryGetContinuationToolSubset(string threadId, string userRequest, IReadOnlyList<ToolDefinition> allDefinitions,
