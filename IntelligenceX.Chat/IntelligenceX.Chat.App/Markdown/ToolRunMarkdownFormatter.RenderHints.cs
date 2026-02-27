@@ -443,9 +443,7 @@ internal static partial class ToolRunMarkdownFormatter {
         }
 
         foreach (var prop in obj.EnumerateObject()) {
-            if (!map.ContainsKey(prop.Name)) {
-                map[prop.Name] = prop.Value;
-            }
+            map.TryAdd(prop.Name, prop.Value);
         }
 
         return map;
