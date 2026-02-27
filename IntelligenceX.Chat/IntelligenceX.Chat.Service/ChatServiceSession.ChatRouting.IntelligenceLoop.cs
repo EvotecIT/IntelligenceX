@@ -167,6 +167,7 @@ internal sealed partial class ChatServiceSession {
 
     private static bool TryReadStructuredProactiveModeEnabledValue(ReadOnlySpan<char> text, out bool enabled) {
         enabled = false;
+        var markerLineSeen = false;
         while (!text.IsEmpty) {
             var lineBreakIndex = text.IndexOfAny('\r', '\n');
             ReadOnlySpan<char> line;
@@ -183,7 +184,35 @@ internal sealed partial class ChatServiceSession {
                 text = text.Slice(nextIndex);
             }
 
+            if (!markerLineSeen) {
+                if (line.IndexOf(ProactiveModeMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    markerLineSeen = true;
+                }
+                continue;
+            }
+
+            if (LooksLikeStructuredSectionHeader(line)) {
+                // Stay within the proactive-mode block and avoid unrelated `enabled:` lines
+                // in following structured sections.
+                return false;
+            }
+
             if (TryParseStructuredProactiveModeEnabledLine(line, out enabled)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeStructuredSectionHeader(ReadOnlySpan<char> line) {
+        var trimmed = line.Trim();
+        if (trimmed.Length < 3 || trimmed[0] != '[' || trimmed[^1] != ']') {
+            return false;
+        }
+
+        for (var i = 1; i < trimmed.Length - 1; i++) {
+            if (!char.IsWhiteSpace(trimmed[i])) {
                 return true;
             }
         }
