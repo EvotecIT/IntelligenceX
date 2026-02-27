@@ -258,4 +258,71 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         Assert.Equal(1, CountOccurrences(markdown, "```ix-chart"));
     }
+
+    /// <summary>
+    /// Ensures visual-only formatting emits first-party visual fences and excludes debug diagnostics.
+    /// </summary>
+    [Fact]
+    public void FormatVisualsOnly_EmitsFirstPartyVisualsWithoutDebugDiagnostics() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c9",
+                    Name = "visuals_only_report"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c9",
+                    Output = "{\"chart\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}},\"rows\":[{\"name\":\"A\",\"score\":1}]}",
+                    RenderJson =
+                        "[{\"kind\":\"code\",\"language\":\"ix-chart\",\"content_path\":\"chart\"},{\"kind\":\"table\",\"rows_path\":\"rows\",\"columns\":[{\"key\":\"name\",\"label\":\"Name\"},{\"key\":\"score\",\"label\":\"Score\"}]},{\"kind\":\"code\",\"language\":\"text\",\"content\":\"hidden\"}]",
+                    Ok = false,
+                    ErrorCode = "tool_timeout",
+                    Error = "debug-only error",
+                    Hints = new[] { "debug-only hint" },
+                    SummaryMarkdown = "### Debug Summary\n\nshould-not-leak"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(tools, _ => "Visuals Only Report");
+
+        Assert.Contains("**Tool visuals:**", markdown);
+        Assert.Contains("#### Visuals Only Report", markdown);
+        Assert.Contains("```ix-chart", markdown);
+        Assert.Contains("```ix-dataview", markdown);
+        Assert.DoesNotContain("```text", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("failure descriptor", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("debug-only error", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("debug-only hint", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Debug Summary", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures visual-only formatting returns empty markdown when no first-party visuals are present.
+    /// </summary>
+    [Fact]
+    public void FormatVisualsOnly_ReturnsEmptyWhenNoFirstPartyVisualsPresent() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c10",
+                    Name = "text_renderer"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c10",
+                    Output = "{\"snippet\":\"hello\"}",
+                    RenderJson = "{\"kind\":\"code\",\"language\":\"text\",\"content_path\":\"snippet\"}",
+                    SummaryMarkdown = "### Text summary"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(tools, _ => "Text Renderer");
+
+        Assert.Equal(string.Empty, markdown);
+    }
 }

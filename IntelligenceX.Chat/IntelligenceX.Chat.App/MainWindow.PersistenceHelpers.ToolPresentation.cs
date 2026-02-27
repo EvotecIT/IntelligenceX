@@ -13,6 +13,25 @@ public sealed partial class MainWindow : Window {
         return ToolRunMarkdownFormatter.Format(tools, ResolveToolDisplayName);
     }
 
+    private string BuildToolRunVisualMarkdown(ToolRunDto tools) {
+        return ToolRunMarkdownFormatter.FormatVisualsOnly(tools, ResolveToolDisplayName);
+    }
+
+    internal static string BuildToolRunTranscriptMarkdown(
+        ToolRunDto tools,
+        bool debugMode,
+        Func<string?, string> resolveToolDisplayName) {
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(resolveToolDisplayName);
+        return debugMode
+            ? ToolRunMarkdownFormatter.Format(tools, resolveToolDisplayName)
+            : ToolRunMarkdownFormatter.FormatVisualsOnly(tools, resolveToolDisplayName);
+    }
+
+    private string BuildToolRunTranscriptMarkdown(ToolRunDto tools) {
+        return BuildToolRunTranscriptMarkdown(tools, _debugMode, ResolveToolDisplayName);
+    }
+
     private string ResolveToolDisplayName(string? name) {
         if (!string.IsNullOrWhiteSpace(name)) {
             var key = name.Trim();
