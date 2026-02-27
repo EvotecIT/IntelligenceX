@@ -573,37 +573,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryParseFlexibleBoolean(string value, out bool parsed) {
-        parsed = false;
-        var normalized = (value ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        if (bool.TryParse(normalized, out parsed)) {
-            return true;
-        }
-
-        if (string.Equals(normalized, "1", StringComparison.Ordinal)) {
-            parsed = true;
-            return true;
-        }
-
-        if (string.Equals(normalized, "0", StringComparison.Ordinal)) {
-            parsed = false;
-            return true;
-        }
-
-        if (FlexibleBooleanTrueTokens.Contains(normalized)) {
-            parsed = true;
-            return true;
-        }
-
-        if (FlexibleBooleanFalseTokens.Contains(normalized)) {
-            parsed = false;
-            return true;
-        }
-
-        return false;
+        return TryParseProtocolBoolean((value ?? string.Empty).Trim(), out parsed);
     }
 
     private static bool TryParseJsonArrayString(string value, out JsonArray parsedArray) {

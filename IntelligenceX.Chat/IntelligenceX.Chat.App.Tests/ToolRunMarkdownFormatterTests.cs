@@ -1,3 +1,4 @@
+using System;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Markdown;
 using Xunit;
@@ -128,5 +129,37 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.Contains("\"kind\":\"ix_tool_dataview_v1\"", markdown);
         Assert.Contains("\"rows\":[[\"Rule\",\"Enabled\"],[\"rule_a\",\"true\"],[\"rule_b\",\"false\"]]", markdown);
         Assert.Contains("### TestimoX rules (preview)", markdown);
+    }
+
+    /// <summary>
+    /// Ensures render arrays can emit first-party visual fences and map visnetwork to ix-network.
+    /// </summary>
+    [Fact]
+    public void Format_EmitsVisualFencesFromRenderArrayAndSkipsCompletedFallback() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c5",
+                    Name = "visual_pack_report"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c5",
+                    Output =
+                        "{\"ok\":true,\"chart_payload\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}},\"network_payload\":{\"nodes\":[{\"id\":1,\"label\":\"A\"}],\"edges\":[]}}",
+                    RenderJson =
+                        "[{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart_payload\"},{\"kind\":\"code\",\"language\":\"visnetwork\",\"content_path\":\"network_payload\"}]"
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Visual Pack Report");
+
+        Assert.Contains("```ix-chart", markdown);
+        Assert.Contains("\"type\":\"bar\"", markdown);
+        Assert.Contains("```ix-network", markdown);
+        Assert.Contains("\"nodes\":[{\"id\":1,\"label\":\"A\"}]", markdown);
+        Assert.DoesNotContain("\ncompleted\n", markdown, StringComparison.OrdinalIgnoreCase);
     }
 }

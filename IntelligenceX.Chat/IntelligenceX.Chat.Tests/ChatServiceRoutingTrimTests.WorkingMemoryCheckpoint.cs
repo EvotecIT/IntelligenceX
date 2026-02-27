@@ -115,4 +115,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(augmented);
         Assert.Equal("２", routedFromCheckpoint);
     }
+
+    [Fact]
+    public void WorkingMemoryCheckpoint_DropsStructuredIntentAnchorOnCheckpointWrite() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-working-memory-structured-anchor";
+        const string structuredAnchor =
+            "{\"ix_action_selection\":{\"id\":\"act_domain_scope_public\",\"request\":{\"ix_domain_scope\":{\"family\":\"public_domain\"}},\"mutating\":false}}";
+
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: structuredAnchor,
+            domainIntentFamily: "public_domain",
+            recentToolNames: new[] { "domaindetective_domain_summary" },
+            recentEvidenceSnippets: new[] { "domaindetective_domain_summary: SPF and DMARC are valid." });
+
+        var found = session.TryGetWorkingMemoryCheckpointForTesting(
+            threadId,
+            out var intentAnchor,
+            out _,
+            out _,
+            out _);
+
+        Assert.True(found);
+        Assert.Equal(string.Empty, intentAnchor);
+    }
 }

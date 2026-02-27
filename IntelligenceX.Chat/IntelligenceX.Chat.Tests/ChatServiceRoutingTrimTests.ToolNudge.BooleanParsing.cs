@@ -11,41 +11,35 @@ public sealed partial class ChatServiceRoutingTrimTests {
         ?? throw new InvalidOperationException("TryParseFlexibleBoolean not found.");
 
     [Theory]
-    [InlineData("sí")]
-    [InlineData("sim")]
-    [InlineData("oui")]
-    [InlineData("ja")]
-    [InlineData("tak")]
-    [InlineData("да")]
-    [InlineData("نعم")]
-    [InlineData("是")]
-    [InlineData("はい")]
-    [InlineData("예")]
-    [InlineData("evet")]
-    public void TryParseFlexibleBoolean_ParsesLanguageInclusiveTrueTokens(string input) {
+    [InlineData("true", true)]
+    [InlineData("TRUE", true)]
+    [InlineData("1", true)]
+    [InlineData("false", false)]
+    [InlineData("FALSE", false)]
+    [InlineData("0", false)]
+    public void TryParseFlexibleBoolean_ParsesProtocolBooleanLiterals(string input, bool expected) {
         var args = new object?[] { input, false };
         var resolved = TryParseFlexibleBooleanMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(resolved));
-        Assert.True(Assert.IsType<bool>(args[1]));
+        Assert.Equal(expected, Assert.IsType<bool>(args[1]));
     }
 
     [Theory]
-    [InlineData("non")]
-    [InlineData("nein")]
-    [InlineData("nie")]
-    [InlineData("não")]
-    [InlineData("нет")]
-    [InlineData("لا")]
-    [InlineData("否")]
-    [InlineData("いいえ")]
-    [InlineData("아니요")]
-    [InlineData("hayır")]
-    public void TryParseFlexibleBoolean_ParsesLanguageInclusiveFalseTokens(string input) {
+    [InlineData("yes")]
+    [InlineData("no")]
+    [InlineData("on")]
+    [InlineData("off")]
+    [InlineData("sí")]
+    [InlineData("oui")]
+    [InlineData("да")]
+    [InlineData("نعم")]
+    [InlineData("はい")]
+    public void TryParseFlexibleBoolean_RejectsNaturalLanguageTokens(string input) {
         var args = new object?[] { input, true };
         var resolved = TryParseFlexibleBooleanMethod.Invoke(null, args);
 
-        Assert.True(Assert.IsType<bool>(resolved));
+        Assert.False(Assert.IsType<bool>(resolved));
         Assert.False(Assert.IsType<bool>(args[1]));
     }
 }

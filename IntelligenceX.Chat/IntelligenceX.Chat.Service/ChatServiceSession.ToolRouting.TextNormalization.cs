@@ -226,4 +226,28 @@ internal sealed partial class ChatServiceSession {
         return sb.ToString().Trim();
     }
 
+    private static bool LooksLikeStructuredIntentPayload(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (TryParseExplicitActSelection(normalized, out _, out _)
+            || TryReadActionSelectionIntent(normalized, out _, out _)
+            || TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, out _)
+            || TryParseDomainIntentChoiceMarkerSelection(normalized, out _)
+            || TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, out _)
+            || TryParseDomainIntentFamilyFromDomainScopePayload(normalized, out _)) {
+            return true;
+        }
+
+        if (TryExtractActionSelectionPayloadJson(normalized, out var payload)
+            && (TryParseDomainIntentFamilyFromActionSelectionPayload(payload, out _)
+                || TryParseDomainIntentFamilyFromDomainScopePayload(payload, out _))) {
+            return true;
+        }
+
+        return false;
+    }
+
 }

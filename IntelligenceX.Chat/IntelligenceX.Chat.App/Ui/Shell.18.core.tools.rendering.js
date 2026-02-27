@@ -570,7 +570,7 @@
           return;
         }
 
-        if (pre.querySelector("code.language-ix-network")) {
+        if (pre.querySelector("code.language-ix-network, code.language-visnetwork, code.language-network")) {
           return;
         }
 
