@@ -12,6 +12,7 @@ internal static partial class ToolRunMarkdownFormatter {
     // Keep stack allocation bounded (~4 KB) while reducing encoder/hash call overhead.
     private const int DedupHashChunkChars = 1024;
     private const int DedupHashChunkMaxBytes = DedupHashChunkChars * 4;
+    private const int CaseInsensitiveLookupMapColumnThreshold = 2;
 
     private static List<(string Language, string Content)> BuildRenderHintFences(ToolOutputDto output) {
         var fences = new List<(string Language, string Content)>();
@@ -297,7 +298,9 @@ internal static partial class ToolRunMarkdownFormatter {
             var row = new string[columns.Count];
             switch (rowNode.ValueKind) {
                 case JsonValueKind.Object:
-                    var propertyMap = BuildCaseInsensitivePropertyMap(rowNode);
+                    var propertyMap = columns.Count >= CaseInsensitiveLookupMapColumnThreshold
+                        ? BuildCaseInsensitivePropertyMap(rowNode)
+                        : null;
                     for (var i = 0; i < columns.Count; i++) {
                         row[i] = TryGetPropertyValueCaseInsensitive(rowNode, columns[i].Key, out var valueNode, propertyMap)
                             ? FormatJsonElement(valueNode)
@@ -410,7 +413,7 @@ internal static partial class ToolRunMarkdownFormatter {
         JsonElement obj,
         string propertyName,
         out JsonElement value,
-        IReadOnlyDictionary<string, JsonElement>? propertyMap) {
+        IReadOnlyDictionary<string, JsonElement>? propertyMap = null) {
         value = default;
         if (obj.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
             return false;
