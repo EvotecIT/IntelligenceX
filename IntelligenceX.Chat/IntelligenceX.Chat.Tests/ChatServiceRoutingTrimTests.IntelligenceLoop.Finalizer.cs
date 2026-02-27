@@ -66,4 +66,34 @@ public sealed partial class ChatServiceRoutingTrimTests {
             heartbeatCancellationToken: heartbeatCts.Token,
             cancellationToken: outerCts.Token));
     }
+
+    [Fact]
+    public void FinalizePhaseHeartbeatFailure_SuppressesCanceledFailureForHeartbeatToken() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        heartbeatCts.Cancel();
+
+        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: new OperationCanceledException("heartbeat-canceled", innerException: null, heartbeatCts.Token),
+            phaseStatus: "phase_review",
+            requestId: "req-intelligence-loop",
+            threadId: "thread-intelligence-loop",
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token);
+    }
+
+    [Fact]
+    public void FinalizePhaseHeartbeatFailure_SuppressesCanceledFailureForRequestToken() {
+        using var heartbeatCts = new CancellationTokenSource();
+        using var outerCts = new CancellationTokenSource();
+        outerCts.Cancel();
+
+        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: new OperationCanceledException("request-canceled", innerException: null, outerCts.Token),
+            phaseStatus: "phase_review",
+            requestId: "req-intelligence-loop",
+            threadId: "thread-intelligence-loop",
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token);
+    }
 }
