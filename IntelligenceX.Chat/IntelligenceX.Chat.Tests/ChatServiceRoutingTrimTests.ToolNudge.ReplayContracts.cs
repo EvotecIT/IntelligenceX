@@ -183,6 +183,80 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsComputerXPackInfoFallbackWhenSourceFailsWithoutHints() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_info"] = "computerx";
+        packMap["system_pack_info"] = "computerx";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_info", "system info", schema),
+            new("system_pack_info", "system pack info", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-sys", Name = "system_info" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["system_pack_info"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("system_pack_info", toolCall.Name);
+        Assert.Contains("pack_contract_failure_autofallback", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildHintlessPackInfoFallbackWhenSourceDidNotFail() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_info"] = "computerx";
+        packMap["system_pack_info"] = "computerx";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_info", "system info", schema),
+            new("system_pack_info", "system pack info", schema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-sys", Name = "system_info" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys",
+                Output = """{"ok":true,"host":"srv01"}""",
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["system_pack_info"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_PrefersAdDiscoveryBeforeCrossDcEventlogFanOut() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));

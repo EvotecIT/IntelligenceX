@@ -34,7 +34,8 @@ internal sealed partial class ChatServiceSession {
                 "ad_scope_discovery",
                 "ad_forest_discover",
                 "ad_domain_controllers",
-                "ad_directory_discovery_diagnostics"
+                "ad_directory_discovery_diagnostics",
+                "ad_pack_info"
             },
             availableToolNames: availableToolNames);
 
@@ -44,7 +45,8 @@ internal sealed partial class ChatServiceSession {
                 "eventlog_live_query",
                 "eventlog_live_stats",
                 "eventlog_top_events",
-                "eventlog_timeline_query"
+                "eventlog_timeline_query",
+                "eventlog_pack_info"
             },
             availableToolNames: availableToolNames);
 
@@ -54,7 +56,8 @@ internal sealed partial class ChatServiceSession {
                 "system_updates_installed",
                 "system_patch_compliance",
                 "system_security_options",
-                "system_info"
+                "system_info",
+                "system_pack_info"
             },
             availableToolNames: availableToolNames);
 
@@ -71,7 +74,8 @@ internal sealed partial class ChatServiceSession {
             packId: "domaindetective",
             candidateTools: new[] {
                 "domaindetective_domain_summary",
-                "domaindetective_network_probe"
+                "domaindetective_network_probe",
+                "domaindetective_pack_info"
             },
             availableToolNames: availableToolNames);
 
@@ -79,7 +83,8 @@ internal sealed partial class ChatServiceSession {
             packId: "testimox",
             candidateTools: new[] {
                 "testimox_rules_list",
-                "testimox_rules_run"
+                "testimox_rules_run",
+                "testimox_pack_info"
             },
             availableToolNames: availableToolNames);
     }
@@ -207,7 +212,9 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            if (!hasPartialScopeHints && partialScopeHints.Count == 0) {
+            var hasFallbackHints = hasPartialScopeHints || partialScopeHints.Count > 0;
+            var hasSourceFailureSignal = HasToolFailureSignal(output);
+            if (!hasFallbackHints && !hasSourceFailureSignal) {
                 continue;
             }
 
@@ -227,6 +234,10 @@ internal sealed partial class ChatServiceSession {
             for (var i = 0; i < packContract.FallbackTools.Length; i++) {
                 var candidateTool = packContract.FallbackTools[i];
                 if (string.Equals(candidateTool, sourceTool, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                if (!hasFallbackHints && !IsHintlessSafeFallbackCandidate(candidateTool)) {
                     continue;
                 }
 
@@ -270,10 +281,14 @@ internal sealed partial class ChatServiceSession {
                     input: serializedArguments,
                     arguments: normalizedArguments,
                     raw: raw);
-                reason = "pack_contract_partial_scope_autofallback:"
+                var reasonPrefix = hasFallbackHints
+                    ? "pack_contract_partial_scope_autofallback:"
+                    : "pack_contract_failure_autofallback:";
+                var reasonDetail = hasFallbackHints ? partialScopeReason : "source_tool_failed_without_scope_hints";
+                reason = reasonPrefix
                          + sourcePackId
                          + ":"
-                         + partialScopeReason
+                         + reasonDetail
                          + "->"
                          + candidateTool;
                 return true;
@@ -642,6 +657,17 @@ internal sealed partial class ChatServiceSession {
         }
 
         return !HasTestimoSelectionArguments(arguments);
+    }
+
+    private static bool IsHintlessSafeFallbackCandidate(string candidateTool) {
+        var normalized = (candidateTool ?? string.Empty).Trim();
+        return normalized.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasToolFailureSignal(ToolOutputDto output) {
+        return output.Ok == false
+               || !string.IsNullOrWhiteSpace(output.ErrorCode)
+               || !string.IsNullOrWhiteSpace(output.Error);
     }
 
     private static bool HasTestimoSelectionArguments(JsonObject arguments) {
