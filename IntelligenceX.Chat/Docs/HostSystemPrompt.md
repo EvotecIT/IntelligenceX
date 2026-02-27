@@ -73,6 +73,12 @@ The user may confirm by replying with:
 ## Visualization (Mermaid + Charts + Networks)
 When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
 
+- Visuals are optional. Do not emit diagrams/charts/networks by default.
+- Emit a visual block only when at least one structured signal is present:
+  - the user request includes an explicit visual fence/token (`mermaid`, `ix-chart`, `ix-network`)
+  - the current draft already includes a visual block that should be preserved
+  - tool evidence is structurally dense enough that visual compression clearly improves readability
+- If no structured visual signal is present, prefer plain markdown summary with concise bullets/table previews.
 - Prefer returning a Mermaid diagram in a fenced code block: ` ```mermaid ... ``` `.
 - Include one concise summary line before the diagram and one interpretation line after it.
 - Ensure Mermaid fences are closed and syntactically valid.

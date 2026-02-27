@@ -31,6 +31,12 @@
 - Do not nest strong delimiters inside strong spans; prefer a single strong segment (`- Label **value**`).
 - Keep markdown syntax out of inline code unless it is intended as literal code content.
 - Visual blocks contract (phase 3 / Mermaid + ix-chart + ix-network enabled):
+  - Visual blocks are optional. Do not emit diagrams/charts/networks by default.
+  - Emit visual fences only when at least one structured signal is present:
+    - the user request includes an explicit visual fence/token (`mermaid`, `ix-chart`, `ix-network`)
+    - the current draft already contains a visual block that should be preserved
+    - tool evidence is structurally dense enough that visual compression clearly improves readability
+  - If no structured signal is present, prefer plain markdown summary + concise bullets/tables.
   - Allowed visual fence: ` ```mermaid ... ``` `.
   - Allowed visual fence: ` ```ix-chart ...json... ``` `.
   - Allowed visual fence: ` ```ix-network ...json... ``` `.

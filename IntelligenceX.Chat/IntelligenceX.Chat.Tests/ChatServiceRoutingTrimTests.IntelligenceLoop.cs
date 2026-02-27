@@ -537,18 +537,40 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkerAndFlexibleGuidance() {
+    public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkersAndAvoidsDefaultVisualInsertion() {
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt("analyze failed logons", "Current findings...");
 
         Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:proactive-visualization:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("natural and conversational", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("short paragraphs, bullets, compact tables, or simple diagrams/charts", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("without asking for permission first", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not introduce new mermaid/ix-chart/ix-network blocks", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("do not force that label on every line", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("avoid repeating rigid templates", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Signal <text> -> Why it matters: <text> -> Next action: <text>", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hidden regressions", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsOneVisualWhenStructuredVisualContractIsPresent() {
+        var request = """
+            Build the summary and include this visual contract if useful:
+            ```ix-network
+            {"nodes":[],"edges":[]}
+            ```
+            """;
+        var draft = """
+            Current findings:
+            - lockouts concentrated on one OU
+            """;
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, draft);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include at most one new visual block", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
