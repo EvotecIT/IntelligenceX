@@ -16,6 +16,11 @@ using IntelligenceX.OpenAI.Chat;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    internal const string PhaseHeartbeatSuppressionReasonIo = "io";
+    internal const string PhaseHeartbeatSuppressionReasonCanceled = "canceled";
+    internal const string PhaseHeartbeatSuppressionReasonHeartbeatCanceled = "heartbeat-canceled";
+    internal const string PhaseHeartbeatSuppressionReasonRequestCanceled = "request-canceled";
+
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
         string lastNonEmptyAssistantDraft,
@@ -389,7 +394,7 @@ internal sealed partial class ChatServiceSession {
     internal static string? GetPhaseHeartbeatSuppressionReason(Exception heartbeatFailure, CancellationToken heartbeatCancellationToken,
         CancellationToken cancellationToken) {
         if (heartbeatFailure is IOException) {
-            return "io";
+            return PhaseHeartbeatSuppressionReasonIo;
         }
 
         if (heartbeatFailure is not OperationCanceledException canceledException) {
@@ -398,17 +403,19 @@ internal sealed partial class ChatServiceSession {
 
         var failureToken = canceledException.CancellationToken;
         if (!failureToken.CanBeCanceled) {
-            return heartbeatCancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested ? "canceled" : null;
+            return heartbeatCancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested
+                ? PhaseHeartbeatSuppressionReasonCanceled
+                : null;
         }
 
         // The heartbeat loop should throw OCE with either the linked heartbeat token
         // or the outer request token. Treat other canceled tokens as unexpected.
         if (failureToken == heartbeatCancellationToken && heartbeatCancellationToken.IsCancellationRequested) {
-            return "heartbeat-canceled";
+            return PhaseHeartbeatSuppressionReasonHeartbeatCanceled;
         }
 
         if (failureToken == cancellationToken && cancellationToken.IsCancellationRequested) {
-            return "request-canceled";
+            return PhaseHeartbeatSuppressionReasonRequestCanceled;
         }
 
         return null;
