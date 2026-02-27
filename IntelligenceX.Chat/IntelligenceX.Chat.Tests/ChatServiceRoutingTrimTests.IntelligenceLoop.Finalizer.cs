@@ -12,11 +12,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var heartbeatCts = new CancellationTokenSource();
         using var outerCts = new CancellationTokenSource();
 
-        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+        InvokeFinalize(
             heartbeatFailure: null,
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
             heartbeatCancellationToken: heartbeatCts.Token,
             cancellationToken: outerCts.Token);
     }
@@ -26,15 +23,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var heartbeatCts = new CancellationTokenSource();
         using var outerCts = new CancellationTokenSource();
 
-        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new IOException("simulated-io"),
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        AssertSuppressed(
+            failure: new IOException("simulated-io"),
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Null(ex);
+            cancellationToken: outerCts.Token);
     }
 
     [Fact]
@@ -43,15 +35,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         var failure = new InvalidOperationException("heartbeat-failed");
 
-        var ex = Assert.Throws<InvalidOperationException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: failure,
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        var ex = AssertRethrownSame(
+            failure: failure,
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Same(failure, ex);
+            cancellationToken: outerCts.Token);
         Assert.Equal("heartbeat-failed", ex.Message);
     }
 
@@ -62,15 +49,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         outerCts.Cancel();
         var failure = new InvalidOperationException("heartbeat-failed-with-cancellation");
 
-        var ex = Assert.Throws<InvalidOperationException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: failure,
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        var ex = AssertRethrownSame(
+            failure: failure,
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Same(failure, ex);
+            cancellationToken: outerCts.Token);
         Assert.Equal("heartbeat-failed-with-cancellation", ex.Message);
     }
 
@@ -82,15 +64,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         unrelatedCts.Cancel();
         var failure = new OperationCanceledException("unrelated", innerException: null, unrelatedCts.Token);
 
-        var ex = Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: failure,
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        AssertRethrownSame(
+            failure: failure,
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Same(failure, ex);
+            cancellationToken: outerCts.Token);
     }
 
     [Fact]
@@ -99,15 +76,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         heartbeatCts.Cancel();
 
-        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new OperationCanceledException("heartbeat-canceled", innerException: null, heartbeatCts.Token),
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        AssertSuppressed(
+            failure: new OperationCanceledException("heartbeat-canceled", innerException: null, heartbeatCts.Token),
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Null(ex);
+            cancellationToken: outerCts.Token);
     }
 
     [Fact]
@@ -116,15 +88,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         outerCts.Cancel();
 
-        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new OperationCanceledException("request-canceled", innerException: null, outerCts.Token),
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        AssertSuppressed(
+            failure: new OperationCanceledException("request-canceled", innerException: null, outerCts.Token),
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Null(ex);
+            cancellationToken: outerCts.Token);
     }
 
     [Fact]
@@ -133,15 +100,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         var failure = new OperationCanceledException("generic-canceled");
 
-        var ex = Assert.Throws<OperationCanceledException>(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: failure,
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        AssertRethrownSame(
+            failure: failure,
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Same(failure, ex);
+            cancellationToken: outerCts.Token);
     }
 
     [Fact]
@@ -150,15 +112,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         heartbeatCts.Cancel();
 
-        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new OperationCanceledException("generic-canceled"),
-            phaseStatus: "phase_review",
-            requestId: "req-intelligence-loop",
-            threadId: "thread-intelligence-loop",
+        AssertSuppressed(
+            failure: new OperationCanceledException("generic-canceled"),
             heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Null(ex);
+            cancellationToken: outerCts.Token);
     }
 
     [Fact]
@@ -167,14 +124,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         outerCts.Cancel();
 
-        var ex = Record.Exception(() => ChatServiceSession.FinalizePhaseHeartbeatFailure(
-            heartbeatFailure: new OperationCanceledException("generic-canceled"),
+        AssertSuppressed(
+            failure: new OperationCanceledException("generic-canceled"),
+            heartbeatCancellationToken: heartbeatCts.Token,
+            cancellationToken: outerCts.Token);
+    }
+
+    private static void AssertSuppressed(Exception failure, CancellationToken heartbeatCancellationToken, CancellationToken cancellationToken) {
+        var ex = Record.Exception(() => InvokeFinalize(failure, heartbeatCancellationToken, cancellationToken));
+        Assert.Null(ex);
+    }
+
+    private static TException AssertRethrownSame<TException>(TException failure, CancellationToken heartbeatCancellationToken,
+        CancellationToken cancellationToken)
+        where TException : Exception {
+        var ex = Assert.Throws<TException>(() => InvokeFinalize(failure, heartbeatCancellationToken, cancellationToken));
+        Assert.Same(failure, ex);
+        return ex;
+    }
+
+    private static void InvokeFinalize(Exception? heartbeatFailure, CancellationToken heartbeatCancellationToken, CancellationToken cancellationToken) {
+        ChatServiceSession.FinalizePhaseHeartbeatFailure(
+            heartbeatFailure: heartbeatFailure,
             phaseStatus: "phase_review",
             requestId: "req-intelligence-loop",
             threadId: "thread-intelligence-loop",
-            heartbeatCancellationToken: heartbeatCts.Token,
-            cancellationToken: outerCts.Token));
-
-        Assert.Null(ex);
+            heartbeatCancellationToken: heartbeatCancellationToken,
+            cancellationToken: cancellationToken);
     }
 }
