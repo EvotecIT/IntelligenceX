@@ -629,6 +629,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForMismatchedInlineBacktickDelimiters() {
+        var request = "Use ``visnetwork``` only when relationship mapping is required.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CopyChatOptionsWithoutTools_DisablesToolExecutionForReviewPasses() {
         var source = new ChatOptions {
             Model = "gpt-test",
